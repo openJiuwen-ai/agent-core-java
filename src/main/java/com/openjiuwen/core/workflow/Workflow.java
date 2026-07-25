@@ -1269,12 +1269,13 @@ public class Workflow {
      * buildActorManager.
      * 
      * @param session session
-     * @param subGraph subGraph
+     * @param isSubGraph subGraph
      * @return the result
      * @since 0.1.7
      */
-    private ActorManager buildActorManager(BaseSession session, boolean subGraph) {
-        return new ActorManager(internal.getConfig().getSpec().getStreamEdges(), internal.getStreamActor(), subGraph,
+    private ActorManager buildActorManager(BaseSession session, boolean isSubGraph) {
+        return new ActorManager(internal.getConfig().getSpec().getStreamEdges(),
+                internal.getConfig().getSpec().getStreamSourceGroups(), internal.getStreamActor(), isSubGraph,
                 session, compId -> {
                     if (internal.getConfig().getSpec().getCompConfigs().containsKey(compId)) {
                         List<ComponentAbility> abilities =
@@ -1342,14 +1343,50 @@ public class Workflow {
         if (subSession.actorManager() == null || subSession.actorManager().subWorkflowStream() == null) {
             return messages;
         }
-        while (true) {
+        // Count stream abilities (STREAM + TRANSFORM) on the End component,
+        // mirroring Python _sub_invoke / _sub_stream which expects one END_FRAME per stream ability.
+        int streamAbilityCount = countEndStreamAbilities();
+        if (streamAbilityCount == 0) {
+            streamAbilityCount = 1;
+        }
+        while (streamAbilityCount > 0) {
             Object frame = subSession.actorManager().subWorkflowStream().poll();
-            if (frame == null || StreamEmitter.END_FRAME.equals(frame)) {
+            if (frame == null) {
                 break;
+            }
+            if (StreamEmitter.END_FRAME.equals(frame)) {
+                streamAbilityCount--;
+                continue;
             }
             messages.add(frame);
         }
         return messages;
+    }
+
+    /**
+     * Count STREAM + TRANSFORM abilities on the End component, mirroring
+     * Python {@code _sub_invoke} / {@code _sub_stream} which expects one
+     * END_FRAME per stream ability.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    private int countEndStreamAbilities() {
+        if (!internal.getConfig().getSpec().getCompConfigs().containsKey(endCompId)) {
+            return 0;
+        }
+        List<ComponentAbility> abilities =
+            internal.getConfig().getSpec().getCompConfigs().get(endCompId).getAbilities();
+        if (abilities == null) {
+            return 0;
+        }
+        int count = 0;
+        for (ComponentAbility ability : abilities) {
+            if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

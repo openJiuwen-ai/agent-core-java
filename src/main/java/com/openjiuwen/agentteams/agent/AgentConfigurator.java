@@ -19,7 +19,6 @@ import com.openjiuwen.agentteams.teamworkspace.TeamWorkspaceConfig;
 import com.openjiuwen.agentteams.teamworkspace.TeamWorkspaceManager;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamTools;
-import com.openjiuwen.agentteams.worktree.WorktreeManager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -56,8 +55,6 @@ public class AgentConfigurator {
     private TeamAgentSpec spec;
     private TeamRuntimeContext ctx;
     private String rolePolicy;
-    private TeamWorkspaceManager workspaceManager;
-    private WorktreeManager worktreeManager;
     private ModelAllocator modelAllocator;
     private Allocation leaderAllocation;
     private List<ToolCard> toolCards;
@@ -65,7 +62,6 @@ public class AgentConfigurator {
     private TeamBackend teamBackend;
     private Messager messager;
     private TeamMemoryManager memoryManager;
-    private FirstIterationGate firstIterGate;
 
     /**
      * Create an AgentConfigurator bound to the given agent card.
@@ -141,16 +137,6 @@ public class AgentConfigurator {
     }
 
     /**
-     * Return the model allocation reserved for the leader.
-     *
-     * @return the leader allocation, or null if not yet set
-     * @since 0.1.7
-     */
-    public Allocation getLeaderAllocation() {
-        return leaderAllocation;
-    }
-
-    /**
      * Return the team backend for inter-member communication.
      *
      * @return the team backend, or null if infrastructure not yet set up
@@ -181,16 +167,6 @@ public class AgentConfigurator {
     }
 
     /**
-     * Return the first-iteration gate that controls initial agent behavior.
-     *
-     * @return the first iteration gate, or null if not yet set up
-     * @since 0.1.7
-     */
-    public FirstIterationGate getFirstIterGate() {
-        return firstIterGate;
-    }
-
-    /**
      * Return the messager used for team event transport.
      *
      * @return the messager, or null if not yet created
@@ -198,26 +174,6 @@ public class AgentConfigurator {
      */
     public Messager getMessager() {
         return messager;
-    }
-
-    /**
-     * Return the team workspace manager.
-     *
-     * @return the workspace manager, or null if not yet created
-     * @since 0.1.7
-     */
-    public TeamWorkspaceManager getWorkspaceManager() {
-        return workspaceManager;
-    }
-
-    /**
-     * Return the worktree manager for isolated work directories.
-     *
-     * @return the worktree manager, or null if not yet created
-     * @since 0.1.7
-     */
-    public WorktreeManager getWorktreeManager() {
-        return worktreeManager;
     }
 
     // ---- Main entry point ----
@@ -296,16 +252,6 @@ public class AgentConfigurator {
         }
         Loggers.AGENT.info("Team workspace directory ensured at {}", wsPath);
         return new TeamWorkspaceManager(wsConfig, wsPath, teamName);
-    }
-
-    /**
-     * Create a WorktreeManager with no base path.
-     *
-     * @return the created worktree manager
-     * @since 0.1.7
-     */
-    public WorktreeManager createWorktreeManager() {
-        return new WorktreeManager(null);
     }
 
     // ---- Phase 2: Agent setup (delegated to TeamAgent) ----

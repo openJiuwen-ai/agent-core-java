@@ -338,48 +338,4 @@ public class EventBus implements PollController {
             return thread;
         };
     }
-
-    /**
-     * Whether the given event is a SHUTDOWN inner event.
-     *
-     * @param event the coordination event to check
-     * @return {@code true} if the event is a SHUTDOWN inner event
-     */
-    public static boolean isShutdownEvent(CoordinationEvent event) {
-        return event instanceof InnerEventMessage inner
-                && inner.getEventType() == InnerEventType.SHUTDOWN;
-    }
-
-    /**
-     * Whether the given event is a POLL_MAILBOX inner event.
-     *
-     * @param event the coordination event to check
-     * @return {@code true} if the event is a POLL_MAILBOX inner event
-     */
-    public static boolean isMailboxPollEvent(CoordinationEvent event) {
-        return event instanceof InnerEventMessage inner
-                && inner.getEventType() == InnerEventType.POLL_MAILBOX;
-    }
-
-    /**
-     * Whether the given event is a POLL_TASK inner event.
-     *
-     * @param event the coordination event to check
-     * @return {@code true} if the event is a POLL_TASK inner event
-     */
-    public static boolean isTaskPollEvent(CoordinationEvent event) {
-        return event instanceof InnerEventMessage inner
-                && inner.getEventType() == InnerEventType.POLL_TASK;
-    }
-
-    /**
-     * Whether the given event is a USER_INPUT inner event.
-     *
-     * @param event the coordination event to check
-     * @return {@code true} if the event is a USER_INPUT inner event
-     */
-    public static boolean isUserInputEvent(CoordinationEvent event) {
-        return event instanceof InnerEventMessage inner
-                && inner.getEventType() == InnerEventType.USER_INPUT;
-    }
 }

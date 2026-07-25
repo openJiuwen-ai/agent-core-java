@@ -8,12 +8,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.openjiuwen.agentteams.agent.Allocation;
+import com.openjiuwen.agentteams.interaction.HumanAgentInboundEvent;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.agentteams.schema.events.TeamEvent;
 import com.openjiuwen.agentteams.schema.events.TeamTopic;
 import com.openjiuwen.agentteams.schema.status.ExecutionStatus;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
+import com.openjiuwen.agentteams.schema.team.TeamCompletionSnapshot;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.spawn.SpawnContext;
@@ -23,15 +25,9 @@ import com.openjiuwen.agentteams.tools.database.GraphUtils;
 import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.agentteams.tools.database.TeamRecord;
-import com.openjiuwen.agentteams.interaction.HumanAgentInboundEvent;
-import com.openjiuwen.agentteams.schema.team.TeamCompletionSnapshot;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -42,7 +38,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -70,7 +65,7 @@ public class TeamBackend {
     private final Messager messager;
     private final String displayName;
     private final String description;
-    private final long created;
+
 
     // Non-final: the leader constructs the backend before its agent session is
     // resolved, so the session id is latched later via setTeamSessionId once
@@ -88,7 +83,6 @@ public class TeamBackend {
     // state deterministically (rather than rely on the racy bus event).
     private Runnable onTeamBuilt;
     private Runnable onTeamCleaned;
-    private final List<Path> cleanupPaths = new ArrayList<>();
     private final Map<String, Function<HumanAgentInboundEvent, ?>> humanAgentInboundCallbacks =
             new ConcurrentHashMap<>();
 
@@ -129,7 +123,6 @@ public class TeamBackend {
         this.messager = messager;
         this.displayName = teamName;
         this.description = "";
-        this.created = System.currentTimeMillis();
         this.teamSessionId = teamSessionId != null ? teamSessionId : "";
         this.db = getSharedDb(DatabaseConfig.builder().build());
         this.db.setTeamSessionId(this.teamSessionId);
@@ -543,19 +536,6 @@ public class TeamBackend {
         this.onAutoLaunch = handler;
     }
 
-    /**
-     * Accessor for the auto-launch callback.
-     *
-     * <p>Mirrors Python {@code SendMessageTool._on_teammate_created}: the
-     * send_message tool reads this callback to drive {@code startup()}.
-     * Kept as a {@code BiConsumer} because the Java {@code TeamAgent}
-     * auto-launch handler still consumes an optional initial-message
-     * argument (member prompt or {@code null}); the Python-aligned path
-     * passes {@code null} so message delivery stays on the mailbox.</p>
-     */
-    public BiConsumer<String, String> getOnAutoLaunch() {
-        return onAutoLaunch;
-    }
 
     /**
      * Start all UNSTARTED members using the registered auto-launch callback.
@@ -971,35 +951,6 @@ public class TeamBackend {
         return publishTeamEvent(TeamEvent.TOOL_APPROVAL_RESULT, payload).thenApply(ignored -> true);
     }
 
-    /**
-     * Cancel a task and notify the assignee if the task was claimed.
-     *
-     * <p>Mirrors Python {@code team.py:TeamBackend.cancel_task}. Idempotent:
-     * cancelling an already-cancelled task returns {@code true} without
-     * republishing. When the task has an assignee, a notification message is
-     * sent so the teammate knows its claimed task was pulled back.</p>
-     */
-    public CompletableFuture<Boolean> cancelTask(String taskId) {
-        Optional<TeamTask> taskOpt = taskManager.get(taskId);
-        if (taskOpt.isEmpty()) {
-            Loggers.TOOL.info("cancelTask: task {} not found", taskId);
-            return CompletableFuture.completedFuture(false);
-        }
-        TeamTask task = taskOpt.get();
-        if ("cancelled".equals(task.getStatus())) {
-            return CompletableFuture.completedFuture(true);
-        }
-        TeamTask cancelled = taskManager.cancel(taskId).join();
-        if (cancelled == null) {
-            return CompletableFuture.completedFuture(false);
-        }
-        if (task.getAssignee() != null && !task.getAssignee().isBlank()) {
-            String content = "Task '" + task.getTitle() + "' (ID: " + taskId
-                    + ") has been cancelled by the team leader.";
-            messageManager.sendMessage(content, task.getAssignee());
-        }
-        return CompletableFuture.completedFuture(true);
-    }
 
     /**
      * Cancel every active task in the team and broadcast the result.
@@ -1098,54 +1049,6 @@ public class TeamBackend {
     }
 
     /**
-     * Create the team row, register the leader as BUSY, and publish TeamCreatedEvent.
-     *
-     * <p>Mirrors Python 0.1.15 {@code team.py:TeamBackend.build_team} for the
-     * collaboration-only scope: HITT human-agent registration and Bridge-agent
-     * registration are out of scope here, so predefined members with those
-     * roles are silently skipped. Predefined teammates registered via
-     * {@link #spawnMember} / {@link #syncMembers} are left UNSTARTED for the
-     * later {@code startup()} pass. Fires {@code onTeamBuilt} exactly once.</p>
-     */
-    public CompletableFuture<Void> buildTeam(
-            String displayName, String desc, String leaderDisplayName, String leaderDesc) {
-        // Constructor already created the team row + leader member. Promote
-        // the leader to BUSY to mirror Python's "leader starts busy/running
-        // immediately" semantics.
-        forceUpdateMemberStatus(memberName, MemberStatus.BUSY);
-        if (onTeamBuilt != null) {
-            try {
-                onTeamBuilt.run();
-            } catch (IllegalStateException | NullPointerException
-                    | IllegalArgumentException | UnsupportedOperationException e) {
-                Loggers.TOOL.error("buildTeam: on_team_built callback failed for team={}",
-                        teamName, e);
-            }
-        }
-        return publishTeamEvent(
-                TeamEvent.CREATED,
-                Map.of(
-                        "team_name", teamName,
-                        "display_name", displayName,
-                        "leader_member_name", memberName,
-                        "created", System.currentTimeMillis()))
-                .thenApply(ignored -> null);
-    }
-
-    /**
-     * Register a filesystem path to remove on {@link #cleanTeam()}.
-     *
-     * <p>Mirrors Python {@code team.py:TeamBackend.register_cleanup_path}. The
-     * hosting TeamAgent wires the actual resolved workspace / member-workspace
-     * directories here so cleanup wipes the real locations.</p>
-     */
-    public void registerCleanupPath(Path path) {
-        if (path != null && !path.toString().isBlank()) {
-            cleanupPaths.add(path.toAbsolutePath().normalize());
-        }
-    }
-
-    /**
      * Register a callback fired when the team is built.
      *
      * @param onTeamBuilt callback to fire on team build
@@ -1163,81 +1066,6 @@ public class TeamBackend {
         this.onTeamCleaned = onTeamCleaned;
     }
 
-    /**
-     * Force cleanup for the current session's team state.
-     *
-     * <p>Mirrors Python {@code team.py:TeamBackend.force_clean_team}. Unlike
-     * {@link #cleanTeam()}, this does not wait for every member to reach
-     * SHUTDOWN. Used during session switching to aggressively discard the old
-     * team's runtime and persisted session data.</p>
-     */
-    public CompletableFuture<Boolean> forceCleanTeam(boolean shouldShutdownMembers) {
-        if (shouldShutdownMembers) {
-            for (MemberRecord record : db.member.getTeamMembers(teamName)) {
-                if (memberName.equals(record.getMemberName())) {
-                    continue;
-                }
-                try {
-                    shutdownMember(record.getMemberName(), true).join();
-                } catch (CompletionException e) {
-                    Loggers.TOOL.warn("forceCleanTeam: shutdown failed for member={}: {}",
-                            record.getMemberName(), e.getMessage());
-                }
-            }
-        }
-        boolean isDeleted = db.team.deleteTeam(teamName);
-        try {
-            removeCleanupPaths();
-        } catch (IllegalStateException | NullPointerException
-                | IllegalArgumentException | UnsupportedOperationException e) {
-            Loggers.TOOL.error("forceCleanTeam: removeCleanupPaths failed: {}",
-                    e.getMessage());
-            isDeleted = false;
-        }
-        members.removeIf(member -> !memberName.equals(member.getMemberName()));
-        if (isDeleted) {
-            Loggers.TOOL.info("forceCleanTeam: team {} force cleaned successfully", teamName);
-        }
-        return CompletableFuture.completedFuture(isDeleted);
-    }
-
-    private void removeCleanupPaths() {
-        if (cleanupPaths.isEmpty()) {
-            return;
-        }
-        List<Path> ordered = new ArrayList<>(cleanupPaths);
-        ordered.sort((left, right) -> Integer.compare(
-                right.getNameCount(), left.getNameCount()));
-        for (Path path : ordered) {
-            if (!Files.isDirectory(path)) {
-                continue;
-            }
-            try {
-                deleteRecursively(path);
-                Loggers.TOOL.info("Removed team filesystem path: {}", path);
-            } catch (IllegalStateException | NullPointerException
-                    | IllegalArgumentException | UnsupportedOperationException e) {
-                Loggers.TOOL.error("Failed to remove path {}: {}", path,
-                        e.getMessage());
-            }
-        }
-        cleanupPaths.clear();
-    }
-
-    private static void deleteRecursively(Path path) {
-        try (var stream = Files.walk(path)) {
-            stream.sorted((left, right) -> right.compareTo(left))
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException ignored) {
-                            // best-effort; logged at call site
-                        }
-                    });
-        } catch (IOException ignored) {
-            // best-effort; logged at call site
-        }
-    }
 
     /**
      * Shutdown a member, returning a {@link MemberOpResult} carrying the
@@ -1367,13 +1195,6 @@ public class TeamBackend {
                         teamName, e.getMessage());
             }
         }
-        try {
-            removeCleanupPaths();
-        } catch (IllegalStateException | NullPointerException
-                | IllegalArgumentException | UnsupportedOperationException e) {
-            Loggers.TOOL.error("cleanTeam: removeCleanupPaths failed: {}",
-                    e.getMessage());
-        }
         members.removeIf(member -> !memberName.equals(member.getMemberName()));
         return publishTeamEvent(TeamEvent.CLEANED, Map.of("team_name", teamName))
                 .thenApply(ignored -> true);
@@ -1394,14 +1215,6 @@ public class TeamBackend {
         return Set.copyOf(names);
     }
 
-    /**
-     * Check whether human-in-the-team (HITT) is enabled.
-     *
-     * @return true if at least one human-agent member exists
-     */
-    public boolean hittEnabled() {
-        return !humanAgentNames().isEmpty();
-    }
 
     /**
      * Return the message manager for team communication.
@@ -1473,24 +1286,6 @@ public class TeamBackend {
      */
     public String getDisplayName() {
         return displayName;
-    }
-
-    /**
-     * Return the team description.
-     *
-     * @return the description string
-     */
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * Return the creation timestamp of this backend.
-     *
-     * @return the creation timestamp in milliseconds
-     */
-    public long getCreated() {
-        return created;
     }
 
     private MemberStatus defaultStatusFor(TeamRole role) {

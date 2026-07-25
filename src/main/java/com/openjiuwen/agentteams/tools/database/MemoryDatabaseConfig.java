@@ -23,15 +23,4 @@ public class MemoryDatabaseConfig {
     private DatabaseType dbType = DatabaseType.MEMORY;
     @Builder.Default
     private int dbTimeout = 30;
-
-    /**
-     * toDatabaseConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public DatabaseConfig toDatabaseConfig() {
-        return DatabaseConfig.builder().dbType(DatabaseType.MEMORY).connectionString(":memory:").dbTimeout(dbTimeout)
-                .isDbEnableWal(false).build();
-    }
 }

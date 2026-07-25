@@ -50,16 +50,6 @@ public class PyZmqMessager implements Messager {
     }
 
     /**
-     * cleanupGlobalState.
-     * 
-     * @since 0.1.7
-     */
-    public static void cleanupGlobalState() {
-        TOPIC_SUBS.clear();
-        P2P_HANDLERS.clear();
-    }
-
-    /**
      * start.
      * 
      * @return the result

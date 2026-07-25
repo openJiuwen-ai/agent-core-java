@@ -8,14 +8,16 @@ import com.openjiuwen.core.workflow.component.NodeConfig;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Complete specification of a workflow structure.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.workflow_config.WorkflowSpec}.
- * 
+ *
  * @since 0.1.7
  */
 public class WorkflowSpec {
@@ -23,21 +25,31 @@ public class WorkflowSpec {
 
     /**
      * HashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private Map<String, List<String>> streamEdges = new HashMap<>();
 
     /**
+     * Stream source groups per consumer, mirroring Python
+     * {@code WorkflowSpec.stream_source_groups}. Each value is a list of
+     * source sets (CNF OR-groups); the consumer's stream processor finishes
+     * once each group has at least one handled source.
+     *
+     * @since 0.1.7
+     */
+    private Map<String, List<Set<String>>> streamSourceGroups = new LinkedHashMap<>();
+
+    /**
      * HashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private Map<String, NodeConfig> compConfigs = new HashMap<>();
 
     /**
      * ArrayList<>.
-     * 
+     *
      * @since 0.1.7
      */
     private List<String> startNodes = new ArrayList<>();
@@ -80,6 +92,26 @@ public class WorkflowSpec {
      */
     public void setStreamEdges(Map<String, List<String>> streamEdges) {
         this.streamEdges = streamEdges;
+    }
+
+    /**
+     * getStreamSourceGroups.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<String, List<Set<String>>> getStreamSourceGroups() {
+        return streamSourceGroups;
+    }
+
+    /**
+     * setStreamSourceGroups.
+     *
+     * @param streamSourceGroups streamSourceGroups
+     * @since 0.1.7
+     */
+    public void setStreamSourceGroups(Map<String, List<Set<String>>> streamSourceGroups) {
+        this.streamSourceGroups = streamSourceGroups;
     }
 
     /**

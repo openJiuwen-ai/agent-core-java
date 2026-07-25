@@ -479,7 +479,8 @@ public class LoopGroup extends BaseWorkflow {
      * @since 0.1.7
      */
     private ActorManager buildActorManager(BaseSession session) {
-        return new ActorManager(getConfig().getSpec().getStreamEdges(), getStreamActor(), true, session, compId -> {
+        return new ActorManager(getConfig().getSpec().getStreamEdges(),
+                getConfig().getSpec().getStreamSourceGroups(), getStreamActor(), true, session, compId -> {
             if (getConfig().getSpec().getCompConfigs().containsKey(compId)) {
                 List<ComponentAbility> abilities = getConfig().getSpec().getCompConfigs().get(compId).getAbilities();
                 return abilities != null ? abilities : List.of();

@@ -2164,17 +2164,6 @@ public class TeamDatabase {
         }
 
         /**
-         * Removes all tasks for a team in the current session.
-         *
-         * @param teamName team identifier
-         * @throws IllegalStateException if the database is not initialized
-         */
-        public void clearTeamTasks(String teamName) {
-            ensureInitialized();
-            currentSessionTables().tasks.entrySet().removeIf(entry -> teamName.equals(entry.getValue().getTeamName()));
-        }
-
-        /**
          * Claims a task for an assignee, transitioning it to "claimed" status.
          *
          * @param taskId task identifier

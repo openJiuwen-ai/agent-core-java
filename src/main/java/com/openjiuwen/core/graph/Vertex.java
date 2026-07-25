@@ -94,8 +94,13 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private boolean isFirstInit = true;
 
     /**
-     * ArrayList<>.
-     * 
+     * Abilities whose END_FRAME should be deferred until the current
+     * batch-in or stream-in ability group finishes, so a downstream consumer's
+     * stream processor does not receive an end frame before sibling abilities
+     * (e.g. INVOKE following STREAM on the same node) have completed.
+     * Mirrors the natural ordering Python gets for free from asyncio's
+     * single-threaded cooperative scheduling.
+     *
      * @since 0.1.7
      */
     private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
@@ -271,7 +276,14 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 currentAbility = ability;
                 runExecutable(ability, isSubgraph, config, null);
             }
-            sendDeferredStreamEndMessages();
+            // Flush END_FRAME messages deferred by batch-in abilities (INVOKE/STREAM)
+            // of this node. Only flush when batch-in abilities actually ran, so a
+            // node that only has stream-in abilities (COLLECT/TRANSFORM) does not
+            // race its own streamCall's deferred flush — those are flushed in
+            // streamCall's finally instead.
+            if (!callAbilities.isEmpty()) {
+                sendDeferredStreamEndMessages();
+            }
 
             if (callAbilities.isEmpty()) {
                 traceComponentBegin();
@@ -580,7 +592,6 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     private void postStream(Iterator<Object> resultsIter, ComponentAbility ability) {
-        boolean isEnd = isEndNode;
         boolean isSubGraph = session.parentId() != null && !session.parentId().isEmpty();
         ActorManager actorManager = getActorManager();
 
@@ -596,45 +607,98 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         int endStreamIndex = 0;
         while (resultsIter != null && resultsIter.hasNext()) {
             Object chunk = resultsIter.next();
-            Object message;
-            if (outputTransformer == null) {
-                message = (outputSchema != null && actorManager != null)
-                        ? actorManager.getStreamTransform().getByDefaultTransformer(chunk, outputSchema)
-                        : chunk;
-            } else {
-                message = (actorManager != null)
-                        ? actorManager.getStreamTransform().getByDefinedTransformer(chunk, outputTransformer)
-                        : chunk;
-            }
-
+            Object message = transformStreamChunk(chunk, outputSchema, outputTransformer, actorManager);
             LOGGER.debug("Produce chunk[{}] from {}[{}]", endStreamIndex, nodeId, ability.name());
-            processChunk(message, isEnd, endStreamIndex, isSubGraph, ability);
+            processChunk(message, isEndNode, endStreamIndex, isSubGraph, ability);
             endStreamIndex++;
         }
 
-        // Send end frame
+        sendStreamEndFrame(ability, isEndNode, isSubGraph, actorManager);
+
+        LOGGER.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
+        clearInteractive();
+
+        writeLlmStreamOutput();
+    }
+
+    /**
+     * Transform a raw stream chunk into the message payload to be sent to
+     * consumers, applying either the default schema transformer or a custom
+     * transformer. Mirrors the inline transformer selection in Python
+     * {@code Vertex._post_stream}.
+     *
+     * @param chunk chunk
+     * @param outputSchema outputSchema
+     * @param outputTransformer outputTransformer
+     * @param actorManager actorManager
+     * @return the result
+     * @since 0.1.7
+     */
+    private Object transformStreamChunk(Object chunk, Object outputSchema, Object outputTransformer,
+            ActorManager actorManager) {
+        if (outputTransformer == null) {
+            return (outputSchema != null && actorManager != null)
+                    ? actorManager.getStreamTransform().getByDefaultTransformer(chunk, outputSchema)
+                    : chunk;
+        }
+        return (actorManager != null)
+                ? actorManager.getStreamTransform().getByDefinedTransformer(chunk, outputTransformer)
+                : chunk;
+    }
+
+    /**
+     * Send the END_FRAME for the given ability, deferring it when a sibling
+     * ability still needs to run in this batch. Mirrors the end-frame handling
+     * in Python {@code Vertex._post_stream}.
+     *
+     * @param ability ability
+     * @param isEnd isEnd
+     * @param isSubGraph isSubGraph
+     * @param actorManager actorManager
+     * @since 0.1.7
+     */
+    private void sendStreamEndFrame(ComponentAbility ability, boolean isEnd, boolean isSubGraph,
+            ActorManager actorManager) {
+        // Defer it when a sibling ability (INVOKE/COLLECT/TRANSFORM)
+        // still needs to run in this batch, so a downstream consumer does not see
+        // the end frame before all sibling outputs are produced — mirroring the
+        // ordering Python gets from asyncio's cooperative scheduling. The
+        // deferred frames are flushed at the end of the batch-in ability loop
+        // (for INVOKE/STREAM) and the stream-in ability loop (for COLLECT/TRANSFORM).
         if (isEnd && isSubGraph) {
             ActorManager am = getActorManager();
             if (am != null && am.subWorkflowStream() != null) {
-                sendToSubWorkflowStream(am, StreamEmitter.END_FRAME);
+                if (shouldDeferStreamEnd(ability)) {
+                    deferredStreamEndAbilities.add(ability);
+                } else {
+                    sendToSubWorkflowStream(am, StreamEmitter.END_FRAME);
+                }
             }
-        } else if (actorManager != null) {
+            return;
+        }
+        if (actorManager != null) {
             if (shouldDeferStreamEnd(ability)) {
                 deferredStreamEndAbilities.add(ability);
             } else {
                 actorManager.endMessage(nodeId, ability);
             }
         }
+    }
 
-        LOGGER.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
-        clearInteractive();
-
-        // LLM stream output writeback: mirrors Python Vertex._post_stream() LLMExecutable handling
-        if (executable instanceof LLMExecutable llmExec) {
-            Map<String, Object> result = llmExec.getStreamOutput();
-            if (result != null && session.state() instanceof WorkflowStateCollection) {
-                ((WorkflowStateCollection) session.state()).setOutputs(result);
-            }
+    /**
+     * Write the LLM stream output back to the workflow state, if this vertex
+     * runs an LLMExecutable with collected stream output. Mirrors the
+     * writeback step in Python {@code Vertex._post_stream}.
+     *
+     * @since 0.1.7
+     */
+    private void writeLlmStreamOutput() {
+        if (!(executable instanceof LLMExecutable llmExec)) {
+            return;
+        }
+        Map<String, Object> result = llmExec.getStreamOutput();
+        if (result != null && session.state() instanceof WorkflowStateCollection) {
+            ((WorkflowStateCollection) session.state()).setOutputs(result);
         }
     }
 
@@ -703,23 +767,34 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     }
 
     /**
-     * shouldDeferStreamEnd.
-     * 
+     * Whether the END_FRAME for the given ability should be deferred until the
+     * current batch (batch-in INVOKE/STREAM, or stream-in COLLECT/TRANSFORM)
+     * has finished all sibling abilities. Mirrors the ordering guarantee Python
+     * gets from asyncio's single-threaded cooperative scheduler.
+     *
      * @param ability ability
      * @return the result
      * @since 0.1.7
      */
     private boolean shouldDeferStreamEnd(ComponentAbility ability) {
-        if (ability != ComponentAbility.STREAM || componentAbility == null) {
+        if (componentAbility == null) {
             return false;
         }
         int currentIndex = componentAbility.indexOf(ability);
         if (currentIndex < 0) {
             return false;
         }
+        boolean isAbilityBatchIn = ability == ComponentAbility.INVOKE || ability == ComponentAbility.STREAM;
         for (int i = currentIndex + 1; i < componentAbility.size(); i++) {
             ComponentAbility later = componentAbility.get(i);
-            if (later == ComponentAbility.INVOKE) {
+            boolean isLaterBatchIn = later == ComponentAbility.INVOKE || later == ComponentAbility.STREAM;
+            // Only defer across siblings of the same batch kind. A batch-in ability
+            // (INVOKE/STREAM) waits for later batch-in siblings; a stream-in ability
+            // (COLLECT/TRANSFORM) waits for later stream-in siblings. This keeps the
+            // two batches' deferred queues disjoint so each batch flushes only its
+            // own deferred frames, avoiding the double-send race that previously
+            // deadlocked Workflow043Test.
+            if (isAbilityBatchIn == isLaterBatchIn) {
                 return true;
             }
         }
@@ -727,8 +802,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     }
 
     /**
-     * sendDeferredStreamEndMessages.
-     * 
+     * Flush any deferred END_FRAME messages for this node, in insertion order.
+     *
      * @since 0.1.7
      */
     private void sendDeferredStreamEndMessages() {
@@ -736,9 +811,15 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             return;
         }
         ActorManager actorManager = getActorManager();
+        boolean isEnd = isEndNode;
+        boolean isSubGraph = session.parentId() != null && !session.parentId().isEmpty();
         if (actorManager != null) {
             for (ComponentAbility ability : deferredStreamEndAbilities) {
-                actorManager.endMessage(nodeId, ability);
+                if (isEnd && isSubGraph && actorManager.subWorkflowStream() != null) {
+                    sendToSubWorkflowStream(actorManager, StreamEmitter.END_FRAME);
+                } else {
+                    actorManager.endMessage(nodeId, ability);
+                }
                 LOGGER.debug("Produce deferred 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
             }
         }
@@ -819,6 +900,11 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             error = (cause instanceof Exception) ? (Exception) cause : e;
             errorCallback.accept(error);
         } finally {
+            // Stream-in abilities (COLLECT/TRANSFORM) defer their END_FRAME if a
+            // sibling stream-in ability still needs to run, so a downstream
+            // consumer's stream processor receives end frames in the right
+            // order. Flush them now that the stream-in batch is done.
+            sendDeferredStreamEndMessages();
             streamDone.complete(error != null ? error : Boolean.TRUE);
             traceComponentStreamInputSend();
         }
