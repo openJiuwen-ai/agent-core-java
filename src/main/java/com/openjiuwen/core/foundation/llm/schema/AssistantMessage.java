@@ -201,7 +201,10 @@ public class AssistantMessage extends BaseMessage {
      * OpenAI format: {@code {"id":"xxx","type":"function","function":{"name":"...","arguments":"..."}}}
      * <br>
      * Flat format: {@code {"id":"xxx","type":"function","name":"...","arguments":"..."}}
-     * 
+     * <p>
+     * When {@code index} is absent or not a number, {@link ToolCall#getIndex()} is {@code null}
+     * (not defaulted to {@code 0}).
+     *
      * @param rawToolCalls list of raw tool call maps from API
      * @return list of converted {@link ToolCall} instances
      * @since 0.1.7
@@ -219,12 +222,12 @@ public class AssistantMessage extends BaseMessage {
                         ToolCall.builder().id((String) tc.get("id")).type((String) tc.getOrDefault("type", "function"))
                                 .name((String) function.getOrDefault("name", ""))
                                 .arguments((String) function.getOrDefault("arguments", ""))
-                                .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
+                                .index(tc.get("index") instanceof Number n ? n.intValue() : null).build());
             } else {
                 result.add(ToolCall.builder().id((String) tc.get("id"))
                         .type((String) tc.getOrDefault("type", "function")).name((String) tc.getOrDefault("name", ""))
                         .arguments((String) tc.getOrDefault("arguments", ""))
-                        .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
+                        .index(tc.get("index") instanceof Number n ? n.intValue() : null).build());
             }
         }
         return result;

@@ -126,11 +126,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
             return result;
         } catch (Exception e) {
             Loggers.SYS_OPERATION.error("Failed to execute code", e);
-            String msg =
-                e instanceof IOException && e.getMessage() != null && e.getMessage().contains("Cannot run program")
-                        ? language + " file not found error, please install and add it to your "
-                                + "system environment variable PATH."
-                        : "unexpected error: " + e.getMessage();
+            String msg = interpreterNotFoundMessage(language, e);
             return buildCodeErrorResult(msg, ExecuteCodeData.builder().codeContent(code).language(language).build());
         } finally {
             if (codeFilePath != null) {
@@ -220,11 +216,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
             return results.iterator();
         } catch (IOException | RuntimeException e) {
             Loggers.SYS_OPERATION.error("Failed to execute code streaming", e);
-            String msg =
-                e instanceof IOException && e.getMessage() != null && e.getMessage().contains("Cannot run program")
-                        ? language + " file not found error, please install and add it to your system"
-                                + " environment variable PATH."
-                        : "unexpected error: " + e.getMessage();
+            String msg = interpreterNotFoundMessage(language, e);
             results.add(buildCodeStreamErrorResult(msg,
                     ExecuteCodeChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
             return results.iterator();
@@ -380,13 +372,17 @@ public class LocalCodeOperation extends BaseCodeOperation {
     }
 
     /**
-     * Resolve a python launcher that exists on PATH. Prefer {@code python3} on Unix and
-     * {@code python} on Windows; fall back to the other name when present.
+     * Resolves the Python executable: {@code PYTHON_EXECUTABLE} override, else first candidate on PATH
+     * ({@code python3}/{@code python}, plus {@code python.exe} on Windows), else a platform default name.
      *
-     * @return python command
+     * @return command name or absolute path suitable for ProcessBuilder
      * @since 0.1.7
      */
     private String pythonCommand() {
+        String override = System.getenv("PYTHON_EXECUTABLE");
+        if (override != null && !override.isBlank()) {
+            return override.trim();
+        }
         String[] candidates = isWindows()
                 ? new String[] {"python", "python3", "python.exe"}
                 : new String[] {"python3", "python"};
@@ -396,6 +392,27 @@ public class LocalCodeOperation extends BaseCodeOperation {
             }
         }
         return isWindows() ? "python" : "python3";
+    }
+
+    /**
+     * Builds a user-facing message when launching an interpreter fails because it is missing from PATH.
+     *
+     * @param language language key (e.g. {@code python})
+     * @param e launch failure
+     * @return guidance string for PATH / {@code PYTHON_EXECUTABLE}, or a generic unexpected-error message
+     * @since 0.1.14
+     */
+    private String interpreterNotFoundMessage(String language, Exception e) {
+        if (e instanceof IOException && e.getMessage() != null && e.getMessage().contains("Cannot run program")) {
+            if ("python".equals(language)) {
+                return "Python interpreter not found on PATH (tried: python3, python"
+                        + (isWindows() ? ", python.exe" : "")
+                        + "); set PYTHON_EXECUTABLE or install and add it to PATH.";
+            }
+            return language + " interpreter not found, please install and add it to your "
+                    + "system environment variable PATH.";
+        }
+        return "unexpected error: " + e.getMessage();
     }
 
     /**

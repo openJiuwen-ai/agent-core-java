@@ -28,7 +28,21 @@ public class GraphStore implements Store {
      * @since 0.1.7
      */
     public GraphStore(Store delegate) {
-        this.delegate = delegate;
+        this.delegate = wrapWithKeyLock(delegate);
+    }
+
+    /**
+     * Ensures the delegate is wrapped with {@link KeyLockedStore} for per-session write locking.
+     *
+     * @param delegate store to wrap; already-wrapped or {@code null} values are returned as-is
+     * @return a key-locked store, or the original value when wrapping is unnecessary
+     * @since 0.1.14
+     */
+    private static Store wrapWithKeyLock(Store delegate) {
+        if (delegate == null || delegate instanceof KeyLockedStore) {
+            return delegate;
+        }
+        return new KeyLockedStore(delegate);
     }
 
     /**

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.OkHttpProxySupport;
+import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -272,10 +273,10 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
     }
 
     /**
-     * buildOkHttpClient.
-     * 
-     * @param timeoutSeconds timeoutSeconds
-     * @return the result
+     * Builds an OkHttp client with connect/read/write timeouts, optional proxy, and SSL from model client config.
+     *
+     * @param timeoutSeconds timeout applied to connect/read/write
+     * @return configured {@link OkHttpClient}
      * @since 0.1.7
      */
     private OkHttpClient buildOkHttpClient(double timeoutSeconds) {
@@ -283,6 +284,8 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         OkHttpClient.Builder builder =
             new OkHttpClient.Builder().connectTimeout(timeout).readTimeout(timeout).writeTimeout(timeout);
         OkHttpProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
+        SslUtils.configureOkHttpClientSsl(builder, modelClientConfig.getApiBase(), modelClientConfig.isVerifySsl(),
+                modelClientConfig.getSslCert());
         return builder.build();
     }
 

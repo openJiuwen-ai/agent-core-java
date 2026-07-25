@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.InMemoryStore;
+import com.openjiuwen.core.graph.store.KeyLockedStore;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -121,9 +122,11 @@ class InMemoryCheckpointerTest {
     }
 
     @Test
-    @DisplayName("graphStore exposes a real in-memory store")
+    @DisplayName("graphStore exposes a key-locked in-memory store")
     void testGraphStoreIsInMemoryStore() {
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        assertInstanceOf(InMemoryStore.class, checkpointer.graphStore());
+        // Concurrent write isolation wraps InMemoryStore with KeyLockedStore.
+        assertInstanceOf(KeyLockedStore.class, checkpointer.graphStore());
+        assertInstanceOf(InMemoryStore.class, ((KeyLockedStore) checkpointer.graphStore()).delegate());
     }
 }

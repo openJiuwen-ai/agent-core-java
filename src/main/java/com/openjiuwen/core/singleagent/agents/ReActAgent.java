@@ -625,8 +625,8 @@ public class ReActAgent extends BaseAgent {
         InvokeInputs invokeInputs =
             InvokeInputs.builder().query(query).queryPayload(queryPayload).conversationId(conversationId).build();
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).session(session)
-                .extra(callbackExtra).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
+                .session(session).extra(callbackExtra).build();
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 
@@ -1162,8 +1162,8 @@ public class ReActAgent extends BaseAgent {
         InvokeInputs invokeInputs =
             InvokeInputs.builder().query(query).queryPayload(queryPayload).conversationId(conversationId).build();
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).session(session)
-                .extra(callbackExtra).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config)
+                .session(session).extra(callbackExtra).build();
         bindSteeringQueue(ctx);
         Object invokeLifecycleInputs = ctx.getInputs();
 

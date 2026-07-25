@@ -753,6 +753,7 @@ public class ResourceMgr {
 
         for (McpServerConfig config : configs) {
             try {
+                config.normalizeServerId();
                 // Validate client type
                 String clientType = config.getClientType();
                 if ("streamable-http".equals(clientType)) {
@@ -778,6 +779,57 @@ public class ResourceMgr {
             }
         }
         return addResults;
+    }
+
+    /**
+     * Looks up a registered MCP server config by server id.
+     *
+     * @param serverId MCP server identifier
+     * @return the config, or {@code null} when not registered / blank id
+     * @since 0.1.14
+     */
+    public McpServerConfig getMcpServerConfig(String serverId) {
+        return resourceRegistry.tool().getMcpServerConfig(serverId);
+    }
+
+    /**
+     * Lists tool resource ids exposed by the given MCP server.
+     *
+     * @param serverId MCP server identifier
+     * @return tool ids; empty when the server has none or is unknown
+     * @since 0.1.14
+     */
+    public List<String> getMcpToolIds(String serverId) {
+        Object idsObj = resourceRegistry.tool().getMcpToolId(serverId, null);
+        if (!(idsObj instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) {
+                result.add(String.valueOf(item));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Lists MCP server configs tagged with {@code tag} (defaults to {@link Tag#GLOBAL}).
+     *
+     * @param tag resource tag; {@code null} is treated as global
+     * @return matching server configs (unknown ids are skipped)
+     * @since 0.1.14
+     */
+    public List<McpServerConfig> listMcpServers(Object tag) {
+        List<String> serverIds = tagMgr.findResourcesByTags(tag != null ? tag : Tag.GLOBAL, TagMatchStrategy.ALL, true);
+        List<McpServerConfig> result = new ArrayList<>();
+        for (String id : serverIds) {
+            McpServerConfig config = resourceRegistry.tool().getMcpServerConfig(id);
+            if (config != null) {
+                result.add(config);
+            }
+        }
+        return result;
     }
 
     /**

@@ -5,8 +5,10 @@ package com.openjiuwen.core.singleagent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.workflow.WorkflowCard;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -152,6 +154,25 @@ class AbilityManagerTest {
 
         assertThat(infos).hasSize(1);
         assertThat(infos.get(0).getName()).isEqualTo("tool-b");
+    }
+
+    @Test
+    void listToolInfoSkipsCachedMcpToolCards() {
+        manager.add(McpToolCard.builder().name("search_poi").description("cached mcp")
+                .serverName("poi-server").inputParams(Map.of("type", "object")).build());
+
+        assertThat(manager.listToolInfo()).isEmpty();
+    }
+
+    @Test
+    void listToolInfoDedupesDuplicateNamesAcrossSources() {
+        manager.add(ToolCard.builder().name("search_poi").description("cached mcp tool")
+                .inputParams(Map.of("type", "object", "properties", Map.of())).build());
+        manager.add(WorkflowCard.builder().name("search_poi").description("reloaded mcp tool").build());
+
+        List<ToolInfo> tools = manager.listToolInfo();
+        long count = tools.stream().filter(t -> "search_poi".equals(t.getName())).count();
+        assertThat(count).isEqualTo(1);
     }
 
     // ========== setToolDescription ==========

@@ -223,7 +223,10 @@ public class ToolMgr {
         }
         McpClient client = createClient(serverConfig);
         try {
-            boolean isConnected = client.connect(1, 30f);
+            float connectTimeoutSec =
+                serverConfig.getConnectTimeoutSeconds() != null && serverConfig.getConnectTimeoutSeconds() > 0
+                    ? serverConfig.getConnectTimeoutSeconds().floatValue() : 30f;
+            boolean isConnected = client.connect(1, connectTimeoutSec);
             if (!isConnected) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR, "server_config",
                         String.valueOf(serverConfig), "reason", "");
@@ -258,6 +261,31 @@ public class ToolMgr {
      */
     public List<String> getMcpServerIds(String serverName) {
         return mcpServerNameToIds.getOrDefault(serverName, Collections.emptyList());
+    }
+
+    /**
+     * Returns the config for a registered MCP server, or {@code null} if unknown / blank id.
+     *
+     * @param serverId MCP server identifier
+     * @return server config, or {@code null}
+     * @since 0.1.14
+     */
+    public McpServerConfig getMcpServerConfig(String serverId) {
+        if (serverId == null || serverId.isBlank()) {
+            return null;
+        }
+        McpServerResource resource = mcpServerResources.get(serverId);
+        return resource == null ? null : resource.config();
+    }
+
+    /**
+     * Lists all registered MCP server identifiers.
+     *
+     * @return a new list of server ids (may be empty)
+     * @since 0.1.14
+     */
+    public List<String> listMcpServerIds() {
+        return new ArrayList<>(mcpServerResources.keySet());
     }
 
     /**

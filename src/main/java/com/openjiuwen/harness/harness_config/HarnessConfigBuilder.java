@@ -840,10 +840,13 @@ public final class HarnessConfigBuilder {
     }
 
     /**
-     * resolveMcps.
-     * 
-     * @param resources resources
-     * @return the result
+     * Converts harness MCP resource specs into {@link McpServerConfig} instances.
+     * <p>
+     * For stdio transports, {@code command}/{@code args}/{@code env} are placed in {@code params}
+     * and {@code serverPath} keeps the command only (aligned with Python).
+     *
+     * @param resources harness resources section; may be null
+     * @return MCP server configs (empty when none are declared)
      * @since 0.1.7
      */
     private static List<McpServerConfig> resolveMcps(HarnessConfig.ResourcesSchema resources) {
@@ -852,17 +855,23 @@ public final class HarnessConfigBuilder {
         }
         List<McpServerConfig> result = new ArrayList<>();
         for (HarnessConfig.McpResourceSchema spec : resources.getMcps()) {
-            List<String> cmdParts = new ArrayList<>();
-            if (spec.getCommand() != null && !spec.getCommand().isBlank()) {
-                cmdParts.add(spec.getCommand().trim());
+            String clientType = spec.getType() != null && !spec.getType().isBlank() ? spec.getType() : "stdio";
+            String command = spec.getCommand() == null ? "" : spec.getCommand().trim();
+            Map<String, Object> params = new LinkedHashMap<>();
+            if ("stdio".equals(clientType)) {
+                if (!command.isBlank()) {
+                    params.put("command", command);
+                }
+                if (spec.getArgs() != null && !spec.getArgs().isEmpty()) {
+                    params.put("args", new ArrayList<>(spec.getArgs()));
+                }
+                if (spec.getEnv() != null && !spec.getEnv().isEmpty()) {
+                    params.put("env", new LinkedHashMap<>(spec.getEnv()));
+                }
             }
-            cmdParts.addAll(spec.getArgs());
-            result.add(McpServerConfig.builder()
-                    .serverName(
-                            spec.getCommand() == null || spec.getCommand().isBlank() ? "mcp_server" : spec.getCommand())
-                    .serverPath(String.join(" ", cmdParts))
-                    .clientType(spec.getType() != null ? spec.getType() : "stdio")
-                    .params(new LinkedHashMap<>(spec.getEnv())).build());
+            String serverPath = !command.isBlank() ? command : ("stdio".equals(clientType) ? "stdio" : "");
+            result.add(McpServerConfig.builder().serverName(!command.isBlank() ? command : "mcp_server")
+                    .serverPath(serverPath).clientType(clientType).params(params).build());
         }
         return result;
     }

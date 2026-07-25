@@ -17,6 +17,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.tool_call.ToolExecutionResult;
@@ -24,6 +25,7 @@ import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -224,16 +226,24 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get ToolInfo list (for LLM usage) with optional name/server filtering.
-     * 
+     * <p>
+     * Cached {@link McpToolCard} entries in {@code tools} are skipped; MCP tools are listed via
+     * {@code mcpServers}. Results are deduplicated by tool name (first wins).
+     *
      * @param names optional tool names to include
      * @param mcpServerName optional MCP server name to include
-     * @return list of ToolInfo objects
+     * @return deduplicated list of ToolInfo objects
      * @since 0.1.7
      */
     public List<ToolInfo> listToolInfo(List<String> names, String mcpServerName) {
         List<ToolInfo> toolInfos = new ArrayList<>();
 
         for (ToolCard toolCard : tools.values()) {
+            // MCP tools are listed via mcpServers + appendMcpToolInfos; skip cached McpToolCard
+            // entries to avoid duplicates after the first listToolInfo call.
+            if (toolCard instanceof McpToolCard) {
+                continue;
+            }
             if (names == null || names.contains(toolCard.getName())) {
                 appendToolInfo(toolInfos, toolCard.toolInfo());
             }
@@ -258,7 +268,7 @@ public class AbilityManager implements ToolRegistry {
             appendMcpToolInfos(toolInfos, names, mcpServer);
         }
 
-        return toolInfos;
+        return dedupeToolInfosByName(toolInfos);
     }
 
     // ========== ToolRegistry interface ==========
@@ -495,7 +505,67 @@ public class AbilityManager implements ToolRegistry {
                     .build();
         }
 
+        if (isFailTaskOnToolError(toolCtx)) {
+            Map<String, Object> outcome = new LinkedHashMap<>();
+            outcome.put("tool_name", singleToolCall.getName());
+            outcome.put("tool_call_id", singleToolCall.getId());
+            outcome.put("status", "failed");
+            outcome.put("error", errorMsg);
+
+            Map<String, Object> finishResult = new LinkedHashMap<>();
+            finishResult.put("output", errorMsg);
+            finishResult.put("result_type", "error");
+            finishResult.put("tool_outcomes", List.of(outcome));
+            toolCtx.requestForceFinish(finishResult);
+        }
+
         return new ToolExecutionEntry(toolResult, toolMessage);
+    }
+
+    /**
+     * Reads {@link ReActAgentConfig#isFailTaskOnToolError()} from the tool callback context or its agent.
+     *
+     * @param toolCtx tool execution callback context; may be null
+     * @return {@code true} when tool errors should force-finish the task
+     * @since 0.1.14
+     */
+    private static boolean isFailTaskOnToolError(AgentCallbackContext toolCtx) {
+        if (toolCtx == null) {
+            return false;
+        }
+        Object config = toolCtx.getConfig();
+        if (config instanceof ReActAgentConfig reactConfig) {
+            return reactConfig.isFailTaskOnToolError();
+        }
+        Object agent = toolCtx.getAgent();
+        if (agent instanceof BaseAgent baseAgent) {
+            Object agentConfig = baseAgent.getConfig();
+            if (agentConfig instanceof ReActAgentConfig reactConfig) {
+                return reactConfig.isFailTaskOnToolError();
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Keeps the first {@link ToolInfo} for each non-blank tool name (insertion order preserved).
+     *
+     * @param toolInfos tool infos to dedupe; {@code null} becomes an empty list
+     * @return deduplicated list (never {@code null})
+     * @since 0.1.14
+     */
+    private static List<ToolInfo> dedupeToolInfosByName(List<ToolInfo> toolInfos) {
+        if (toolInfos == null || toolInfos.isEmpty()) {
+            return toolInfos == null ? List.of() : toolInfos;
+        }
+        Map<String, ToolInfo> unique = new LinkedHashMap<>();
+        for (ToolInfo toolInfo : toolInfos) {
+            if (toolInfo == null || toolInfo.getName() == null || toolInfo.getName().isBlank()) {
+                continue;
+            }
+            unique.putIfAbsent(toolInfo.getName(), toolInfo);
+        }
+        return new ArrayList<>(unique.values());
     }
 
     static ToolExecutionEntry joinToolExecution(ToolCall toolCall, CompletableFuture<ToolExecutionEntry> future) {

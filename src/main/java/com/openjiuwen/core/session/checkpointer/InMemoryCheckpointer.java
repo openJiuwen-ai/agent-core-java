@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.InMemoryStore;
+import com.openjiuwen.core.graph.store.KeyLockedStore;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
@@ -41,7 +42,8 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     private final Map<String, Set<String>> sessionToWorkflowIds = new ConcurrentHashMap<>();
 
-    private final Store graphStore = new InMemoryStore();
+    /** Graph state store; per-session striped locks via {@link KeyLockedStore}. */
+    private final Store graphStore = new KeyLockedStore(new InMemoryStore());
 
     String tenantAwareSessionId(String sessionId) {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();

@@ -20,6 +20,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for {@link InMemoryStore}, {@link GraphStore}, {@link GraphStoreState}, {@link PendingNode}.
@@ -210,6 +215,59 @@ class GraphStoreTest {
 
             assertTrue(saver.get(convId, "ns1").isEmpty());
             assertTrue(saver.get(convId, "ns2").isPresent());
+        }
+    }
+
+    // ---------- Concurrent isolation ----------
+
+    @Nested
+    @DisplayName("Key-locked concurrent isolation")
+    class KeyLockedConcurrentTests {
+        @Test
+        @DisplayName("parallel writers for one session keep final checkpoint consistent")
+        void parallelWritersKeepSessionCheckpointConsistent() throws Exception {
+            Store store = new KeyLockedStore(new InMemoryStore());
+            String sessionId = "session-concurrent";
+            String ns = "default";
+            int threads = 16;
+            int writesPerThread = 50;
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(threads);
+            AtomicInteger errors = new AtomicInteger();
+
+            try {
+                for (int t = 0; t < threads; t++) {
+                    final int threadId = t;
+                    pool.submit(() -> {
+                        try {
+                            start.await(5, TimeUnit.SECONDS);
+                            for (int i = 0; i < writesPerThread; i++) {
+                                int step = threadId * writesPerThread + i;
+                                store.save(sessionId, ns,
+                                        GraphStoreState.create(ns, step, Map.of("step", step), List.of(), Map.of(),
+                                                new HashMap<>()));
+                            }
+                        } catch (Exception e) {
+                            errors.incrementAndGet();
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                assertTrue(done.await(30, TimeUnit.SECONDS));
+                assertEquals(0, errors.get());
+
+                Optional<GraphStoreState> loaded = store.get(sessionId, ns);
+                assertTrue(loaded.isPresent());
+                assertNotNull(loaded.get().getChannelValues().get("step"));
+                int step = (Integer) loaded.get().getChannelValues().get("step");
+                assertTrue(step >= 0 && step < threads * writesPerThread);
+                assertEquals(step, loaded.get().getStep());
+            } finally {
+                pool.shutdownNow();
+            }
         }
     }
 
