@@ -470,6 +470,29 @@ public class StreamController {
                 currentStatus, isCloseStreamAfterCurrentRound,
                 pendingInputs.size(), wakeMailboxCallback != null);
         if (currentStatus == MemberStatus.SHUTDOWN_REQUESTED) {
+            // Latch isTeamTerminated so subsequent startRound() refuses new
+            // rounds and deliverInput() drops queued POLL_MAILBOX events.
+            // Without this, EventBus drains mailbox-sweep events that
+            // re-trigger deliverInput -> runOneRound after closeStream,
+            // relaunching the member on stale task assignments even though
+            // the leader already asked for shutdown.
+            isTeamTerminated = true;
+            closeStream();
+            return;
+        }
+        // When the member's DB record is gone (team cleaned / member deleted),
+        // statusGetter returns null. Without this guard the member loops forever
+        // on wakeMailboxCallback because neither SHUTDOWN_REQUESTED nor
+        // isTeamTerminated matches. Treat null status as team-already-cleaned:
+        // latch isTeamTerminated so subsequent startRound() refuses new rounds
+        // (the EventBus keeps draining queued POLL_MAILBOX events that would
+        // otherwise re-trigger deliverInput -> runOneRound), then close the
+        // stream so invokeForSpawn breaks on STREAM_END.
+        if (currentStatus == null) {
+            Loggers.AGENT.info("StreamController.runOneRound finally: member status null"
+                    + " (team cleaned?), marking terminated and closing stream for member={}",
+                    memberNameGetter != null ? memberNameGetter.get() : "null");
+            isTeamTerminated = true;
             closeStream();
             return;
         }

@@ -186,9 +186,10 @@ public class SpawnManager {
         if (ctx == null || ctx.getMemberName() == null || ctx.getMemberName().isBlank()) {
             throw new IllegalArgumentException("teammate context with memberName is required");
         }
-        Loggers.AGENT.info("spawnTeammate: spawning member={} mode={} initialMessage={}",
+        Loggers.AGENT.info("spawnTeammate: enter member={} mode={} initialMessageLen={} thread={}",
                 ctx.getMemberName(), teamAgent.getSpec().getSpawnMode(),
-                initialMessage != null ? initialMessage.substring(0, Math.min(80, initialMessage.length())) : "null");
+                initialMessage != null ? initialMessage.length() : 0,
+                Thread.currentThread().getName());
         SpawnConfig effectiveConfig =
                 spawnConfig != null
                         ? spawnConfig
@@ -209,6 +210,11 @@ public class SpawnManager {
         }
         registerHandle(
                 ctx.getMemberName(), handle, secondsToMillis(effectiveConfig.getHealthCheckInterval()));
+        Loggers.AGENT.info("spawnTeammate: registered member={} handleType={} handleId={} alive={}",
+                ctx.getMemberName(),
+                handle.getClass().getSimpleName(),
+                Integer.toHexString(System.identityHashCode(handle)),
+                handle.isAlive());
         return handle;
     }
 
@@ -394,8 +400,12 @@ public class SpawnManager {
      * @since 0.1.7
      */
     public TeamRuntimeContext buildContextFromBackend(String memberName) {
+        Loggers.AGENT.info("buildContextFromBackend: enter member={} thread={}",
+                memberName, Thread.currentThread().getName());
         TeamMember teammate = teamBackend.getMember(memberName);
         if (teammate == null) {
+            Loggers.AGENT.warn("buildContextFromBackend: getMember returned null for member={}, returning null ctx",
+                    memberName);
             return nullValue();
         }
         Map<String, Object> metadata = new LinkedHashMap<>();

@@ -67,6 +67,21 @@ public class AgentLifecycleHandler extends BaseCoordinationHandler {
             content = c != null ? String.valueOf(c) : "";
         }
         Loggers.AGENT.info("user_input -> deliver_input");
+        // USER_INPUT reflects explicit user intent: even when the team is
+        // terminated (isTeamTerminated=true), fresh user input signals intent
+        // to start a new team or continue the conversation, so it must be
+        // forwarded to the leader LLM. Stale POLL_MAILBOX / TASK_BOARD
+        // events are still filtered out by the deliverInput guard.
+        // Without this pass-through, post-clean_team user input would be
+        // silently dropped (no feedback = stuck).
+        if (round instanceof com.openjiuwen.agentteams.agent.TeamAgent teamAgent
+                && teamAgent.getStreamController() != null
+                && teamAgent.getStreamController().isTeamTerminated()) {
+            Loggers.AGENT.info("onUserInput: team terminated, but USER_INPUT is user intent"
+                    + " — resetting latch and delivering for member={}",
+                    teamAgent.resolveLocalMemberName());
+            teamAgent.getStreamController().resetTeamTerminated();
+        }
         round.deliverInput(content);
     }
 
