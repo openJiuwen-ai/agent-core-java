@@ -326,6 +326,10 @@ public class TaskManager {
         LOGGER.fine(getTaskTree(taskId));
     }
 
+    public ScheduledExecutorService getTimeoutScheduler() {
+        return timeoutScheduler;
+    }
+
     public void shutdown() {
         executorService.shutdownNow();
         timeoutScheduler.shutdownNow();

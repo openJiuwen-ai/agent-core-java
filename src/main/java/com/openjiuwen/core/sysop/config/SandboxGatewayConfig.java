@@ -1,0 +1,58 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.sysop.config;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Sandbox gateway configuration for the sysop package.
+ *
+ * <p>Extends the sys_operation SandboxGatewayConfig with additional
+ * {@code params} and {@code gatewayUrl} fields used by the sysop sandbox layer.</p>
+ *
+ * @since 2026-01-01
+ * @version 1.0
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class SandboxGatewayConfig {
+
+    @Builder.Default
+    private SandboxIsolationConfig isolation = new SandboxIsolationConfig();
+
+    @JsonProperty("launcher_config")
+    private SandboxLauncherConfig launcherConfig;
+
+    @Builder.Default
+    @JsonProperty("timeout_seconds")
+    private int timeoutSeconds = 30;
+
+    @Builder.Default
+    @JsonProperty("auth_headers")
+    private Map<String, String> authHeaders = new LinkedHashMap<>();
+
+    @Builder.Default
+    @JsonProperty("auth_query_params")
+    private Map<String, String> authQueryParams = new LinkedHashMap<>();
+
+    @Builder.Default
+    @JsonProperty("gateway_url")
+    private String gatewayUrl = "";
+
+    @Builder.Default
+    @JsonProperty("params")
+    private Map<String, Object> params = new LinkedHashMap<>();
+}

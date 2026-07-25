@@ -265,6 +265,10 @@ public class GraphMemory {
             newState.setReferenceTimestamp(instant.getEpochSecond());
         } else if (referenceTime instanceof LocalDateTime localDateTime) {
             newState.setReferenceTimestamp(localDateTime.toEpochSecond(ZoneOffset.UTC));
+        } else if (referenceTime instanceof java.time.OffsetDateTime offsetDateTime) {
+            newState.setReferenceTimestamp(offsetDateTime.toInstant().getEpochSecond());
+        } else if (referenceTime instanceof java.time.ZonedDateTime zonedDateTime) {
+            newState.setReferenceTimestamp(zonedDateTime.toInstant().getEpochSecond());
         } else if (referenceTime instanceof Number number) {
             newState.setReferenceTimestamp(number.longValue());
         } else {

@@ -31,6 +31,15 @@ public abstract class Condition extends AtomicNode {
     }
 
     /**
+     * Gets the input schema of this condition.
+     *
+     * @return input schema
+     */
+    public Object getInputSchema() {
+        return inputSchema;
+    }
+
+    /**
      * Evaluate the condition against the given session.
      *
      * @param session the session to evaluate against

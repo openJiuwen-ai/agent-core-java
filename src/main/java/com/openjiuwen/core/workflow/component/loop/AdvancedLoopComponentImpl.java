@@ -10,11 +10,16 @@ import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.WorkflowComponent;
+import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 import com.openjiuwen.core.workflow.condition.Condition;
+import com.openjiuwen.core.workflow.condition.NumberCondition;
+import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
 import com.openjiuwen.core.session.BaseSession;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Advanced loop component exposing Python's {@code body} property.
@@ -109,7 +114,51 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
     }
 
     public Object invoke(Object inputs, BaseSession session, ModelContext context) {
-        return null;
+        LoopGroup loopGroup = body instanceof LoopGroup lg ? lg : null;
+        Object loopInputs = inputs;
+        if (inputs instanceof Map<?, ?> map && map.containsKey(Constant.INPUTS_KEY)) {
+            loopInputs = map;
+        } else if (inputs instanceof Map<?, ?> map) {
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put(Constant.INPUTS_KEY, map);
+            loopInputs = wrapped;
+        }
+        Condition effectiveCondition = resolveCondition(inputs, session);
+        return LoopRuntime.invoke(effectiveCondition, loopGroup, callbacks, loopInputs, session, context);
+    }
+
+    private Condition resolveCondition(Object inputs, BaseSession session) {
+        if (!(condition instanceof NumberCondition)) {
+            return condition;
+        }
+        Object schema = condition.getInputSchema();
+        // Try resolving from session IO state first
+        Object resolved = com.openjiuwen.core.workflow.internal.WorkflowSessionSupport
+                .getInputs(session, schema);
+        if (resolved instanceof Number number) {
+            return new NumberConditionInSession(number.intValue());
+        }
+        // Try resolving from the component inputs
+        if (schema instanceof String strSchema && inputs instanceof Map<?, ?> inputsMap) {
+            Object inputsData = inputsMap.get(Constant.INPUTS_KEY);
+            if (inputsData instanceof Map<?, ?> dataMap) {
+                String key = com.openjiuwen.core.session.utils.SessionUtils.extractOriginKey(strSchema);
+                Object value = dataMap.get(key);
+                if (value instanceof Number number) {
+                    return new NumberConditionInSession(number.intValue());
+                }
+            }
+        }
+        // Try resolving from global state
+        if (schema instanceof String strSchema) {
+            String key = com.openjiuwen.core.session.utils.SessionUtils.extractOriginKey(strSchema);
+            Object value = com.openjiuwen.core.workflow.internal.WorkflowSessionSupport
+                    .getGlobalState(session, key);
+            if (value instanceof Number number) {
+                return new NumberConditionInSession(number.intValue());
+            }
+        }
+        return condition;
     }
 
     private static Condition alwaysTrueCondition() {

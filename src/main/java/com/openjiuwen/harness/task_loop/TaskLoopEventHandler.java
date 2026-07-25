@@ -15,8 +15,8 @@ import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
 import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.harness.DeepAgent;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -35,15 +35,32 @@ import java.util.concurrent.TimeoutException;
  */
 public class TaskLoopEventHandler extends EventHandler {
 
-    private final DeepAgent deepAgent;
+    private final Object deepAgent;
     private LoopQueues interactionQueues = new LoopQueues();
     private Map<String, Object> lastResult;
     private CompletableFuture<Map<String, Object>> currentFuture;
     private int roundId;
     private Object sessionToolkit;
 
-    public TaskLoopEventHandler(DeepAgent deepAgent) {
+    /**
+     * Create an event handler with a deep agent reference.
+     *
+     * <p>Accepts either {@code com.openjiuwen.harness.DeepAgent} or
+     * {@code com.openjiuwen.harness.deep_agent.DeepAgent}.</p>
+     *
+     * @param deepAgent the deep agent
+     */
+    public TaskLoopEventHandler(Object deepAgent) {
         this.deepAgent = deepAgent;
+    }
+
+    /**
+     * Create an event handler with a task loop controller.
+     *
+     * @param controller the task loop controller
+     */
+    public TaskLoopEventHandler(TaskLoopController controller) {
+        this.deepAgent = null;
     }
 
     public Map<String, Object> getLastResult() {
@@ -75,6 +92,17 @@ public class TaskLoopEventHandler extends EventHandler {
         currentFuture = new CompletableFuture<>();
         lastResult = null;
         return roundId;
+    }
+
+    /**
+     * Prepare a new round with session context.
+     *
+     * @param sessionId  the session id (ignored in this implementation)
+     * @param isFollowUp whether this is a follow-up round
+     * @return the new round id
+     */
+    public synchronized int prepareRound(String sessionId, boolean isFollowUp) {
+        return prepareRound();
     }
 
     @Override
@@ -116,7 +144,7 @@ public class TaskLoopEventHandler extends EventHandler {
         Map<String, Object> metadata = metadataOf(event);
         int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
 
-        if (deepAgent == null || deepAgent.loopCoordinator() == null) {
+        if (deepAgent == null || getLoopCoordinatorFromAgent() == null) {
             resolveFuture(resultMap("error", "no LoopCoordinator"), currentRound);
             return resultMap("status", "failed");
         }
@@ -355,5 +383,34 @@ public class TaskLoopEventHandler extends EventHandler {
             }
         }
         return fallback;
+    }
+
+    /**
+     * Retrieve the LoopCoordinator from the deepAgent via reflection.
+     * Supports both {@code com.openjiuwen.harness.DeepAgent} (loopCoordinator())
+     * and {@code com.openjiuwen.harness.deep_agent.DeepAgent} (getLoopCoordinator()).
+     *
+     * @return the LoopCoordinator, or null if unavailable
+     */
+    private Object getLoopCoordinatorFromAgent() {
+        if (deepAgent == null) {
+            return null;
+        }
+        try {
+            // Try getLoopCoordinator() first (Lombok @Getter style)
+            Method getter = deepAgent.getClass().getMethod("getLoopCoordinator");
+            return getter.invoke(deepAgent);
+        } catch (NoSuchMethodException ignored) {
+            // fall through
+        } catch (Exception e) {
+            return null;
+        }
+        try {
+            // Try loopCoordinator() (hand-written accessor style)
+            Method accessor = deepAgent.getClass().getMethod("loopCoordinator");
+            return accessor.invoke(deepAgent);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

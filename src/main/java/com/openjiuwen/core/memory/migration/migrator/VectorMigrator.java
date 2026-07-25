@@ -33,7 +33,18 @@ public class VectorMigrator {
     public CompletableFuture<Boolean> tryMigrate(String entityKey, List<BaseOperation> operations) {
         return findCollections(entityKey)
                 .thenCompose(collectionNames -> migrateCollections(collectionNames, operations))
-                .thenApply(ignored -> Boolean.TRUE);
+                .thenApply(ignored -> Boolean.TRUE)
+                .exceptionally(exception -> {
+                    Throwable cause = exception instanceof java.util.concurrent.CompletionException ce
+                            ? ce.getCause() : exception;
+                    if (cause instanceof UnsupportedOperationException) {
+                        return Boolean.FALSE;
+                    }
+                    if (cause instanceof RuntimeException re) {
+                        throw re;
+                    }
+                    throw new RuntimeException(cause);
+                });
     }
 
     private CompletableFuture<Void> migrateCollections(List<String> collectionNames, List<BaseOperation> operations) {

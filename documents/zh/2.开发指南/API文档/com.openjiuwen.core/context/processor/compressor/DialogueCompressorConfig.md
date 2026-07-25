@@ -16,8 +16,8 @@ public class DialogueCompressorConfig
 | `tokensThreshold` | `int` | `10000` | 累计 token 超过该值时触发压缩。 |
 | `messagesToKeep` | `Integer` | `null` | 保留最近 N 条消息不参与压缩。 |
 | `keepLastRound` | `boolean` | `true` | 是否保留最近一轮完整对话不参与压缩。 |
-| `customizedCompressionPrompt` | `String` | `null` | 自定义压缩提示词。 |
-| `compressionTokenLimit` | `int` | `2000` | 期望压缩摘要的 token 上限。 |
+| `compressionTargetTokens` | `int` | `1800` | 传给压缩 prompt 的每个 dialogue block 摘要目标 token 数。 |
+| `customCompressionPrompt` | `String` | `null` | 自定义压缩提示词。 |
 | `model` | `ModelRequestConfig` | `null` | 模型请求配置。 |
 | `modelClient` | `ModelClientConfig` | `null` | 模型客户端配置。 |
 
@@ -25,8 +25,8 @@ public class DialogueCompressorConfig
 
 ### `public void validate()`
 
-校验 `messagesThreshold`、`tokensThreshold`、`messagesToKeep` 和 `compressionTokenLimit` 是否大于 `0`。
+校验 `messagesThreshold`、`tokensThreshold`、`messagesToKeep` 和 `compressionTargetTokens` 是否大于 `0`。
 
 ## 说明
 
-- `DialogueCompressorTest` 覆盖了 builder 配置值、处理器名称和触发条件。
+- `DialogueCompressorTest` 覆盖了 builder 配置值、处理器名称、触发条件、block memory 写回与 fallback。

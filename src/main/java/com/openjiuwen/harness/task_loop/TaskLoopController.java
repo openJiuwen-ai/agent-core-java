@@ -26,6 +26,9 @@ import java.util.concurrent.TimeoutException;
  */
 public class TaskLoopController extends Controller {
 
+    /** Default session id used when no explicit session is available. */
+    public static final String DEFAULT_SESSION_ID = "default";
+
     private final LoopQueues interactionQueues = new LoopQueues();
     private final Queue<String> followUps = new ConcurrentLinkedQueue<>();
     private CompletableFuture<Map<String, Object>> roundCompletion = new CompletableFuture<>();
@@ -81,10 +84,60 @@ public class TaskLoopController extends Controller {
         return messages;
     }
 
+    /**
+     * Drain follow-up messages for a given session.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @return list of follow-up messages
+     */
+    public List<String> drainFollowUp(String sessionId) {
+        return drainFollowUp();
+    }
+
+    /**
+     * Get interaction queues for a given session.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @return the interaction queues
+     */
+    public LoopQueues getInteractionQueues(String sessionId) {
+        return getInteractionQueues();
+    }
+
+    /**
+     * Get the round counter for a given session.
+     *
+     * @param sessionId the session id
+     * @return the current round count
+     */
+    public int getRoundCounter(String sessionId) {
+        return 0;
+    }
+
     public void enqueueFollowUp(String message) {
         if (message != null && !message.isBlank()) {
             followUps.add(message);
         }
+    }
+
+    /**
+     * Enqueue a follow-up message with an associated session id.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @param message   the follow-up message
+     */
+    public void enqueueFollowUp(String sessionId, String message) {
+        enqueueFollowUp(message);
+    }
+
+    /**
+     * Enqueue a steering message.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @param message   the steering message
+     */
+    public void enqueueSteering(String sessionId, String message) {
+        enqueueFollowUp(message);
     }
 
     public boolean hasFollowUp() {

@@ -224,6 +224,11 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
     }
 
     @Override
+    public Object invoke(Object inputs, Session session) {
+        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+    }
+
+    @Override
     public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
         if (!(inputs instanceof HandoffRequest request)) {
             return CompletableFuture.completedFuture(Map.of());

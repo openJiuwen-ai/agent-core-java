@@ -61,13 +61,22 @@ public class CallbackInfo {
     /**
      * Returns the 0.1.12 callback display name for logging and rate-limit keys.
      *
-     * @return configured callback name, callback class name, or {@code unknown}
+     * @return configured callback name, callback toString, callback class name, or {@code unknown}
      */
     public String getCallbackDisplayName() {
         if (callbackName != null && !callbackName.isEmpty()) {
             return callbackName;
         }
-        return callback != null ? callback.getClass().getSimpleName() : "unknown";
+        if (callback != null) {
+            String str = callback.toString();
+            String simpleName = callback.getClass().getSimpleName();
+            // Use toString() if it provides a more descriptive name than the class simple name
+            if (str != null && !str.isEmpty() && !str.equals(simpleName)) {
+                return str;
+            }
+            return simpleName;
+        }
+        return "unknown";
     }
 
     @Override

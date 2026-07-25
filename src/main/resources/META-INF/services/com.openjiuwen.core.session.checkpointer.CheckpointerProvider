@@ -1,0 +1,3 @@
+com.openjiuwen.core.session.checkpointer.InMemoryCheckpointerProvider
+com.openjiuwen.core.session.checkpointer.PersistenceCheckpointerProvider
+com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer$Provider

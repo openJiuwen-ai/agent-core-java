@@ -40,6 +40,19 @@ public class LocalCodeOperation extends BaseCodeOperation {
                 runConfig);
     }
 
+    /**
+     * Four-parameter constructor required by {@link com.openjiuwen.core.sys_operation.OperationDef#createInstance}.
+     *
+     * @deprecated Use {@link com.openjiuwen.core.sys_operation.local.LocalCodeOperation}.
+     */
+    @Deprecated(since = "0.1.14", forRemoval = false)
+    public LocalCodeOperation(String name, com.openjiuwen.core.sys_operation.OperationMode mode,
+                              String description, Object runConfig) {
+        super(name, mode, description, runConfig);
+        this.delegate = new com.openjiuwen.core.sys_operation.local.LocalCodeOperation(
+                name, mode, description, runConfig);
+    }
+
     @Override
     public ExecuteCodeResult executeCode(String code,
                                          String language,

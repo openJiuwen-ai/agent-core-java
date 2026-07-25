@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import com.openjiuwen.core.common.exception.StatusCode;
+
 /**
  * Backward-compatible result envelope for moved sys-operation results.
  *
@@ -18,6 +20,15 @@ public class BaseResult<T> {
     private int code;
     private String message;
     private T data;
+
+    public BaseResult() {
+    }
+
+    public BaseResult(int code, String message, T data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
+    }
 
     public int getCode() {
         return code;
@@ -41,5 +52,30 @@ public class BaseResult<T> {
 
     public void setData(T data) {
         this.data = data;
+    }
+
+    /**
+     * Build an error result for a sys operation.
+     *
+     * @param statusCode the error status code
+     * @param execution  the execution type
+     * @param errorMsg   the error message
+     * @param resultFactory factory to create the result instance
+     * @param data       the result data
+     * @param <R>        result type
+     * @param <D>        data type
+     * @return a new error result
+     */
+    public static <R extends BaseResult<D>, D> R buildOperationErrorResult(
+            StatusCode statusCode,
+            String execution,
+            String errorMsg,
+            java.util.function.Supplier<R> resultFactory,
+            D data) {
+        R result = resultFactory.get();
+        result.setCode(statusCode.getCode());
+        result.setMessage(errorMsg != null ? errorMsg : execution);
+        result.setData(data);
+        return result;
     }
 }

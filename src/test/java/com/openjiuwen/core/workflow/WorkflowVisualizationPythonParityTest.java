@@ -15,7 +15,7 @@ import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.component.LoopComponent;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponent;
 import com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl;
-import com.openjiuwen.core.workflow.component.loop.LoopCallback;
+import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 import com.openjiuwen.core.workflow.component.loop.LoopGroup;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

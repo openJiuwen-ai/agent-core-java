@@ -79,12 +79,21 @@ public class HttpClient extends BaseClient {
     }
 
     public SessionConfig getSessionConfig() {
+        return getHttpConfig();
+    }
+
+    public SessionConfig getHttpConfig() {
         return config;
     }
 
     @Override
-    public SessionConfig getConfig() {
-        return config;
+    public Map<String, Object> getConfig() {
+        Map<String, Object> base = new LinkedHashMap<>();
+        if (config != null) {
+            base.put("headers", config.getHeaders());
+            base.put("timeout", config.getTimeout());
+        }
+        return base;
     }
 
     public boolean isReuseSession() {

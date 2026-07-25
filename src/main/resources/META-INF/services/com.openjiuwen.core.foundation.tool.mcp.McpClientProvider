@@ -1,0 +1,5 @@
+com.openjiuwen.core.foundation.tool.mcp.provider.SseMcpClientProvider
+com.openjiuwen.core.foundation.tool.mcp.provider.StdioMcpClientProvider
+com.openjiuwen.core.foundation.tool.mcp.provider.OpenApiMcpClientProvider
+com.openjiuwen.core.foundation.tool.mcp.provider.StreamableHttpMcpClientProvider
+com.openjiuwen.core.foundation.tool.mcp.provider.PlaywrightMcpClientProvider
