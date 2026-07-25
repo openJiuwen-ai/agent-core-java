@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * OverlaySkillManager.
@@ -30,6 +31,8 @@ public class OverlaySkillManager {
     private final SkillManager publicSkillManager;
     private final Path overlayDir;
     private final TenantWorkspaceResolver workspaceResolver;
+    // 按 tenantId 缓存的租户技能管理器，避免并发请求时共享 tenantSkillManager 互相覆盖
+    private final ConcurrentHashMap<String, SkillManager> tenantSkillManagerCache = new ConcurrentHashMap<>();
 
     public OverlaySkillManager(SkillManager tenantSkillManager, SkillManager publicSkillManager,
                                Path overlayDir, TenantWorkspaceResolver workspaceResolver) {
@@ -37,6 +40,25 @@ public class OverlaySkillManager {
         this.publicSkillManager = publicSkillManager;
         this.overlayDir = overlayDir;
         this.workspaceResolver = workspaceResolver;
+    }
+
+    /**
+     * 获取（或按需创建并刷新）当前租户专属的 SkillManager。
+     * <p>
+     * 多租户并发场景下，不同租户的技能互不可见。使用按 tenantId 缓存的独立 SkillManager，
+     * 避免共享 {@link #tenantSkillManager} 被并发刷新互相覆盖。刷新采用增量方式，
+     * 文件未变更时为近乎无操作。
+     *
+     * @param ctx 当前租户上下文
+     * @param tenantSkillRoot 当前租户的技能根目录
+     * @return 当前租户专属的 SkillManager
+     */
+    private SkillManager getOrRefreshTenantSkillManager(TenantContext ctx, Path tenantSkillRoot) {
+        String tenantId = ctx.getTenantId();
+        SkillManager manager = tenantSkillManagerCache.computeIfAbsent(tenantId,
+                id -> new SkillManager("tenant." + id));
+        manager.refreshIncrementally(List.of(tenantSkillRoot));
+        return manager;
     }
 
     /**
@@ -82,7 +104,8 @@ public class OverlaySkillManager {
         List<Skill> result = new ArrayList<>();
         Set<String> seenNames = new LinkedHashSet<>();
 
-        for (Skill skill : tenantSkillManager.getAll()) {
+        SkillManager perTenant = getOrRefreshTenantSkillManager(ctx, tenantSkillRoot);
+        for (Skill skill : perTenant.getAll()) {
             result.add(skill);
             seenNames.add(skill.getName());
         }
@@ -115,7 +138,8 @@ public class OverlaySkillManager {
         Set<String> overriddenNames = getOverriddenNames();
         Set<String> seenNames = new LinkedHashSet<>();
 
-        for (String name : tenantSkillManager.getNames()) {
+        SkillManager perTenant = getOrRefreshTenantSkillManager(ctx, tenantSkillRoot);
+        for (String name : perTenant.getNames()) {
             seenNames.add(name);
         }
 
