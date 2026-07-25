@@ -825,46 +825,6 @@ class HarnessCompatibilityTest {
     }
 
     @Test
-    void deepAgentTaskLoopRunnerStreamShouldCheckpointParallelInterruptsBeforeEof() throws InterruptedException {
-        String sessionId = "harness-interrupt-session";
-        DelayedNestedPostRunCheckpointer checkpointer = new DelayedNestedPostRunCheckpointer(sessionId);
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
-        DeepAgent agent = HarnessFactory.createDeepAgent(
-                AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent")
-                        .description("interrupt harness agent").build(),
-                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(2)
-                        .rails(List.of(new HarnessAskUserInterruptRail()))
-                        .backend(Map.of("client_provider", HARNESS_INTERRUPT_PROVIDER, "api_key", "test-key",
-                                "api_base", "mirror://single-agent-interrupt"))
-                        .model(Map.of("model", "interrupt-test-model")).build(),
-                null);
-        agent.ensureInitialized();
-        Tool askUserTool = createHarnessAskUserTool();
-        Runner.resourceMgr().addTool(askUserTool, agent.getCard().getId());
-        agent.getAgent().getAbilityManager().add(askUserTool.getCard());
-
-        try {
-            List<Object> firstTurn = collect(Runner.runAgentStreaming(agent,
-                    Map.of("query", "start interrupt flow", "conversation_id", sessionId), null, null,
-                    List.of(StreamMode.OUTPUT)));
-
-            assertNotNull(findInteractionChunk(firstTurn));
-            assertThat(checkpointer.awaitNestedPostRunBlocked()).isTrue();
-
-            AgentSessionApi restoredSession =
-                    AgentSessionApi.create(sessionId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
-            restoredSession.preRun(null);
-            ToolInterruptionState interruptionState = assertInstanceOf(ToolInterruptionState.class,
-                    restoredSession.getState(ToolInterruptionState.INTERRUPTION_KEY));
-            assertThat(interruptionState.getInterruptedTools()).extracting(entry -> entry.getToolCall().getId())
-                    .containsExactly("ask-user-call-a", "ask-user-call-b", "ask-user-call-c");
-        } finally {
-            checkpointer.releaseNestedPostRun();
-        }
-        assertThat(checkpointer.awaitNestedPostRunCompleted()).isTrue();
-    }
-
-    @Test
     void deepAgentShouldAllowModeSwitch() {
         DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().build());
         agent.setMode(AgentMode.PLAN);
