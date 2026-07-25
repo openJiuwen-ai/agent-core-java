@@ -188,7 +188,12 @@ public abstract class ObservabilityTestBase {
     }
 
     /**
-     * Look up a string attribute on a span, returning {@code null} if absent.
+     * Look up an attribute on a span as a string, returning {@code null} if absent.
+     *
+     * <p>OpenTelemetry attributes are typed. This helper first tries the
+     * String key type, then falls back to Long and Boolean so that numeric
+     * attributes (e.g. token counts) and boolean attributes (e.g. broadcast
+     * flags) can be read uniformly in assertions.</p>
      *
      * @param span the span data
      * @param key  the attribute key
@@ -196,18 +201,28 @@ public abstract class ObservabilityTestBase {
      */
     protected String attr(SpanData span, String key) {
         Object value = span.getAttributes().get(AttributeKey.stringKey(key));
-        return value != null ? value.toString() : null;
+        if (value != null) {
+            return value.toString();
+        }
+        Long longValue = span.getAttributes().get(AttributeKey.longKey(key));
+        if (longValue != null) {
+            return longValue.toString();
+        }
+        Boolean boolValue = span.getAttributes().get(AttributeKey.booleanKey(key));
+        return boolValue != null ? boolValue.toString() : null;
     }
 
     /**
-     * Check whether a span has a given string attribute.
+     * Check whether a span has a given attribute (any type).
      *
      * @param span the span data
      * @param key  the attribute key
      * @return {@code true} if the attribute is present
      */
     protected boolean hasAttr(SpanData span, String key) {
-        return span.getAttributes().get(AttributeKey.stringKey(key)) != null;
+        return span.getAttributes().get(AttributeKey.stringKey(key)) != null
+                || span.getAttributes().get(AttributeKey.longKey(key)) != null
+                || span.getAttributes().get(AttributeKey.booleanKey(key)) != null;
     }
 
     // ================================================================
