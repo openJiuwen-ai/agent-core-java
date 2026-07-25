@@ -166,6 +166,8 @@ class OtelTeamMonitorHandlerTest extends ObservabilityTestBase {
                 "content", "implement feature X"
         )));
 
+        // Close open task spans so they appear in the exporter.
+        handler.closeAllSpans();
         ObservabilitySetup.finalizeTeamTrace("task_team");
 
         List<SpanData> taskSpans = spansByName("task.task-1");
@@ -271,6 +273,8 @@ class OtelTeamMonitorHandlerTest extends ObservabilityTestBase {
                 "status", "open"
         )));
 
+        // Close open task spans so they appear in the exporter.
+        handler.closeAllSpans();
         ObservabilitySetup.finalizeTeamTrace("dup_team");
 
         List<SpanData> taskSpans = spansByName("task.dup-1");
@@ -601,6 +605,8 @@ class OtelTeamMonitorHandlerTest extends ObservabilityTestBase {
                 "member_name", "claimer"
         )));
 
+        // Close open task spans so they appear in the exporter.
+        handler.closeAllSpans();
         ObservabilitySetup.finalizeTeamTrace("claim_team");
 
         List<SpanData> statusSpans = spansByName("task.claim-1.claimed");
@@ -632,6 +638,8 @@ class OtelTeamMonitorHandlerTest extends ObservabilityTestBase {
                 "member_name", "unblocker"
         )));
 
+        // Close open task spans so they appear in the exporter.
+        handler.closeAllSpans();
         ObservabilitySetup.finalizeTeamTrace("unblock_team");
 
         List<SpanData> statusSpans = spansByName("task.ub-1.unblocked");

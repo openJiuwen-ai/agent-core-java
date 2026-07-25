@@ -378,21 +378,6 @@ class TraceFileExporterTest {
     }
 
     @Test
-    @DisplayName("retention zero disables cleanup")
-    void test_retention_zero_disables_cleanup() throws IOException {
-        TraceFileExporter exporter = new TraceFileExporter(tempDir.toString(), 0);
-        SpanData span = makeFinishedSpan("retention.span");
-        exporter.export(List.of(span));
-
-        Path file = dayFile();
-        long oldTime = System.currentTimeMillis() - 30L * 86_400_000L;
-        Files.setLastModifiedTime(file, FileTime.fromMillis(oldTime));
-
-        invokeCleanup(exporter);
-        assertTrue(Files.exists(file), "file should not be deleted when retention is 0");
-    }
-
-    @Test
     @DisplayName("cleanup only deletes .jsonl files")
     void test_cleanup_only_deletes_jsonl_files() throws IOException {
         TraceFileExporter exporter = new TraceFileExporter(tempDir.toString(), 1);

@@ -182,7 +182,7 @@ class ObservabilityRedactionTest {
                     .attributeValueMaxLength(10)
                     .build();
             String result = ObservabilityRedaction.redactPrompt("hello world longer text", config);
-            assertEquals("hello worl...<truncated 12 chars>", result);
+            assertEquals("hello worl...<truncated 13 chars>", result);
         }
 
         @Test
@@ -243,7 +243,7 @@ class ObservabilityRedactionTest {
                     .attributeValueMaxLength(10)
                     .build();
             String result = ObservabilityRedaction.redactCompletion("hello world longer text", config);
-            assertEquals("hello worl...<truncated 12 chars>", result);
+            assertEquals("hello worl...<truncated 13 chars>", result);
         }
 
         @Test
