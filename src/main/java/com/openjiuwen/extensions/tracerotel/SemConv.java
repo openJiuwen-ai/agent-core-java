@@ -44,8 +44,56 @@ public final class SemConv {
     /** gen_ai.usage.completion_tokens attribute key. */
     public static final String GEN_AI_USAGE_COMPLETION_TOKENS = "gen_ai.usage.completion_tokens";
 
+    /** gen_ai.usage.total_tokens attribute key. */
+    public static final String GEN_AI_USAGE_TOTAL_TOKENS = "gen_ai.usage.total_tokens";
+
+    /** gen_ai.response.finish_reason attribute key. */
+    public static final String GEN_AI_RESPONSE_FINISH_REASON = "gen_ai.response.finish_reason";
+
+    /** gen_ai.response.model attribute key. */
+    public static final String GEN_AI_RESPONSE_MODEL = "gen_ai.response.model";
+
+    /** gen_ai.provider.name attribute key. */
+    public static final String GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+
+    /** gen_ai.request.temperature attribute key. */
+    public static final String GEN_AI_REQUEST_TEMPERATURE = "gen_ai.request.temperature";
+
+    /** gen_ai.request.top_p attribute key. */
+    public static final String GEN_AI_REQUEST_TOP_P = "gen_ai.request.top_p";
+
+    /** gen_ai.request.max_tokens attribute key. */
+    public static final String GEN_AI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens";
+
+    /** gen_ai.request.message_count attribute key. */
+    public static final String GEN_AI_REQUEST_MESSAGE_COUNT = "gen_ai.request.message_count";
+
     /** gen_ai.tool.name attribute key. */
     public static final String GEN_AI_TOOL_NAME = "gen_ai.tool.name";
+
+    /** gen_ai.tool.input attribute key. */
+    public static final String GEN_AI_TOOL_INPUT = "gen_ai.tool.input";
+
+    /** gen_ai.tool.output attribute key. */
+    public static final String GEN_AI_TOOL_OUTPUT = "gen_ai.tool.output";
+
+    /** gen_ai.tool.id attribute key. */
+    public static final String GEN_AI_TOOL_ID = "gen_ai.tool.id";
+
+    /** gen_ai.tool_calls attribute key. */
+    public static final String GEN_AI_TOOL_CALLS = "gen_ai.tool_calls";
+
+    /** gen_ai.tool.definitions attribute key. */
+    public static final String GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions";
+
+    /** gen_ai.response.time_to_first_token_ms attribute key. */
+    public static final String GEN_AI_RESPONSE_TTFT_MS = "gen_ai.response.time_to_first_token_ms";
+
+    /** langfuse.gen_ai.prompt attribute key. */
+    public static final String LANGFUSE_GEN_AI_PROMPT = "langfuse.gen_ai.prompt";
+
+    /** langfuse.gen_ai.completion attribute key. */
+    public static final String LANGFUSE_GEN_AI_COMPLETION = "langfuse.gen_ai.completion";
 
     // ===== openjiuwen.workflow.* — Workflow-level custom attributes =====
 

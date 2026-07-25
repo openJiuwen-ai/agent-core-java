@@ -128,6 +128,7 @@ public class SystemMessage extends BaseMessage {
          * @return the result
          * @since 0.1.7
          */
+        @Override
         public SystemMessage build() {
             SystemMessage message = new SystemMessage();
             message.setRole(role);
