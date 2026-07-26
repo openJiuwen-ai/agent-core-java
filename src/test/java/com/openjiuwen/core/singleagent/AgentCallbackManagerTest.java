@@ -4,7 +4,9 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.runner.callback.HookType;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -17,7 +19,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -45,22 +49,22 @@ class AgentCallbackManagerTest {
     }
 
     @Test
-    void registerCallbackExecutesByLowerPriorityFirstAndReturnsSelf() {
+    void registerCallbackExecutesByHigherPriorityFirstAndReturnsSelf() {
         InMemoryCallbackFramework framework = new InMemoryCallbackFramework();
         AgentCallbackManager manager = new AgentCallbackManager("agent-7", framework);
         List<String> calls = new ArrayList<>();
-        AgentCallback later = context -> {
-            calls.add("later");
+        AgentCallback lower = context -> {
+            calls.add("lower");
             return CompletableFuture.completedFuture(null);
         };
-        AgentCallback earlier = context -> {
-            calls.add("earlier");
+        AgentCallback higher = context -> {
+            calls.add("higher");
             return CompletableFuture.completedFuture(null);
         };
 
-        AgentCallbackManager returned = manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, later, 100)
+        AgentCallbackManager returned = manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, lower, 10)
                 .toCompletableFuture().join()
-                .registerCallback(AgentCallbackEvent.BEFORE_INVOKE, earlier, 10)
+                .registerCallback(AgentCallbackEvent.BEFORE_INVOKE, higher, 100)
                 .toCompletableFuture().join();
         AgentCallbackContext context = new AgentCallbackContext();
         AgentCallbackContext executed = manager.execute(AgentCallbackEvent.BEFORE_INVOKE, context)
@@ -68,9 +72,145 @@ class AgentCallbackManagerTest {
 
         assertSame(manager, returned);
         assertSame(context, executed);
-        assertEquals(List.of("earlier", "later"), calls);
+        assertEquals(List.of("higher", "lower"), calls);
         assertTrue(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE));
         assertEquals(List.of("agent-7_AgentCallbackEvent.BEFORE_INVOKE"), framework.events());
+    }
+
+    @Test
+    void instanceRailRegistersOnlyInInstanceFramework() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("same-id", global);
+
+        manager.registerInstanceRail(new AgentRail() {
+        }, new Object()).toCompletableFuture().join();
+
+        assertFalse(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertTrue(manager.hasInstanceHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertTrue(global.events().isEmpty());
+    }
+
+    @Test
+    void executeRunsGlobalBeforeInstanceAndSharesContext() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("agent-order", global);
+        List<String> calls = new ArrayList<>();
+        AgentCallbackContext context = new AgentCallbackContext();
+        AgentCallback globalCallback = callbackContext -> {
+            calls.add("global");
+            callbackContext.getExtra().put("global-value", "visible");
+            return CompletableFuture.completedFuture(null);
+        };
+        AgentRail instanceRail = new AgentRail() {
+            {
+                setPriority(90);
+            }
+
+            @Override
+            public CompletionStage<Void> beforeInvoke(AgentCallbackContext callbackContext) {
+                calls.add("instance:" + callbackContext.getExtra().get("global-value"));
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, globalCallback, 1).toCompletableFuture().join();
+        manager.registerInstanceRail(instanceRail, new Object()).toCompletableFuture().join();
+        AgentCallbackContext returned = manager.execute(AgentCallbackEvent.BEFORE_INVOKE, context)
+                .toCompletableFuture().join();
+
+        assertSame(context, returned);
+        assertEquals(List.of("global", "instance:visible"), calls);
+    }
+
+    @Test
+    void instanceRailsAreIsolatedWhenAgentIdsMatch() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager first = new AgentCallbackManager("same-id", global);
+        AgentCallbackManager second = new AgentCallbackManager("same-id", global);
+        List<String> calls = new ArrayList<>();
+
+        first.registerInstanceRail(markingRail("first", calls), new Object()).toCompletableFuture().join();
+        second.registerInstanceRail(markingRail("second", calls), new Object()).toCompletableFuture().join();
+        first.execute(AgentCallbackEvent.BEFORE_INVOKE, new AgentCallbackContext()).toCompletableFuture().join();
+
+        assertEquals(List.of("first"), calls);
+    }
+
+    @Test
+    void unregisterAndClearInstanceDoNotAffectGlobalCallbacks() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("agent-clear-instance", global);
+        List<String> calls = new ArrayList<>();
+        AgentRail instance = markingRail("instance", calls);
+        AgentCallback globalCallback = context -> {
+            calls.add("global");
+            return CompletableFuture.completedFuture(null);
+        };
+
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, globalCallback, 100).toCompletableFuture().join();
+        manager.registerInstanceRail(instance, new Object()).toCompletableFuture().join();
+        manager.clearInstance(AgentCallbackEvent.BEFORE_INVOKE).toCompletableFuture().join();
+        manager.execute(AgentCallbackEvent.BEFORE_INVOKE, new AgentCallbackContext()).toCompletableFuture().join();
+
+        assertEquals(List.of("global"), calls);
+        assertTrue(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertFalse(manager.hasInstanceHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertDoesNotThrow(() -> manager.unregisterInstanceRail(instance, new Object()).toCompletableFuture().join());
+    }
+
+    @Test
+    void clearInstanceNullRemovesAllInstanceEventsOnly() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("agent-clear-all-instance", global);
+        List<String> calls = new ArrayList<>();
+        AgentRail instance = new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+                calls.add("instance-before");
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+                calls.add("instance-after");
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        AgentCallback globalCallback = context -> {
+            calls.add("global-before");
+            return CompletableFuture.completedFuture(null);
+        };
+
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, globalCallback, 100).toCompletableFuture().join();
+        manager.registerInstanceRail(instance, new Object()).toCompletableFuture().join();
+        manager.clearInstance(null).toCompletableFuture().join();
+        manager.execute(AgentCallbackEvent.BEFORE_INVOKE, new AgentCallbackContext()).toCompletableFuture().join();
+        manager.execute(AgentCallbackEvent.AFTER_INVOKE, new AgentCallbackContext()).toCompletableFuture().join();
+
+        assertEquals(List.of("global-before"), calls);
+        assertTrue(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertFalse(manager.hasInstanceHooks(AgentCallbackEvent.BEFORE_INVOKE));
+        assertFalse(manager.hasInstanceHooks(AgentCallbackEvent.AFTER_INVOKE));
+    }
+
+    @Test
+    void globalAbortStopsBeforeInstancePhase() {
+        InMemoryCallbackFramework global = new InMemoryCallbackFramework();
+        AgentCallbackManager manager = new AgentCallbackManager("agent-global-abort", global);
+        AbortError expected = new AbortError("stop before instance callbacks");
+        List<String> calls = new ArrayList<>();
+
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, context -> {
+            throw expected;
+        }, 100).toCompletableFuture().join();
+        manager.registerInstanceRail(markingRail("instance", calls), new Object()).toCompletableFuture().join();
+
+        AbortError error = assertThrows(AbortError.class,
+                () -> manager.execute(AgentCallbackEvent.BEFORE_INVOKE, new AgentCallbackContext())
+                        .toCompletableFuture().join());
+
+        assertSame(expected, error);
+        assertTrue(calls.isEmpty());
     }
 
     @Test
@@ -128,6 +268,24 @@ class AgentCallbackManagerTest {
     }
 
     @Test
+    void unregisterNeverRegisteredInstanceRailDoesNotRecreateCallbacks() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-never-registered-instance-rail",
+                new InMemoryCallbackFramework());
+        int[] getCallbacksCalls = {0};
+        AgentRail rail = new AgentRail() {
+            @Override
+            public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
+                getCallbacksCalls[0]++;
+                return super.getCallbacks();
+            }
+        };
+
+        manager.unregisterInstanceRail(rail, new Object()).toCompletableFuture().join();
+
+        assertEquals(0, getCallbacksCalls[0]);
+    }
+
+    @Test
     void executePropagatesAbortErrorFromRunnerCallbackFramework() {
         AgentCallbackManager manager = new AgentCallbackManager("agent-abort");
         AbortError expected = new AbortError("model request headers unavailable");
@@ -148,6 +306,83 @@ class AgentCallbackManagerTest {
     }
 
     @Test
+    void nullGlobalCallbackReturnTriggersRunnerErrorHook() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-null-global-callback");
+        AgentCallbackEvent event = AgentCallbackEvent.BEFORE_MODEL_CALL;
+        int[] errorHookCalls = {0};
+        try {
+            Runner.getCallbackFramework().addHook(manager.getAgentEvent(event), HookType.ERROR,
+                    kwargs -> errorHookCalls[0]++);
+            manager.registerCallback(event, context -> null, 100).toCompletableFuture().join();
+
+            manager.execute(event, new AgentCallbackContext()).toCompletableFuture().join();
+
+            assertEquals(1, errorHookCalls[0]);
+        } finally {
+            manager.clear(event).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void executePropagatesAsyncAbortErrorBeforeInstanceCallbacksRun() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-async-abort");
+        AbortError expected = new AbortError("async model request headers unavailable");
+        List<String> calls = new ArrayList<>();
+        AgentRail instanceRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+                calls.add("instance");
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    context -> CompletableFuture.failedFuture(expected),
+                    100).toCompletableFuture().join();
+            manager.registerInstanceRail(instanceRail, new Object()).toCompletableFuture().join();
+
+            AbortError error = assertThrows(AbortError.class,
+                    () -> manager.execute(AgentCallbackEvent.BEFORE_MODEL_CALL, new AgentCallbackContext())
+                            .toCompletableFuture().join());
+
+            assertSame(expected, error);
+            assertTrue(calls.isEmpty());
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+            manager.clearInstance(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void executeIgnoresAsyncOrdinaryGlobalFailureThenRunsInstanceCallbacks() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-async-ordinary-error");
+        List<String> calls = new ArrayList<>();
+        AgentRail instanceRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+                calls.add("instance");
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    context -> CompletableFuture.failedFuture(new IllegalStateException("ordinary async failure")),
+                    100).toCompletableFuture().join();
+            manager.registerInstanceRail(instanceRail, new Object()).toCompletableFuture().join();
+
+            assertDoesNotThrow(() -> manager.execute(
+                    AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    new AgentCallbackContext()
+            ).toCompletableFuture().join());
+
+            assertEquals(List.of("instance"), calls);
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+            manager.clearInstance(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
+    }
+
+    @Test
     void executePropagatesErrorFromRunnerCallbackFramework() {
         AgentCallbackManager manager = new AgentCallbackManager("agent-error");
         AssertionError expected = new AssertionError("fatal callback failure");
@@ -163,6 +398,36 @@ class AgentCallbackManagerTest {
             assertSame(expected, error);
         } finally {
             manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void globalErrorFromRunnerStopsBeforeInstanceCallbacksRun() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-global-error-before-instance");
+        AssertionError expected = new AssertionError("fatal global callback failure");
+        List<String> calls = new ArrayList<>();
+        AgentRail instanceRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+                calls.add("instance");
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, context -> {
+                throw expected;
+            }, 100).toCompletableFuture().join();
+            manager.registerInstanceRail(instanceRail, new Object()).toCompletableFuture().join();
+
+            AssertionError error = assertThrows(AssertionError.class,
+                    () -> manager.execute(AgentCallbackEvent.BEFORE_MODEL_CALL, new AgentCallbackContext())
+                            .toCompletableFuture().join());
+
+            assertSame(expected, error);
+            assertTrue(calls.isEmpty());
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+            manager.unregisterInstanceRail(instanceRail, new Object()).toCompletableFuture().join();
         }
     }
 
@@ -189,7 +454,7 @@ class AgentCallbackManagerTest {
         @Override
         public CompletionStage<Void> register(String event, AgentCallback callback, int priority) {
             callbacks.computeIfAbsent(event, ignored -> new ArrayList<>()).add(new Entry(callback, priority));
-            callbacks.get(event).sort(Comparator.comparingInt(Entry::priority));
+            callbacks.get(event).sort(Comparator.comparingInt(Entry::priority).reversed());
             return CompletableFuture.completedFuture(null);
         }
 
@@ -216,10 +481,32 @@ class AgentCallbackManagerTest {
 
         @Override
         public CompletionStage<Void> trigger(String event, AgentCallbackContext context) {
-            for (Entry entry : callbacks.getOrDefault(event, List.of())) {
-                entry.callback().handle(context).toCompletableFuture().join();
+            for (Entry entry : List.copyOf(callbacks.getOrDefault(event, List.of()))) {
+                try {
+                    CompletionStage<Void> result = entry.callback().handle(context);
+                    if (result != null) {
+                        result.toCompletableFuture().join();
+                    }
+                } catch (Throwable error) {
+                    Throwable normalized = unwrap(error);
+                    if (normalized instanceof AbortError abortError) {
+                        throw abortError;
+                    }
+                    if (normalized instanceof Error fatal) {
+                        throw fatal;
+                    }
+                }
             }
             return CompletableFuture.completedFuture(null);
+        }
+
+        private static Throwable unwrap(Throwable error) {
+            Throwable current = error;
+            while ((current instanceof CompletionException || current instanceof ExecutionException)
+                    && current.getCause() != null) {
+                current = current.getCause();
+            }
+            return current;
         }
 
         private List<String> events() {
@@ -228,5 +515,15 @@ class AgentCallbackManagerTest {
 
         private record Entry(AgentCallback callback, int priority) {
         }
+    }
+
+    private static AgentRail markingRail(String marker, List<String> calls) {
+        return new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+                calls.add(marker);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
     }
 }

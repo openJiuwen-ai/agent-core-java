@@ -132,7 +132,7 @@ class RetrievalAdvancedSystemTest {
                                        String stop,
                                        BaseOutputParser outputParser,
                                        Float timeout,
-                                       Map<String, Object> kwargs) throws Exception {
+                                       Map<String, Object> kwargs) {
             invocationCount++;
             String content = responses.isEmpty() ? "[]" : responses.remove(0);
             return new AssistantMessage(content);
@@ -148,7 +148,7 @@ class RetrievalAdvancedSystemTest {
                                                       String stop,
                                                       BaseOutputParser outputParser,
                                                       Float timeout,
-                                                      Map<String, Object> kwargs) throws Exception {
+                                                      Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 

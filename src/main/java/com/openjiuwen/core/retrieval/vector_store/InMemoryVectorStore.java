@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.async.CompletableMap;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.VectorSearchResult;
+import com.openjiuwen.core.foundation.store.query.ComparisonExpr;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
@@ -494,8 +495,14 @@ public class InMemoryVectorStore extends BaseVectorStore implements VectorStore 
     }
 
     private static Map<String, Object> deleteFilterMap(DeleteFilter filters) {
-        if (filters == null || filters.expression() == null || filters.expression().isBlank()) {
+        if (filters == null) {
             return Map.of();
+        }
+        if (filters.queryExpr() instanceof ComparisonExpr comparison
+                && "==".equals(comparison.getOperator())
+                && comparison.getField() != null
+                && comparison.getValue() != null) {
+            return Map.of(comparison.getField(), comparison.getValue());
         }
         return Map.of();
     }

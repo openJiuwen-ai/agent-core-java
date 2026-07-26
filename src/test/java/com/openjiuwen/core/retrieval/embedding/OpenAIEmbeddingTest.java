@@ -39,7 +39,7 @@ class OpenAIEmbeddingTest {
 
         assertEquals("test-model", model.modelName);
         assertEquals("test-api-key", model.apiKey);
-        assertEquals("https://api.example.com/v1", model.apiUrl);
+        assertEquals("https://api.example.com/v1/embeddings", model.apiUrl);
     }
 
     @Test

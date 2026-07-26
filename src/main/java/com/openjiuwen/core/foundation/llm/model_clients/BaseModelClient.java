@@ -20,6 +20,7 @@ import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolCallArgumentUtils;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
@@ -33,6 +34,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -285,7 +287,8 @@ public abstract class BaseModelClient implements Model.ModelClient {
                     "The model cannot be None.");
         }
 
-        List<Map<String, Object>> messagesDict = convertMessagesToDict(messages);
+        List<Map<String, Object>> messagesDict =
+                fallbackInvalidToolCallArguments(convertMessagesToDict(messages));
         String resolvedModel = isPythonTruthy(model)
                 ? model
                 : modelConfig == null ? null : modelConfig.getModelName();
@@ -386,27 +389,23 @@ public abstract class BaseModelClient implements Model.ModelClient {
                                             String stop,
                                             BaseOutputParser outputParser,
                                             Float timeout,
-                                            Map<String, Object> kwargs) throws Exception;
+                                            Map<String, Object> kwargs);
 
     @Override
     public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        try {
-            return CompletableFuture.completedFuture(invoke(
-                    messages,
-                    resolvedOptions.getTools(),
-                    resolvedOptions.getTemperature(),
-                    resolvedOptions.getTopP(),
-                    resolvedOptions.getModel(),
-                    resolvedOptions.getMaxTokens(),
-                    resolvedOptions.getStop(),
-                    resolvedOptions.getOutputParser(),
-                    resolvedOptions.getTimeout(),
-                    invocationExtraFields(resolvedOptions)
-            ));
-        } catch (Exception exception) {
-            return CompletableFuture.failedFuture(exception);
-        }
+        return CompletableFuture.completedFuture(invoke(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        ));
     }
 
     public abstract Iterator<AssistantMessageChunk> stream(Object messages,
@@ -418,27 +417,23 @@ public abstract class BaseModelClient implements Model.ModelClient {
                                                            String stop,
                                                            BaseOutputParser outputParser,
                                                            Float timeout,
-                                                           Map<String, Object> kwargs) throws Exception;
+                                                           Map<String, Object> kwargs);
 
     @Override
     public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        try {
-            return stream(
-                    messages,
-                    resolvedOptions.getTools(),
-                    resolvedOptions.getTemperature(),
-                    resolvedOptions.getTopP(),
-                    resolvedOptions.getModel(),
-                    resolvedOptions.getMaxTokens(),
-                    resolvedOptions.getStop(),
-                    resolvedOptions.getOutputParser(),
-                    resolvedOptions.getTimeout(),
-                    invocationExtraFields(resolvedOptions)
-            );
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
+        return stream(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        );
     }
 
     /**
@@ -597,10 +592,58 @@ public abstract class BaseModelClient implements Model.ModelClient {
     private static List<Map<String, Object>> normalizeMapList(List<Map<?, ?>> rawMaps) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<?, ?> rawMap : rawMaps) {
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            rawMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
-            result.add(normalized);
+            result.add(stringObjectMap(rawMap));
         }
+        return result;
+    }
+
+    /**
+     * 模型请求出口兜底：只在请求副本中把非法 tool call arguments 替换成 "{}"，
+     * 避免非法历史参数导致模型接口拒绝请求，同时不反向污染上下文历史或调用方传入的消息对象。
+     */
+    private static List<Map<String, Object>> fallbackInvalidToolCallArguments(List<Map<String, Object>> messages) {
+        List<Map<String, Object>> requestMessages = new ArrayList<>();
+        for (Map<String, Object> message : messages) {
+            Map<String, Object> requestMessage = message;
+            Object toolCalls = message.get("tool_calls");
+            if (toolCalls instanceof List<?> toolCallList) {
+                List<Object> requestToolCalls = null;
+                for (int index = 0; index < toolCallList.size(); index++) {
+                    Object requestToolCall = toolCallList.get(index);
+                    if (requestToolCall instanceof Map<?, ?> toolCallMap) {
+                        Object function = toolCallMap.get("function");
+                        if (function instanceof Map<?, ?> functionMap) {
+                            Object originalArguments = functionMap.get("arguments");
+                            String requestArguments = ToolCallArgumentUtils.fallbackJsonObject(originalArguments);
+                            if (!Objects.equals(requestArguments, originalArguments)) {
+                                Map<String, Object> functionCopy = stringObjectMap(functionMap);
+                                functionCopy.put("arguments", requestArguments);
+                                Map<String, Object> toolCallCopy = stringObjectMap(toolCallMap);
+                                toolCallCopy.put("function", functionCopy);
+                                requestToolCall = toolCallCopy;
+                            }
+                        }
+                    }
+                    if (requestToolCalls != null) {
+                        requestToolCalls.add(requestToolCall);
+                    } else if (requestToolCall != toolCallList.get(index)) {
+                        requestToolCalls = new ArrayList<>(toolCallList.subList(0, index));
+                        requestToolCalls.add(requestToolCall);
+                    }
+                }
+                if (requestToolCalls != null) {
+                    requestMessage = new LinkedHashMap<>(message);
+                    requestMessage.put("tool_calls", requestToolCalls);
+                }
+            }
+            requestMessages.add(requestMessage);
+        }
+        return List.copyOf(requestMessages);
+    }
+
+    private static Map<String, Object> stringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
 

@@ -166,6 +166,13 @@ public abstract class BaseAgent {
         return registerRail(rail);
     }
 
+    public CompletionStage<BaseAgent> registerInstanceRail(AgentRail rail) {
+        if (rail != null) {
+            rail.init(this);
+        }
+        return agentCallbackManager.registerInstanceRail(rail, this).thenApply(ignored -> this);
+    }
+
     public CompletionStage<BaseAgent> unregisterRail(AgentRail rail) {
         return agentCallbackManager.unregisterRail(rail, this)
                 .thenApply(ignored -> {
@@ -178,6 +185,16 @@ public abstract class BaseAgent {
 
     public CompletionStage<BaseAgent> unregister_rail(AgentRail rail) {
         return unregisterRail(rail);
+    }
+
+    public CompletionStage<BaseAgent> unregisterInstanceRail(AgentRail rail) {
+        return agentCallbackManager.unregisterInstanceRail(rail, this)
+                .thenApply(ignored -> {
+                    if (rail != null) {
+                        rail.uninit(this);
+                    }
+                    return this;
+                });
     }
 
     public CompletionStage<Void> executeCallbacks(AgentCallbackEvent event,

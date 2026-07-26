@@ -64,7 +64,7 @@ class ModelReactiveTest {
     /** invoke 返回固定值 / 抛指定异常，stream 返回固定 Iterator 的 fake client。 */
     private static class FakeModelClient extends BaseModelClient {
         private AssistantMessage invokeResult;
-        private Exception invokeError;
+        private RuntimeException invokeError;
         private Iterator<AssistantMessageChunk> streamResult;
 
         FakeModelClient() {
@@ -81,7 +81,7 @@ class ModelReactiveTest {
         public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
                                        String model, Integer maxTokens, String stop,
                                        BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) throws Exception {
+                                       Map<String, Object> kwargs) {
             if (invokeError != null) {
                 throw invokeError;
             }
@@ -92,7 +92,7 @@ class ModelReactiveTest {
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature,
                                                        Float topP, String model, Integer maxTokens,
                                                        String stop, BaseOutputParser outputParser,
-                                                       Float timeout, Map<String, Object> kwargs) throws Exception {
+                                                       Float timeout, Map<String, Object> kwargs) {
             return streamResult;
         }
 

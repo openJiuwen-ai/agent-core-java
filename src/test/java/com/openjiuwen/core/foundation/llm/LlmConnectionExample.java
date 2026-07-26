@@ -438,59 +438,65 @@ public class LlmConnectionExample {
         public AssistantMessage invoke(Object messages, Object tools, Float temperature,
                                        Float topP, String model, Integer maxTokens, String stop,
                                        BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) throws Exception {
-            Map<String, Object> params = buildRequestParams(
-                    messages, tools,
-                    temperature != null ? temperature.doubleValue() : null,
-                    topP != null ? topP.doubleValue() : null,
-                    model, stop, maxTokens, false, kwargs);
+                                       Map<String, Object> kwargs) {
+            try {
+                Map<String, Object> params = buildRequestParams(
+                        messages, tools,
+                        temperature != null ? temperature.doubleValue() : null,
+                        topP != null ? topP.doubleValue() : null,
+                        model, stop, maxTokens, false, kwargs);
 
-            String jsonBody = MAPPER.writeValueAsString(params);
-            String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
+                String jsonBody = MAPPER.writeValueAsString(params);
+                String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
-                            : (long) modelClientConfig.getTimeout()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
+                                : (long) modelClientConfig.getTimeout()))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
 
-            HttpResponse<String> httpResponse = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> httpResponse = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
 
-            if (httpResponse.statusCode() != 200) {
-                throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                if (httpResponse.statusCode() != 200) {
+                    throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                }
+
+                Map<String, Object> responseMap = MAPPER.readValue(httpResponse.body(), Map.class);
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+                if (choices == null || choices.isEmpty()) {
+                    throw new RuntimeException("No choices in response: " + httpResponse.body());
+                }
+
+                Map<String, Object> firstChoice = choices.get(0);
+                Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
+                String content = (String) message.getOrDefault("content", "");
+                String finishReason = (String) firstChoice.getOrDefault("finish_reason", "");
+
+                // 解析 usage
+                UsageMetadata.UsageMetadataBuilder usageBuilder = UsageMetadata.builder()
+                        .modelName(model != null ? model : modelConfig.getModelName());
+                Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
+                if (usage != null) {
+                    usageBuilder
+                            .inputTokens(toInt(usage.get("prompt_tokens")))
+                            .outputTokens(toInt(usage.get("completion_tokens")))
+                            .totalTokens(toInt(usage.get("total_tokens")));
+                }
+
+                return AssistantMessage.builder()
+                        .content(content)
+                        .finishReason(finishReason)
+                        .usageMetadata(usageBuilder.build())
+                        .build();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-
-            Map<String, Object> responseMap = MAPPER.readValue(httpResponse.body(), Map.class);
-            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
-            if (choices == null || choices.isEmpty()) {
-                throw new RuntimeException("No choices in response: " + httpResponse.body());
-            }
-
-            Map<String, Object> firstChoice = choices.get(0);
-            Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
-            String content = (String) message.getOrDefault("content", "");
-            String finishReason = (String) firstChoice.getOrDefault("finish_reason", "");
-
-            // 解析 usage
-            UsageMetadata.UsageMetadataBuilder usageBuilder = UsageMetadata.builder()
-                    .modelName(model != null ? model : modelConfig.getModelName());
-            Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
-            if (usage != null) {
-                usageBuilder
-                        .inputTokens(toInt(usage.get("prompt_tokens")))
-                        .outputTokens(toInt(usage.get("completion_tokens")))
-                        .totalTokens(toInt(usage.get("total_tokens")));
-            }
-
-            return AssistantMessage.builder()
-                    .content(content)
-                    .finishReason(finishReason)
-                    .usageMetadata(usageBuilder.build())
-                    .build();
         }
 
         @Override
@@ -499,60 +505,66 @@ public class LlmConnectionExample {
                                                       Float temperature, Float topP, String model,
                                                       Integer maxTokens, String stop,
                                                       BaseOutputParser outputParser, Float timeout,
-                                                      Map<String, Object> kwargs) throws Exception {
-            Map<String, Object> params = buildRequestParams(
-                    messages, tools,
-                    temperature != null ? temperature.doubleValue() : null,
-                    topP != null ? topP.doubleValue() : null,
-                    model, stop, maxTokens, true, kwargs);
+                                                      Map<String, Object> kwargs) {
+            try {
+                Map<String, Object> params = buildRequestParams(
+                        messages, tools,
+                        temperature != null ? temperature.doubleValue() : null,
+                        topP != null ? topP.doubleValue() : null,
+                        model, stop, maxTokens, true, kwargs);
 
-            String jsonBody = MAPPER.writeValueAsString(params);
-            String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
+                String jsonBody = MAPPER.writeValueAsString(params);
+                String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
-                            : (long) modelClientConfig.getTimeout()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
+                                : (long) modelClientConfig.getTimeout()))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
 
-            HttpResponse<String> httpResponse = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> httpResponse = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
 
-            if (httpResponse.statusCode() != 200) {
-                throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
-            }
+                if (httpResponse.statusCode() != 200) {
+                    throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                }
 
-            // 解析 SSE (Server-Sent Events) 格式
-            String[] lines = httpResponse.body().split("\n");
-            List<AssistantMessageChunk> chunkList = new java.util.ArrayList<>();
-            for (String line : lines) {
-                String trimmed = line.trim();
-                if (trimmed.startsWith("data: ") && !trimmed.equals("data: [DONE]")) {
-                    String data = trimmed.substring(6);
-                    try {
-                        Map<String, Object> event = MAPPER.readValue(data, Map.class);
-                        List<Map<String, Object>> choices =
-                                (List<Map<String, Object>>) event.get("choices");
-                        if (choices != null && !choices.isEmpty()) {
-                            Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
-                            if (delta != null) {
-                                String deltaContent = (String) delta.getOrDefault("content", "");
-                                if (deltaContent != null && !deltaContent.isEmpty()) {
-                                    chunkList.add(AssistantMessageChunk.builder()
-                                            .content(deltaContent)
-                                            .build());
+                // 解析 SSE (Server-Sent Events) 格式
+                String[] lines = httpResponse.body().split("\n");
+                List<AssistantMessageChunk> chunkList = new java.util.ArrayList<>();
+                for (String line : lines) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("data: ") && !trimmed.equals("data: [DONE]")) {
+                        String data = trimmed.substring(6);
+                        try {
+                            Map<String, Object> event = MAPPER.readValue(data, Map.class);
+                            List<Map<String, Object>> choices =
+                                    (List<Map<String, Object>>) event.get("choices");
+                            if (choices != null && !choices.isEmpty()) {
+                                Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
+                                if (delta != null) {
+                                    String deltaContent = (String) delta.getOrDefault("content", "");
+                                    if (deltaContent != null && !deltaContent.isEmpty()) {
+                                        chunkList.add(AssistantMessageChunk.builder()
+                                                .content(deltaContent)
+                                                .build());
+                                    }
                                 }
                             }
+                        } catch (Exception ignored) {
+                            // skip parse errors in SSE lines
                         }
-                    } catch (Exception ignored) {
-                        // skip parse errors in SSE lines
                     }
                 }
+                return chunkList.iterator();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-            return chunkList.iterator();
         }
 
         @Override
