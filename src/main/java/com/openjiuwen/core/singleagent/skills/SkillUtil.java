@@ -162,7 +162,7 @@ public class SkillUtil {
         }
         Path skillDir;
         try {
-            skillDir = Path.of(directory).toAbsolutePath().normalize();
+            skillDir = toNormalizedAbsolute(Path.of(directory));
         } catch (Exception e) {
             return null;
         }
@@ -202,12 +202,29 @@ public class SkillUtil {
             return;
         }
         try {
-            Path path = Path.of(root).toAbsolutePath().normalize();
+            Path path = toNormalizedAbsolute(Path.of(root));
             if (!bases.contains(path)) {
                 bases.add(path);
             }
         } catch (Exception ignored) {
             // skip unusable roots
+        }
+    }
+
+    /**
+     * Absolute + normalize, preferring {@link Path#toRealPath()} so Linux {@code /tmp} symlinks
+     * match skill directories that already resolved through the real path.
+     *
+     * @param path input path
+     * @return normalized absolute path (realpath when available)
+     * @since 0.1.14
+     */
+    private static Path toNormalizedAbsolute(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        try {
+            return absolute.toRealPath().normalize();
+        } catch (Exception e) {
+            return absolute;
         }
     }
 

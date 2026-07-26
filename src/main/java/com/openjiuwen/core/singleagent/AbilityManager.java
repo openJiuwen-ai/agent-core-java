@@ -17,7 +17,6 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.tool_call.ToolExecutionResult;
@@ -227,8 +226,12 @@ public class AbilityManager implements ToolRegistry {
     /**
      * Get ToolInfo list (for LLM usage) with optional name/server filtering.
      * <p>
-     * Cached {@link McpToolCard} entries in {@code tools} are skipped; MCP tools are listed via
-     * {@code mcpServers}. Results are deduplicated by tool name (first wins).
+     * Aligns with Python {@code AbilityManager.list_tool_info}: tools already covered by a
+     * registered {@link McpServerConfig} (id prefix {@code serverId.}) are skipped on the
+     * {@code tools} path and listed via {@code mcpServers} instead. Externally registered
+     * {@link com.openjiuwen.core.foundation.tool.mcp.McpToolCard}s that are not covered by any
+     * registered MCP server remain visible.
+     * Results are deduplicated by tool name (first wins).
      *
      * @param names optional tool names to include
      * @param mcpServerName optional MCP server name to include
@@ -239,9 +242,9 @@ public class AbilityManager implements ToolRegistry {
         List<ToolInfo> toolInfos = new ArrayList<>();
 
         for (ToolCard toolCard : tools.values()) {
-            // MCP tools are listed via mcpServers + appendMcpToolInfos; skip cached McpToolCard
-            // entries to avoid duplicates after the first listToolInfo call.
-            if (toolCard instanceof McpToolCard) {
+            // Skip tools already owned by a registered MCP server to avoid double-listing
+            // after cacheMcpToolInfo; keep standalone McpToolCard registrations.
+            if (isToolInMcpServer(toolCard.getId())) {
                 continue;
             }
             if (names == null || names.contains(toolCard.getName())) {
@@ -269,6 +272,26 @@ public class AbilityManager implements ToolRegistry {
         }
 
         return dedupeToolInfosByName(toolInfos);
+    }
+
+    /**
+     * Whether the tool id belongs to a registered MCP server (Python {@code _is_tool_in_mcp_server}).
+     *
+     * @param toolId tool card id, typically {@code serverId.serverName.toolName}
+     * @return true when any registered MCP server id is a prefix of {@code toolId}
+     * @since 0.1.14
+     */
+    private boolean isToolInMcpServer(String toolId) {
+        if (toolId == null || toolId.isBlank() || mcpServers.isEmpty()) {
+            return false;
+        }
+        for (McpServerConfig mcpServer : mcpServers.values()) {
+            String serverId = mcpServer.getServerId();
+            if (serverId != null && !serverId.isBlank() && toolId.startsWith(serverId + ".")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========== ToolRegistry interface ==========

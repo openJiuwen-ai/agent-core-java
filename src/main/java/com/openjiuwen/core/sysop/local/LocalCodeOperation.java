@@ -429,8 +429,22 @@ public class LocalCodeOperation extends BaseCodeOperation {
         }
         for (String dir : pathEnv.split(java.io.File.pathSeparator)) {
             java.io.File file = new java.io.File(dir, candidate);
-            if (file.isFile() && (isWindows() || file.canExecute())) {
+            if (!file.isFile()) {
+                continue;
+            }
+            if (isWindows()) {
                 return true;
+            }
+            if (file.canExecute()) {
+                return true;
+            }
+            // Symlinks / non-exec bit: Files.isExecutable follows links more reliably on Linux CI images.
+            try {
+                if (java.nio.file.Files.isExecutable(file.toPath())) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                // keep scanning PATH
             }
         }
         return false;

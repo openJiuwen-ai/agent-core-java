@@ -80,6 +80,10 @@ public class CodeTool {
      * @since 0.1.7
      */
     private static String resolvePythonExecutable() {
+        String override = System.getenv("PYTHON_EXECUTABLE");
+        if (override != null && !override.isBlank()) {
+            return override.trim();
+        }
         boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         String[] candidates = isWindows
                 ? new String[] {"python", "python3", "python.exe"}
@@ -107,8 +111,22 @@ public class CodeTool {
         }
         for (String dir : pathEnv.split(java.io.File.pathSeparator)) {
             java.io.File file = new java.io.File(dir, candidate);
-            if (file.isFile() && (isWindows || file.canExecute())) {
+            if (!file.isFile()) {
+                continue;
+            }
+            if (isWindows) {
                 return true;
+            }
+            if (file.canExecute()) {
+                return true;
+            }
+            // Symlinks / non-exec bit files: Files.isExecutable follows links more reliably on Linux.
+            try {
+                if (java.nio.file.Files.isExecutable(file.toPath())) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                // keep scanning PATH
             }
         }
         return false;

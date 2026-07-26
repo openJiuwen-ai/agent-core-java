@@ -5,6 +5,7 @@ package com.openjiuwen.core.singleagent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -157,11 +158,29 @@ class AbilityManagerTest {
     }
 
     @Test
-    void listToolInfoSkipsCachedMcpToolCards() {
-        manager.add(McpToolCard.builder().name("search_poi").description("cached mcp")
-                .serverName("poi-server").inputParams(Map.of("type", "object")).build());
+    void listToolInfoKeepsStandaloneMcpToolCards() {
+        // Externally registered McpToolCard (no matching mcpServers entry) must remain visible,
+        // matching Python list_tool_info / _is_tool_in_mcp_server.
+        manager.add(McpToolCard.builder().id("svc.Mock.query_weather").name("query_weather")
+                .description("cached mcp").serverName("Mock").serverId("svc")
+                .inputParams(Map.of("type", "object")).build());
 
-        assertThat(manager.listToolInfo()).isEmpty();
+        assertThat(manager.listToolInfo()).extracting(ToolInfo::getName).containsExactly("query_weather");
+    }
+
+    @Test
+    void listToolInfoSkipsMcpToolsOwnedByRegisteredServer() {
+        manager.add(McpServerConfig.builder().serverId("svc").serverName("Mock")
+                .serverPath("http://127.0.0.1:9/sse").clientType("sse").build());
+        manager.add(McpToolCard.builder().id("svc.Mock.query_weather").name("query_weather")
+                .description("cached from mcp server").serverName("Mock").serverId("svc")
+                .inputParams(Map.of("type", "object")).build());
+        manager.add(ToolCard.builder().name("local_echo").description("local")
+                .inputParams(Map.of("type", "object")).build());
+
+        // Owned MCP tool is skipped on tools path; local tool remains.
+        // appendMcpToolInfos may fail (no live server) and contribute nothing.
+        assertThat(manager.listToolInfo()).extracting(ToolInfo::getName).containsExactly("local_echo");
     }
 
     @Test
