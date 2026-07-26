@@ -190,10 +190,15 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     @Test
-    void prTaskPipelineShouldStopWhenImplementMakesNoRepoEdits() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder().build());
+    void prTaskPipelineShouldStopWhenImplementMakesNoRepoEdits() throws Exception {
+        // Isolate from cwd dirty files under EditScope.ALLOWED_EDIT_PREFIXES (e.g. examples/).
+        Path repo = initCleanGitRepo("pipeline-no-edits-repo");
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
+                .workspace(repo.toString()).localRepo(repo.toString())
+                .dataDir(tempDir.resolve("pipeline-no-edits-data").toString()).build());
+        orchestrator.getGit().setWorkspace(repo.toString());
         OptimizationTask task = OptimizationTask.builder().topic("pipeline task").build();
-        TaskContext ctx = new TaskContext(orchestrator, task, TaskRuntime.builder().wtPath(".").build());
+        TaskContext ctx = new TaskContext(orchestrator, task, TaskRuntime.builder().wtPath(repo.toString()).build());
 
         List<Object> events = new PRTaskPipeline().stream(ctx);
 
@@ -553,6 +558,18 @@ class ContextsPipelinesCompatibilityTest {
         return events.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
                 .filter(schema -> "message".equals(schema.getType()))
                 .map(ContextsPipelinesCompatibilityTest::messageText).toList();
+    }
+
+    private Path initCleanGitRepo(String name) throws Exception {
+        Path local = tempDir.resolve(name);
+        Files.createDirectories(local);
+        run(local, "git", "init");
+        run(local, "git", "config", "user.email", "bot@example.com");
+        run(local, "git", "config", "user.name", "Auto Harness");
+        Files.writeString(local.resolve("README.md"), "base\n");
+        run(local, "git", "add", "README.md");
+        run(local, "git", "commit", "-m", "base");
+        return local;
     }
 
     private Path initOriginDevelopRepo(String name) throws Exception {

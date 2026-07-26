@@ -1749,8 +1749,21 @@ class HarnessRailsCompatibilityTest {
         String method = String.valueOf(request.get("method"));
         String clientType = exchange.getRequestURI().getQuery().replace("client=", "");
         if (!clientType.equals(exchange.getRequestHeaders().getFirst("X-MCP-Test"))) {
-            writeHttpMcpResponse(exchange, Map.of("jsonrpc", "2.0", "id", id, "error",
-                    Map.of("code", -32602, "message", "missing test auth")));
+            Map<String, Object> errorBody = new java.util.LinkedHashMap<>();
+            errorBody.put("jsonrpc", "2.0");
+            if (id != null) {
+                errorBody.put("id", id);
+            }
+            errorBody.put("error", Map.of("code", -32602, "message", "missing test auth"));
+            writeHttpMcpResponse(exchange, errorBody);
+            return;
+        }
+
+        // JSON-RPC notifications (e.g. notifications/initialized) have no id; ack with empty body.
+        // Map.of(..., "id", null, ...) would NPE and break HTTP MCP connect after #40 handshake.
+        if (id == null || method.startsWith("notifications/")) {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
             return;
         }
 
