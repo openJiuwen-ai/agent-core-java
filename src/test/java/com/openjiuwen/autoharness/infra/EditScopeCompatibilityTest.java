@@ -1,5 +1,6 @@
 package com.openjiuwen.autoharness.infra;
 
+import com.openjiuwen.auto_harness.infra.EditScope;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
