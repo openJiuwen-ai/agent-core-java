@@ -737,10 +737,9 @@ public class ResourceMgr {
      * @param tag tag
      * @param expiryTime expiryTime
      * @return the result
-     * @throws Exception Exception
      * @since 0.1.7
      */
-    public List<Result<String>> addMcpServer(Object serverConfig, Object tag, Double expiryTime) throws Exception {
+    public List<Result<String>> addMcpServer(Object serverConfig, Object tag, Double expiryTime) {
         if (tag != null) {
             validateTag(tag);
         }

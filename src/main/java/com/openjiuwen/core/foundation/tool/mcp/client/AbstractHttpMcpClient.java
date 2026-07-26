@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -130,7 +131,6 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 return true;
             } catch (InterruptedException e) {
                 this.connected = false;
-                Thread.currentThread().interrupt();
                 return false;
             } catch (IOException | RuntimeException e) {
                 this.connected = false;
@@ -140,7 +140,6 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 try {
                     Thread.sleep(100L * (i + 1));
                 } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
                     return false;
                 }
             }
@@ -228,25 +227,50 @@ abstract class AbstractHttpMcpClient implements McpClient {
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         Map<String, Object> result = callRpc("tools/call",
                 Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
-        Object content = result.get("content");
-        if (content instanceof List<?> list && !list.isEmpty()) {
-            List<String> textParts = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> map) {
-                    Object text = map.get("text");
-                    if (text != null) {
-                        textParts.add(String.valueOf(text));
-                    }
-                }
+        Object flattened = flattenToolTextContent(result.get("content"));
+        return flattened != null ? flattened : result;
+    }
+
+    /**
+     * Flattens MCP tool {@code content} text blocks into a string when present.
+     *
+     * @param content raw {@code content} field from tools/call result
+     * @return joined text, a single text string, or {@code null} when there is no text to flatten
+     * @since 0.1.14
+     */
+    private static Object flattenToolTextContent(Object content) {
+        if (!(content instanceof List<?> list) || list.isEmpty()) {
+            return null;
+        }
+        List<String> textParts = collectTextParts(list);
+        if (textParts.size() == 1) {
+            return textParts.get(0);
+        }
+        if (!textParts.isEmpty()) {
+            return String.join("\n", textParts);
+        }
+        return null;
+    }
+
+    /**
+     * Collects non-null {@code text} values from MCP content list items.
+     *
+     * @param list MCP content list
+     * @return ordered text parts
+     * @since 0.1.14
+     */
+    private static List<String> collectTextParts(List<?> list) {
+        List<String> textParts = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
             }
-            if (textParts.size() == 1) {
-                return textParts.get(0);
-            }
-            if (!textParts.isEmpty()) {
-                return String.join("\n", textParts);
+            Object text = map.get("text");
+            if (text != null) {
+                textParts.add(String.valueOf(text));
             }
         }
-        return result;
+        return textParts;
     }
 
     /**
@@ -358,7 +382,8 @@ abstract class AbstractHttpMcpClient implements McpClient {
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers
                         .ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
         if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) != 0 && timeout > 0) {
-            builder.timeout(Duration.ofMillis((long) (timeout * 1000)));
+            long timeoutMillis = BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L)).longValue();
+            builder.timeout(Duration.ofMillis(timeoutMillis));
         }
         for (Map.Entry<String, String> entry : config.getAuthHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());

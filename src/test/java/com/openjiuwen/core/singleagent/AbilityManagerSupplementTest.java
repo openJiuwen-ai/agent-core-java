@@ -711,7 +711,7 @@ class AbilityManagerSupplementTest {
         Runner.resourceMgr().addTool(failingTool, null);
         manager.add(failingTool.getCard());
         try {
-            ReActAgentConfig config = ReActAgentConfig.builder().failTaskOnToolError(true).build();
+            ReActAgentConfig config = ReActAgentConfig.builder().shouldFailTaskOnToolError(true).build();
             AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
 
             List<AbilityManager.ToolExecutionEntry> results = manager.execute(

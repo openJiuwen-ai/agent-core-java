@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Locale;
@@ -103,7 +104,12 @@ public final class SslUtils {
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
             X509Certificate caCert;
             try (InputStream is = Files.newInputStream(certPath)) {
-                caCert = (X509Certificate) cf.generateCertificate(is);
+                Certificate certificate = cf.generateCertificate(is);
+                if (!(certificate instanceof X509Certificate x509Certificate)) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                            "certificate is not X.509", null, null, null);
+                }
+                caCert = x509Certificate;
             }
 
             KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -192,12 +198,12 @@ public final class SslUtils {
      *
      * @param builder OkHttp client builder to configure
      * @param targetUrl request target URL
-     * @param verifySsl whether to verify the remote certificate chain
+     * @param shouldVerifySsl whether to verify the remote certificate chain
      * @param sslCertPath optional CA certificate path
      * @since 0.1.14
      */
-    public static void configureOkHttpClientSsl(OkHttpClient.Builder builder, String targetUrl, boolean verifySsl,
-            String sslCertPath) {
+    public static void configureOkHttpClientSsl(OkHttpClient.Builder builder, String targetUrl,
+            boolean shouldVerifySsl, String sslCertPath) {
         if (builder == null || targetUrl == null || targetUrl.isBlank()) {
             return;
         }
@@ -207,7 +213,7 @@ public final class SslUtils {
             return;
         }
 
-        if (!verifySsl) {
+        if (!shouldVerifySsl) {
             X509TrustManager trustManager = insecureTrustManager();
             try {
                 SSLContext sslContext = SSLContext.getInstance("TLS");

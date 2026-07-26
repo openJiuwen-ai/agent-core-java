@@ -546,7 +546,7 @@ public class AbilityManager implements ToolRegistry {
     }
 
     /**
-     * Reads {@link ReActAgentConfig#isFailTaskOnToolError()} from the tool callback context or its agent.
+     * Reads {@link ReActAgentConfig#isShouldFailTaskOnToolError()} from the tool callback context or its agent.
      *
      * @param toolCtx tool execution callback context; may be null
      * @return {@code true} when tool errors should force-finish the task
@@ -558,13 +558,13 @@ public class AbilityManager implements ToolRegistry {
         }
         Object config = toolCtx.getConfig();
         if (config instanceof ReActAgentConfig reactConfig) {
-            return reactConfig.isFailTaskOnToolError();
+            return reactConfig.isShouldFailTaskOnToolError();
         }
         Object agent = toolCtx.getAgent();
         if (agent instanceof BaseAgent baseAgent) {
             Object agentConfig = baseAgent.getConfig();
             if (agentConfig instanceof ReActAgentConfig reactConfig) {
-                return reactConfig.isFailTaskOnToolError();
+                return reactConfig.isShouldFailTaskOnToolError();
             }
         }
         return false;

@@ -58,7 +58,7 @@ public class ReActAgentConfig {
     private int maxIterations = 5;
 
     @Builder.Default
-    private boolean failTaskOnToolError = false;
+    private boolean shouldFailTaskOnToolError = false;
 
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfigObj;

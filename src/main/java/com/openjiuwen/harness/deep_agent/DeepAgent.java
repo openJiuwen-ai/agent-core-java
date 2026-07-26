@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -359,7 +360,7 @@ public class DeepAgent implements AutoCloseable {
                 if (isResolved instanceof Model model) {
                     return model;
                 }
-            } catch (RuntimeException ignored) {
+            } catch (BaseError ignored) {
                 // A plain model name is still valid ReActAgentConfig; only resource ids resolve here.
             }
         }
@@ -575,9 +576,10 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
-     * Registers config-declared MCP servers into ResourceMgr and AbilityManager (Python {@code _register_pending_mcps}).
+     * Registers config-declared MCP servers into ResourceMgr and AbilityManager.
      * <p>
-     * Existing identical configs are re-tagged; conflicting configs for the same server id fail fast.
+     * Aligns with Python {@code _register_pending_mcps}. Existing identical configs are re-tagged;
+     * conflicting configs for the same server id fail fast.
      *
      * @since 0.1.14
      */
@@ -586,45 +588,80 @@ public class DeepAgent implements AutoCloseable {
             return;
         }
         for (McpServerConfig mcpConfig : config.getMcps()) {
-            mcpConfig.normalizeServerId();
-            McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
-            if (existing == null) {
-                try {
-                    List<Result<String>> results = Runner.resourceMgr().addMcpServer(mcpConfig, card.getId(), null);
-                    for (Result<String> result : results) {
-                        if (result.isError()) {
-                            Exception error = result.getError();
-                            if (error instanceof RuntimeException runtime) {
-                                throw runtime;
-                            }
-                            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
-                                    String.valueOf(mcpConfig), "reason",
-                                    error != null ? error.getMessage() : "add_mcp_server failed");
-                        }
-                    }
-                } catch (RuntimeException e) {
-                    throw e;
-                } catch (Exception e) {
-                    // ResourceMgr.addMcpServer declares throws Exception; wrap checked failures as BaseError.
-                    throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
-                            String.valueOf(mcpConfig), "reason", e.getMessage());
-                }
-            } else {
-                if (!sameMcpServerConfig(existing, mcpConfig)) {
-                    throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
-                            String.valueOf(mcpConfig), "reason",
-                            "server_id '" + mcpConfig.getServerId()
-                                    + "' is already registered with a different config");
-                }
-                ensureResourceTagged(mcpConfig.getServerId(), card.getId(), mcpConfig);
-                for (String toolId : Runner.resourceMgr().getMcpToolIds(mcpConfig.getServerId())) {
-                    ensureResourceTagged(toolId, card.getId(), mcpConfig);
-                }
+            registerOnePendingMcp(mcpConfig);
+        }
+    }
+
+    /**
+     * Registers a single config-declared MCP server, or re-tags an identical existing one.
+     *
+     * @param mcpConfig MCP server config from DeepAgent configuration
+     * @since 0.1.14
+     */
+    private void registerOnePendingMcp(McpServerConfig mcpConfig) {
+        mcpConfig.normalizeServerId();
+        McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
+        if (existing == null) {
+            addNewPendingMcp(mcpConfig);
+        } else {
+            retagExistingPendingMcp(existing, mcpConfig);
+        }
+        agent.getAbilityManager().add(mcpConfig);
+        if (!registeredMcps.contains(mcpConfig)) {
+            registeredMcps.add(mcpConfig);
+        }
+    }
+
+    /**
+     * Adds a new MCP server via ResourceMgr and fails fast on any error result.
+     *
+     * @param mcpConfig MCP server config to add
+     * @since 0.1.14
+     */
+    private void addNewPendingMcp(McpServerConfig mcpConfig) {
+        List<Result<String>> results = Runner.resourceMgr().addMcpServer(mcpConfig, card.getId(), null);
+        throwIfAddMcpFailed(results, mcpConfig);
+    }
+
+    /**
+     * Throws when any ResourceMgr addMcpServer result is an error.
+     *
+     * @param results addMcpServer results
+     * @param mcpConfig config used for error context
+     * @since 0.1.14
+     */
+    private static void throwIfAddMcpFailed(List<Result<String>> results, McpServerConfig mcpConfig) {
+        for (Result<String> result : results) {
+            if (!result.isError()) {
+                continue;
             }
-            agent.getAbilityManager().add(mcpConfig);
-            if (!registeredMcps.contains(mcpConfig)) {
-                registeredMcps.add(mcpConfig);
+            Exception error = result.getError();
+            if (error instanceof RuntimeException runtime) {
+                throw runtime;
             }
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
+                    String.valueOf(mcpConfig), "reason",
+                    error != null ? error.getMessage() : "add_mcp_server failed");
+        }
+    }
+
+    /**
+     * Re-tags an already-registered MCP server when configs match; otherwise fails fast.
+     *
+     * @param existing already-registered config
+     * @param mcpConfig candidate config from DeepAgent config
+     * @since 0.1.14
+     */
+    private void retagExistingPendingMcp(McpServerConfig existing, McpServerConfig mcpConfig) {
+        if (!sameMcpServerConfig(existing, mcpConfig)) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
+                    String.valueOf(mcpConfig), "reason",
+                    "server_id '" + mcpConfig.getServerId()
+                            + "' is already registered with a different config");
+        }
+        ensureResourceTagged(mcpConfig.getServerId(), card.getId(), mcpConfig);
+        for (String toolId : Runner.resourceMgr().getMcpToolIds(mcpConfig.getServerId())) {
+            ensureResourceTagged(toolId, card.getId(), mcpConfig);
         }
     }
 
@@ -697,10 +734,12 @@ public class DeepAgent implements AutoCloseable {
         if (left == null || right == null) {
             return false;
         }
+        String leftClientType = normalizeClientType(left.getClientType());
+        String rightClientType = normalizeClientType(right.getClientType());
         return Objects.equals(left.getServerId(), right.getServerId())
                 && Objects.equals(left.getServerName(), right.getServerName())
                 && Objects.equals(left.getServerPath(), right.getServerPath())
-                && Objects.equals(normalizeClientType(left.getClientType()), normalizeClientType(right.getClientType()));
+                && Objects.equals(leftClientType, rightClientType);
     }
 
     /**

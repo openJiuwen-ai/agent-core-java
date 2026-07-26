@@ -443,7 +443,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
                 if (java.nio.file.Files.isExecutable(file.toPath())) {
                     return true;
                 }
-            } catch (Exception ignored) {
+            } catch (SecurityException ignored) {
                 // keep scanning PATH
             }
         }

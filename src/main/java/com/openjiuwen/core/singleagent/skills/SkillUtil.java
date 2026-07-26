@@ -7,6 +7,8 @@ package com.openjiuwen.core.singleagent.skills;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 
+import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,10 +128,6 @@ public class SkillUtil {
      * @since 0.1.7
      */
     public String getSkillPrompt() {
-        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
-                + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using readFile and follow its workflow.\n";
-
         List<Skill> skills = skillManager.getAll();
         StringBuilder skillsInfo = new StringBuilder();
         for (int i = 0; i < skills.size(); i++) {
@@ -144,6 +142,9 @@ public class SkillUtil {
         }
 
         String skillText = String.format(SKILL_PROMPT_CONTENT, skillsInfo.toString());
+        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
+                + "Before attempting any task, read the relevant skill document (SKILL.md) "
+                + "using readFile and follow its workflow.\n";
         return systemPrompt + "\n" + skillText;
     }
 
@@ -163,7 +164,7 @@ public class SkillUtil {
         Path skillDir;
         try {
             skillDir = toNormalizedAbsolute(Path.of(directory));
-        } catch (Exception e) {
+        } catch (InvalidPathException e) {
             return null;
         }
         Path skillMd = skillDir.resolve("SKILL.md").normalize();
@@ -206,7 +207,7 @@ public class SkillUtil {
             if (!bases.contains(path)) {
                 bases.add(path);
             }
-        } catch (Exception ignored) {
+        } catch (InvalidPathException ignored) {
             // skip unusable roots
         }
     }
@@ -223,7 +224,7 @@ public class SkillUtil {
         Path absolute = path.toAbsolutePath().normalize();
         try {
             return absolute.toRealPath().normalize();
-        } catch (Exception e) {
+        } catch (IOException e) {
             return absolute;
         }
     }

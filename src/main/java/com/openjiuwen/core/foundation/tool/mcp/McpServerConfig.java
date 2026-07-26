@@ -27,6 +27,11 @@ import java.util.UUID;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class McpServerConfig {
+    /**
+     * Sentinel timeout value meaning "no timeout" for MCP client calls.
+     */
+    public static final float NO_TIMEOUT = -1;
+
     /** Server identifier. Defaults to serverName when blank; otherwise a random UUID. */
     @JsonProperty("server_id")
     private String serverId;
@@ -85,13 +90,6 @@ public class McpServerConfig {
      */
     @JsonProperty("call_timeout_seconds")
     private Double callTimeoutSeconds;
-
-    /**
-     * Sentinel timeout value meaning "no timeout" for MCP client calls.
-     *
-     * @since 0.1.7
-     */
-    public static final float NO_TIMEOUT = -1;
 
     /**
      * Creates a builder that normalizes {@link #serverId} on {@code build()}.
