@@ -54,6 +54,18 @@ public class SessionModelContext
         return delegate().compressionHistory();
     }
 
+    public Object getSessionRef() {
+        return delegate().getSessionRef();
+    }
+
+    public Object sessionRef() {
+        return getSessionRef();
+    }
+
+    public void offloadMessages(String offloadHandle, List<BaseMessage> messages) {
+        delegate().offloadMessages(offloadHandle, messages);
+    }
+
     private com.openjiuwen.core.context_engine.context.SessionModelContext delegate() {
         return (com.openjiuwen.core.context_engine.context.SessionModelContext) unwrap();
     }
@@ -69,6 +81,8 @@ public class SessionModelContext
             if (processor instanceof
                     com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort port) {
                 result.add(port);
+            } else if (processor instanceof com.openjiuwen.core.context.processor.ContextProcessor legacyProcessor) {
+                result.add(com.openjiuwen.core.context.ContextEngine.adaptLegacyProcessor(legacyProcessor));
             } else if (processor != null) {
                 throw new IllegalArgumentException("Unsupported context processor: " + processor.getClass());
             }

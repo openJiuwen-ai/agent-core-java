@@ -37,6 +37,19 @@ public class LocalFsOperation extends BaseFsOperation {
                 runConfig);
     }
 
+    /**
+     * Four-parameter constructor required by {@link com.openjiuwen.core.sys_operation.OperationDef#createInstance}.
+     *
+     * @deprecated Use {@link com.openjiuwen.core.sys_operation.local.LocalFsOperation}.
+     */
+    @Deprecated(since = "0.1.14", forRemoval = false)
+    public LocalFsOperation(String name, com.openjiuwen.core.sys_operation.OperationMode mode,
+                            String description, Object runConfig) {
+        super(name, mode, description, runConfig);
+        this.delegate = new com.openjiuwen.core.sys_operation.local.LocalFsOperation(
+                name, mode, description, runConfig);
+    }
+
     @Override
     public ReadFileResult readFile(String path,
                                    String mode,

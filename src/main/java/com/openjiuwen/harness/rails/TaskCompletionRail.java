@@ -188,4 +188,46 @@ public class TaskCompletionRail extends DeepAgentRail {
             evaluator.notifyFulfilled(matched);
         }
     }
+
+    // --- Getters for DeepAgent ---
+
+    public boolean hasCompletionPromise() {
+        return completionPromise != null && !completionPromise.isBlank();
+    }
+
+    public String getCompletionPromise() {
+        return completionPromise;
+    }
+
+    public int getRequiredConfirmations() {
+        return requiredConfirmations;
+    }
+
+    public Integer getMaxRounds() {
+        return maxRounds;
+    }
+
+    public Double getTimeout() {
+        return timeoutSeconds;
+    }
+
+    public List<StopConditionEvaluator> getExtraEvaluators() {
+        return extraEvaluators;
+    }
+
+    public String applyTaskInstruction(String query, boolean isFollowUp) {
+        if (taskInstruction == null || taskInstruction.isBlank() || isFollowUp) {
+            return query;
+        }
+        return taskInstruction.replace("{query}", query == null ? "" : query);
+    }
+
+    public String extractMatchingPromise(Map<String, Object> result) {
+        if (result == null) {
+            return null;
+        }
+        Object output = result.get("output");
+        String text = output == null ? "" : String.valueOf(output);
+        return extractPromiseBlock(text);
+    }
 }

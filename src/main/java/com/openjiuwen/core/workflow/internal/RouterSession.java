@@ -5,7 +5,6 @@
 package com.openjiuwen.core.workflow.internal;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.internal.WrappedSession;
 import com.openjiuwen.core.session.stream.StreamWriter;
 
 import java.util.Map;
@@ -14,7 +13,7 @@ import java.util.Map;
  * Mirrors Python's router session wrapper used by
  * {@code openjiuwen/core/workflow/_workflow.py}.
  */
-public class RouterSession extends WrappedSession {
+public class RouterSession extends com.openjiuwen.core.session.internal.RouterSession {
 
     private final ProxySession proxySession;
 

@@ -259,8 +259,102 @@ public class ContextEngine extends com.openjiuwen.core.context_engine.ContextEng
         if (processor instanceof com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort port) {
             return port;
         }
+        if (processor instanceof com.openjiuwen.core.context.processor.ContextProcessor) {
+            return adaptLegacyProcessor((com.openjiuwen.core.context.processor.ContextProcessor) processor);
+        }
         throw new IllegalArgumentException("Unsupported context processor: "
                 + (processor == null ? "null" : processor.getClass()));
+    }
+
+    @SuppressWarnings("deprecation")
+    public static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort adaptLegacyProcessor(
+            com.openjiuwen.core.context.processor.ContextProcessor legacy) {
+        return new com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort() {
+            @Override
+            public String processorType() {
+                return legacy.processorType();
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<Boolean> triggerAddMessages(
+                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
+                    List<BaseMessage> messages,
+                    Map<String, Object> kwargs) {
+                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
+                boolean triggered = legacy.triggerAddMessages(adapted, messages);
+                return java.util.concurrent.CompletableFuture.completedFuture(triggered);
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult> onAddMessages(
+                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
+                    List<BaseMessage> messages,
+                    boolean force,
+                    Map<String, Object> kwargs) {
+                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
+                com.openjiuwen.core.context.processor.ContextProcessor.ProcessResult legacyResult =
+                        legacy.onAddMessages(adapted, messages);
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                        new com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult(
+                                adaptLegacyEvent(legacyResult.event()),
+                                legacyResult.messages(),
+                                null
+                        )
+                );
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<Boolean> triggerGetContextWindow(
+                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
+                    com.openjiuwen.core.context_engine.ContextWindow window,
+                    Map<String, Object> kwargs) {
+                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
+                com.openjiuwen.core.context.ContextWindow adaptedWindow =
+                        com.openjiuwen.core.context.ContextWindow.from(window);
+                boolean triggered = legacy.triggerGetContextWindow(adapted, adaptedWindow);
+                return java.util.concurrent.CompletableFuture.completedFuture(triggered);
+            }
+
+            @Override
+            public java.util.concurrent.CompletionStage<com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult> onGetContextWindow(
+                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
+                    com.openjiuwen.core.context_engine.ContextWindow window,
+                    Map<String, Object> kwargs) {
+                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
+                com.openjiuwen.core.context.ContextWindow adaptedWindow =
+                        com.openjiuwen.core.context.ContextWindow.from(window);
+                com.openjiuwen.core.context.processor.ContextProcessor.ProcessResult legacyResult =
+                        legacy.onGetContextWindow(adapted, adaptedWindow);
+                com.openjiuwen.core.context_engine.ContextWindow resultWindow =
+                        legacyResult.contextWindow() != null
+                                ? new com.openjiuwen.core.context_engine.ContextWindow(
+                                legacyResult.contextWindow().getSystemMessages(),
+                                legacyResult.contextWindow().getContextMessages(),
+                                legacyResult.contextWindow().getTools(),
+                                legacyResult.contextWindow().getStatistic())
+                                : window;
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                        new com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult(
+                                adaptLegacyEvent(legacyResult.event()),
+                                null,
+                                resultWindow
+                        )
+                );
+            }
+        };
+    }
+
+    private static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorEventPort adaptLegacyEvent(
+            com.openjiuwen.core.context.processor.ContextEvent event) {
+        if (event == null) {
+            return null;
+        }
+        return new com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorEventPort() {
+            @Override
+            public List<Integer> messagesToModify() {
+                return event.getMessagesToModify();
+            }
+        };
     }
 
     private static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort

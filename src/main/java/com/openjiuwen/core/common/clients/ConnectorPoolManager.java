@@ -242,7 +242,11 @@ public class ConnectorPoolManager {
             })
             .toArray(CompletableFuture[]::new);
 
-        return CompletableFuture.allOf(futures);
+        CompletableFuture<Void> result = CompletableFuture.allOf(futures);
+        // Reset closed flag so the manager can be reused (important for test isolation
+        // where the singleton persists across test classes in the same JVM)
+        result.whenComplete((v, ex) -> closed = false);
+        return result;
     }
 
     /**

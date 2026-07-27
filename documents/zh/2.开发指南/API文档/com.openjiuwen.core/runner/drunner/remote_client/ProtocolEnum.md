@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum
+# com.openjiuwen.core.runner.drunner.remoteclient.ProtocolEnum
 
 ## 枚举 ProtocolEnum
 

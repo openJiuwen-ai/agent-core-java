@@ -6,7 +6,7 @@ package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.HasDrawable;
-import com.openjiuwen.core.workflow.component.loop.LoopCallback;
+import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 
 /**
  * Advanced loop component view exposing the loop body used for visualization.

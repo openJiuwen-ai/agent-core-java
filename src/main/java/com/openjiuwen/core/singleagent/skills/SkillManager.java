@@ -45,7 +45,7 @@ public class SkillManager {
         this(sysOperationId, SkillManager::resolveFsOperation);
     }
 
-    SkillManager(String sysOperationId, Function<String, BaseFsOperation> fsResolver) {
+    public SkillManager(String sysOperationId, Function<String, BaseFsOperation> fsResolver) {
         this.sysOperationId = sysOperationId;
         this.fsResolver = fsResolver == null ? SkillManager::resolveFsOperation : fsResolver;
     }

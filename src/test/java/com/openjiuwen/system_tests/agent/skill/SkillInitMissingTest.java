@@ -172,6 +172,11 @@ class SkillInitMissingTest {
 
         @Override
         public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
+            return registerSkills(skillPaths, agent, sessionId, false);
+        }
+
+        @Override
+        public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId, boolean useMetadataName) throws IOException {
             List<String> resolvedPaths = skillPaths == null ? List.of() : List.copyOf(skillPaths);
             registeredSkillPaths.add(resolvedPaths);
             registeredAgents.add(agent);

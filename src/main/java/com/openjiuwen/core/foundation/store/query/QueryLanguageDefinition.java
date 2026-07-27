@@ -72,4 +72,77 @@ public final class QueryLanguageDefinition {
     public Object applyTextMatch(MatchExpr expr) {
         return textMatch.apply(expr);
     }
+
+    /**
+     * Creates a new builder for {@link QueryLanguageDefinition}.
+     *
+     * @return a new builder instance
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder for {@link QueryLanguageDefinition}.
+     */
+    public static final class Builder {
+
+        private Function<ComparisonExpr, Object> comparison;
+        private Function<RangeExpr, Object> range;
+        private Function<ArithmeticExpr, Object> arithmetic;
+        private Function<NullExpr, Object> nullExpr;
+        private Function<JSONExpr, Object> jsonFilter;
+        private Function<ArrayExpr, Object> array;
+        private Function<LogicalExpr, Object> logical;
+        private Function<MatchExpr, Object> textMatch;
+
+        private Builder() {
+        }
+
+        public Builder comparison(Function<ComparisonExpr, Object> comparison) {
+            this.comparison = comparison;
+            return this;
+        }
+
+        public Builder range(Function<RangeExpr, Object> range) {
+            this.range = range;
+            return this;
+        }
+
+        public Builder arithmetic(Function<ArithmeticExpr, Object> arithmetic) {
+            this.arithmetic = arithmetic;
+            return this;
+        }
+
+        public Builder nullCheck(Function<NullExpr, Object> nullExpr) {
+            this.nullExpr = nullExpr;
+            return this;
+        }
+
+        public Builder jsonFilter(Function<JSONExpr, Object> jsonFilter) {
+            this.jsonFilter = jsonFilter;
+            return this;
+        }
+
+        public Builder array(Function<ArrayExpr, Object> array) {
+            this.array = array;
+            return this;
+        }
+
+        public Builder logical(Function<LogicalExpr, Object> logical) {
+            this.logical = logical;
+            return this;
+        }
+
+        public Builder textMatch(Function<MatchExpr, Object> textMatch) {
+            this.textMatch = textMatch;
+            return this;
+        }
+
+        public QueryLanguageDefinition build() {
+            return new QueryLanguageDefinition(
+                    comparison, range, arithmetic, nullExpr,
+                    jsonFilter, array, logical, textMatch);
+        }
+    }
 }

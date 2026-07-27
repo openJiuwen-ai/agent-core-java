@@ -124,6 +124,10 @@ public class TaskLoopEventExecutor extends TaskExecutor {
         if (result instanceof CompletionStage<?> stage) {
             result = stage.toCompletableFuture().join();
         }
+        // Handle nested CompletionStage (e.g., innerInvoke returns CompletableFuture)
+        while (result instanceof CompletionStage<?> stage) {
+            result = stage.toCompletableFuture().join();
+        }
         if (result instanceof Map<?, ?> map) {
             Map<String, Object> normalized = new java.util.LinkedHashMap<>();
             map.forEach((key, value) -> normalized.put(String.valueOf(key), value));

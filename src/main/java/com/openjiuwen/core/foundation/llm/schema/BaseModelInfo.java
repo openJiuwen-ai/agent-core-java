@@ -67,7 +67,16 @@ public class BaseModelInfo {
     public BaseModelInfo(String apiKey, String apiBase, String modelName, double temperature, double topP,
                          boolean streaming, int timeout, Map<String, Object> customHeaders,
                          Map<String, Object> extraFields) {
-        this(apiKey, apiBase, modelName, temperature, topP, streaming, timeout, customHeaders, null, extraFields);
+        this.apiKey = apiKey == null ? "" : apiKey;
+        this.apiBase = apiBase;
+        this.modelName = modelName == null ? "" : modelName;
+        this.temperature = temperature;
+        this.topP = topP;
+        this.streaming = streaming;
+        this.timeout = validateTimeout(timeout);
+        this.customHeaders = customHeaders;
+        this.httpVersion = null;
+        this.extraFields = extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
     }
 
     public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
@@ -120,14 +129,6 @@ public class BaseModelInfo {
             throw new IllegalArgumentException("timeout must be greater than 0");
         }
         return timeout;
-    }
-
-    public static class BaseModelInfoBuilder {
-        public BaseModelInfoBuilder timeout(int timeout) {
-            this.timeout$value = validateTimeout(timeout);
-            this.timeout$set = true;
-            return this;
-        }
     }
 
     public Map<String, String> getHeaders() {

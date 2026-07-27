@@ -318,6 +318,15 @@ public class ToolResultBudgetProcessor extends MessageOffloader {
         if (config instanceof ToolResultBudgetProcessorConfig budgetProcessorConfig) {
             return budgetProcessorConfig;
         }
+        if (config instanceof com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessorConfig legacyConfig) {
+            ToolResultBudgetProcessorConfig newConfig = new ToolResultBudgetProcessorConfig();
+            newConfig.setTokensThreshold(legacyConfig.getTokensThreshold());
+            newConfig.setLargeMessageThreshold(legacyConfig.getLargeMessageThreshold());
+            newConfig.setTrimSize(legacyConfig.getTrimSize());
+            newConfig.setOffloadFilePrefix(legacyConfig.getOffloadFilePrefix());
+            newConfig.setToolNameAllowlist(legacyConfig.getToolNameAllowlist());
+            return newConfig;
+        }
         throw new IllegalArgumentException("ToolResultBudgetProcessor requires ToolResultBudgetProcessorConfig");
     }
 

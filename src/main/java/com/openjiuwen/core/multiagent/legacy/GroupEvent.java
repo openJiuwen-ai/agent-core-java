@@ -14,6 +14,10 @@ public class GroupEvent {
     private final Object payload;
     private final String sessionId;
     private String customEventType;
+    private Object queryPayload;
+    private Object query;
+    private String conversationId;
+    private String userId;
 
     private GroupEvent(Object payload, String sessionId) {
         this.payload = payload;
@@ -38,5 +42,37 @@ public class GroupEvent {
 
     public void setCustomEventType(String customEventType) {
         this.customEventType = customEventType;
+    }
+
+    public Object getQueryPayload() {
+        return queryPayload;
+    }
+
+    public void setQueryPayload(Object queryPayload) {
+        this.queryPayload = queryPayload;
+    }
+
+    public Object getQuery() {
+        return query;
+    }
+
+    public void setQuery(Object query) {
+        this.query = query;
+    }
+
+    public String getConversationId() {
+        return conversationId;
+    }
+
+    public void setConversationId(String conversationId) {
+        this.conversationId = conversationId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }
