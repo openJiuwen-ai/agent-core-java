@@ -28,9 +28,9 @@ import java.util.concurrent.CompletableFuture;
  * <p>Mirrors Python's {@code JSONParser} in
  * {@code openjiuwen/core/retrieval/indexing/processor/parser/json_parser.py}.</p>
  */
-public class JSONParser extends Parser {
+public class JsonParser extends Parser {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(JSONParser.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(JsonParser.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**

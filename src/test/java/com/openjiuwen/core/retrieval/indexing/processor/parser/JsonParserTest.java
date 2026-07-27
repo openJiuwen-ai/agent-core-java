@@ -41,7 +41,7 @@ class JSONParserTest {
 
     @Test
     void testInit() {
-        assertThat(new JSONParser()).isNotNull();
+        assertThat(new JsonParser()).isNotNull();
     }
 
     @Test
@@ -49,7 +49,7 @@ class JSONParserTest {
         Path file = Files.writeString(tempDir.resolve("sample.json"),
                 "{\"name\":\"test\",\"value\":123,\"items\":[\"item1\",\"item2\"]}", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
@@ -60,7 +60,7 @@ class JSONParserTest {
     void testParseJsonEmptyObject() throws Exception {
         Path file = Files.writeString(tempDir.resolve("empty.json"), "{}", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getText()).isEqualTo("{}");
@@ -70,7 +70,7 @@ class JSONParserTest {
     void testParseJsonArray() throws Exception {
         Path file = Files.writeString(tempDir.resolve("array.json"), "[1,2,3,\"test\"]", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getText()).contains("1", "test");
@@ -80,7 +80,7 @@ class JSONParserTest {
     void testParseJsonInvalidFormat() throws Exception {
         Path file = Files.writeString(tempDir.resolve("bad.json"), "{ invalid json }", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getText()).contains("invalid json");
@@ -88,7 +88,7 @@ class JSONParserTest {
 
     @Test
     void testParseJsonFileNotFound() {
-        List<Document> documents = new JSONParser().parse(tempDir.resolve("nonexistent.json").toString(), "doc_1")
+        List<Document> documents = new JsonParser().parse(tempDir.resolve("nonexistent.json").toString(), "doc_1")
                 .join();
 
         assertThat(documents).isEmpty();
@@ -99,7 +99,7 @@ class JSONParserTest {
         Path directory = tempDir.resolve("directory.json");
         Files.createDirectory(directory);
 
-        List<Document> documents = new JSONParser().parse(directory.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(directory.toString(), "doc_1").join();
 
         assertThat(documents).isEmpty();
     }
@@ -109,7 +109,7 @@ class JSONParserTest {
         Path file = Files.writeString(tempDir.resolve("unicode.json"),
                 "{\"name\":\"娴嬭瘯\",\"description\":\"杩欐槸涓€涓祴璇昞\"}", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getText()).contains("娴嬭瘯");
@@ -120,7 +120,7 @@ class JSONParserTest {
         Path file = Files.writeString(tempDir.resolve("formatted.json"),
                 "{\"key\":\"value\",\"nested\":{\"inner\":\"data\"}}", StandardCharsets.UTF_8);
 
-        List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
+        List<Document> documents = new JsonParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
         assertThat(documents.get(0).getText()).contains("\n").contains("  ");
