@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -103,6 +104,14 @@ class ParserPackageTest {
         ));
         assertTrue(ParserPackage.resolveType("parse_wechat_article_url").isEmpty());
         assertTrue(ParserPackage.resolveType("parse_web_page_url").isEmpty());
+    }
+
+    @Test
+    void jsonParserExportResolvesCanonicalJavaType() {
+        Class<?> resolvedType = assertDoesNotThrow(
+                () -> ParserPackage.resolveType("JSONParser").orElseThrow());
+
+        assertSame(JsonParser.class, resolvedType);
     }
 
     @Test

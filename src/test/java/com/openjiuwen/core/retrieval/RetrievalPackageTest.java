@@ -4,11 +4,13 @@
 
 package com.openjiuwen.core.retrieval;
 
+import com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -194,6 +196,14 @@ class RetrievalPackageTest {
                 "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoFileParser",
                 type.getName()
         ));
+    }
+
+    @Test
+    void jsonParserExportResolvesCanonicalJavaType() {
+        Class<?> resolvedType = assertDoesNotThrow(
+                () -> RetrievalPackage.resolveType("JSONParser").orElseThrow());
+
+        assertSame(JsonParser.class, resolvedType);
     }
 
     @Test

@@ -145,7 +145,7 @@ public final class ParserPackage {
         javaSymbols.put("Parser",
                 "com.openjiuwen.core.retrieval.indexing.processor.parser.Parser");
         javaSymbols.put("JSONParser",
-                "com.openjiuwen.core.retrieval.indexing.processor.parser.JSONParser");
+                "com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser");
         javaSymbols.put("PDFParser",
                 "com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser");
         javaSymbols.put("TxtMdParser",

@@ -392,7 +392,7 @@ public final class RetrievalPackage {
         symbols.put("AutoParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.AutoParser");
         symbols.put("ExcelParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.ExcelParser");
         symbols.put("Parser", "com.openjiuwen.core.retrieval.indexing.processor.parser.Parser");
-        symbols.put("JSONParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.JSONParser");
+        symbols.put("JSONParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.JsonParser");
         symbols.put("PDFParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.PDFParser");
         symbols.put("ImageParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.ImageParser");
         symbols.put("TxtMdParser", "com.openjiuwen.core.retrieval.indexing.processor.parser.TxtMdParser");

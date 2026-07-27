@@ -69,7 +69,8 @@ class AutoFileParserTest {
         List<Document> documents = new AutoFileParser().parse(file.toString(), "doc-2").join();
 
         assertThat(documents.get(0).getText()).isEqualTo("new");
-        assertThat(AutoFileParser.getSupportedFormats()).containsExactly(".swap");
+        assertThat(AutoFileParser.getSupportedFormats())
+                .contains(".swap", ".json", ".pdf", ".txt");
     }
 
     @Test

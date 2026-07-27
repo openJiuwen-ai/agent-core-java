@@ -32,7 +32,7 @@ public class AutoFileParser extends Parser {
     private static final List<ParserRegistration> BUILT_IN_REGISTRATIONS = List.of(
             new ParserRegistration("ExcelParser", List.of(".xlsx", ".xls", ".csv", ".tsv")),
             new ParserRegistration("HTMLFileParser", List.of(".html", ".htm")),
-            new ParserRegistration("JSONParser", List.of(".json")),
+            new ParserRegistration("JsonParser", List.of(".json")),
             new ParserRegistration("PDFParser", List.of(".pdf")),
             new ParserRegistration("TxtMdParser", List.of(".txt", ".md", ".markdown")),
             new ParserRegistration("WordParser", List.of(".docx", ".doc")),
