@@ -1768,7 +1768,24 @@ public class ReActAgent extends BaseAgent {
     }
 
     public static void logLlmRequest(Object log, List<? extends Object> messages, List<? extends Object> tools) {
-        // Logging side effects are intentionally best-effort in this Java port.
+        if (messages == null) {
+            return;
+        }
+        for (Object message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String role = "";
+            String content = "";
+            if (message instanceof BaseMessage baseMessage) {
+                role = baseMessage.getRole() != null ? baseMessage.getRole() : "";
+                content = String.valueOf(baseMessage.getContent());
+            } else {
+                content = String.valueOf(message);
+            }
+            String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
+            Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
+        }
     }
 
     public static void log_llm_request(Object log, List<? extends Object> messages, List<? extends Object> tools) {
@@ -1776,7 +1793,18 @@ public class ReActAgent extends BaseAgent {
     }
 
     public static void logLlmResponse(Object log, AssistantMessage aiMessage) {
-        // Logging side effects are intentionally best-effort in this Java port.
+        if (aiMessage == null) {
+            return;
+        }
+        String content = aiMessage.getContent() instanceof String text ? text : String.valueOf(aiMessage.getContent());
+        if (content != null && !content.isEmpty()) {
+            Loggers.AGENT.info("[LLM] <<< response: content=" + content);
+        }
+        if (aiMessage.getToolCalls() != null) {
+            for (ToolCall tc : aiMessage.getToolCalls()) {
+                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName() + "(" + tc.getArguments() + ")");
+            }
+        }
     }
 
     public static void log_llm_response(Object log, AssistantMessage aiMessage) {
