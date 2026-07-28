@@ -257,21 +257,8 @@ public class CallbackChain {
                 .build());
         }
 
-        Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
-        if (shouldRecordChainResult(callbackInfo, callback)) {
-            context.getResults().add(chainResult.getResult());
-        }
+        context.getResults().add(chainResult.getResult());
         return new ProcessOutcome(false, null);
-    }
-
-    private boolean shouldRecordChainResult(
-            CallbackInfo callbackInfo,
-            Function<Map<String, Object>, Object> callback
-    ) {
-        if (callbackInfo.getCallbackName() == null || callbackInfo.getCallbackName().isEmpty()) {
-            return true;
-        }
-        return hasRollbackHandler(callback) || hasErrorHandler(callback);
     }
 
     private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks, ChainContext context) {

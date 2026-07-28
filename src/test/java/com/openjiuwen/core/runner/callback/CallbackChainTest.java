@@ -135,6 +135,23 @@ class CallbackChainTest {
     }
 
     @Test
+    @DisplayName("Named callback without handlers propagates successful result")
+    void namedCallbackWithoutHandlersPropagatesSuccessfulResult() {
+        CallbackChain chain = new CallbackChain();
+        chain.add(CallbackInfo.builder()
+                .callback(kwargs -> continueResult("payment_completed"))
+                .callbackName("process_payment")
+                .priority(0)
+                .build());
+
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+        ChainResult result = chain.execute(context).join();
+
+        assertEquals("payment_completed", result.getResult());
+        assertEquals(List.of("payment_completed"), context.getResults());
+    }
+
+    @Test
     @DisplayName("Execute multiple callbacks")
     void testExecuteMultipleCallbacks() {
         CallbackChain chain = new CallbackChain();
