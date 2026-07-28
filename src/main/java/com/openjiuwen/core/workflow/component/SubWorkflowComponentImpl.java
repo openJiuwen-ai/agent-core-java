@@ -24,7 +24,7 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWorkflowComponent {
-    private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
+    private static final String SUB_WORKFLOW_COMPONENT = "SubWorkflowComponent";
 
     private final Workflow subWorkflow;
 
@@ -93,6 +93,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
      * @return the result
      * @since 0.1.7
      */
+    @Override
     public String componentType() {
         return SUB_WORKFLOW_COMPONENT;
     }

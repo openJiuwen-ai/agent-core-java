@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.session.tracer.NodeStatus;
 import com.openjiuwen.core.session.tracer.TraceExtWorkflowHandler;
 
@@ -18,6 +19,7 @@ import io.opentelemetry.context.Context;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -371,6 +373,9 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
             if (inputs != null) {
                 state.getSpan().setAttribute(SemConv.OJ_WORKFLOW_INPUTS,
                         RedactionUtils.redact(inputs, config));
+            } else {
+                state.getSpan().setAttribute(SemConv.OJ_WORKFLOW_INPUTS,
+                        RedactionUtils.redact(Collections.emptyMap(), config));
             }
             setWorkflowAttrs(state.getSpan(), componentMetadata, invokeId);
         } catch (NullPointerException | ClassCastException | IllegalArgumentException | IllegalStateException exc) {
@@ -433,7 +438,8 @@ public class OtelWorkflowHandler extends TraceExtWorkflowHandler {
         if (state == null) {
             return;
         }
-        if (exception instanceof GraphInterrupt) {
+        if (exception instanceof GraphInterrupt
+                || exception instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
             state.getSpan().setAttribute(SemConv.OJ_STATUS, NodeStatus.INTERRUPTED.getValue());
             state.getSpan().setAttribute(SemConv.OJ_WORKFLOW_ERROR_MESSAGE,
                     String.valueOf(exception.toString()));

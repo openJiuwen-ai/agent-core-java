@@ -292,14 +292,22 @@ public class WorkflowSession extends BaseSession {
     }
 
     /**
-     * close.
-     * 
+     * Close the session, releasing actor manager and stream writer resources.
+     * <p>
+     * The tracer is intentionally preserved so that subsequent invocations
+     * reusing the same session maintain trace_id consistency. The actor manager
+     * and stream writer manager are nulled out so they are recreated on the
+     * next {@code createWorkflowSession} call.
+     * </p>
+     *
      * @since 0.1.7
      */
     @Override
     public void close() {
         if (actorManagerField != null) {
             actorManagerField.shutdown();
+            actorManagerField = null;
         }
+        streamWriterManagerField = null;
     }
 }
