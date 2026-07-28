@@ -535,13 +535,23 @@ public class LocalFsOperation extends BaseFsOperation {
     }
 
     private Path resolvePath(String path, boolean createParent) throws IOException {
-        Path base = Path.of(Cwd.getCwd());
+        Path base = workingDirectory();
         Path normalized = base.resolve(path).toAbsolutePath().normalize();
         enforceSandbox(normalized, path);
         if (createParent && normalized.getParent() != null) {
             Files.createDirectories(normalized.getParent());
         }
         return normalized;
+    }
+
+    private Path workingDirectory() {
+        Object config = getRunConfig();
+        if (config instanceof LocalWorkConfig localWorkConfig
+                && localWorkConfig.getWorkDir() != null
+                && !localWorkConfig.getWorkDir().isBlank()) {
+            return Path.of(localWorkConfig.getWorkDir()).toAbsolutePath().normalize();
+        }
+        return Path.of(Cwd.getCwd());
     }
 
     private Path resolveExternalPath(String path) {

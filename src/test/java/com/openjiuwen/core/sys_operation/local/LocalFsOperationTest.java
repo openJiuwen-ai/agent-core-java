@@ -91,6 +91,36 @@ class LocalFsOperationTest {
     }
 
     @Test
+    void explicitWorkDirResolvesRelativePathsWithoutChangingGlobalCwd() throws Exception {
+        Path globalCwd = tempDir.resolve("global");
+        Path workDir = tempDir.resolve("work");
+        Files.createDirectories(globalCwd);
+        Files.createDirectories(workDir);
+        Files.writeString(workDir.resolve("target.txt"), "from-work-dir");
+        Cwd.initCwd(globalCwd.toString(), globalCwd.toString(), globalCwd.toString(), null);
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .workDir(workDir.toString())
+                .build();
+        LocalFsOperation operation = new LocalFsOperation("fs", OperationMode.LOCAL, "local fs", config);
+
+        ReadFileResult result = operation.readFile(
+                "target.txt",
+                BaseFsOperation.FileMode.TEXT,
+                null,
+                null,
+                null,
+                "utf-8",
+                BaseFsOperation.DEFAULT_READ_CHUNK_SIZE,
+                null).get(5, TimeUnit.SECONDS);
+
+        assertThat(result.getCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+        assertThat(result.getData().getContent()).isEqualTo("from-work-dir");
+        assertThat(Path.of(result.getData().getPath()).toRealPath())
+                .isEqualTo(workDir.resolve("target.txt").toRealPath());
+        assertThat(Path.of(Cwd.getCwd()).toRealPath()).isEqualTo(globalCwd.toRealPath());
+    }
+
+    @Test
     void uploadDownloadListAndSearchUseResolvedLocalPaths() throws Exception {
         Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
         LocalFsOperation operation = operation();

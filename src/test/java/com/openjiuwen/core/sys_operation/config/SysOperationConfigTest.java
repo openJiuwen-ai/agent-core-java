@@ -2,6 +2,8 @@ package com.openjiuwen.core.sys_operation.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SysOperationConfigTest {
@@ -13,6 +15,21 @@ class SysOperationConfigTest {
         assertThat(config.getShellAllowlist()).contains("rg", "python", "git");
         assertThat(config.isRestrictToSandbox()).isFalse();
         assertThat(config.getSandboxRoot()).isNull();
+    }
+
+    @Test
+    void localWorkConfigRetainsFourArgumentConstructor() {
+        LocalWorkConfig config = new LocalWorkConfig(
+                List.of("python"),
+                List.of("workspace"),
+                true,
+                List.of("dangerous"));
+
+        assertThat(config.getShellAllowlist()).containsExactly("python");
+        assertThat(config.getSandboxRoot()).containsExactly("workspace");
+        assertThat(config.isRestrictToSandbox()).isTrue();
+        assertThat(config.getDangerousPatterns()).containsExactly("dangerous");
+        assertThat(config.getWorkDir()).isNull();
     }
 
     @Test

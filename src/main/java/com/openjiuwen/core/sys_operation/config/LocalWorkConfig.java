@@ -37,10 +37,18 @@ public class LocalWorkConfig {
     @JsonProperty("sandbox_root")
     private List<String> sandboxRoot;
 
+    @JsonProperty("work_dir")
+    private String workDir;
+
     @Builder.Default
     @JsonProperty("restrict_to_sandbox")
     private boolean restrictToSandbox = false;
 
     @JsonProperty("dangerous_patterns")
     private List<String> dangerousPatterns;
+
+    public LocalWorkConfig(List<String> shellAllowlist, List<String> sandboxRoot,
+                           boolean restrictToSandbox, List<String> dangerousPatterns) {
+        this(shellAllowlist, sandboxRoot, null, restrictToSandbox, dangerousPatterns);
+    }
 }
