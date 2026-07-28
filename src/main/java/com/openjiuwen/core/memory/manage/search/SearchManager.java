@@ -124,7 +124,7 @@ public class SearchManager {
         if (memoryIndex == null) {
             throw memoryError("search_memory", "memory index not inited");
         }
-        List<String> memTypes = memType == null || memType.isEmpty() ? List.of() : List.of(memType);
+        List<String> memTypes = memType == null || memType.isEmpty() ? null : List.of(memType);
         return memoryIndex.listMemories(userId, scopeId, start, nums, memTypes)
                 .thenApply(memoryDocs -> {
                     List<Map<String, Object>> result = new ArrayList<>();

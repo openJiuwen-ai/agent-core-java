@@ -30,6 +30,9 @@ public enum MemoryType {
     }
 
     public static MemoryType fromValue(String value) {
+        if (USER_PROFILE.value.equals(value)) {
+            return USER_PROFILE;
+        }
         for (MemoryType type : values()) {
             if (type.value.equals(value)) {
                 return type;
