@@ -249,7 +249,7 @@ public class SimpleEval {
                     .clientProvider(String.valueOf(config.getOrDefault("client_provider", "OpenAI")))
                     .apiBase(String.valueOf(config.getOrDefault("api_base", "https://api.openai.com/v1")))
                     .apiKey(String.valueOf(config.getOrDefault("llm_api_key", "")))
-                    .verifySsl(Boolean.parseBoolean(String.valueOf(config.getOrDefault("verify_ssl", false))))
+                    .verifySsl(Boolean.parseBoolean(String.valueOf(config.getOrDefault("verify_ssl", true))))
                     .timeout(getDouble(config, "timeout", 60.0d)).maxRetries(getInt(config, "max_retries", 1)).build();
 
             Model model = new Model(clientConfig, modelConfig);

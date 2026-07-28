@@ -98,7 +98,7 @@ public class RitsUtils {
                 ModelClientConfig clientConfig = ModelClientConfig.builder()
                         .clientProvider(getString(kwargs, "client_provider", "OpenAI"))
                         .apiBase(getString(kwargs, "api_base", "https://api.openai.com/v1"))
-                        .apiKey(llmApiKey != null ? llmApiKey : "").verifySsl(getBoolean(kwargs, "verify_ssl", false))
+                        .apiKey(llmApiKey != null ? llmApiKey : "").verifySsl(getBoolean(kwargs, "verify_ssl", true))
                         .timeout(getDouble(kwargs, "timeout", 60.0)).maxRetries(getInt(kwargs, "max_retries", 1))
                         .build();
 
