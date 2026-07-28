@@ -45,7 +45,7 @@ public class HttpClient extends BaseClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final SessionConfig config;
-    private final com.openjiuwen.core.common.clients.http.HttpSessionManager sessionManager;
+    private final HttpSessionManager sessionManager;
     private final boolean isSessionReuseEnabled;
     private volatile HttpSession session;
     private volatile boolean isClosed;
@@ -71,7 +71,7 @@ public class HttpClient extends BaseClient {
         super(Map.of("reuse_session", isSessionReuseEnabled));
         this.config = config != null ? config : new SessionConfig();
         this.isSessionReuseEnabled = isSessionReuseEnabled;
-        this.sessionManager = com.openjiuwen.core.common.clients.http.HttpSessionManager.getInstance();
+        this.sessionManager = HttpSessionManager.getInstance();
     }
 
     /**
@@ -83,13 +83,11 @@ public class HttpClient extends BaseClient {
                 throw new IllegalStateException("HttpClient is isClosed");
             }
             if (session == null || session.isClosed()) {
-                ensureConnectorPoolRegistered();
-                session = HttpSession.wrap(sessionManager.acquireLease(config).join().resource());
+                session = sessionManager.acquire(config).join().resource();
             }
             return session;
         }
-        ensureConnectorPoolRegistered();
-        return HttpSession.wrap(sessionManager.acquireLease(config).join().resource());
+        return sessionManager.acquire(config).join().resource();
     }
 
     /**
@@ -97,7 +95,7 @@ public class HttpClient extends BaseClient {
      */
     protected synchronized void releaseSession(HttpSession resolvedSession) throws Exception {
         if (!isSessionReuseEnabled && resolvedSession != null) {
-            sessionManager.releaseSession(resolvedSession.getConfig()).join();
+            sessionManager.release(resolvedSession.getConfig());
         }
     }
 
@@ -111,7 +109,7 @@ public class HttpClient extends BaseClient {
         }
         if (isSessionReuseEnabled && session != null) {
             try {
-                sessionManager.releaseSession(session.getConfig()).join();
+                sessionManager.release(session.getConfig());
             } catch (Exception ignored) {
                 // best-effort release
             }
@@ -119,13 +117,6 @@ public class HttpClient extends BaseClient {
         }
         isClosed = true;
         return CompletableFuture.completedFuture(Boolean.TRUE);
-    }
-
-    private void ensureConnectorPoolRegistered() {
-        ConnectorPoolConfig poolConfig = config.getConnectorPoolConfig();
-        ConnectorPoolManager poolManager = ConnectorPoolManager.getInstance();
-        poolManager.getConnectorPool(poolConfig).join();
-        poolManager.releaseConnectorPool(poolConfig);
     }
 
     /**

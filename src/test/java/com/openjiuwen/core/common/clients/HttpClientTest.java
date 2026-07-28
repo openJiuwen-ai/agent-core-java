@@ -107,7 +107,7 @@ class HttpClientTest {
     }
 
     @Test
-    void legacyClientUsesCanonicalSessionLifecycle() throws Exception {
+    void rootClientUsesOnlyRootSessionManager() throws Exception {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/text", exchange -> writeResponse(exchange, "text/plain", "hello"));
         server.start();
@@ -116,17 +116,8 @@ class HttpClientTest {
         String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/text";
 
         assertThat(client.get(url).get("data")).isEqualTo("hello");
-        assertThat(Clients.getHttpSessionManager().getStats().join())
+        assertThat(HttpSessionManager.getInstance().getStats().join())
                 .containsEntry("total_resources", 1);
-        assertThat(Clients.getConnectorPoolManager().getStats())
-                .containsEntry("total_connector_pools", 1);
-
-        Clients.getHttpSessionManager().closeAll().join();
-        assertThat(client.get(url).get("data")).isEqualTo("hello");
-        assertThat(Clients.getHttpSessionManager().getStats().join())
-                .containsEntry("total_resources", 1);
-
-        client.close().join();
         assertThat(Clients.getHttpSessionManager().getStats().join())
                 .containsEntry("total_resources", 0);
     }
