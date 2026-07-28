@@ -57,7 +57,7 @@ import java.util.stream.Collectors;
  */
 public class Vertex extends AtomicNode implements StreamConsumer {
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
-    private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
+    private static final String SUB_WORKFLOW_COMPONENT = "SubWorkflowComponent";
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newCachedThreadPool("vertex-stream", false);
 
@@ -128,7 +128,11 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     public boolean init(BaseSession session, Map<String, Object> kwargs) {
-        this.session = new NodeSession(session, this.nodeId, executable.getClass().getSimpleName());
+        String compType = executable.componentType();
+        if (compType == null || compType.isEmpty()) {
+            compType = executable.getClass().getSimpleName();
+        }
+        this.session = new NodeSession(session, this.nodeId, compType);
         this.context = kwargs != null ? kwargs.get("context") : null;
 
         // Get stream call timeout from config
@@ -209,6 +213,15 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             LOGGER.info("Interrupt to call batch-in node [{}]", nodeId);
             throw e;
         } catch (Exception e) {
+            // Unwrap GraphInterrupt that may have been wrapped by doAtomicInvoke
+            GraphInterrupt interrupt = unwrapGraphInterrupt(e);
+            if (interrupt != null) {
+                if (session.tracer() != null) {
+                    traceError(interrupt);
+                }
+                LOGGER.info("Interrupt to call batch-in node [{}]", nodeId);
+                throw interrupt;
+            }
             if (session.tracer() != null) {
                 traceError(e);
             }
@@ -237,6 +250,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     protected Object doAtomicInvoke(Map<String, Object> kwargs) {
         try {
             return doCall(kwargs.get("config"));
+        } catch (GraphInterrupt e) {
+            throw new WorkflowInteraction.GraphInterruptRuntimeWrapper(e);
         } catch (Exception e) {
             if (e instanceof RuntimeException) {
                 throw (RuntimeException) e;

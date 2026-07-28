@@ -166,11 +166,27 @@ public class Tracer {
 
     /**
      * getTracerWorkflowSpanManagerDict.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
     public Map<String, SpanManager> getTracerWorkflowSpanManagerDict() {
         return tracerWorkflowSpanManagerDict;
+    }
+
+    /**
+     * Update the stream writer manager reference.
+     * <p>
+     * Called when a session is reused across multiple invocations. The tracer is
+     * preserved (maintaining trace_id consistency), but the stream writer manager
+     * is recreated. This method updates the tracer's reference so that newly
+     * registered handlers use the correct stream writer manager.
+     * </p>
+     *
+     * @param streamWriterManager the new stream writer manager
+     * @since 0.1.7
+     */
+    public void updateStreamWriterManager(StreamWriterManager streamWriterManager) {
+        this.streamWriterManager = streamWriterManager;
     }
 }

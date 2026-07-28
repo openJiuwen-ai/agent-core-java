@@ -1235,10 +1235,14 @@ public class Workflow {
             workflowSession.setStreamWriterManager(new StreamWriterManager(new StreamEmitter(), streamModes));
         }
         workflowSession.setActorManager(buildActorManager(workflowSession, false));
-        if (workflowSession.tracer() == null && (streamModes == null || streamModes.contains(StreamMode.TRACE))) {
+        if (workflowSession.tracer() == null && (streamModes == null
+                || streamModes.contains(StreamMode.TRACE))) {
             Tracer tracer = new Tracer();
             tracer.init(workflowSession.streamWriterManager(), workflowSession.callbackManager());
             workflowSession.setTracer(tracer);
+        }
+        if (workflowSession.tracer() instanceof Tracer existingTracer) {
+            existingTracer.updateStreamWriterManager(workflowSession.streamWriterManager());
         }
         return workflowSession;
     }

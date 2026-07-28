@@ -58,6 +58,17 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
     }
 
     /**
+     * componentType.
+     *
+     * @return the component type identifier
+     * @since 0.1.7
+     */
+    @Override
+    public String componentType() {
+        return "LoopComponent";
+    }
+
+    /**
      * invoke.
      * 
      * @param inputs inputs
