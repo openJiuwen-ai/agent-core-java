@@ -23,11 +23,15 @@
 - `SKILL_CREATE_PDF_URL`: 要下载的 PDF 链接。默认是代码里内置的公开 PDF：`11_Best_Practices_for_Peer_Code_Review.pdf`。
 - `FILES_BASE_DIR`: 下载 PDF 与生成 Markdown 的目录。默认是 `examples/skill_create/data`。
 - `OUTPUT_DIR`: skill 输出目录。默认是 `examples/skill_create/output`。
+- `SKILLS_DIR`: `SkillCreator` 自身加载的技能目录。可通过环境变量或同名 JVM
+  System Property 配置，环境变量优先；目录的真实路径必须位于进程当前工作目录下。
 - `MAX_ITERATIONS`: `SkillCreator` 最大迭代次数。默认沿用框架默认值。
 - `OPENJIUWEN_API_CONFIG`: 可选。显式指定 `apiconfig.json` 路径。
 - `openjiuwen.example.config`: 可选。通过 JVM system property 显式指定 `apiconfig.json` 路径。
 
 `SkillCreateExample` 会从 `examples/apiconfig.json` 读取 `API_BASE`、`API_KEY`、`MODEL_PROVIDER`、`MODEL_NAME` 和 `LLM_SSL_VERIFY`，并通过 system property 传给 `SkillCreator`。
+示例还会把 `SKILLS_DIR` 设置为仓库内置的
+`src/main/resources/openjiuwen/dev_tools/skill_creator/skills`，因此应从仓库根目录启动。
 
 ## 运行方式
 

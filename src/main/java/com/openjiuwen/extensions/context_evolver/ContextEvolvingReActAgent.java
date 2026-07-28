@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -49,9 +50,9 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     private final String userId;
     private final TaskMemoryService memoryService;
-    private final boolean injectMemoriesInContext;
+    private final boolean shouldInjectMemoriesInContext;
     private final JSONFileConnector fileConnector;
-    private final String memoryDir;
+    private final Path memoryDir;
 
     // Cache for memory retrieval
     private String lastRetrievedQuery = null;
@@ -61,34 +62,44 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * Initialize ContextEvolvingReActAgent.
      * 
      * @param card Agent card (required)
-     * @param userId User identifier for memory retrieval
+     * @param userId User identifier for memory retrieval; must not contain path separators or {@code ..}
      * @param memoryService Optional pre-configured TaskMemoryService
-     * @param injectMemoriesInContext If True, inject retrieved memories into system context
-     * @param memoryDir Directory for memory persistence files
+     * @param shouldInjectMemoriesInContext If True, inject retrieved memories into system context
+     * @param memoryDir Directory for memory persistence files; must resolve within the application data directory
      * @since 0.1.7
      */
     public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
-            boolean injectMemoriesInContext, String memoryDir) {
+            boolean shouldInjectMemoriesInContext, String memoryDir) {
+        this(card, userId, memoryService, shouldInjectMemoriesInContext, memoryDir, Path.of(""));
+    }
+
+    /**
+     * Initialize with an explicit trusted application data root.
+     *
+     * @param card Agent card (required)
+     * @param userId User identifier for memory retrieval
+     * @param memoryService Optional pre-configured TaskMemoryService
+     * @param shouldInjectMemoriesInContext whether to inject retrieved memories into context
+     * @param memoryDir memory directory relative to {@code applicationDataRoot}
+     * @param applicationDataRoot trusted root for memory persistence
+     * @since 0.1.13
+     */
+    public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
+            boolean shouldInjectMemoriesInContext, String memoryDir, Path applicationDataRoot) {
         super(card);
 
         this.userId = userId;
+        validateFileNameComponent(userId, "User ID");
         this.memoryService = memoryService != null ? memoryService : new TaskMemoryService();
-        this.injectMemoriesInContext = injectMemoriesInContext;
-        this.fileConnector = new JSONFileConnector();
-        this.memoryDir = memoryDir != null ? memoryDir : "memory_files";
-
-        // Ensure directories exist
-        try {
-            Files.createDirectories(Paths.get(this.memoryDir));
-        } catch (IOException e) {
-            logger.warn("Failed to create memory directory: {}", e.getMessage());
-        }
+        this.shouldInjectMemoriesInContext = shouldInjectMemoriesInContext;
+        this.memoryDir = resolveMemoryDirectory(applicationDataRoot, memoryDir);
+        this.fileConnector = new JSONFileConnector(this.memoryDir);
 
         // Attempt to load existing memories
         loadExistingMemories();
 
         logger.info("ContextEvolvingReActAgent initialized for user={}, inject_in_context={}", userId,
-                injectMemoriesInContext);
+                shouldInjectMemoriesInContext);
     }
 
     /**
@@ -120,12 +131,12 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * @param card card
      * @param userId userId
      * @param memoryService memoryService
-     * @param injectMemoriesInContext injectMemoriesInContext
+     * @param shouldInjectMemoriesInContext shouldInjectMemoriesInContext
      * @since 0.1.7
      */
     public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
-            boolean injectMemoriesInContext) {
-        this(card, userId, memoryService, injectMemoriesInContext, "memory_files");
+            boolean shouldInjectMemoriesInContext) {
+        this(card, userId, memoryService, shouldInjectMemoriesInContext, "memory_files");
     }
 
     /**
@@ -133,11 +144,47 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * 
      * @param card card
      * @param userId userId
-     * @param injectMemoriesInContext injectMemoriesInContext
+     * @param shouldInjectMemoriesInContext shouldInjectMemoriesInContext
      * @since 0.1.7
      */
-    public ContextEvolvingReActAgent(AgentCard card, String userId, boolean injectMemoriesInContext) {
-        this(card, userId, null, injectMemoriesInContext, "memory_files");
+    public ContextEvolvingReActAgent(AgentCard card, String userId, boolean shouldInjectMemoriesInContext) {
+        this(card, userId, null, shouldInjectMemoriesInContext, "memory_files");
+    }
+
+    static Path resolveMemoryDirectory(Path applicationDataRoot, String memoryDir) {
+        if (applicationDataRoot == null) {
+            throw new IllegalArgumentException("Application data root must not be null.");
+        }
+        String configuredDirectory = memoryDir == null || memoryDir.isBlank() ? "memory_files" : memoryDir;
+        try {
+            Files.createDirectories(applicationDataRoot);
+            Path normalizedRoot = applicationDataRoot.toAbsolutePath().normalize();
+            Path requestedPath = Paths.get(configuredDirectory);
+            Path targetPath = requestedPath.isAbsolute()
+                    ? requestedPath.toAbsolutePath().normalize()
+                    : normalizedRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(normalizedRoot)) {
+                throw new SecurityException("Memory directory is outside the application data directory.");
+            }
+
+            Path existingAncestor = targetPath;
+            while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+                existingAncestor = existingAncestor.getParent();
+            }
+            Path realRoot = normalizedRoot.toRealPath();
+            if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realRoot)) {
+                throw new SecurityException("Memory directory is outside the application data directory.");
+            }
+
+            Files.createDirectories(targetPath);
+            Path realMemoryDirectory = targetPath.toRealPath();
+            if (!realMemoryDirectory.startsWith(realRoot)) {
+                throw new SecurityException("Memory directory is outside the application data directory.");
+            }
+            return realMemoryDirectory;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve memory directory.", e);
+        }
     }
 
     /**
@@ -148,12 +195,11 @@ public class ContextEvolvingReActAgent extends ReActAgent {
     private void loadExistingMemories() {
         try {
             String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
-            String filename = "memory_" + summaryAlgo + "_" + userId + ".json";
-            Path filePath = Paths.get(memoryDir, filename);
+            String filename = buildMemoryFileName(summaryAlgo, userId);
 
-            if (Files.exists(filePath)) {
-                logger.info("Found existing memory file: {}", filePath);
-                Map<String, Object> data = fileConnector.loadFromFile(filePath.toString());
+            if (fileConnector.existsWithinRoot(filename)) {
+                logger.info("Found existing memory file: {}/{}", memoryDir, filename);
+                Map<String, Object> data = fileConnector.loadFromFile(filename);
 
                 if (memoryService.getVectorStore() != null) {
                     int count = 0;
@@ -248,7 +294,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
             Map<String, Object> augmentedInput = new HashMap<>(inputMap);
             if (memoriesUsed > 0 && memoryString != null && !memoryString.isEmpty()) {
-                if (injectMemoriesInContext) {
+                if (shouldInjectMemoriesInContext) {
                     String memoryContext =
                         "Some Related Experience to help you complete the task:\n" + memoryString + "\n";
                     augmentedInput.put("query", "Task:\n" + query + "\n\n" + memoryContext);
@@ -452,8 +498,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
     private void saveMemoriesToFile(Map<String, Object> summaryResult) {
         try {
             String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
-            String filename = "memory_" + summaryAlgo + "_" + userId + ".json";
-            Path filePath = Paths.get(memoryDir, filename);
+            String filename = buildMemoryFileName(summaryAlgo, userId);
 
             if (memoryService.getVectorStore() != null) {
                 List<VectorNode> allNodes = memoryService.getVectorStore().getAll();
@@ -467,11 +512,30 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                     }
                 }
 
-                fileConnector.saveToFile(filePath.toString(), allMemoriesData);
-                logger.info("Persisted {} total memories to {}", allMemoriesData.size(), filePath);
+                fileConnector.saveToFile(filename, allMemoriesData);
+                logger.info("Persisted {} total memories to {}/{}", allMemoriesData.size(), memoryDir, filename);
             }
         } catch (Exception e) {
             logger.error("Failed to save full memory store: {}", e.getMessage());
+        }
+    }
+
+    static String buildMemoryFileName(String summaryAlgo, String userId) {
+        validateFileNameComponent(summaryAlgo, "Summary algorithm");
+        validateFileNameComponent(userId, "User ID");
+        return "memory_" + summaryAlgo + "_" + userId + ".json";
+    }
+
+    private static void validateFileNameComponent(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + " must not be blank.");
+        }
+        if (".".equals(value) || value.contains("..") || value.indexOf('/') >= 0 || value.indexOf('\\') >= 0) {
+            throw new IllegalArgumentException(label + " contains an invalid path sequence.");
+        }
+        Path component = Path.of(value);
+        if (component.isAbsolute() || component.getNameCount() != 1) {
+            throw new IllegalArgumentException(label + " must be a single file-name component.");
         }
     }
 
@@ -531,7 +595,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * @since 0.1.7
      */
     public boolean isInjectMemoriesInContext() {
-        return injectMemoriesInContext;
+        return shouldInjectMemoriesInContext;
     }
 
     /**
@@ -541,7 +605,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * @since 0.1.7
      */
     public String getMemoryDir() {
-        return memoryDir;
+        return memoryDir.toString();
     }
 
     /**

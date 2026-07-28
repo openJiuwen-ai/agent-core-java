@@ -15,6 +15,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -27,6 +29,7 @@ public class WorktreeManager {
         List.of(Pattern.compile("^teammate-[0-9a-f]{8}$"), Pattern.compile("^agent-[0-9a-f]{7}$"));
     private final WorktreeConfig config;
     private final List<WorktreeRail> rails;
+    private final Set<Path> managedWorktreeRoots = ConcurrentHashMap.newKeySet();
     private WorktreeSession currentSession;
 
     /**
@@ -73,10 +76,7 @@ public class WorktreeManager {
         if (root == null) {
             throw new IllegalStateException("Cannot create worktree: not in a git repository");
         }
-        Path base = config.getBaseDir() != null && !config.getBaseDir().isBlank()
-                ? Path.of(config.getBaseDir())
-                : root.resolve(".agent_teams").resolve("worktrees");
-        Files.createDirectories(base);
+        Path base = prepareWorktreeBase(root);
         Path target = base.resolve(effectiveSlug).toAbsolutePath().normalize();
         String branchName = "worktree-" + effectiveSlug;
 
@@ -145,10 +145,7 @@ public class WorktreeManager {
         if (root == null) {
             throw new IllegalStateException("Cannot create agent worktree: not in a git repository");
         }
-        Path base = config.getBaseDir() != null && !config.getBaseDir().isBlank()
-                ? Path.of(config.getBaseDir())
-                : root.resolve(".agent_teams").resolve("worktrees");
-        Files.createDirectories(base);
+        Path base = prepareWorktreeBase(root);
         Path target = base.resolve(slug).toAbsolutePath().normalize();
         String branchName = "worktree-" + slug;
         String existingHead = readWorktreeHeadSha(target);
@@ -279,6 +276,20 @@ public class WorktreeManager {
      */
     public WorktreeConfig getConfig() {
         return config;
+    }
+
+    Set<Path> getManagedWorktreeRoots() {
+        return Set.copyOf(managedWorktreeRoots);
+    }
+
+    private Path prepareWorktreeBase(Path repoRoot) throws IOException {
+        Path base = config.getBaseDir() != null && !config.getBaseDir().isBlank()
+                ? Path.of(config.getBaseDir())
+                : repoRoot.resolve(".agent_teams").resolve("worktrees");
+        Path normalizedBase = base.toAbsolutePath().normalize();
+        Files.createDirectories(normalizedBase);
+        managedWorktreeRoots.add(normalizedBase.toRealPath());
+        return normalizedBase;
     }
 
     /**

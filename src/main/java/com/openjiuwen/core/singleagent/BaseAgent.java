@@ -18,6 +18,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Consumer;
@@ -169,6 +170,20 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         lazyInitSkill();
         if (skillUtil != null) {
             skillUtil.registerSkills(skillPath, this);
+        }
+    }
+
+    /**
+     * Register a skill only when its real path is within a trusted skills root.
+     *
+     * @param skillPath path to the skill directory or file (String or List of Strings)
+     * @param skillsRoot trusted root containing loadable skills
+     * @since 0.1.13
+     */
+    public void registerSkill(Object skillPath, Path skillsRoot) {
+        lazyInitSkill();
+        if (skillUtil != null) {
+            skillUtil.registerSkills(skillPath, skillsRoot, this);
         }
     }
 

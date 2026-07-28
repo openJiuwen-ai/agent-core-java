@@ -95,6 +95,28 @@ public class SkillUtil {
     }
 
     /**
+     * Register skills after checking each real path against a trusted root.
+     *
+     * @param skillPath path or list of paths to register
+     * @param skillsRoot trusted root containing loadable skills
+     * @param agent agent instance (for compatibility)
+     * @since 0.1.13
+     */
+    public void registerSkills(Object skillPath, Path skillsRoot, BaseAgent agent) {
+        if (skillPath instanceof String path) {
+            skillManager.register(path, skillsRoot, null, false);
+        } else if (skillPath instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof String path) {
+                    skillManager.register(path, skillsRoot, null, false);
+                }
+            }
+        } else {
+            // no-op
+        }
+    }
+
+    /**
      * Register remote skills from GitHub.
      * 
      * @param skillsDir local skills directory

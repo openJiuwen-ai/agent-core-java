@@ -559,7 +559,30 @@ final class ContextEvolverExampleSupport {
         if (configuredValue == null) {
             return defaultValue.toAbsolutePath().normalize();
         }
-        return Path.of(configuredValue).toAbsolutePath().normalize();
+
+        Path configuredPath = Path.of(configuredValue);
+        if (configuredPath.isAbsolute()) {
+            throw new IllegalArgumentException("Configured output path must be relative to the example directory.");
+        }
+        for (Path segment : configuredPath) {
+            if ("..".equals(segment.toString())) {
+                throw new IllegalArgumentException("Configured output path must not contain '..'.");
+            }
+        }
+
+        Path allowedRoot = EXAMPLE_ROOT.toAbsolutePath().normalize();
+        Path resolved = allowedRoot.resolve(configuredPath).normalize();
+        if (!resolved.startsWith(allowedRoot)) {
+            throw new IllegalArgumentException("Configured output path is outside the example directory.");
+        }
+        Path current = allowedRoot;
+        for (Path segment : allowedRoot.relativize(resolved)) {
+            current = current.resolve(segment);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("Configured output path must not traverse symbolic links.");
+            }
+        }
+        return resolved;
     }
 
     private static int resolveIntSetting(String propertyKey, String envKey, int defaultValue) {

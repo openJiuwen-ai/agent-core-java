@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -99,6 +100,47 @@ public class SkillManager {
         } catch (Exception e) {
             Loggers.AGENT.warning("Failed to register skill from path: " + skillPath + " - " + e.getMessage());
         }
+    }
+
+    /**
+     * Register skill(s) only when the real path is within a trusted skills root.
+     *
+     * @param skillPath path to the skill directory or file
+     * @param skillsRoot trusted root containing loadable skills
+     * @param sessionId session ID for file operations
+     * @param isOverwrite whether to overwrite existing skills
+     * @since 0.1.13
+     */
+    public void register(String skillPath, Path skillsRoot, String sessionId, boolean isOverwrite) {
+        if (skillPath == null || skillPath.isEmpty()) {
+            return;
+        }
+        try {
+            registerRoot(resolveSafeSkillPath(skillPath, skillsRoot), sessionId, isOverwrite);
+        } catch (SecurityException e) {
+            throw e;
+        } catch (Exception e) {
+            Loggers.AGENT.warning("Failed to register skill from path: " + skillPath + " - " + e.getMessage());
+        }
+    }
+
+    static Path resolveSafeSkillPath(String skillPath, Path skillsRoot) throws IOException {
+        if (skillsRoot == null) {
+            throw new IllegalArgumentException("Skills root must not be null.");
+        }
+        Path realSkillsRoot = skillsRoot.toRealPath();
+        Path requestedPath = Path.of(skillPath);
+        Path candidate = requestedPath.isAbsolute()
+                ? requestedPath.toAbsolutePath().normalize()
+                : skillsRoot.toAbsolutePath().normalize().resolve(requestedPath).normalize();
+        Path realSkillPath = candidate.toRealPath();
+        if (!realSkillPath.startsWith(realSkillsRoot)) {
+            throw new SecurityException("Skill path is outside the configured skills root: " + skillPath);
+        }
+        if (!Files.isDirectory(realSkillPath) && !Files.isRegularFile(realSkillPath)) {
+            throw new IOException("Skill path is not a file or directory: " + skillPath);
+        }
+        return realSkillPath;
     }
 
     /**

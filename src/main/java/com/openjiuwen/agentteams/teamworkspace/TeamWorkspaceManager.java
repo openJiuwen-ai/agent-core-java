@@ -209,9 +209,10 @@ public class TeamWorkspaceManager {
         if (!config.isVersionControl()) {
             return List.of();
         }
+        String safeRelativePath = resolveSafeHistoryPath(relativePath);
         try {
             ProcessBuilder builder = new ProcessBuilder("git", "log", "--max-count=" + Math.max(1, limit),
-                    "--format=%H|%an|%ai|%s", "--", relativePath != null ? relativePath : "");
+                    "--format=%H|%an|%ai|%s", "--", safeRelativePath);
             builder.directory(Path.of(workspacePath).toFile());
             Process process = builder.start();
             CompletableFuture<String> stdoutFuture = OpenJiuwenExecutors.supplyBackgroundAsync(
@@ -237,6 +238,32 @@ public class TeamWorkspaceManager {
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Resolves a history path against the configured workspace and converts it
+     * back to a safe relative path for the git command.
+     *
+     * @param relativePath requested path
+     * @return normalized workspace-relative path
+     */
+    String resolveSafeHistoryPath(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return "";
+        }
+        Path workspaceRoot = Path.of(workspacePath).toAbsolutePath().normalize();
+        Path requestedPath = Path.of(relativePath);
+        Path resolvedPath = requestedPath.isAbsolute()
+                ? requestedPath.toAbsolutePath().normalize()
+                : workspaceRoot.resolve(requestedPath).normalize();
+        if (!resolvedPath.startsWith(workspaceRoot)) {
+            throw new SecurityException("History path must remain within the team workspace");
+        }
+        String safeRelativePath = workspaceRoot.relativize(resolvedPath).toString();
+        if (safeRelativePath.startsWith("-")) {
+            throw new SecurityException("History path must not start with '-'");
+        }
+        return safeRelativePath;
     }
 
     /**

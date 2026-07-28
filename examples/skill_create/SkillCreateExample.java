@@ -44,7 +44,7 @@ public final class SkillCreateExample {
         Files.createDirectories(outputDir);
 
         Path pdfPath = downloadPdf(pdfUrl, filesBaseDir);
-        Path markdownPath = writeMarkdownFromPdf(pdfPath, pdfUrl);
+        Path markdownPath = writeMarkdownFromPdf(pdfPath, pdfUrl, filesBaseDir);
         configureSkillCreatorProperties(filesBaseDir);
 
         SkillCreator skillCreator = new SkillCreator();
@@ -106,8 +106,8 @@ public final class SkillCreateExample {
         return pdfPath;
     }
 
-    private static Path writeMarkdownFromPdf(Path pdfPath, String pdfUrl) throws IOException {
-        PDFParser parser = new PDFParser();
+    private static Path writeMarkdownFromPdf(Path pdfPath, String pdfUrl, Path filesBaseDir) throws IOException {
+        PDFParser parser = new PDFParser(filesBaseDir);
         List<Document> documents = parser.parse(pdfPath.toString(), "skill_create_pdf_source", null, Map.of());
         if (documents.isEmpty() || documents.get(0).getText().isBlank()) {
             throw new IOException("Failed to extract text from PDF: " + pdfPath);

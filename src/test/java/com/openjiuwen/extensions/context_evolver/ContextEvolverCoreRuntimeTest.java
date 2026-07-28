@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.extensions.context_evolver.core.config.Config;
@@ -121,7 +122,7 @@ class ContextEvolverCoreRuntimeTest {
         data.put("items", List.of("alpha", "beta"));
 
         Path unicodeFile = tempDir.resolve("nested").resolve("unicode.json");
-        JSONFileConnector connector = new JSONFileConnector(4, false);
+        JSONFileConnector connector = new JSONFileConnector(tempDir, 4, false);
         connector.saveToFile(unicodeFile.toString(), data);
 
         Map<String, Object> loaded = connector.loadFromFile(unicodeFile.toString());
@@ -133,7 +134,7 @@ class ContextEvolverCoreRuntimeTest {
         assertTrue(unicodeRaw.contains(System.lineSeparator() + "    \"items\""));
 
         Path asciiFile = tempDir.resolve("ascii.json");
-        JSONFileConnector asciiConnector = new JSONFileConnector(2, true);
+        JSONFileConnector asciiConnector = new JSONFileConnector(tempDir, 2, true);
         asciiConnector.saveToFile(asciiFile.toString(), data);
         String asciiRaw = Files.readString(asciiFile, StandardCharsets.UTF_8);
 
@@ -141,6 +142,34 @@ class ContextEvolverCoreRuntimeTest {
         assertTrue(asciiRaw.contains("\\u"));
         assertTrue(JSONFileConnector.delete(unicodeFile.toString()));
         assertFalse(JSONFileConnector.exists(unicodeFile.toString()));
+    }
+
+    @Test
+    void jsonFileConnectorRejectsWritesOutsideAllowedRoot() {
+        Path allowedRoot = tempDir.resolve("allowed");
+        JSONFileConnector connector = new JSONFileConnector(allowedRoot);
+        Map<String, Object> data = Map.of("message", "safe");
+        Path absoluteOutside = tempDir.resolve("outside-absolute.json");
+        Path traversedOutside = allowedRoot.resolve("..").resolve("outside-traversal.json").normalize();
+
+        assertThrows(SecurityException.class, () -> connector.saveToFile("../outside-traversal.json", data));
+        assertThrows(SecurityException.class, () -> connector.saveToFile(absoluteOutside.toString(), data));
+        assertFalse(Files.exists(traversedOutside));
+        assertFalse(Files.exists(absoluteOutside));
+    }
+
+    @Test
+    void jsonFileConnectorRejectsReadsOutsideAllowedRoot() throws Exception {
+        Path allowedRoot = Files.createDirectories(tempDir.resolve("allowed"));
+        Path outsideFile = tempDir.resolve("outside.json");
+        Files.writeString(outsideFile, "{\"outside\":true}", StandardCharsets.UTF_8);
+        JSONFileConnector connector = new JSONFileConnector(allowedRoot);
+
+        assertThrows(SecurityException.class, () -> connector.loadFromFile("../outside.json"));
+        assertThrows(SecurityException.class, () -> connector.loadFromFile(outsideFile.toString()));
+
+        Files.createSymbolicLink(allowedRoot.resolve("linked.json"), outsideFile);
+        assertThrows(SecurityException.class, () -> connector.loadFromFile("linked.json"));
     }
 
     @Test
