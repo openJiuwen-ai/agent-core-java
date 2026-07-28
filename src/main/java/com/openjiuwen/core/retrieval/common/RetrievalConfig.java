@@ -42,6 +42,7 @@ public class RetrievalConfig {
     private Map<String, Object> filters;
 
     public RetrievalConfig() {
+        this.topK = 5;
     }
 
     public int getTopK() {
@@ -49,6 +50,11 @@ public class RetrievalConfig {
     }
 
     public void setTopK(int topK) {
+        RetrievalValidation.requirePositive(
+                topK,
+                "RetrievalConfig.topK",
+                com.openjiuwen.core.common.exception.StatusCode.RETRIEVAL_RETRIEVER_TOP_K_NOT_FOUND
+        );
         this.topK = topK;
     }
 

@@ -40,6 +40,24 @@ class ConfigTest {
     }
 
     @Test
+    void rerankerConstructorsMatchBuilderDefaults() {
+        RerankerConfig noArgs = new RerankerConfig();
+        RerankerConfig apiBase = new RerankerConfig("https://api.example.com");
+        RerankerConfig built = RerankerConfig.builder()
+                .apiBase("https://api.example.com")
+                .build();
+
+        for (RerankerConfig config : java.util.List.of(noArgs, apiBase, built)) {
+            assertEquals("", config.getApiKey());
+            assertEquals("", config.getModelName());
+            assertEquals(10.0, config.getTimeout());
+            assertEquals(0.95, config.getTemperature());
+            assertEquals(0.1, config.getTopP());
+            assertEquals(Map.of(), config.getExtraBody());
+        }
+    }
+
+    @Test
     void rankConfigsExposeArgsAndRegistry() {
         ResultRankRegistry.registerResultRankerClass("milvus", String.class, Integer.class, Map.of());
 

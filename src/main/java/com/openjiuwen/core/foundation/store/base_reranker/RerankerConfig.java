@@ -61,6 +61,7 @@ public class RerankerConfig {
     private Map<String, Object> extraBody = new LinkedHashMap<>();
 
     public RerankerConfig(String apiBase) {
+        this();
         this.apiBase = apiBase;
     }
 
