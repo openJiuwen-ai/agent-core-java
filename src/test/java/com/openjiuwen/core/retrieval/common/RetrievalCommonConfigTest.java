@@ -8,6 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -54,15 +56,45 @@ class RetrievalCommonConfigTest {
     @Test
     void knowledgeBaseConfigInvalidIndexType() {
         assertThatThrownBy(() -> KnowledgeBaseConfig.builder().kbId("test_kb").indexType("invalid").build())
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BaseError.class)
+                .extracting(error -> ((BaseError) error).getStatus())
+                .isEqualTo(StatusCode.SCHEMA_VALIDATE_INVALID);
+    }
+
+    @Test
+    void knowledgeBaseConfigRejectsNonPositiveChunkSize() {
+        assertThatThrownBy(() -> KnowledgeBaseConfig.builder().kbId("test_kb").chunkSize(0).build())
+                .isInstanceOf(BaseError.class)
+                .extracting(error -> ((BaseError) error).getStatus())
+                .isEqualTo(StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
+    }
+
+    @Test
+    void knowledgeBaseConfigRejectsNegativeChunkOverlap() {
+        assertThatThrownBy(() -> KnowledgeBaseConfig.builder().kbId("test_kb").chunkOverlap(-1).build())
+                .isInstanceOf(BaseError.class)
+                .extracting(error -> ((BaseError) error).getStatus())
+                .isEqualTo(StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
+    }
+
+    @Test
+    void knowledgeBaseConfigKeepsExistingValidationSemantics() {
+        KnowledgeBaseConfig config = new KnowledgeBaseConfig(" ");
+        config.setIndexType(null);
+
+        assertThat(config.getKbId()).isEqualTo(" ");
+        assertThat(config.getIndexType()).isEqualTo("hybrid");
+        assertThatThrownBy(() -> config.setIndexType("VECTOR"))
+                .isInstanceOf(BaseError.class)
                 .hasMessageContaining("index_type");
     }
 
     @Test
     void knowledgeBaseConfigMissingKbId() {
         assertThatThrownBy(() -> KnowledgeBaseConfig.builder().build())
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("kb_id");
+                .isInstanceOf(BaseError.class)
+                .extracting(error -> ((BaseError) error).getStatus())
+                .isEqualTo(StatusCode.SCHEMA_VALIDATE_INVALID);
     }
 
     @Test
@@ -115,14 +147,14 @@ class RetrievalCommonConfigTest {
     @Test
     void indexConfigInvalidIndexType() {
         assertThatThrownBy(() -> IndexConfig.builder().indexName("test_index").indexType("invalid").build())
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BaseError.class)
                 .hasMessageContaining("index_type");
     }
 
     @Test
     void indexConfigMissingIndexName() {
         assertThatThrownBy(() -> IndexConfig.builder().build())
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(BaseError.class)
                 .hasMessageContaining("index_name");
     }
 

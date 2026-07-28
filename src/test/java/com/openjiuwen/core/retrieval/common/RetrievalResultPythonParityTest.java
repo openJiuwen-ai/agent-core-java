@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -39,9 +40,9 @@ class RetrievalResultPythonParityTest {
 
     @Test
     void testSearchResultMissingRequiredFields() {
-        assertThrows(IllegalArgumentException.class, SearchResult::new);
-        assertThrows(IllegalArgumentException.class, () -> new SearchResult("result_1"));
-        assertThrows(IllegalArgumentException.class, () -> new SearchResult("result_1", "Test result"));
+        assertThrows(BaseError.class, SearchResult::new);
+        assertThrows(BaseError.class, () -> new SearchResult("result_1"));
+        assertThrows(BaseError.class, () -> new SearchResult("result_1", "Test result"));
     }
 
     @Test
@@ -70,7 +71,7 @@ class RetrievalResultPythonParityTest {
 
     @Test
     void testRetrievalResultMissingRequiredFields() {
-        assertThrows(IllegalArgumentException.class, RetrievalResult::new);
-        assertThrows(IllegalArgumentException.class, () -> new RetrievalResult("Test result"));
+        assertThrows(BaseError.class, RetrievalResult::new);
+        assertThrows(BaseError.class, () -> new RetrievalResult("Test result"));
     }
 }

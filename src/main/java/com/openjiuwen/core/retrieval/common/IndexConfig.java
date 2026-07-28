@@ -43,7 +43,7 @@ public class IndexConfig {
 
     public void setIndexName(String indexName) {
         if (indexName == null) {
-            throw new IllegalArgumentException("index_name is required");
+            throw RetrievalExceptions.validation("index_name is required");
         }
         this.indexName = indexName;
     }
@@ -51,7 +51,7 @@ public class IndexConfig {
     public void setIndexType(String indexType) {
         String value = indexType == null ? "hybrid" : indexType;
         if (!VALID_INDEX_TYPES.contains(value)) {
-            throw new IllegalArgumentException("index_type must be one of hybrid, bm25, vector");
+            throw RetrievalExceptions.validation("index_type must be one of hybrid, bm25, vector");
         }
         this.indexType = value;
     }

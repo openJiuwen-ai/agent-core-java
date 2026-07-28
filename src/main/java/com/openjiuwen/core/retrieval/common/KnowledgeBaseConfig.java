@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.exception.StatusCode;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -69,19 +70,24 @@ public class KnowledgeBaseConfig {
         this.chunkSize = chunkSize;
         this.chunkOverlap = chunkOverlap;
         this.useCaptionForImages = useCaptionForImages;
+        validate();
     }
 
     public void validate() {
         if (kbId == null) {
-            throw new IllegalArgumentException("kb_id is required");
+            throw RetrievalExceptions.validation("kb_id is required");
         }
         setIndexType(indexType);
-        if (chunkSize <= 0) {
-            throw new IllegalArgumentException("chunk_size must be positive");
-        }
-        if (chunkOverlap < 0) {
-            throw new IllegalArgumentException("chunk_overlap must be non-negative");
-        }
+        RetrievalValidation.requirePositive(
+                chunkSize,
+                "chunk_size",
+                StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID
+        );
+        RetrievalValidation.requireNonNegative(
+                chunkOverlap,
+                "chunk_overlap",
+                StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID
+        );
     }
 
     public String getKbId() {
@@ -90,7 +96,7 @@ public class KnowledgeBaseConfig {
 
     public void setKbId(String kbId) {
         if (kbId == null) {
-            throw new IllegalArgumentException("kb_id is required");
+            throw RetrievalExceptions.validation("kb_id is required");
         }
         this.kbId = kbId;
     }
@@ -102,7 +108,7 @@ public class KnowledgeBaseConfig {
     public void setIndexType(String indexType) {
         String value = indexType == null ? "hybrid" : indexType;
         if (!VALID_INDEX_TYPES.contains(value)) {
-            throw new IllegalArgumentException("index_type must be one of hybrid, bm25, vector");
+            throw RetrievalExceptions.validation("index_type must be one of hybrid, bm25, vector");
         }
         this.indexType = value;
     }

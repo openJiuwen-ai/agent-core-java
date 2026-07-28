@@ -20,7 +20,7 @@ public class RetrievalResult {
     private String chunkId;
 
     public RetrievalResult() {
-        throw new IllegalArgumentException("text and score are required");
+        throw RetrievalExceptions.validation("text and score are required");
     }
 
     public RetrievalResult(String text) {
@@ -37,7 +37,7 @@ public class RetrievalResult {
 
     public RetrievalResult(String text, Double score, Map<String, Object> metadata, String docId, String chunkId) {
         if (text == null || score == null) {
-            throw new IllegalArgumentException("text and score are required");
+            throw RetrievalExceptions.validation("text and score are required");
         }
         this.text = text;
         this.score = score.doubleValue();
@@ -64,7 +64,7 @@ public class RetrievalResult {
 
     public void setScore(Double score) {
         if (score == null) {
-            throw new IllegalArgumentException("score is required");
+            throw RetrievalExceptions.validation("score is required");
         }
         this.score = score.doubleValue();
     }

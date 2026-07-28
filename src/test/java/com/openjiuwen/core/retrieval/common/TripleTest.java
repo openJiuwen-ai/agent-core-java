@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -50,8 +51,8 @@ class TripleTest {
 
     @Test
     void missingRequiredFieldsAreRejected() {
-        assertThrows(IllegalArgumentException.class, () -> new Triple(null, null, null));
-        assertThrows(IllegalArgumentException.class, () -> new Triple("Alice", null, null));
-        assertThrows(IllegalArgumentException.class, () -> new Triple("Alice", "knows", null));
+        assertThrows(BaseError.class, () -> new Triple(null, null, null));
+        assertThrows(BaseError.class, () -> new Triple("Alice", null, null));
+        assertThrows(BaseError.class, () -> new Triple("Alice", "knows", null));
     }
 }

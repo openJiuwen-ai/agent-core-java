@@ -66,7 +66,7 @@ public class Triple {
 
     private static String requireText(String value, String fieldName) {
         if (value == null) {
-            throw new IllegalArgumentException(fieldName + " is required");
+            throw RetrievalExceptions.validation(fieldName + " is required");
         }
         return value;
     }
