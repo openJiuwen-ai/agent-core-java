@@ -7,6 +7,8 @@ package com.openjiuwen.core.session.interaction;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,10 +16,14 @@ import java.util.Map;
  * Interactive input data carrying user inputs for interactions.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.interactive_input.InteractiveInput}.
+ * Values stored in this object must also be serializable when a persistent checkpointer uses Java serialization.
  * 
  * @since 0.1.7
  */
-public class InteractiveInput {
+public class InteractiveInput implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private Map<String, Object> userInputs;
 
     /**
