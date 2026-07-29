@@ -316,6 +316,7 @@ public class TeamAgent implements DispatcherHost {
         pendingUserQuery = rawQuery != null ? String.valueOf(rawQuery) : "";
         context.getMetadata().put("last_query", pendingUserQuery);
         context.getMetadata().put("last_dispatch_at", Instant.now().toString());
+        context.getMetadata().put("last_route", "stream_round");
         context.getMetadata().put("streaming_coordination", true);
         if (session instanceof com.openjiuwen.core.session.AgentSessionApi sessionApi) {
             this.agentSession = sessionApi;

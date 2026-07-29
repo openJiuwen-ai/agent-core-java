@@ -6,7 +6,11 @@ package com.openjiuwen.agentteams.observability;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -18,6 +22,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.opentelemetry.api.trace.Span;
@@ -33,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -69,6 +75,9 @@ public class ObservabilityRail extends AgentRail {
 
     /** Tracks the scope opened in beforeInvoke, closed in afterInvoke. */
     private Scope agentScope;
+
+    /** Per-rail turn counter, incremented on each beforeInvoke (0-indexed). */
+    private int turnCount = 0;
 
     /**
      * Construct an ObservabilityRail with lowest priority.
@@ -107,6 +116,11 @@ public class ObservabilityRail extends AgentRail {
                     .startSpan();
 
             stampAgentAttributes(agentSpan, ctx, memberName, sessionIdOpt.orElse(null));
+
+            agentSpan.setAttribute(ObservabilitySemConv.OJ_AGENT_TURN_ID, turnCount);
+            agentSpan.setAttribute(ObservabilitySemConv.DA_TASK_ITERATION, turnCount);
+            agentSpan.setAttribute(ObservabilitySemConv.DA_TASK_IS_FOLLOW_UP, turnCount > 0);
+            turnCount++;
 
             if (ctx.getInputs() instanceof InvokeInputs invokeInputs) {
                 stampInvokeInputs(agentSpan, invokeInputs);
@@ -183,13 +197,24 @@ public class ObservabilityRail extends AgentRail {
                     ObservabilitySemConv.GEN_AI_SYSTEM_VALUE);
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_OPERATION_NAME, "chat");
 
+            String providerName = deriveProviderName(ctx);
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_PROVIDER_NAME, providerName);
+
             String modelName = getModelName(ctx);
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_MODEL, modelName);
 
-            if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs
-                    && modelCallInputs.getMessages() != null) {
-                stampLlmPromptAttrs(llmSpan, modelCallInputs);
+            stampRequestParams(llmSpan, ctx);
+
+            if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs) {
+                if (modelCallInputs.getMessages() != null) {
+                    stampLlmPromptAttrs(llmSpan, modelCallInputs);
+                }
+                if (modelCallInputs.getTools() != null && !modelCallInputs.getTools().isEmpty()) {
+                    stampToolDefinitions(llmSpan, modelCallInputs.getTools());
+                }
             }
+
+            propagateTeamContext(llmSpan);
 
             Scope scope = llmSpan.makeCurrent();
             long startNanos = System.nanoTime();
@@ -374,6 +399,7 @@ public class ObservabilityRail extends AgentRail {
         String conversationId = invokeInputs.getConversationId();
         if (conversationId != null && !conversationId.isEmpty()) {
             agentSpan.setAttribute(ObservabilitySemConv.AT_CONVERSATION_ID, conversationId);
+            agentSpan.setAttribute(ObservabilitySemConv.GEN_AI_CONVERSATION_ID, conversationId);
         }
     }
 
@@ -408,6 +434,10 @@ public class ObservabilityRail extends AgentRail {
     /**
      * Stamp LLM completion attributes onto the LLM span from a raw response.
      *
+     * <p>Sets both the flat {@code gen_ai.completion} string and the indexed
+     * {@code gen_ai.completion.0.role/content} + Langfuse mirror keys,
+     * mirroring Python's {@code _finalize_llm_span_output}.</p>
+     *
      * @param llmSpan     the LLM span
      * @param rawResponse the raw response object
      * @since 0.1.7
@@ -417,6 +447,13 @@ public class ObservabilityRail extends AgentRail {
         String redacted = ObservabilityRedaction.redactCompletion(completion, getConfig());
         llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_COMPLETION, redacted);
         llmSpan.setAttribute(ObservabilitySemConv.LANGFUSE_OBSERVATION_OUTPUT, redacted);
+
+        llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_COMPLETION + ".0.role", "assistant");
+        llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_COMPLETION + ".0.content", redacted);
+        llmSpan.setAttribute(ObservabilitySemConv.LANGFUSE_GEN_AI_COMPLETION + ".0.role", "assistant");
+        llmSpan.setAttribute(ObservabilitySemConv.LANGFUSE_GEN_AI_COMPLETION + ".0.content", redacted);
+
+        stampToolCalls(llmSpan, rawResponse);
     }
 
     /**
@@ -518,6 +555,7 @@ public class ObservabilityRail extends AgentRail {
         if (sessionId != null && !sessionId.isEmpty()) {
             span.setAttribute(ObservabilitySemConv.AT_SESSION_ID, sessionId);
             span.setAttribute(ObservabilitySemConv.LANGFUSE_SESSION_ID, sessionId);
+            span.setAttribute(ObservabilitySemConv.OJ_SESSION_ID, sessionId);
         }
     }
 
@@ -532,6 +570,7 @@ public class ObservabilityRail extends AgentRail {
         if (sessionIdOpt.isPresent() && !sessionIdOpt.get().isEmpty()) {
             span.setAttribute(ObservabilitySemConv.LANGFUSE_SESSION_ID, sessionIdOpt.get());
             span.setAttribute(ObservabilitySemConv.AT_SESSION_ID, sessionIdOpt.get());
+            span.setAttribute(ObservabilitySemConv.OJ_SESSION_ID, sessionIdOpt.get());
         }
     }
 
@@ -601,6 +640,114 @@ public class ObservabilityRail extends AgentRail {
             }
         }
         return "LLM";
+    }
+
+    /**
+     * Derive the LLM provider name from the agent's model client config.
+     *
+     * <p>When the agent is a {@link BaseAgent} whose config is a
+     * {@link ReActAgentConfig}, reads {@code config.getModelClientConfig().getClientProvider()}.
+     * Returns {@code GEN_AI_SYSTEM_VALUE} ("openjiuwen") as fallback,
+     * mirroring Python's {@code _derive_provider_name}.</p>
+     *
+     * @param ctx the callback context
+     * @return the provider name, or {@code "openjiuwen"} if unavailable
+     * @since 0.1.7
+     */
+    private static String deriveProviderName(AgentCallbackContext ctx) {
+        Object agent = ctx.getAgent();
+        if (!(agent instanceof BaseAgent baseAgent)) {
+            return ObservabilitySemConv.GEN_AI_SYSTEM_VALUE;
+        }
+        Object config = baseAgent.getConfig();
+        if (!(config instanceof ReActAgentConfig reactConfig)) {
+            return ObservabilitySemConv.GEN_AI_SYSTEM_VALUE;
+        }
+        ModelClientConfig mcc = reactConfig.getModelClientConfig();
+        if (mcc == null) {
+            return ObservabilitySemConv.GEN_AI_SYSTEM_VALUE;
+        }
+        String cp = mcc.getClientProvider();
+        if (cp == null || cp.isEmpty()) {
+            return ObservabilitySemConv.GEN_AI_SYSTEM_VALUE;
+        }
+        return cp.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Stamp LLM request parameters (temperature, top_p, max_tokens) from the
+     * agent's model config onto the LLM span.
+     *
+     * <p>Mirrors Python's {@code _open_llm_span} loop over temperature/top_p/max_tokens.</p>
+     *
+     * @param llmSpan the LLM span
+     * @param ctx     the callback context
+     * @since 0.1.7
+     */
+    private static void stampRequestParams(Span llmSpan, AgentCallbackContext ctx) {
+        Object agent = ctx.getAgent();
+        if (!(agent instanceof BaseAgent baseAgent)) {
+            return;
+        }
+        Object config = baseAgent.getConfig();
+        if (!(config instanceof ReActAgentConfig reactConfig)) {
+            return;
+        }
+        ModelRequestConfig mrc = reactConfig.getModelConfigObj();
+        if (mrc == null) {
+            return;
+        }
+        if (mrc.getTemperature() != null) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_TEMPERATURE, mrc.getTemperature());
+        }
+        if (mrc.getTopP() != null) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_TOP_P, mrc.getTopP());
+        }
+        if (mrc.getMaxTokens() != null && mrc.getMaxTokens() > 0) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_REQUEST_MAX_TOKENS, mrc.getMaxTokens());
+        }
+    }
+
+    /**
+     * Stamp tool definitions onto the LLM span as a JSON string.
+     *
+     * <p>Mirrors Python's {@code _open_llm_span} tool definitions setting.</p>
+     *
+     * @param llmSpan the LLM span
+     * @param tools   the tool definitions list
+     * @since 0.1.7
+     */
+    private static void stampToolDefinitions(Span llmSpan, List<ToolInfo> tools) {
+        try {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_TOOL_DEFINITIONS,
+                    MAPPER.writeValueAsString(tools));
+        } catch (JsonProcessingException e) {
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_TOOL_DEFINITIONS, String.valueOf(tools));
+        }
+    }
+
+    /**
+     * Stamp tool calls from the LLM response onto the LLM span.
+     *
+     * <p>Mirrors Python's {@code _close_llm_span} tool_calls serialization.</p>
+     *
+     * @param llmSpan     the LLM span
+     * @param rawResponse the raw response object
+     * @since 0.1.7
+     */
+    private static void stampToolCalls(Span llmSpan, Object rawResponse) {
+        if (rawResponse instanceof AssistantMessage assistantMsg) {
+            List<ToolCall> toolCalls = assistantMsg.getToolCalls();
+            if (toolCalls != null && !toolCalls.isEmpty()) {
+                try {
+                    llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_TOOL_CALLS,
+                            MAPPER.writeValueAsString(toolCalls));
+                } catch (JsonProcessingException e) {
+                    llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_TOOL_CALLS,
+                            String.valueOf(toolCalls));
+                }
+            }
+        }
     }
 
     // ================================================================
@@ -867,9 +1014,11 @@ public class ObservabilityRail extends AgentRail {
 
         if (inputTokens.isPresent()) {
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_USAGE_PROMPT_TOKENS, inputTokens.getAsLong());
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_USAGE_INPUT_TOKENS, inputTokens.getAsLong());
         }
         if (outputTokens.isPresent()) {
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_USAGE_COMPLETION_TOKENS, outputTokens.getAsLong());
+            llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens.getAsLong());
         }
         if (totalTokens.isPresent()) {
             llmSpan.setAttribute(ObservabilitySemConv.GEN_AI_USAGE_TOTAL_TOKENS, totalTokens.getAsLong());

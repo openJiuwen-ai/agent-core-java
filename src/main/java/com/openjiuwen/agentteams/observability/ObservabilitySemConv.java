@@ -55,6 +55,15 @@ public final class ObservabilitySemConv {
     /** gen_ai.usage.total_tokens attribute key. */
     public static final String GEN_AI_USAGE_TOTAL_TOKENS = "gen_ai.usage.total_tokens";
 
+    /** gen_ai.usage.input_tokens attribute key (OpenLLMetry standard alias). */
+    public static final String GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
+
+    /** gen_ai.usage.output_tokens attribute key (OpenLLMetry standard alias). */
+    public static final String GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
+
+    /** gen_ai.conversation.id attribute key. */
+    public static final String GEN_AI_CONVERSATION_ID = "gen_ai.conversation.id";
+
     /** gen_ai.response.finish_reason attribute key. */
     public static final String GEN_AI_RESPONSE_FINISH_REASON = "gen_ai.response.finish_reason";
 
@@ -187,6 +196,14 @@ public final class ObservabilitySemConv {
 
     /** deepagent.task.loop_event. */
     public static final String DA_TASK_LOOP_EVENT = "deepagent.task.loop_event";
+
+    // ===== OpenJiuwen namespace attributes (openjiuwen.*) =====
+
+    /** openjiuwen.session.id attribute key (legacy compatibility alias). */
+    public static final String OJ_SESSION_ID = "openjiuwen.session.id";
+
+    /** openjiuwen.agent.turn.id attribute key. */
+    public static final String OJ_AGENT_TURN_ID = "openjiuwen.agent.turn.id";
 
     // ===== Langfuse attributes (langfuse.* and special session.id) =====
 
