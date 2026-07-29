@@ -94,9 +94,13 @@ public class MemberHandler extends BaseCoordinationHandler {
         Map<String, Object> payload = msg.getPayload() != null ? msg.getPayload() : Map.of();
         String targetId = str(payload, "member_name");
         String eventType = msg.getEventType();
+        Loggers.AGENT.info("handleLeaderMemberEvent: eventType={} target={} thread={}",
+                eventType, targetId, Thread.currentThread().getName());
         switch (eventType) {
-            case TeamEvent.MEMBER_SPAWNED ->
-                    Loggers.AGENT.debug(I18n.t("dispatcher.member_online", targetId));
+            case TeamEvent.MEMBER_SPAWNED -> {
+                Loggers.AGENT.info("handleLeaderMemberEvent: MEMBER_SPAWNED target={}", targetId);
+                Loggers.AGENT.debug(I18n.t("dispatcher.member_online", targetId));
+            }
             case TeamEvent.MEMBER_RESTARTED -> {
                 int restartCount = toInt(payload.get("restart_count"), 1);
                 Loggers.AGENT.debug(I18n.t("dispatcher.member_restarted", targetId, restartCount));

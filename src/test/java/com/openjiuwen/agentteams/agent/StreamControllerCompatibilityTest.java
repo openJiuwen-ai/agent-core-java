@@ -99,7 +99,8 @@ class StreamControllerCompatibilityTest {
         }, null, (agent, inputs, sessionId) -> List.<Object>of().iterator());
         controller = new StreamController(Object::new, () -> "leader", ignored -> {
         }, ignored -> {
-        }, () -> session, null, (agent, inputs, sessionId) -> List.<Object>of().iterator());
+        }, () -> session, null, (agent, inputs, sessionId) -> List.<Object>of().iterator(),
+                () -> MemberStatus.READY);
 
         InteractiveInput valid = new InteractiveInput();
         valid.update("call-1", Map.of("approved", true));
@@ -151,7 +152,8 @@ class StreamControllerCompatibilityTest {
             Consumer<ExecutionStatus> executionUpdater, Runnable wakeMailboxCallback,
             StreamController.StreamRoundExecutor executor) {
         return new StreamController(Object::new, () -> "leader", statusUpdater, executionUpdater,
-                () -> AgentSessionApi.create("sess-1", null, null), wakeMailboxCallback, executor);
+                () -> AgentSessionApi.create("sess-1", null, null), wakeMailboxCallback, executor,
+                () -> MemberStatus.READY);
     }
 
     private static StreamController.StreamRoundExecutor scriptedExecutor(List<Map<String, Object>> callInputs,

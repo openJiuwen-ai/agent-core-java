@@ -36,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
@@ -74,7 +75,14 @@ public class TeamBackend {
     private TeamDatabase db;
     private TeamMessageManager messageManager;
     private TeamTaskManager taskManager;
-    private List<TeamMember> members = new ArrayList<>();
+
+    // X.CON.05: ConcurrentHashMap for maps, CopyOnWriteArrayList for lists —
+    // concurrent spawn_member tool calls hit members.removeIf + members.add
+    // in parallel; an ArrayList here can silently drop a member, after which
+    // getMember() returns null, onAutoLaunch sees ctx==null and skips
+    // spawnTeammate, leaving the member UNSTARTED forever (no ReAct loop,
+    // task-1 never completed).
+    private List<TeamMember> members = new CopyOnWriteArrayList<>();
     private BiConsumer<String, String> onAutoLaunch;
 
     // Mirrors Python team.py: on_team_built / on_team_cleaned fire exactly
@@ -588,6 +596,28 @@ public class TeamBackend {
     }
 
     /**
+     * Detect whether the team is in the shutdown-to-cleanup transition window:
+     * at least one non-leader member is in {@link MemberStatus#SHUTDOWN_REQUESTED}
+     * (intermediate state between {@code shutdown_member} call and the member's
+     * own {@code SHUTDOWN} terminal state).
+     *
+     * <p>Used by {@code StreamController.wakeMailboxCallback} to skip POLL_MAILBOX
+     * dispatch while members are draining their final rounds. Without this guard
+     * the leader keeps waking on its own {@code member_status_changed} events,
+     * re-entering ReAct rounds that reply "delayed message, no reply needed"
+     * every 2-3 seconds until all members reach {@code SHUTDOWN}. That empty
+     * polling burns LLM tokens for ~1-2 minutes per shutdown sequence.</p>
+     *
+     * @return {@code true} if any non-leader member is mid-shutdown
+     * @since 0.1.15
+     */
+    public boolean isAnyMemberShuttingDown() {
+        return members.stream()
+                .filter(member -> !memberName.equals(member.getMemberName()))
+                .anyMatch(member -> member.getStatus() == MemberStatus.SHUTDOWN_REQUESTED);
+    }
+
+    /**
      * Check whether a member with the given name exists in the team.
      *
      * @param memberName the member name to look up
@@ -749,10 +779,20 @@ public class TeamBackend {
      * @return the matching team member, or {@code null}
      */
     public TeamMember getMember(String memberName) {
-        return members.stream()
+        TeamMember found = members.stream()
                 .filter(member -> member.getMemberName().equals(memberName))
                 .findFirst()
                 .orElse(null);
+        if (found == null) {
+            // Diagnostic: help locate the moment a member is missing from the
+            // in-memory list. Cross-check with the DB to see whether the member
+            // row exists at all (DB is the source of truth) or whether only the
+            // in-memory list is stale.
+            MemberRecord dbRecord = db.member.getMember(memberName, teamName);
+            Loggers.TOOL.warn("getMember: not found in-memory member={} team={} listSize={} dbRecordExists={}",
+                    memberName, teamName, members.size(), dbRecord != null);
+        }
+        return found;
     }
 
     /**
@@ -983,16 +1023,22 @@ public class TeamBackend {
      * retried.</p>
      */
     public CompletableFuture<Boolean> startupMember(String memberName, Consumer<String> onCreated) {
+        Loggers.TOOL.info("startupMember: enter member={} team={} thread={}",
+                memberName, teamName, Thread.currentThread().getName());
         boolean isTransitioned = db.member.tryTransitionMemberStatus(
                 memberName, teamName,
                 MemberStatus.UNSTARTED.value(), MemberStatus.STARTING.value());
         if (!isTransitioned) {
-            Loggers.TOOL.info("startupMember: CAS failed for member={} (not UNSTARTED or already starting)",
-                    memberName);
+            MemberRecord current = db.member.getMember(memberName, teamName);
+            Loggers.TOOL.info("startupMember: CAS failed for member={} currentStatus={} "
+                            + "(not UNSTARTED or already starting)",
+                    memberName, current != null ? current.getStatus() : "null");
             return CompletableFuture.completedFuture(false);
         }
+        Loggers.TOOL.info("startupMember: CAS ok member={}, calling onCreated", memberName);
         try {
             onCreated.accept(memberName);
+            Loggers.TOOL.info("startupMember: onCreated returned for member={}", memberName);
         } catch (IllegalStateException | NullPointerException
                 | IllegalArgumentException | UnsupportedOperationException e) {
             Loggers.TOOL.error("startupMember: on_created threw for member={}, rolling back",
@@ -1011,6 +1057,8 @@ public class TeamBackend {
                             if (member != null) {
                                 member.setStatus(MemberStatus.READY);
                             }
+                            Loggers.TOOL.info("startupMember: completed ok member={}, inMemoryMemberPresent={}",
+                                    memberName, member != null);
                             return true;
                         })
                 .exceptionally(
@@ -1032,13 +1080,22 @@ public class TeamBackend {
      * racing the same member lose the CAS and the member is not double-counted.</p>
      */
     public CompletableFuture<List<String>> startup(Consumer<String> onCreated) {
+        List<MemberRecord> unstarted = db.member.getTeamMembers(teamName, MemberStatus.UNSTARTED.value());
+        Loggers.TOOL.info("startup: team={} unstartedCount={} members={}",
+                teamName, unstarted.size(),
+                unstarted.stream().map(MemberRecord::getMemberName).toList());
         List<String> started = new ArrayList<>();
-        for (MemberRecord record : db.member.getTeamMembers(teamName, MemberStatus.UNSTARTED.value())) {
+        for (MemberRecord record : unstarted) {
+            Loggers.TOOL.info("startup: processing member={}", record.getMemberName());
             boolean isOk = startupMember(record.getMemberName(), onCreated).join();
             if (isOk) {
                 started.add(record.getMemberName());
+            } else {
+                Loggers.TOOL.warn("startup: member={} not started (CAS or onCreated failed)",
+                        record.getMemberName());
             }
         }
+        Loggers.TOOL.info("startup: done team={} started={}", teamName, started);
         return CompletableFuture.completedFuture(started);
     }
 
@@ -1096,8 +1153,30 @@ public class TeamBackend {
                     MemberOpResult.fail("Member " + memberName + " not found in team " + teamName));
         }
         MemberStatus current = MemberStatus.fromValue(record.getStatus());
-        if (current == MemberStatus.SHUTDOWN || current == MemberStatus.SHUTDOWN_REQUESTED) {
+        if (current == MemberStatus.SHUTDOWN) {
             return CompletableFuture.completedFuture(MemberOpResult.success());
+        }
+        // Mirrors Python team.py: when leader retries shutdown_member with force=true
+        // on a member already in SHUTDOWN_REQUESTED (e.g. member stuck mid-round and
+        // never reached round-end SHUTDOWN_REQUESTED check), re-publish MEMBER_SHUTDOWN
+        // so onMemberShutdownDrain fires again and drives shutdownSelf. Without this,
+        // subsequent shutdown_member calls short-circuit and the member never receives
+        // the event again, blocking clean_team indefinitely.
+        if (current == MemberStatus.SHUTDOWN_REQUESTED) {
+            if (!isForceEnabled) {
+                return CompletableFuture.completedFuture(MemberOpResult.success());
+            }
+            return messageManager
+                    .sendMessage("Force shutdown requested by team leader.", memberName)
+                    .thenCompose(
+                            ignored ->
+                                    publishTeamEvent(
+                                            TeamEvent.MEMBER_SHUTDOWN,
+                                            Map.of(
+                                                    "team_name", teamName,
+                                                    "member_name", memberName,
+                                                    "isForceEnabled", true)))
+                    .thenApply(ignored -> MemberOpResult.success());
         }
         if (!current.canTransitionTo(MemberStatus.SHUTDOWN_REQUESTED)) {
             return CompletableFuture.completedFuture(MemberOpResult.fail(

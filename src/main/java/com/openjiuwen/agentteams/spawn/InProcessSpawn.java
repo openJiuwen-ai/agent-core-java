@@ -61,8 +61,8 @@ public final class InProcessSpawn {
 
         TeamMemberSpec memberSpec = resolveMemberSpec(teamAgent, ctx);
         AgentCard card = buildCard(teamAgent, ctx, memberSpec);
-        Loggers.AGENT.info("inprocessSpawn: creating teammate member={} sessionId={}",
-                ctx.getMemberName(), sessionId);
+        Loggers.AGENT.info("inprocessSpawn: enter member={} sessionId={} thread={}",
+                ctx.getMemberName(), sessionId, Thread.currentThread().getName());
         TeamAgent teammate = new TeamAgent().configure(teamAgent.getSpec(), ctx);
 
         String query = initialMessage != null ? initialMessage : "";

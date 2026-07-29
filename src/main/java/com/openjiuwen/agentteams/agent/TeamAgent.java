@@ -909,30 +909,44 @@ public class TeamAgent implements DispatcherHost {
         this.spawnManager = new SpawnManager(this, teamBackend, recoveryManager, () -> context.getSessionId());
         this.recoveryManager.setSpawnManager(spawnManager);
         this.teamBackend.setOnAutoLaunch((memberName, broadcastContent) -> {
+            Loggers.AGENT.info("onAutoLaunch: enter member={} broadcastLen={} thread={}",
+                    memberName,
+                    broadcastContent != null ? broadcastContent.length() : 0,
+                    Thread.currentThread().getName());
             TeamRuntimeContext ctx = spawnManager.buildContextFromBackend(memberName);
-            if (ctx != null) {
-                com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
-
-                // Priority: member-specific prompt > broadcast with identity prefix > fallback
-                String prompt = member != null ? member.getPrompt() : null;
-                final String initialMessage;
-                if (prompt != null && !prompt.isBlank()) {
-                    initialMessage = prompt;
-                } else if (broadcastContent != null && !broadcastContent.isBlank()) {
-                    // Tag the broadcast with member identity so the LLM knows which
-                    // specific task it should claim from the broadcast.
-                    String displayName = member != null && member.getDisplayName() != null
-                            ? member.getDisplayName() : memberName;
-                    initialMessage = "你是 " + displayName + "（" + memberName + "）。"
-                            + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
-                            + " 不要认领其他成员的任务。\n\n" + broadcastContent;
-                } else {
-                    initialMessage = "Join the team and wait for your first assignment.";
-                }
-                Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
-                        initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
-                spawnManager.spawnTeammate(ctx, initialMessage);
+            if (ctx == null) {
+                // buildContextFromBackend returns null when getMember() cannot find
+                // the member in the in-memory list. With concurrent spawn_member calls
+                // the list can momentarily not contain the member even though the DB
+                // row exists — log so the silent skip is diagnosable instead of
+                // leaving the member UNSTARTED with no trace.
+                Loggers.AGENT.warn("onAutoLaunch: ctx null for member={}, getMember returned null"
+                        + " (in-memory list out of sync with DB?); skipping spawnTeammate", memberName);
+                return;
             }
+            com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
+            Loggers.AGENT.info("onAutoLaunch: ctx ok member={}, inMemoryMember={}",
+                    memberName, member != null);
+
+            // Priority: member-specific prompt > broadcast with identity prefix > fallback
+            String prompt = member != null ? member.getPrompt() : null;
+            final String initialMessage;
+            if (prompt != null && !prompt.isBlank()) {
+                initialMessage = prompt;
+            } else if (broadcastContent != null && !broadcastContent.isBlank()) {
+                // Tag the broadcast with member identity so the LLM knows which
+                // specific task it should claim from the broadcast.
+                String displayName = member != null && member.getDisplayName() != null
+                        ? member.getDisplayName() : memberName;
+                initialMessage = "你是 " + displayName + "（" + memberName + "）。"
+                        + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
+                        + " 不要认领其他成员的任务。\n\n" + broadcastContent;
+            } else {
+                initialMessage = "Join the team and wait for your first assignment.";
+            }
+            Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
+                    initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
+            spawnManager.spawnTeammate(ctx, initialMessage);
         });
         this.agentSession = com.openjiuwen.core.session.AgentSessionApi.create(context.getSessionId(), null, null);
 
@@ -959,7 +973,18 @@ public class TeamAgent implements DispatcherHost {
                     // processes unread messages through the normal dispatch path.
                     // This replaces the old direct call to
                     // dispatcher.processUnreadMessages() + tryAutoCompleteMemberTasks().
-                    if (coordinationKernel != null) {
+                    //
+                    // Skip when members are mid-shutdown: while shutdown_member
+                    // transitions members from READY -> SHUTDOWN_REQUESTED -> SHUTDOWN,
+                    // the leader's own status_changed events keep firing POLL_MAILBOX,
+                    // which wakes the leader into empty ReAct rounds that reply
+                    // "delayed message, no reply needed" every 2-3s until all
+                    // members reach SHUTDOWN. That idle polling burns LLM tokens
+                    // for 1-2 minutes per shutdown. Pause polling until the
+                    // transition settles.
+                    if (coordinationKernel != null
+                            && teamBackend != null
+                            && !teamBackend.isAnyMemberShuttingDown()) {
                         coordinationKernel.enqueuePollMailbox();
                     }
                 },
@@ -1658,6 +1683,17 @@ public class TeamAgent implements DispatcherHost {
             return context.getMemberName();
         }
         return resolveLeaderMemberName();
+    }
+
+    /**
+     * Expose the stream controller so coordination handlers can reset the
+     * team-terminated latch when USER_INPUT arrives after clean_team.
+     *
+     * @return the stream controller, or {@code null} if not yet configured
+     * @since 0.1.15
+     */
+    public StreamController getStreamController() {
+        return streamController;
     }
 
     private Path resolveWorkspaceRoot() {
