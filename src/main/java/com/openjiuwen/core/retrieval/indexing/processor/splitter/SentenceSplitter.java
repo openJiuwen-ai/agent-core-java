@@ -95,7 +95,7 @@ public class SentenceSplitter extends Splitter {
                 continue;
             }
             if (sentence.tokenLength() > chunkSize) {
-                FlushResult flushed = flush(chunks, currentSentences);
+                FlushResult flushed = flush(doc, chunks, currentSentences);
                 chunks = flushed.chunks();
                 currentSentences = flushed.nextSentences();
                 if (sentenceTokenizerDec != null) {
@@ -110,14 +110,14 @@ public class SentenceSplitter extends Splitter {
             if (currentTokenCount + sentence.tokenLength() <= chunkSize) {
                 currentSentences.add(sentence);
             } else {
-                FlushResult flushed = flush(chunks, currentSentences);
+                FlushResult flushed = flush(doc, chunks, currentSentences);
                 chunks = flushed.chunks();
                 currentSentences = flushed.nextSentences();
                 currentSentences.add(sentence);
             }
         }
 
-        FlushResult flushed = flush(chunks, currentSentences);
+        FlushResult flushed = flush(doc, chunks, currentSentences);
         LOGGER.info("Computed the following sentence-level chunks: {} chunks", flushed.chunks().size());
         return flushed.chunks();
     }
@@ -201,19 +201,17 @@ public class SentenceSplitter extends Splitter {
         return result;
     }
 
-    private FlushResult flush(List<SplitChunk> chunks, List<SentenceSpan> currentSentences) {
+    private FlushResult flush(String sourceText, List<SplitChunk> chunks, List<SentenceSpan> currentSentences) {
         if (currentSentences.isEmpty()) {
             return new FlushResult(chunks, new ArrayList<>());
         }
 
-        StringBuilder chunkText = new StringBuilder();
-        for (SentenceSpan sentence : currentSentences) {
-            chunkText.append(sentence.text());
-        }
+        int start = currentSentences.get(0).start();
+        int end = currentSentences.get(currentSentences.size() - 1).end();
         chunks.add(new SplitChunk(
-                chunkText.toString(),
-                currentSentences.get(0).start(),
-                currentSentences.get(currentSentences.size() - 1).end()
+                sourceText.substring(start, end),
+                start,
+                end
         ));
 
         List<SentenceSpan> nextSentences = new ArrayList<>();
