@@ -49,11 +49,11 @@ public class AgentStorage extends BaseRedisStorage {
             BaseSession baseSession = requireSession(session);
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
-            var stateBlob = serializeState(baseSession.state().getState());
-            if (stateBlob == null) {
-                // Null agent state means nothing to persist (not a serialization failure).
+            Object state = baseSession.state().getState();
+            if (state == null) {
                 return CompletableFuture.completedFuture(null);
             }
+            var stateBlob = serializeState(state);
 
             String dumpTypeKey = TenantKVStoreKeyResolver.resolveKey(
                 Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,

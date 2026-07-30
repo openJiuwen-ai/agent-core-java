@@ -21,10 +21,12 @@ import com.openjiuwen.core.session.state.WorkflowCommitState;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.NotSerializableException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 class RedisCheckpointerStorageTest {
@@ -52,6 +54,50 @@ class RedisCheckpointerStorageTest {
         assertEquals("value", restored.state().getGlobal("persisted"));
         assertEquals(List.of("hello"), restored.state().get(Constant.INTERACTIVE_INPUT));
         assertTrue(redisClient.ttl(ttlKey) >= 59L, "recover should refresh TTL on read");
+    }
+
+    @Test
+    void agentCheckpointPersistsInteractiveInputAcrossCheckpointerInstances() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer writer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
+        InteractiveInput input = new InteractiveInput();
+        input.update("approval", Map.of("answer", "yes"));
+
+        AgentSession session = new AgentSession("interactive-session", config, writer);
+        writer.preAgentExecute(session, input);
+        writer.interruptAgentExecute(session);
+
+        assertEquals(1L, redisClient.exists("interactive-session:agent:agent-1:agent_state_blobs"));
+        assertEquals(1L, redisClient.exists("interactive-session:agent:agent-1:agent_state_blobs_dump_type"));
+
+        RedisCheckpointer reader =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+        AgentSession restored = new AgentSession("interactive-session", config, reader);
+        reader.preAgentExecute(restored, null);
+
+        List<?> restoredInputs = (List<?>) restored.state().get(Constant.INTERACTIVE_INPUT);
+        InteractiveInput restoredInput = (InteractiveInput) restoredInputs.get(0);
+        assertEquals(Map.of("answer", "yes"), restoredInput.getUserInputs().get("approval"));
+    }
+
+    @Test
+    void agentCheckpointPropagatesSerializationFailureWithoutWritingState() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
+        AgentSession session = new AgentSession("invalid-session", config, checkpointer);
+        session.state().update(Map.of("invalid", new Object()));
+
+        CompletionException error = assertThrows(CompletionException.class,
+                () -> checkpointer.getAgentStorage().save(session).join());
+
+        assertTrue(hasCause(error, NotSerializableException.class));
+        assertFalse(checkpointer.sessionExists("invalid-session"));
     }
 
     @Test
@@ -168,46 +214,15 @@ class RedisCheckpointerStorageTest {
         assertEquals(3, checkpointer.graphStore().get("session-1", "workflow-2").orElseThrow().getStep());
     }
 
-    @Test
-    void agentCheckpointPersistsInteractiveInputWithoutSilentFailure() {
-        FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
-
-        Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike("agent-interactive", "agent", "invoke"));
-        AgentSession session = new AgentSession("session-interactive", config, checkpointer);
-        InteractiveInput interactiveInput = new InteractiveInput("user-answer");
-        session.state().updateGlobal(Map.of("pending_input", interactiveInput, "flag", "ok"));
-
-        checkpointer.postAgentExecute(session);
-
-        String blobKey = "session-interactive:agent:agent-interactive:agent_state_blobs";
-        String typeKey = "session-interactive:agent:agent-interactive:agent_state_blobs_dump_type";
-        assertNotNull(redisClient.get(blobKey), "InteractiveInput must not block checkpoint blob write");
-        assertNotNull(redisClient.get(typeKey));
-
-        AgentSession restored = new AgentSession("session-interactive", config, checkpointer);
-        checkpointer.preAgentExecute(restored, null);
-        Object restoredInput = restored.state().getGlobal("pending_input");
-        assertTrue(restoredInput instanceof InteractiveInput);
-        assertEquals("user-answer", ((InteractiveInput) restoredInput).getRawInputs());
-        assertEquals("ok", restored.state().getGlobal("flag"));
-    }
-
-    @Test
-    void agentCheckpointFailsWhenStateContainsNonSerializableValue() {
-        FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer =
-            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
-
-        Config config = new Config();
-        config.setAgentConfig(new Config.MetadataLike("agent-bad", "agent", "invoke"));
-        AgentSession session = new AgentSession("session-bad", config, checkpointer);
-        session.state().updateGlobal(Map.of("bad", new Object()));
-
-        assertThrows(RuntimeException.class, () -> checkpointer.postAgentExecute(session));
-        assertTrue(redisClient.get("session-bad:agent:agent-bad:agent_state_blobs") == null);
+    private static boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     static class FakeRedisClient {

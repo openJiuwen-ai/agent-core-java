@@ -14,9 +14,7 @@ import java.util.Map;
 
 /**
  * Interactive input data carrying user inputs for interactions.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.interaction.interactive_input.InteractiveInput}.
- * 
+ *
  * @since 0.1.7
  */
 public class InteractiveInput implements Serializable {

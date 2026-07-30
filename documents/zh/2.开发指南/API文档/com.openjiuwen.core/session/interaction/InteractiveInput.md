@@ -3,7 +3,7 @@
 ## 类 InteractiveInput
 
 ```java
-public class InteractiveInput
+public class InteractiveInput implements Serializable
 ```
 
 用于承载用户交互输入的数据对象，既支持原始输入，也支持按节点 ID 组织的输入映射。
@@ -36,3 +36,4 @@ public class InteractiveInput
 
 - 相关测试：`InteractiveInputFullTest`、`InteractiveInputTest`。
 - `update(...)` 会在 `nodeId` 或 `value` 为空时抛出 `INTERACTION_INPUT_INVALID`。
+- 对象可由持久化 checkpointer 使用 Java 原生序列化保存；此时 `userInputs` 中的键和值以及 `rawInputs` 也必须可序列化，否则保存会明确失败。
