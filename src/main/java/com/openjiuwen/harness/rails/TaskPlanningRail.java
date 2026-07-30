@@ -14,6 +14,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
@@ -156,13 +157,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         todoTool = new TodoTool(todoStorage);
         language = deepAgent.getWorkspace().getLanguage();
         tools.add(new LocalFunction(card("todo_create", deepAgent, language),
-                inputs -> todoTool.create(sessionId(inputs), objectList(inputs.get("tasks")))));
-        tools.add(
-                new LocalFunction(card("todo_list", deepAgent, language), inputs -> todoTool.list(sessionId(inputs))));
+                (inputs, kwargs) -> todoTool.create(sessionId(inputs, kwargs), objectList(inputs.get("tasks")))));
+        tools.add(new LocalFunction(card("todo_list", deepAgent, language),
+                (inputs, kwargs) -> todoTool.list(sessionId(inputs, kwargs))));
         tools.add(new LocalFunction(card("todo_get", deepAgent, language),
-                inputs -> todoTool.get(sessionId(inputs), string(inputs.get("id")))));
+                (inputs, kwargs) -> todoTool.get(sessionId(inputs, kwargs), string(inputs.get("id")))));
         tools.add(new LocalFunction(card("todo_modify", deepAgent, language),
-                inputs -> todoTool.modify(sessionId(inputs), inputs)));
+                (inputs, kwargs) -> todoTool.modify(sessionId(inputs, kwargs), inputs)));
         for (Tool tool : tools) {
             deepAgent.registerHarnessTool(tool);
         }
@@ -858,11 +859,19 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     /**
      * sessionId.
      * 
-     * @param inputs inputs
+     * @param inputs tool inputs
+     * @param kwargs execution context
      * @return the result
      * @since 0.1.7
      */
-    private static String sessionId(Map<String, Object> inputs) {
+    private static String sessionId(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        Object session = kwargs.get("session");
+        if (session instanceof Session currentSession) {
+            String sessionId = currentSession.getSessionId();
+            if (sessionId != null && !sessionId.isBlank()) {
+                return sessionId;
+            }
+        }
         Object value = inputs.get("session_id");
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : "default";
     }

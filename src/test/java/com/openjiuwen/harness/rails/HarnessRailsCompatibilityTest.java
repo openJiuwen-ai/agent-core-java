@@ -1064,6 +1064,47 @@ class HarnessRailsCompatibilityTest {
     }
 
     @Test
+    void taskPlanningRailTodoToolsShouldUseExecutionSessionWhenArgumentsOmitSessionId() throws Exception {
+        TaskPlanningRail rail = new TaskPlanningRail();
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                AgentCard.builder().name("planning-session-agent").description("Planning session agent").build(),
+                DeepAgentConfig.builder().rails(List.of(rail)).build(),
+                Workspace.builder().rootPath(tempDir.toString()).language("en").build());
+        agent.ensureInitialized();
+        TestSession firstSession = new TestSession("todo-session-a");
+        TestSession secondSession = new TestSession("todo-session-b");
+        Map<String, Object> firstContext = Map.of("session", firstSession);
+        Map<String, Object> secondContext = Map.of("session", secondSession);
+
+        ToolOutput firstCreate = (ToolOutput) findTool(agent, "todo_create")
+                .invoke(Map.of("tasks", List.of("First session task")), firstContext);
+        ToolOutput secondCreate = (ToolOutput) findTool(agent, "todo_create")
+                .invoke(Map.of("tasks", List.of("Second session task")), secondContext);
+        assertThat(firstCreate.isSuccess()).isTrue();
+        assertThat(secondCreate.isSuccess()).isTrue();
+
+        @SuppressWarnings("unchecked")
+        List<TodoItem> firstTodos = (List<TodoItem>) ((ToolOutput) findTool(agent, "todo_list")
+                .invoke(Map.of(), firstContext)).getData();
+        @SuppressWarnings("unchecked")
+        List<TodoItem> secondTodos = (List<TodoItem>) ((ToolOutput) findTool(agent, "todo_list")
+                .invoke(Map.of(), secondContext)).getData();
+        assertThat(firstTodos).extracting(TodoItem::getContent).containsExactly("First session task");
+        assertThat(secondTodos).extracting(TodoItem::getContent).containsExactly("Second session task");
+
+        String firstTaskId = firstTodos.get(0).getId();
+        ToolOutput modify = (ToolOutput) findTool(agent, "todo_modify")
+                .invoke(Map.of("updates", List.of(Map.of("task_id", firstTaskId, "status", "completed"))),
+                        firstContext);
+        ToolOutput get = (ToolOutput) findTool(agent, "todo_get").invoke(Map.of("id", firstTaskId), firstContext);
+        assertThat(modify.isSuccess()).isTrue();
+        assertThat((TodoItem) get.getData()).extracting(TodoItem::getStatus).isEqualTo(TodoStatus.COMPLETED);
+        assertThat(tempDir.resolve(".todo/todo-session-a/todo.json")).exists();
+        assertThat(tempDir.resolve(".todo/todo-session-b/todo.json")).exists();
+        assertThat(tempDir.resolve(".todo/default/todo.json")).doesNotExist();
+    }
+
+    @Test
     void taskPlanningRailShouldCreateStructuredTodoItems() throws Exception {
         TaskPlanningRail rail = new TaskPlanningRail();
         DeepAgent agent = HarnessFactory.createDeepAgent(
