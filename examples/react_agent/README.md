@@ -1,4 +1,4 @@
-# ReAct Agent Java Example
+﻿# ReAct Agent Java Example
 
 这个目录提供了一个基于 Java 框架的 ReAct 天气助手示例。
 
@@ -22,19 +22,19 @@
 
 以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。建议先执行一次编译：
 
-注意：下面的 `javac` 命令会把 `.class` 文件直接生成到 `examples/reac_agent` 目录中。
+注意：下面的 `javac` 命令会把 `.class` 文件直接生成到 `examples/react_agent` 目录中。
 
 ```powershell
 mvn -DskipTests compile
-mvn dependency:build-classpath "-Dmdep.outputFile=target/reac_agent.classpath"
-javac -cp "target/classes;$(Get-Content target/reac_agent.classpath -Raw)" examples/reac_agent/ExampleApiConfigLoader.java examples/reac_agent/ReActWeatherAgentExample.java
-java -cp "target/classes;examples/reac_agent;$(Get-Content target/reac_agent.classpath -Raw)" ReActWeatherAgentExample
+mvn dependency:build-classpath "-Dmdep.outputFile=target/react_agent.classpath"
+javac -cp "target/classes;$(Get-Content target/react_agent.classpath -Raw)" examples/react_agent/ExampleApiConfigLoader.java examples/react_agent/ReActWeatherAgentExample.java
+java -cp "target/classes;examples/react_agent;$(Get-Content target/react_agent.classpath -Raw)" ReActWeatherAgentExample
 ```
 
 也可以在最后一条命令后追加查询内容，例如：
 
 ```powershell
-java -cp "target/classes;examples/reac_agent;$(Get-Content target/reac_agent.classpath -Raw)" ReActWeatherAgentExample 查询北京明天天气
+java -cp "target/classes;examples/react_agent;$(Get-Content target/react_agent.classpath -Raw)" ReActWeatherAgentExample 查询北京明天天气
 ```
 
 ## 输出

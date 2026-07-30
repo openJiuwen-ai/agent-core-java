@@ -89,7 +89,8 @@ class HarnessConfigCompatibilityTest {
     void builderShouldCreateAgentAndWriteWorkspaceFiles() throws Exception {
         Path configPath = tempDir.resolve("agent.yaml");
         // Use in-repo stdio MCP fixture; uvx is not guaranteed on CI/Windows.
-        String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String javaBinName = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
+        String javaBin = Path.of(System.getProperty("java.home"), "bin", javaBinName).toString();
         String classpath = System.getProperty("java.class.path");
         Files.writeString(configPath, """
                 schema_version: harness_config.v0.1

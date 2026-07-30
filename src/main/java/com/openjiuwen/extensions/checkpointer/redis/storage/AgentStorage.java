@@ -51,7 +51,7 @@ public class AgentStorage extends BaseRedisStorage {
             String agentId = resolveAgentId(baseSession);
             var stateBlob = serializeState(baseSession.state().getState());
             if (stateBlob == null) {
-                log.warn("Failed to serialize state for agent {}, session {}", agentId, sessionId);
+                // Null agent state means nothing to persist (not a serialization failure).
                 return CompletableFuture.completedFuture(null);
             }
 

@@ -58,7 +58,8 @@ class StdioClientSecurityTest {
         assertThrows(IllegalArgumentException.class,
                 () -> StdioClient.resolveAllowedCommand(McpServerConfig.builder().serverPath(" ").build()));
 
-        Path nonExecutable = Files.writeString(tempDir.resolve("server"), "#!/bin/sh\n");
+        // Prefer a directory: on Windows Files.isExecutable often returns true for plain files.
+        Path nonExecutable = Files.createDirectory(tempDir.resolve("not-a-binary"));
         McpServerConfig config = McpServerConfig.builder()
                 .serverPath(nonExecutable.toString())
                 .params(Map.of("command", nonExecutable.toString()))

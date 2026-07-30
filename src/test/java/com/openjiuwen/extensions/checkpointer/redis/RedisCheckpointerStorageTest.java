@@ -168,6 +168,48 @@ class RedisCheckpointerStorageTest {
         assertEquals(3, checkpointer.graphStore().get("session-1", "workflow-2").orElseThrow().getStep());
     }
 
+    @Test
+    void agentCheckpointPersistsInteractiveInputWithoutSilentFailure() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent-interactive", "agent", "invoke"));
+        AgentSession session = new AgentSession("session-interactive", config, checkpointer);
+        InteractiveInput interactiveInput = new InteractiveInput("user-answer");
+        session.state().updateGlobal(Map.of("pending_input", interactiveInput, "flag", "ok"));
+
+        checkpointer.postAgentExecute(session);
+
+        String blobKey = "session-interactive:agent:agent-interactive:agent_state_blobs";
+        String typeKey = "session-interactive:agent:agent-interactive:agent_state_blobs_dump_type";
+        assertNotNull(redisClient.get(blobKey), "InteractiveInput must not block checkpoint blob write");
+        assertNotNull(redisClient.get(typeKey));
+
+        AgentSession restored = new AgentSession("session-interactive", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+        Object restoredInput = restored.state().getGlobal("pending_input");
+        assertTrue(restoredInput instanceof InteractiveInput);
+        assertEquals("user-answer", ((InteractiveInput) restoredInput).getRawInputs());
+        assertEquals("ok", restored.state().getGlobal("flag"));
+    }
+
+    @Test
+    void agentCheckpointFailsWhenStateContainsNonSerializableValue() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
+
+        Config config = new Config();
+        config.setAgentConfig(new Config.MetadataLike("agent-bad", "agent", "invoke"));
+        AgentSession session = new AgentSession("session-bad", config, checkpointer);
+        session.state().updateGlobal(Map.of("bad", new Object()));
+
+        assertThrows(RuntimeException.class, () -> checkpointer.postAgentExecute(session));
+        assertTrue(redisClient.get("session-bad:agent:agent-bad:agent_state_blobs") == null);
+    }
+
     static class FakeRedisClient {
         private final Map<String, Object> values = new ConcurrentHashMap<>();
         private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();

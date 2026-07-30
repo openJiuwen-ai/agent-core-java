@@ -103,7 +103,7 @@ public abstract class BaseRedisStorage {
         } catch (RuntimeException e) {
             log.warn("Failed to serialize Redis state: {}", rootCauseMessage(e));
             log.warn("Redis state diagnostic: {}", describeState(state));
-            return null;
+            throw e;
         }
     }
 
