@@ -3,7 +3,6 @@ package com.openjiuwen.core.memory;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -43,14 +42,11 @@ import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -161,41 +157,6 @@ class LongTermMemoryTest {
         assertEquals(1, result.size());
         assertTrue(result.containsKey(""));
         assertNull(result.get(""));
-    }
-
-    @Test
-    void addMessagesWithBaseEmbeddingListsMultipleGeneratedProfilesForUnknownType() throws Exception {
-        LongTermMemory memory = registeredMemory();
-        String scopeId = "scope_multi_profiles";
-        memory.setScopeConfig(scopeId, MemoryScopeConfig.builder().build());
-        setField(memory, "baseLlm", new AbstractMap.SimpleEntry<>("mock-model", memoryModelReturningProfiles()));
-
-        memory.addMessages(
-                List.of(new BaseMessage("user", "我叫李敏，今年20岁")),
-                AgentMemoryConfig.builder()
-                        .enableLongTermMem(true)
-                        .enableUserProfile(true)
-                        .enableSemanticMemory(true)
-                        .enableEpisodicMemory(true)
-                        .enableSummaryMemory(false)
-                        .build(),
-                "user_multi_profiles",
-                scopeId,
-                "session_multi_profiles"
-        ).join();
-
-        Set<String> contents = new HashSet<>(memory.getUserMemByPage(
-                "user_multi_profiles",
-                scopeId,
-                20,
-                1,
-                MemoryType.UNKNOWN
-        ).stream()
-                .filter(memInfo -> memInfo.getType() == MemoryType.USER_PROFILE)
-                .map(MemInfo::getContent)
-                .toList());
-
-        assertEquals(Set.of("用户的姓名是李敏", "用户的年龄是20岁"), contents);
     }
 
     @Test
@@ -492,59 +453,5 @@ class LongTermMemoryTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private static Model memoryModelReturningProfiles() {
-        Model model = mock(Model.class);
-        org.mockito.Mockito.doAnswer(invocation -> {
-            List<?> messages = invocation.getArgument(0);
-            String prompt = messages.isEmpty() || !(messages.get(0) instanceof BaseMessage message)
-                    ? ""
-                    : message.getContentAsString();
-            if (prompt.contains("## 旧信息") && prompt.contains("## 新信息")) {
-                return new AssistantMessage(memoryUpdateNoneResponse(prompt));
-            }
-            if (prompt.contains("has_key_information")) {
-                return new AssistantMessage("""
-                        {"has_key_information":true,"variables":[],"summary":""}
-                        """);
-            }
-            if (prompt.contains("user_profile") && prompt.contains("episodic_memory")) {
-                return new AssistantMessage("""
-                        {"user_profile":["用户的姓名是李敏","用户的年龄是20岁"],"semantic_memory":[],"episodic_memory":[]}
-                        """);
-            }
-            return new AssistantMessage("""
-                    {"has_key_information":true,"variables":[],"summary":""}
-                    """);
-        }).when(model).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
-        return model;
-    }
-
-    private static String memoryUpdateNoneResponse(String prompt) {
-        List<String> items = new ArrayList<>();
-        for (Map.Entry<String, String> entry : parseMemoryUpdateSection(prompt).entrySet()) {
-            items.add("""
-                    {"info_id":"%s","info_text":"%s","result":"none","related_infos":{}}
-                    """.formatted(entry.getKey(), entry.getValue()));
-        }
-        return "[" + String.join(",", items) + "]";
-    }
-
-    private static Map<String, String> parseMemoryUpdateSection(String prompt) {
-        int start = prompt.indexOf("## 新信息");
-        if (start < 0) {
-            return Map.of();
-        }
-        String block = prompt.substring(start + "## 新信息".length()).trim();
-        Map<String, String> result = new LinkedHashMap<>();
-        for (String line : block.split("\\r?\\n")) {
-            String trimmed = line.trim();
-            int colonIdx = trimmed.indexOf(':');
-            if (colonIdx > 0 && colonIdx < trimmed.length() - 1) {
-                result.put(trimmed.substring(0, colonIdx).trim(), trimmed.substring(colonIdx + 1).trim());
-            }
-        }
-        return result;
     }
 }

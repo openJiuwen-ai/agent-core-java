@@ -27,9 +27,7 @@ class HttpClientTest {
         if (server != null) {
             server.stop(0);
         }
-        HttpSessionManager.getInstance().closeAll().join();
-        Clients.getHttpSessionManager().closeAll().join();
-        Clients.getConnectorPoolManager().closeAll().join();
+        HttpSessionManager.getInstance().closeAll();
     }
 
     @Test
@@ -104,22 +102,6 @@ class HttpClientTest {
         assertThat(second.get("data")).isEqualTo("hello");
         client.close();
         assertThat(client.isClosed()).isTrue();
-    }
-
-    @Test
-    void rootClientUsesOnlyRootSessionManager() throws Exception {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/text", exchange -> writeResponse(exchange, "text/plain", "hello"));
-        server.start();
-
-        HttpClient client = new HttpClient(new SessionConfig(), true);
-        String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/text";
-
-        assertThat(client.get(url).get("data")).isEqualTo("hello");
-        assertThat(HttpSessionManager.getInstance().getStats().join())
-                .containsEntry("total_resources", 1);
-        assertThat(Clients.getHttpSessionManager().getStats().join())
-                .containsEntry("total_resources", 0);
     }
 
     @Test

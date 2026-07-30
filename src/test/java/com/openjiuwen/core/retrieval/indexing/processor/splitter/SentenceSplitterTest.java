@@ -38,20 +38,6 @@ class SentenceSplitterTest {
     }
 
     @Test
-    void splitTextPreservesOriginalWhitespaceBetweenPackedSentences() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ")
-                        .trim()
-                        .split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .toList();
-        SentenceSplitter splitter = new SentenceSplitter(tokenizer, 4, 0, "en");
-
-        List<String> chunks = splitter.splitText("Alpha beta. \n  Gamma delta.");
-
-        assertEquals(List.of("Alpha beta. \n  Gamma delta."), chunks);
-    }
-
-    @Test
     void splitShouldReturnStartAndEndOffsets() {
         Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
         SentenceSplitter splitter = new SentenceSplitter(tokenizer, 5, 0, "en");

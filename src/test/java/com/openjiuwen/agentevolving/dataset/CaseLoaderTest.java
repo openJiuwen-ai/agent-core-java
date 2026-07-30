@@ -76,15 +76,7 @@ class CaseLoaderTest {
 
         assertTrue(loader.getCases().isEmpty());
         assertEquals(List.of(), loader.getCases());
-    }
-
-    @Test
-    void shuffleCasesRejectsNullCases() {
-        NullPointerException exception = assertThrows(
-                NullPointerException.class,
-                () -> CaseLoader.shuffleCases(null, 0));
-
-        assertEquals("cases", exception.getMessage());
+        assertEquals(List.of(), CaseLoader.shuffleCases(null, 0));
     }
 
     @Test

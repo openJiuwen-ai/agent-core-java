@@ -315,10 +315,7 @@ public class HttpClient extends BaseClient {
         if (resolvedTimeout != null && resolvedTimeout > 0) {
             builder.timeout(Duration.ofMillis(Math.max(1L, Math.round(resolvedTimeout * 1000))));
         }
-        Map<String, String> mergedHeaders = new LinkedHashMap<>();
-        if (config.getHeaders() != null) {
-            mergedHeaders.putAll(config.getHeaders());
-        }
+        Map<String, String> mergedHeaders = new LinkedHashMap<>(config.getHeaders());
         if (headers != null) {
             mergedHeaders.putAll(headers);
         }

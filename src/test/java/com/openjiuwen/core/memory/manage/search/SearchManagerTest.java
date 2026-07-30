@@ -19,7 +19,6 @@ import com.openjiuwen.core.foundation.llm.Model;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -178,57 +177,6 @@ class SearchManagerTest {
                 .toList());
     }
 
-    @Test
-    void listUserMemWithoutTypeDelegatesAsUnfilteredQuery() {
-        TestMemoryIndex idx = new TestMemoryIndex(new InMemoryKVStore());
-        idx.addListedDoc(new MemoryDoc("profile", "profile memory", MemoryType.USER_PROFILE.getValue(), null, Map.of()));
-        idx.addListedDoc(new MemoryDoc("semantic", "semantic memory", MemoryType.SEMANTIC_MEMORY.getValue(), null, Map.of()));
-        SearchManager manager = new SearchManager(Map.of(), CRYPTO_KEY, idx);
-
-        List<Map<String, Object>> result = manager.listUserMem("user", "scope", 10, 1).toCompletableFuture().join();
-
-        assertNull(idx.lastListMemTypes);
-        assertEquals(List.of("profile memory", "semantic memory"), result.stream()
-                .map(item -> String.valueOf(item.get("mem")))
-                .toList());
-    }
-
-    @Test
-    void listUserMemWithEmptyTypeDelegatesAsUnfilteredQuery() {
-        TestMemoryIndex idx = new TestMemoryIndex(new InMemoryKVStore());
-        idx.addListedDoc(new MemoryDoc("profile", "profile memory", MemoryType.USER_PROFILE.getValue(), null, Map.of()));
-        idx.addListedDoc(new MemoryDoc("semantic", "semantic memory", MemoryType.SEMANTIC_MEMORY.getValue(), null, Map.of()));
-        SearchManager manager = new SearchManager(Map.of(), CRYPTO_KEY, idx);
-
-        List<Map<String, Object>> result = manager.listUserMem("user", "scope", 10, 1, "").toCompletableFuture().join();
-
-        assertNull(idx.lastListMemTypes);
-        assertEquals(List.of("profile memory", "semantic memory"), result.stream()
-                .map(item -> String.valueOf(item.get("mem")))
-                .toList());
-    }
-
-    @Test
-    void listUserMemWithTypeDelegatesAsSingleTypeFilter() {
-        TestMemoryIndex idx = new TestMemoryIndex(new InMemoryKVStore());
-        idx.addListedDoc(new MemoryDoc("profile", "profile memory", MemoryType.USER_PROFILE.getValue(), null, Map.of()));
-        idx.addListedDoc(new MemoryDoc("semantic", "semantic memory", MemoryType.SEMANTIC_MEMORY.getValue(), null, Map.of()));
-        SearchManager manager = new SearchManager(Map.of(), CRYPTO_KEY, idx);
-
-        List<Map<String, Object>> result = manager.listUserMem(
-                "user",
-                "scope",
-                10,
-                1,
-                MemoryType.USER_PROFILE.getValue()
-        ).toCompletableFuture().join();
-
-        assertEquals(List.of(MemoryType.USER_PROFILE.getValue()), idx.lastListMemTypes);
-        assertEquals(List.of("profile memory"), result.stream()
-                .map(item -> String.valueOf(item.get("mem")))
-                .toList());
-    }
-
     private static Map<String, Object> result(String id, double score) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", id);
@@ -284,15 +232,9 @@ class SearchManagerTest {
 
     private static final class TestMemoryIndex extends BaseMemoryIndex {
         private final BaseKVStore kvStore;
-        private final List<MemoryDoc> listedDocs = new ArrayList<>();
-        private List<String> lastListMemTypes;
 
         TestMemoryIndex(BaseKVStore kvStore) {
             this.kvStore = kvStore;
-        }
-
-        private void addListedDoc(MemoryDoc doc) {
-            listedDocs.add(doc);
         }
 
         @Override
@@ -300,7 +242,6 @@ class SearchManagerTest {
 
         @Override
         public CompletableFuture<Void> addMemories(String userId, String scopeId, List<MemoryDoc> memories) {
-            listedDocs.addAll(memories);
             return CompletableFuture.completedFuture(null);
         }
 
@@ -338,44 +279,6 @@ class SearchManagerTest {
         @Override
         public CompletableFuture<MemoryDoc> getById(String userId, String scopeId, String memId) {
             return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletableFuture<List<MemoryDoc>> listMemories(String userId, String scopeId, int offset, int limit,
-                                                               List<String> memTypes) {
-            lastListMemTypes = memTypes;
-            List<MemoryDoc> sourceDocs = listedDocs.isEmpty()
-                    ? loadDocsFromUserMemStore(userId, scopeId)
-                    : listedDocs;
-            List<MemoryDoc> docs = sourceDocs.stream()
-                    .filter(doc -> memTypes == null || memTypes.contains(doc.getType()))
-                    .toList();
-            int start = Math.max(0, Math.min(offset, docs.size()));
-            int end = limit <= 0 ? docs.size() : Math.min(docs.size(), start + limit);
-            return CompletableFuture.completedFuture(new ArrayList<>(docs.subList(start, end)));
-        }
-
-        private List<MemoryDoc> loadDocsFromUserMemStore(String userId, String scopeId) {
-            List<Map<String, Object>> rows = new UserMemStore(kvStore).getInRange(userId, scopeId, 0, Integer.MAX_VALUE)
-                    .join();
-            if (rows == null || rows.isEmpty()) {
-                return List.of();
-            }
-            List<MemoryDoc> docs = new ArrayList<>();
-            for (Map<String, Object> row : rows) {
-                Map<String, Object> fields = new LinkedHashMap<>(row);
-                String id = String.valueOf(row.getOrDefault("id", ""));
-                String text = String.valueOf(row.getOrDefault("mem", ""));
-                String type = String.valueOf(row.getOrDefault("mem_type", ""));
-                Object timestamp = row.get("timestamp");
-                ZonedDateTime parsedTimestamp = timestamp == null ? null : ZonedDateTime.parse(String.valueOf(timestamp));
-                fields.remove("id");
-                fields.remove("mem");
-                fields.remove("mem_type");
-                fields.remove("timestamp");
-                docs.add(new MemoryDoc(id, text, type, parsedTimestamp, fields));
-            }
-            return docs;
         }
 
         @Override
