@@ -19,9 +19,6 @@ import java.util.Map;
 
 /**
  * Ask-user rail: returns user input without executing the tool.
- * <p>
- * Aligned with Python {@code openjiuwen.harness.rails.interrupt.ask_user_rail.AskUserRail}.
- * Questions come from tool argument {@code questions}; interrupt {@code message} is empty.
  *
  * @since 0.1.7
  */
@@ -105,11 +102,94 @@ public class AskUserRail extends BaseInterruptRail {
 
         AskUserRequest request = new AskUserRequest();
         request.setInterruptId(interruptId);
-        request.setMessage("");
+        // Fill message for apps that only read message.
+        request.setMessage(formatMessageFromQuestions(questions));
         request.setPayloadSchema(AskUserPayload.toSchema());
         request.setContext(context);
         request.setQuestions(questions);
         return request;
+    }
+
+    /**
+     * Render structured questions into a human-readable interrupt message.
+     *
+     * @param questions normalized ask_user questions; may be null/empty
+     * @return concatenated message, or empty string when there is no usable content
+     * @since 0.1.14
+     */
+    static String formatMessageFromQuestions(List<Map<String, Object>> questions) {
+        if (questions == null || questions.isEmpty()) {
+            return "";
+        }
+        List<String> blocks = new ArrayList<>();
+        for (Map<String, Object> question : questions) {
+            if (question == null || question.isEmpty()) {
+                continue;
+            }
+            StringBuilder block = new StringBuilder();
+            String header = stringField(question, "header").trim();
+            String questionText = stringField(question, "question").trim();
+            if (!header.isEmpty() && !questionText.isEmpty()) {
+                block.append('[').append(header).append("] ").append(questionText);
+            } else if (!questionText.isEmpty()) {
+                block.append(questionText);
+            } else if (!header.isEmpty()) {
+                block.append(header);
+            }
+
+            Object optionsObj = question.get("options");
+            if (optionsObj instanceof List<?> options && !options.isEmpty()) {
+                List<String> optionLines = new ArrayList<>();
+                for (Object option : options) {
+                    String line = formatOptionLine(option);
+                    if (!line.isEmpty()) {
+                        optionLines.add(line);
+                    }
+                }
+                if (!optionLines.isEmpty()) {
+                    if (block.length() > 0) {
+                        block.append('\n');
+                    }
+                    block.append(String.join("\n", optionLines));
+                }
+            }
+
+            Object multiSelect = question.get("multi_select");
+            if (Boolean.TRUE.equals(multiSelect) || "true".equalsIgnoreCase(String.valueOf(multiSelect))) {
+                if (block.length() > 0) {
+                    block.append('\n');
+                }
+                block.append("(multi-select)");
+            }
+
+            if (block.length() > 0) {
+                blocks.add(block.toString());
+            }
+        }
+        return String.join("\n\n", blocks);
+    }
+
+    private static String formatOptionLine(Object option) {
+        if (option instanceof Map<?, ?> map) {
+            Map<String, Object> optionMap = castStringObjectMap(map);
+            String label = stringField(optionMap, "label").trim();
+            String description = stringField(optionMap, "description").trim();
+            if (!label.isEmpty() && !description.isEmpty()) {
+                return "- " + label + ": " + description;
+            }
+            if (!label.isEmpty()) {
+                return "- " + label;
+            }
+            if (!description.isEmpty()) {
+                return "- " + description;
+            }
+            return "";
+        }
+        if (option == null) {
+            return "";
+        }
+        String text = String.valueOf(option).trim();
+        return text.isEmpty() ? "" : "- " + text;
     }
 
     /**

@@ -11,9 +11,6 @@ import java.util.Map;
 
 /**
  * Ask-user interrupt request with structured questions.
- * <p>
- * Aligned with Python {@code AskUserRequest}: {@code message} stays empty and the real
- * content lives in {@code questions}.
  *
  * @since 0.1.14
  */
