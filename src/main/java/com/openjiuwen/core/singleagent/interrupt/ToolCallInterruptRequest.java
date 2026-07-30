@@ -18,9 +18,6 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
     private static final long serialVersionUID = 1L;
     private String toolCallId;
     private String toolName;
-    /**
-     * Preserved from {@code AskUserRequest.questions} when the interrupt came from ask_user.
-     */
     private java.util.List<java.util.Map<String, Object>> questions;
 
     /**
