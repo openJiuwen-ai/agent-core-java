@@ -50,7 +50,8 @@ class MemUpdateCheckerTest {
     void checkWithConflictingResultAddsNewAndDeletesOld() throws Exception {
         Model model = mock(Model.class);
         doReturn(AssistantMessage.builder().content(
-                "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"conflicting\",\"related_infos\":{\"2\":\"I hate books\"}}]")
+                "[{\"info_id\":\"1\",\"info_text\":\"I like reading\",\"result\":\"conflicting\","
+                        + "\"related_infos\":{\"2\":\"I hate books\"}}]")
                 .build()).when(model).invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
         MemUpdateChecker checker = new MemUpdateChecker();

@@ -339,7 +339,6 @@ public class QuestionerDirectReplyHandler {
         return keywords;
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * invokeLlmForExtraction.
      * 
@@ -347,6 +346,7 @@ public class QuestionerDirectReplyHandler {
      * @return the result
      * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     private Map<String, Object> invokeLlmForExtraction(List<BaseMessage> llmInputs) {
         String response;
         try {

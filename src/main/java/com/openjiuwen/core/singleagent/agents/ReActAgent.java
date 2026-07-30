@@ -20,6 +20,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
+import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -29,11 +30,10 @@ import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.AbilityManager.ToolExecutionEntry;
+import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolCallInterruptRequest;
-import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
@@ -382,7 +382,8 @@ public class ReActAgent extends BaseAgent {
         String role = extractMessageRole(message);
         String content = String.valueOf(extractMessageContent(message));
         String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
-        Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
+        String logMessage = "{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}";
+        Loggers.AGENT.info("{}", logMessage);
     }
 
     /**
@@ -390,10 +391,10 @@ public class ReActAgent extends BaseAgent {
      *
      * @param messages messages to summarize
      * @return counts grouped by safe role names
-     * @since 0.1.7
+     * @since 0.1.13
      */
     private Map<String, Integer> summarizeMessageRoles(List<?> messages) {
-        Map<String, Integer> roleCounts = new LinkedHashMap<String, Integer>();
+        Map<String, Integer> roleCounts = new LinkedHashMap<>();
         for (Object message : messages) {
             String role = normalizeRoleForLogging(extractMessageRole(message));
             roleCounts.merge(role, 1, Integer::sum);
@@ -406,7 +407,7 @@ public class ReActAgent extends BaseAgent {
      *
      * @param message model input message
      * @return role or an empty string when unavailable
-     * @since 0.1.7
+     * @since 0.1.13
      */
     private String extractMessageRole(Object message) {
         Object role = null;
@@ -423,7 +424,7 @@ public class ReActAgent extends BaseAgent {
      *
      * @param message model input message
      * @return message content
-     * @since 0.1.7
+     * @since 0.1.13
      */
     private Object extractMessageContent(Object message) {
         if (message instanceof BaseMessage baseMessage) {
@@ -440,7 +441,7 @@ public class ReActAgent extends BaseAgent {
      *
      * @param role raw role
      * @return safe role bucket
-     * @since 0.1.7
+     * @since 0.1.13
      */
     private String normalizeRoleForLogging(String role) {
         return switch (role) {
@@ -1149,7 +1150,7 @@ public class ReActAgent extends BaseAgent {
      *
      * @param toolCalls tool calls returned by the model
      * @return cloned tool calls with missing indexes normalized
-     * @since 0.1.7
+     * @since 0.1.13
      */
     private List<ToolCall> cloneToolCallsForContext(List<ToolCall> toolCalls) {
         List<ToolCall> cloned = cloneToolCalls(toolCalls);
