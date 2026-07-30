@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -52,7 +53,7 @@ import java.util.stream.Collectors;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.vertex.Vertex}.
  * In Java, async patterns use Virtual Threads and CompletableFuture instead of asyncio.
- * 
+ *
  * @since 0.1.7
  */
 public class Vertex extends AtomicNode implements StreamConsumer {
@@ -63,6 +64,13 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     private final String nodeId;
     private final Executable<Object, Object> executable;
+
+    /**
+     * Lock guarding the End mix-mode read-modify-write of
+     * {@code session.state().getOutputs(nodeId)}/{@code setOutputs(results)} so that
+     * concurrently running INVOKE and COLLECT postInvoke calls do not clobber each other.
+     */
+    private final Object endMixMergeLock = new Object();
 
     private Object context;
     private NodeSession session;
@@ -80,14 +88,14 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * ArrayList<>.
-     * 
+     *
      * @since 0.1.7
      */
     private List<String> sourceId = new ArrayList<>();
 
     /**
      * HashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private Map<String, Object> logMessage = new HashMap<>();
@@ -107,7 +115,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Vertex.
-     * 
+     *
      * @param nodeId nodeId
      * @param executable executable
      * @since 0.1.7
@@ -121,7 +129,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Initialize the vertex with a session and optional context.
-     * 
+     *
      * @param session the base session
      * @param kwargs additional arguments (e.g., "context")
      * @return true if initialization succeeded
@@ -164,7 +172,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
         if (isFirstInit) {
             List<String> abilityNames =
-                componentAbility.stream().map(ComponentAbility::name).collect(Collectors.toList());
+                    componentAbility.stream().map(ComponentAbility::name).collect(Collectors.toList());
             LOGGER.info("Initialized node [{}], abilities is {}", this.nodeId, abilityNames);
             isFirstInit = false;
         }
@@ -183,7 +191,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     /**
      * Main entry point - called by the Pregel engine.
      * Mirrors Python's {@code __call__(state, config)}.
-     * 
+     *
      * @param state the graph state
      * @param config execution config
      * @return a map with source_node_id
@@ -241,7 +249,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * doAtomicInvoke.
-     * 
+     *
      * @param kwargs kwargs
      * @return the result
      * @since 0.1.7
@@ -264,7 +272,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Execute the node's abilities (invoke/stream, then wait for stream-in).
-     * 
+     *
      * @param config execution configuration
      * @return null
      * @throws Exception on execution failure
@@ -338,7 +346,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * throwIfInterrupted.
-     * 
+     *
      * @since 0.1.7
      */
     private static void throwIfInterrupted() {
@@ -351,7 +359,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Run the executable with a specific ability.
-     * 
+     *
      * @param ability the component ability to execute
      * @param isSubgraph whether the executable is a subgraph
      * @param config execution config
@@ -404,7 +412,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * executeInvoke.
-     * 
+     *
      * @param isSubgraph isSubgraph
      * @param config config
      * @since 0.1.7
@@ -420,13 +428,13 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             inputs = wrappedInputs;
         }
         Object results = executable.onInvoke(inputs, session, context);
-        results = postInvoke(results);
+        results = postInvoke(results, ComponentAbility.INVOKE);
         LOGGER.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
     }
 
     /**
      * executeStream.
-     * 
+     *
      * @param isSubgraph isSubgraph
      * @param config config
      * @since 0.1.7
@@ -447,7 +455,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * executeCollect.
-     * 
+     *
      * @param isSubgraph isSubgraph
      * @param latch latch
      * @since 0.1.7
@@ -458,13 +466,13 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             latch.countDown();
         }
         Object batchOutput = executable.onCollect(collectInputs, session, context);
-        Object results = postInvoke(batchOutput);
+        Object results = postInvoke(batchOutput, ComponentAbility.COLLECT);
         LOGGER.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
     }
 
     /**
      * executeTransform.
-     * 
+     *
      * @param isSubgraph isSubgraph
      * @param latch latch
      * @since 0.1.7
@@ -483,7 +491,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     @SuppressWarnings("unchecked")
     /**
      * preInvoke.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -511,63 +519,129 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     @SuppressWarnings("unchecked")
     /**
      * postInvoke.
-     * 
+     *
      * @param results results
      * @return the result
      * @since 0.1.7
      */
-    private Object postInvoke(Object results) {
+    private Object postInvoke(Object results, ComponentAbility ability) {
+        Object processed = applyOutputsSchema(results);
+        boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
+        if (processed instanceof Map && isEndMixMode) {
+            processed = mergeEndMixModeOutputs(processed);
+        }
+        if (processed != null && session.state() instanceof WorkflowStateCollection) {
+            ((WorkflowStateCollection) session.state()).setOutputs(processed);
+        }
+        traceComponentOutputs(processed);
+        clearInteractive();
+        return processed;
+    }
+
+    /**
+     * applyOutputsSchema.
+     *
+     * @param results results
+     * @return the result
+     */
+    @SuppressWarnings("unchecked")
+    private Object applyOutputsSchema(Object results) {
         Object outputsSchema = null;
         if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
             outputsSchema = nodeConfig.getIoConfigs().getOutputsSchema();
         }
-
-        if (outputsSchema != null) {
-            if (outputsSchema instanceof Map) {
-                results = SessionUtils.getBySchema(outputsSchema, (Map<String, Object>) results);
-                if (!isEndNode && results instanceof Map) {
-                    Map<String, Object> resultMap = (Map<String, Object>) results;
-                    resultMap.values().removeIf(java.util.Objects::isNull);
-                }
-            } else {
-                // transformer function
-                if (outputsSchema instanceof java.util.function.Function) {
-                    results = ((java.util.function.Function<Object, Object>) outputsSchema).apply(results);
-                }
-            }
+        if (outputsSchema == null) {
+            return results;
         }
-
-        // Mix mode: end node with both batch and stream calls
-        boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
-        if (results instanceof Map && isEndMixMode) {
-            Map<String, Object> resultMap = (Map<String, Object>) results;
-            Object outputs = resultMap.get("output");
-            if (outputs != null && !(outputs instanceof List)) {
-                resultMap.put("output", new ArrayList<>(List.of(outputs)));
+        if (outputsSchema instanceof Map) {
+            Object transformed = SessionUtils.getBySchema(outputsSchema, (Map<String, Object>) results);
+            if (!isEndNode && transformed instanceof Map) {
+                ((Map<String, Object>) transformed).values().removeIf(java.util.Objects::isNull);
             }
-            if (session.state() instanceof WorkflowStateCollection) {
-                Object oldOutputs = ((WorkflowStateCollection) session.state()).getOutputs(nodeId);
-                if (oldOutputs instanceof Map) {
-                    Map<String, Object> oldMap = (Map<String, Object>) oldOutputs;
-                    if (oldMap.get("output") instanceof List && resultMap.get("output") instanceof List) {
-                        ((List<Object>) resultMap.get("output")).addAll((List<Object>) oldMap.get("output"));
-                    }
-                }
-            }
+            return transformed;
         }
-
-        if (results != null && session.state() instanceof WorkflowStateCollection) {
-            ((WorkflowStateCollection) session.state()).setOutputs(results);
+        if (outputsSchema instanceof java.util.function.Function) {
+            return ((java.util.function.Function<Object, Object>) outputsSchema).apply(results);
         }
-        traceComponentOutputs(results);
-        clearInteractive();
         return results;
+    }
+
+    /**
+     * mergeEndMixModeOutputs.
+     *
+     * @param results results
+     * @return the result
+     */
+    @SuppressWarnings("unchecked")
+    private Object mergeEndMixModeOutputs(Object results) {
+        Map<String, Object> resultMap = (Map<String, Object>) results;
+        Object output = results;
+        if (!(resultMap instanceof java.util.HashMap)
+                && !(resultMap instanceof java.util.LinkedHashMap)
+                && !(resultMap instanceof java.util.TreeMap)) {
+            Map<String, Object> mutable = new LinkedHashMap<>();
+            mutable.putAll(resultMap);
+            resultMap = mutable;
+            output = mutable;
+        }
+        Object outputs = resultMap.get("output");
+        if (outputs != null && !(outputs instanceof List)) {
+            resultMap.put("output", new ArrayList<>(List.of(outputs)));
+        }
+        synchronized (endMixMergeLock) {
+            mergeOldOutputsIfNeeded(resultMap);
+        }
+        return output;
+    }
+
+    /**
+     * mergeOldOutputsIfNeeded.
+     *
+     * @param resultMap resultMap
+     */
+    @SuppressWarnings("unchecked")
+    private void mergeOldOutputsIfNeeded(Map<String, Object> resultMap) {
+        if (!(session.state() instanceof WorkflowStateCollection)) {
+            return;
+        }
+        Object oldOutputs = ((WorkflowStateCollection) session.state()).getOutputs(nodeId);
+        if (!(oldOutputs instanceof Map)) {
+            return;
+        }
+        Map<String, Object> oldMap = (Map<String, Object>) oldOutputs;
+        Object oldOutputValue = oldMap.get("output");
+        Object currentOutput = resultMap.get("output");
+        if (!(currentOutput instanceof List)) {
+            return;
+        }
+        List<Object> currentList = (List<Object>) currentOutput;
+        List<Object> oldList;
+        if (oldOutputValue instanceof List) {
+            oldList = new ArrayList<>((List<Object>) oldOutputValue);
+        } else if (oldOutputValue != null) {
+            oldList = new ArrayList<>();
+            oldList.add(oldOutputValue);
+        } else {
+            oldList = new ArrayList<>();
+        }
+        // Mirror Python's End mix-mode ordering: new (current) chunks first,
+        // old (previously stored) chunks second — see vertex.py
+        // `_post_invoke`: `results["output"].extend(old_outputs["output"])`.
+        // Combined with the batch-first execution order in `call()`
+        // (INVOKE runs before STREAM), STREAM is the second call, so its
+        // chunks land before the earlier INVOKE chunks — yielding
+        // [stream_chunks..., batch_chunk] in 009's expected order.
+        if (!oldList.isEmpty()) {
+            List<Object> merged = new ArrayList<>(currentList);
+            merged.addAll(oldList);
+            resultMap.put("output", merged);
+        }
     }
 
     @SuppressWarnings("unchecked")
     /**
      * preStream.
-     * 
+     *
      * @param ability ability
      * @return the result
      * @since 0.1.7
@@ -601,7 +675,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     @SuppressWarnings("unchecked")
     /**
      * postStream.
-     * 
+     *
      * @param resultsIter resultsIter
      * @param ability ability
      * @since 0.1.7
@@ -650,7 +724,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     private Object transformStreamChunk(Object chunk, Object outputSchema, Object outputTransformer,
-            ActorManager actorManager) {
+                                        ActorManager actorManager) {
         if (outputTransformer == null) {
             return (outputSchema != null && actorManager != null)
                     ? actorManager.getStreamTransform().getByDefaultTransformer(chunk, outputSchema)
@@ -673,7 +747,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     private void sendStreamEndFrame(ComponentAbility ability, boolean isEnd, boolean isSubGraph,
-            ActorManager actorManager) {
+                                    ActorManager actorManager) {
         // Defer it when a sibling ability (INVOKE/COLLECT/TRANSFORM)
         // still needs to run in this batch, so a downstream consumer does not see
         // the end frame before all sibling outputs are produced — mirroring the
@@ -720,7 +794,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     @SuppressWarnings("unchecked")
     /**
      * processChunk.
-     * 
+     *
      * @param message message
      * @param isEnd isEnd
      * @param endStreamIndex endStreamIndex
@@ -729,7 +803,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     private void processChunk(Object message, boolean isEnd, int endStreamIndex, boolean isSubGraph,
-            ComponentAbility ability) {
+                              ComponentAbility ability) {
         if (isEnd && !isSubGraph) {
             Object messageStreamData;
             if (message instanceof StreamSchema) {
@@ -748,7 +822,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         } else if (isEnd) {
             // isEnd && isSubGraph
             Object messageStreamData =
-                (message instanceof OutputSchema) ? ((OutputSchema) message).getPayload() : message;
+                    (message instanceof OutputSchema) ? ((OutputSchema) message).getPayload() : message;
             traceComponentStreamOutput(messageStreamData);
             ActorManager am = getActorManager();
             if (am != null && am.subWorkflowStream() != null) {
@@ -766,7 +840,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * sendToSubWorkflowStream.
-     * 
+     *
      * @param actorManager actorManager
      * @param message message
      * @since 0.1.7
@@ -843,7 +917,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * unwrapGraphInterrupt.
-     * 
+     *
      * @param throwable throwable
      * @return the result
      * @since 0.1.7
@@ -866,7 +940,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * streamCall.
-     * 
+     *
      * @param latch latch
      * @param errorCallback errorCallback
      * @since 0.1.7
@@ -929,7 +1003,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * clearInteractive.
-     * 
+     *
      * @since 0.1.7
      */
     private void clearInteractive() {
@@ -945,7 +1019,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Get stream abilities (COLLECT, TRANSFORM).
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -959,7 +1033,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * streamCalled.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -969,7 +1043,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * isDone.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -980,7 +1054,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * shouldHandleMessage.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -991,7 +1065,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Try to get ActorManager from the session hierarchy.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -1014,7 +1088,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Reset the vertex for reuse.
-     * 
+     *
      * @since 0.1.7
      */
     public void reset() {
@@ -1028,7 +1102,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentBegin.
-     * 
+     *
      * @since 0.1.7
      */
     private void traceComponentBegin() {
@@ -1043,7 +1117,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentInputs.
-     * 
+     *
      * @param inputs inputs
      * @since 0.1.7
      */
@@ -1061,7 +1135,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentOutputs.
-     * 
+     *
      * @param outputs outputs
      * @since 0.1.7
      */
@@ -1074,7 +1148,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentDone.
-     * 
+     *
      * @since 0.1.7
      */
     private void traceComponentDone() {
@@ -1086,7 +1160,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentStreamOutput.
-     * 
+     *
      * @param chunk chunk
      * @since 0.1.7
      */
@@ -1099,7 +1173,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceError.
-     * 
+     *
      * @param error error
      * @since 0.1.7
      */
@@ -1112,7 +1186,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * traceComponentStreamInputSend.
-     * 
+     *
      * @since 0.1.7
      */
     private void traceComponentStreamInputSend() {
@@ -1128,7 +1202,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * getNodeId.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -1138,7 +1212,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * getExecutable.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -1148,7 +1222,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * getSession.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -1158,7 +1232,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * isEndNode.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -1168,7 +1242,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * setEndNode.
-     * 
+     *
      * @param endNode endNode
      * @since 0.1.7
      */
@@ -1178,13 +1252,13 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
     /**
      * Marker interface for executables that support mixed mode (stream + batch).
-     * 
+     *
      * @since 0.1.7
      */
     public interface MixModeAware {
         /**
          * setMix.
-         * 
+         *
          * @since 0.1.7
          */
         void setMix();

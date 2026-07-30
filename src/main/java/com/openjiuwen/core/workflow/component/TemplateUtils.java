@@ -5,7 +5,9 @@
 package com.openjiuwen.core.workflow.component;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,7 +15,7 @@ import java.util.regex.Pattern;
  * Utility class for template operations: rendering and splitting.
  * <p>
  * Mirrors Python's {@code TemplateUtils} from {@code end_comp.py}.
- * 
+ *
  * @since 0.1.7
  */
 public class TemplateUtils {
@@ -54,11 +56,85 @@ public class TemplateUtils {
             String varName = matcher.group(1);
             varName = varName.substring(2, varName.length() - 2);
             Object value = inputs.get(varName);
-            result.append(value != null ? value.toString() : "");
+            result.append(value != null ? pythonStr(value) : "");
             lastEnd = matcher.end();
         }
         result.append(template.substring(lastEnd));
         return result.toString();
+    }
+
+    /**
+     * Convert a value to its Python {@code str()} representation for template
+     * interpolation, matching Python {@code string.Template.safe_substitute}
+     * which calls {@code str()} on the substituted value.
+     * <p>
+     * For collections (List/Collection) the result uses single-quoted element
+     * repr (e.g. {@code ['a', 'b']}), matching Python {@code str(list)}; this
+     * differs from Java {@code List#toString()} which produces
+     * {@code [a, b]} without quotes.
+     *
+     * @param value value
+     * @return the result
+     * @since 0.1.14
+     */
+    public static String pythonStr(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (isCollectionOrArray(value)) {
+            return pythonCollectionStr(asCollection(value));
+        }
+        return value.toString();
+    }
+
+    private static String pythonCollectionStr(Collection<?> collection) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean isFirst = true;
+        for (Object element : collection) {
+            if (!isFirst) {
+                sb.append(", ");
+            }
+            isFirst = false;
+            sb.append(pythonRepr(element));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String || value instanceof Character) {
+            return "'" + value + "'";
+        }
+        if (isCollectionOrArray(value)) {
+            return pythonCollectionStr(asCollection(value));
+        }
+        return value.toString();
+    }
+
+    /**
+     * isCollectionOrArray.
+     *
+     * @param value value
+     * @return {@code true} if value is a Collection or array
+     */
+    private static boolean isCollectionOrArray(Object value) {
+        return value instanceof Collection<?> || value.getClass().isArray();
+    }
+
+    /**
+     * asCollection.
+     *
+     * @param value value
+     * @return a collection view of {@code value}; never {@code null}
+     */
+    private static Collection<?> asCollection(Object value) {
+        if (value instanceof Collection<?> collection) {
+            return collection;
+        }
+        return java.util.Arrays.asList((Object[]) value);
     }
 
     /**

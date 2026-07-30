@@ -8,9 +8,12 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.utils.DictUtils;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,6 +21,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,21 +32,43 @@ import java.util.regex.Pattern;
  * Exit point component of the workflow with optional response template rendering.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
- * 
+ * The template path uses {@link TemplateProcessor} so that concurrent mix-mode
+ * calls (STREAM+TRANSFORM) and (INVOKE+COLLECT) share segment position state
+ * and coordinate via a condition variable, matching the Python reference.
+ *
  * @since 0.1.7
  */
 public class End extends WorkflowComponent {
     private static final Pattern TEMPLATE_PATTERN = Pattern.compile("(\\{\\{[^}]+\\}\\})");
 
+    /**
+     * Sentinel marking "no result produced" from {@link #renderBatch} (partner
+     * call already produced the answer, or interrupted). Replaces {@code null}
+     * per G.MET.06 — {@code invoke}/{@code collect} treat it as "no output".
+     */
+    private static final Object RENDER_BATCH_EMPTY = new Object();
+    private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
+
     private final EndConfig conf;
     private final String template;
     private final List<String> segments;
     private final List<Boolean> isVariable;
+    private final TemplateProcessor templateProcessor;
     private boolean mix = false;
 
     /**
+     * Lock+condition guarding the {@code _render} (batch mix-mode) rendezvous
+     * between INVOKE and COLLECT calls on this End instance. The first call
+     * creates the {@link TemplateBatchProcessor} and waits for the second call
+     * to merge inputs and render, mirroring Python's {@code End._render}.
+     */
+    private final ReentrantLock renderLock = new ReentrantLock();
+    private final Condition renderCondition = renderLock.newCondition();
+    private TemplateBatchProcessor batchTemplate;
+
+    /**
      * End.
-     * 
+     *
      * @param conf conf
      * @since 0.1.7
      */
@@ -47,6 +76,7 @@ public class End extends WorkflowComponent {
         if (conf != null) {
             this.conf = conf;
             this.template = conf.getResponseTemplate();
+            this.templateProcessor = new TemplateProcessor(template);
             this.segments = splitTemplate(template);
             this.isVariable = new ArrayList<>();
             for (int i = 0; i < segments.size(); i++) {
@@ -61,6 +91,7 @@ public class End extends WorkflowComponent {
         } else {
             this.conf = null;
             this.template = null;
+            this.templateProcessor = null;
             this.segments = null;
             this.isVariable = null;
         }
@@ -68,7 +99,7 @@ public class End extends WorkflowComponent {
 
     /**
      * End.
-     * 
+     *
      * @param confMap confMap
      * @since 0.1.7
      */
@@ -79,7 +110,7 @@ public class End extends WorkflowComponent {
 
     /**
      * End.
-     * 
+     *
      * @since 0.1.7
      */
     public End() {
@@ -89,18 +120,23 @@ public class End extends WorkflowComponent {
     /**
      * Mark this End component as mixed-mode (concurrent data sources).
      * <p>
-     * Mirrors Python's {@code End.set_mix()}.
-     * 
+     * Mirrors Python's {@code End.set_mix()}: configures the shared
+     * {@link TemplateProcessor} for two concurrent render_stream data sources.
+     *
      * @since 0.1.7
      */
     @Override
     public void setMix() {
         this.mix = true;
+        if (templateProcessor != null) {
+            templateProcessor.setDataSourceCount(2);
+            templateProcessor.reset();
+        }
     }
 
     /**
      * isMix.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -110,7 +146,7 @@ public class End extends WorkflowComponent {
 
     /**
      * invoke.
-     * 
+     *
      * @param inputs inputs
      * @param session session
      * @param context context
@@ -122,8 +158,9 @@ public class End extends WorkflowComponent {
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-            String rendered = renderTemplate(template, inputsMap);
-            return Map.of("response", rendered);
+            Object result = renderBatch(inputsMap, session);
+            // RENDER_BATCH_EMPTY means partner call already produced the answer
+            return result == RENDER_BATCH_EMPTY ? null : result;
         }
         if (inputs != null) {
             if (inputs instanceof Map) {
@@ -133,8 +170,6 @@ public class End extends WorkflowComponent {
                         filtered.put(entry.getKey(), entry.getValue());
                     }
                 }
-                // Mirrors Python End.invoke: {"output": output} when output is not None,
-                // including the empty-dict case (inputs Map whose values are all null).
                 return Map.of("output", filtered.isEmpty() ? Map.of() : filtered);
             }
             return Map.of("output", inputs);
@@ -144,7 +179,7 @@ public class End extends WorkflowComponent {
 
     /**
      * stream.
-     * 
+     *
      * @param inputs inputs
      * @param session session
      * @param context context
@@ -155,41 +190,15 @@ public class End extends WorkflowComponent {
     @SuppressWarnings("unchecked")
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-        List<Object> frames = new ArrayList<>();
 
         if (template != null) {
-            int chunkIndex = 0;
-            for (int i = 0; i < segments.size(); i++) {
-                String seg = segments.get(i);
-                Object data;
-                if (isVariable.get(i)) {
-                    data = getNestedValue(seg, inputsMap);
-                } else {
-                    data = seg;
-                }
-                if (data instanceof Iterator<?> iterator) {
-                    while (iterator.hasNext()) {
-                        Map<String, Object> frame = new HashMap<>();
-                        frame.put("type", Constant.END_NODE_STREAM);
-                        frame.put("index", chunkIndex++);
-                        frame.put("payload", Map.of("response", iterator.next()));
-                        frames.add(frame);
-                    }
-                    continue;
-                }
-                if (data != null) {
-                    Map<String, Object> frame = new HashMap<>();
-                    frame.put("type", Constant.END_NODE_STREAM);
-                    frame.put("index", chunkIndex++);
-                    frame.put("payload", Map.of("response", data));
-                    frames.add(frame);
-                }
-            }
-        } else {
-            if (inputsMap != null) {
-                for (Map.Entry<String, Object> entry : inputsMap.entrySet()) {
-                    frames.add(wrapOutput(entry.getKey(), entry.getValue()));
-                }
+            Iterator<Map<String, Object>> frames = templateProcessor.renderStream(inputsMap, session);
+            return new TemplateFrameAdapter(frames);
+        }
+        List<Object> frames = new ArrayList<>();
+        if (inputsMap != null) {
+            for (Map.Entry<String, Object> entry : inputsMap.entrySet()) {
+                frames.add(wrapOutput(entry.getKey(), entry.getValue()));
             }
         }
         return frames.iterator();
@@ -197,7 +206,7 @@ public class End extends WorkflowComponent {
 
     /**
      * transform.
-     * 
+     *
      * @param inputs inputs
      * @param session session
      * @param context context
@@ -209,14 +218,15 @@ public class End extends WorkflowComponent {
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
         if (template != null) {
-            return templateTransformIterator(inputsMap);
+            Iterator<Map<String, Object>> frames = templateProcessor.renderStream(inputsMap, session);
+            return new TemplateFrameAdapter(frames);
         }
         return outputTransformIterator(inputsMap);
     }
 
     /**
      * collect.
-     * 
+     *
      * @param inputs inputs
      * @param session session
      * @param context context
@@ -228,8 +238,9 @@ public class End extends WorkflowComponent {
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
-            String rendered = renderTemplate(template, materializeStreamingInputs(inputsMap));
-            return Map.of("response", rendered);
+            Object result = renderBatch(inputsMap, session);
+            // RENDER_BATCH_EMPTY means partner call already produced the answer
+            return result == RENDER_BATCH_EMPTY ? null : result;
         }
         if (inputs instanceof Map) {
             List<Object> chunks = new ArrayList<>();
@@ -238,10 +249,10 @@ public class End extends WorkflowComponent {
                 Object value = entry.getValue();
                 if (value instanceof Iterator<?> iterator) {
                     while (iterator.hasNext()) {
-                        chunks.add(wrapOutput(path, iterator.next()));
+                        chunks.add(singleKeyMap(path, iterator.next()));
                     }
                 } else {
-                    chunks.add(wrapOutput(path, value));
+                    chunks.add(singleKeyMap(path, value));
                 }
             }
             return Map.of("output", chunks);
@@ -250,8 +261,127 @@ public class End extends WorkflowComponent {
     }
 
     /**
+     * renderBatch mirrors Python {@code End._render}: for mix-mode INVOKE+COLLECT
+     * pair, the first call creates a {@link TemplateBatchProcessor}, awaits the
+     * second call on {@link #renderCondition}, and on timeout renders alone;
+     * the second call merges inputs, renders, and notifies the first.
+     *
+     * @param inputs inputs
+     * @param session session
+     * @return {@code {"response": answer}} or {@code null} when the partner call
+     *         already produced the answer
+     * @since 0.1.14
+     */
+    @SuppressWarnings("unchecked")
+    private Object renderBatch(Map<String, Object> inputs, NodeSessionApi session) {
+        long timeoutMs = resolveBatchReaderTimeoutMs(session);
+        renderLock.lock();
+        try {
+            if (batchTemplate == null) {
+                batchTemplate = new TemplateBatchProcessor(templateProcessor, inputs);
+                Object firstResult = awaitPartnerOrTimeout(inputs, session, timeoutMs);
+                batchTemplate = null;
+                return firstResult;
+            }
+            // Second call: merge inputs, render, notify
+            String answer = batchTemplate.render(inputs, session);
+            renderCondition.signalAll();
+            batchTemplate = null;
+            return Map.of("response", answer);
+        } finally {
+            renderLock.unlock();
+        }
+    }
+
+    /**
+     * awaitPartnerOrTimeout.
+     *
+     * @param inputs inputs
+     * @param session session
+     * @param timeoutMs timeoutMs
+     * @return {@link #RENDER_BATCH_EMPTY} when partner already produced answer or interrupted
+     */
+    private Object awaitPartnerOrTimeout(Map<String, Object> inputs, NodeSessionApi session, long timeoutMs) {
+        try {
+            if (timeoutMs > 0) {
+                if (!renderCondition.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                    // Timeout: render alone if no partner arrived
+                    if (!batchTemplate.isRendered()) {
+                        String answer = batchTemplate.render(inputs, session);
+                        return Map.of("response", answer);
+                    }
+                    return RENDER_BATCH_EMPTY;
+                }
+            } else {
+                renderCondition.await();
+            }
+        } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10); bail out cooperatively
+            return RENDER_BATCH_EMPTY;
+        }
+        // Notified by partner call — partner produced the answer
+        return RENDER_BATCH_EMPTY;
+    }
+
+    /**
+     * resolveBatchReaderTimeoutMs.
+     *
+     * @param session session
+     * @return the result
+     */
+    private static long resolveBatchReaderTimeoutMs(NodeSessionApi session) {
+        if (session == null) {
+            return 5000L;
+        }
+        Object raw = session.getEnv(SessionConstants.END_COMP_TEMPLATE_BATCH_READER_TIMEOUT_KEY);
+        if (raw == null) {
+            return 5000L;
+        }
+        Optional<BigDecimal> seconds = toSeconds(raw);
+        if (seconds.isEmpty()) {
+            return 5000L;
+        }
+        BigDecimal value = seconds.get();
+        return value.signum() > 0
+                ? value.multiply(MILLIS_PER_SECOND).setScale(0, RoundingMode.HALF_UP).longValue()
+                : -1L;
+    }
+
+    /**
+     * toSeconds.
+     *
+     * @param raw raw
+     * @return the result, or {@link Optional#empty()} if not a number
+     */
+    private static Optional<BigDecimal> toSeconds(Object raw) {
+        if (raw instanceof Number n) {
+            return Optional.of(BigDecimal.valueOf(n.doubleValue()));
+        }
+        try {
+            return Optional.of(new BigDecimal(raw.toString()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Build a single-key map for one collected chunk. Mirrors Python
+     * {@code End.collect} which appends {@code {format_path(path): value}} chunks.
+     *
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> singleKeyMap(String key, Object value) {
+        Map<String, Object> chunk = new LinkedHashMap<>();
+        chunk.put(key, value);
+        return chunk;
+    }
+
+    /**
      * materializeStreamingInputs.
-     * 
+     *
      * @param inputs inputs
      * @return the result
      * @since 0.1.7
@@ -275,7 +405,7 @@ public class End extends WorkflowComponent {
 
     /**
      * buildTemplateFrame.
-     * 
+     *
      * @param index index
      * @param data data
      * @return the result
@@ -287,7 +417,7 @@ public class End extends WorkflowComponent {
 
     /**
      * templateTransformIterator.
-     * 
+     *
      * @param inputsMap inputsMap
      * @return the result
      * @since 0.1.7
@@ -354,7 +484,7 @@ public class End extends WorkflowComponent {
 
     /**
      * outputTransformIterator.
-     * 
+     *
      * @param inputsMap inputsMap
      * @return the result
      * @since 0.1.7
@@ -422,7 +552,7 @@ public class End extends WorkflowComponent {
 
     /**
      * wrapOutput.
-     * 
+     *
      * @param key key
      * @param value value
      * @return the result
@@ -496,11 +626,9 @@ public class End extends WorkflowComponent {
         if (data == null || path == null) {
             return null;
         }
-        // Try direct key first
         if (data.containsKey(path)) {
             return data.get(path);
         }
-        // Try nested path
         String[] parts = path.split("\\.");
         Object current = data;
         for (String part : parts) {
@@ -511,5 +639,36 @@ public class End extends WorkflowComponent {
             }
         }
         return current;
+    }
+
+    /**
+     * Adapter converting {@code Map{"data","index"}} frames from
+     * {@link TemplateProcessor#renderStream} into {@link OutputSchema} frames
+     * with {@code payload={response: data}}, matching Python {@code End.stream}
+     * / {@code End.transform} which yield
+     * {@code OutputSchema(type=END_NODE_STREAM, index=frame.index, payload=dict(response=frame.data))}.
+     *
+     * @since 0.1.14
+     */
+    private static final class TemplateFrameAdapter implements Iterator<Object> {
+        private final Iterator<Map<String, Object>> delegate;
+
+        TemplateFrameAdapter(Iterator<Map<String, Object>> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public Object next() {
+            Map<String, Object> frame = delegate.next();
+            Object indexObj = frame.get("index");
+            int index = indexObj instanceof Number ? ((Number) indexObj).intValue() : 0;
+            Object data = frame.get("data");
+            return new OutputSchema(Constant.END_NODE_STREAM, index, Map.of("response", data));
+        }
     }
 }

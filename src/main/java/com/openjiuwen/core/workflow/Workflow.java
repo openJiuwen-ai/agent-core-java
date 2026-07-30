@@ -39,12 +39,15 @@ import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.internal.LegacyWorkflowComponentSupport;
 
-import java.util.ArrayList;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -69,6 +72,7 @@ public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
+    private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;
@@ -1103,7 +1107,15 @@ public class Workflow {
             Object graphResult = executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, config);
             finishStreamActorsAfterGraph(subSession, graphResult);
             if (isStreaming) {
-                return drainSubWorkflowStream(subSession);
+                List<Object> messages = drainSubWorkflowStream(subSession);
+                // Mirrors Python _sub_invoke: return dict(stream=messages) and let the
+                // parent vertex _post_invoke -> set_outputs deep-merge into io_state
+                // via the nested "sub_flow.<node>" keys. Avoid direct replacement of
+                // io_state[subNodeId] so the sub-workflow node outputs accumulated by
+                // deep-merge (start/custom1/...) are preserved alongside "stream".
+                return messages != null && !messages.isEmpty()
+                        ? new LinkedHashMap<>(Map.of("stream", messages))
+                        : new LinkedHashMap<>(Map.of("stream", List.of()));
             }
             NodeSession nodeSession = new NodeSession(subSession, endCompId);
             if (nodeSession.state() instanceof WorkflowStateCollection) {
@@ -1145,9 +1157,11 @@ public class Workflow {
     public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context,
             Object config) {
         Object results = invokeSubWorkflow(inputs, session, context, config);
-        if (results instanceof List<?> list) {
-            List<WorkflowChunk> chunks = (List<WorkflowChunk>) (List<?>) list;
-            return chunks.iterator();
+        if (results instanceof Map<?, ?> map) {
+            Object streamObj = map.get("stream");
+            if (streamObj instanceof List<?> list) {
+                return ((List<WorkflowChunk>) (List<?>) list).iterator();
+            }
         }
         return Collections.emptyIterator();
     }
@@ -1353,10 +1367,30 @@ public class Workflow {
         if (streamAbilityCount == 0) {
             streamAbilityCount = 1;
         }
+
+        // Mirrors Python _sub_invoke: await sub_workflow_stream().receive(WORKFLOW_EXECUTE_TIMEOUT)
+        // — block on the queue with timeout so sub End STREAM frames produced after
+        // executeCompiledGraph returns (but before END_FRAME) are not lost to a non-blocking poll.
+        long timeoutMillis = resolveSubWorkflowTimeoutMillis(subSession);
+        long deadlineMs = timeoutMillis > 0 ? System.currentTimeMillis() + timeoutMillis : 0L;
         while (streamAbilityCount > 0) {
-            Object frame = subSession.actorManager().subWorkflowStream().poll();
-            if (frame == null) {
+            Object frame;
+            try {
+                if (timeoutMillis > 0) {
+                    long remaining = deadlineMs - System.currentTimeMillis();
+                    if (remaining <= 0) {
+                        break;
+                    }
+                    frame = subSession.actorManager().subWorkflowStream().poll(remaining, TimeUnit.MILLISECONDS);
+                } else {
+                    frame = subSession.actorManager().subWorkflowStream().take();
+                }
+            } catch (InterruptedException ie) {
+                // do not self-interrupt (G.CON.10); abandon sub-workflow stream drain
                 break;
+            }
+            if (frame == null) {
+                continue;
             }
             if (StreamEmitter.END_FRAME.equals(frame)) {
                 streamAbilityCount--;
@@ -1365,6 +1399,51 @@ public class Workflow {
             messages.add(frame);
         }
         return messages;
+    }
+
+    /**
+     * Resolve WORKFLOW_EXECUTE_TIMEOUT millis from a SubWorkflowSession without
+     * requiring a WorkflowSession reference (SubWorkflowSession extends NodeSession).
+     * Mirrors Python {@code session.get_env(WORKFLOW_EXECUTE_TIMEOUT)}.
+     *
+     * @param subSession subSession
+     * @return the result
+     * @since 0.1.7
+     */
+    private long resolveSubWorkflowTimeoutMillis(SubWorkflowSession subSession) {
+        if (subSession == null || subSession.config() == null) {
+            return -1L;
+        }
+        Object raw = subSession.config().getEnv(SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
+        if (raw == null) {
+            // Fallback to builtin default 60s mirroring Config builtinConfigs.
+            return 60_000L;
+        }
+        Optional<BigDecimal> seconds = toSeconds(raw);
+        if (seconds.isEmpty()) {
+            return 60_000L;
+        }
+        BigDecimal value = seconds.get();
+        return value.signum() >= 0
+                ? value.multiply(MILLIS_PER_SECOND).setScale(0, RoundingMode.HALF_UP).longValue()
+                : -1L;
+    }
+
+    /**
+     * toSeconds.
+     *
+     * @param raw raw
+     * @return the result, or {@link Optional#empty()} if not a number
+     */
+    private static Optional<BigDecimal> toSeconds(Object raw) {
+        if (raw instanceof Number n) {
+            return Optional.of(BigDecimal.valueOf(n.doubleValue()));
+        }
+        try {
+            return Optional.of(new BigDecimal(raw.toString()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     /**
