@@ -221,8 +221,6 @@ public class WorkflowAgent extends ControllerAgent {
         if (workflows == null || workflows.isEmpty()) {
             return;
         }
-        String agentId = getCard() != null ? getCard().getId() : null;
-        boolean canRegisterWorkflowResource = agentId != null && !agentId.isBlank();
         Map<String, WorkflowSchema> configuredWorkflowSchemas = new LinkedHashMap<>();
         for (WorkflowSchema schema : agentConfig.getWorkflows()) {
             String workflowResourceId = WorkflowUtils.generateWorkflowKey(schema.getId(), schema.getVersion());
@@ -234,6 +232,8 @@ public class WorkflowAgent extends ControllerAgent {
             String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
             uniqueWorkflows.putIfAbsent(workflowResourceId, workflow);
         }
+        String agentId = getCard() != null ? getCard().getId() : null;
+        boolean canRegisterWorkflowResource = agentId != null && !agentId.isBlank();
         for (Map.Entry<String, Workflow> entry : uniqueWorkflows.entrySet()) {
             String workflowResourceId = entry.getKey();
             Workflow workflow = entry.getValue();
@@ -241,10 +241,10 @@ public class WorkflowAgent extends ControllerAgent {
                 continue;
             }
             WorkflowCard card = workflow.getCard();
-            WorkflowCard resourceCard =
-                WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
-                        .description(card.getDescription()).inputParams(card.getInputParams()).build();
             if (canRegisterWorkflowResource) {
+                WorkflowCard resourceCard =
+                    WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
+                            .description(card.getDescription()).inputParams(card.getInputParams()).build();
                 Result<WorkflowCard> registration =
                         Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
                 if (registration.isError()) {

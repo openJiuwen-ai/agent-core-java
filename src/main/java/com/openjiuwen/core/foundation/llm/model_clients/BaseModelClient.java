@@ -58,22 +58,6 @@ public abstract class BaseModelClient {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
-     * Callback for recording the effective parameters sent by a model client.
-     *
-     * @since 0.1.13
-     */
-    @FunctionalInterface
-    public interface ModelRequestTraceCallback {
-        /**
-         * Record effective model request parameters.
-         *
-         * @param requestParams effective request parameters
-         * @since 0.1.13
-         */
-        void record(Map<String, Object> requestParams);
-    }
-
-    /**
      * modelConfig.
      * 
      * @since 0.1.7
@@ -100,6 +84,22 @@ public abstract class BaseModelClient {
         this.modelConfig = modelConfig;
         this.modelClientConfig = modelClientConfig;
         validateConfig();
+    }
+
+    /**
+     * Callback for recording the effective parameters sent by a model client.
+     *
+     * @since 0.1.13
+     */
+    @FunctionalInterface
+    public interface ModelRequestTraceCallback {
+        /**
+         * Record effective model request parameters.
+         *
+         * @param requestParams effective request parameters
+         * @since 0.1.13
+         */
+        void record(Map<String, Object> requestParams);
     }
 
     /**

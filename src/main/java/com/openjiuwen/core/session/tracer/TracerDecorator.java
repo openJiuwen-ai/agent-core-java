@@ -87,8 +87,8 @@ public final class TracerDecorator {
         instanceInfo.put("class_name", modelName);
         instanceInfo.put("type", "llm");
 
-        if (model != null && model.getClass() == Model.class && getTracer(innerSession) != null) {
-            Model concreteModel = (Model) model;
+        if (model instanceof Model concreteModel && model.getClass() == Model.class
+                && getTracer(innerSession) != null) {
             return (T) new TracedModel(concreteModel, innerSession, instanceInfo);
         }
         return createTracingProxy(model, innerSession, InvokeType.LLM, instanceInfo);
@@ -501,7 +501,7 @@ public final class TracerDecorator {
         private void failTraceSafely(TraceAgentSpan span, Exception error) {
             try {
                 failTrace(span, error);
-            } catch (RuntimeException traceError) {
+            } catch (IllegalArgumentException | IllegalStateException traceError) {
                 error.addSuppressed(traceError);
             }
         }

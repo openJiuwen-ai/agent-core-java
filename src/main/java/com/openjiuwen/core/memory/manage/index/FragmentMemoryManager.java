@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -131,10 +132,10 @@ public class FragmentMemoryManager extends BaseMemoryManager {
                     String memId = String.valueOf(mem.getOrDefault("id", ""));
                     String memContent = String.valueOf(mem.getOrDefault("mem", ""));
                     String decryptedContent = decryptMemoryIfNeeded(cryptoKey, memContent);
-                    boolean related = newMemContent.values().stream()
+                    boolean isRelated = newMemContent.values().stream()
                             .anyMatch(newMemory -> lexicalSimilarity(newMemory, decryptedContent)
                                     > UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD);
-                    if (!memId.isEmpty() && !oldMemIds.contains(memId) && related) {
+                    if (!memId.isEmpty() && !oldMemIds.contains(memId) && isRelated) {
                         oldMemories.put(memId, decryptedContent);
                         oldMemIds.add(memId);
                     }
@@ -227,7 +228,6 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
         // Step 2: Load all existing memories from KV store for completeness
         // (Vector search may miss results with local hash embedding)
-        Set<String> seenIds = new HashSet<>(memIds);
         List<Map<String, Object>> combinedRes = new ArrayList<>();
 
         // Add vector search results first
@@ -244,6 +244,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         }
 
         // Supplement with KV store memories not found by vector search
+        Set<String> seenIds = new HashSet<>(memIds);
         for (String currentType : memTypes) {
             List<Map<String, Object>> typeMems = memStore.getAll(userId, scopeId, currentType);
             if (typeMems != null) {
@@ -304,7 +305,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         if (query == null) {
             return "";
         }
-        return query.toLowerCase().replace("我的", "用户的").replace("我叫", "用户的姓名是");
+        return query.toLowerCase(Locale.ROOT).replace("我的", "用户的").replace("我叫", "用户的姓名是");
     }
 
     private static Set<Integer> significantCharacters(String text) {
@@ -312,7 +313,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         if (text == null) {
             return characters;
         }
-        text.toLowerCase().codePoints().filter(Character::isLetterOrDigit).forEach(characters::add);
+        text.toLowerCase(Locale.ROOT).codePoints().filter(Character::isLetterOrDigit).forEach(characters::add);
         return characters;
     }
 

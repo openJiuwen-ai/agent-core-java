@@ -415,6 +415,8 @@ public class ReActAgent extends BaseAgent {
             role = baseMessage.getRole();
         } else if (message instanceof Map<?, ?> messageMap) {
             role = messageMap.get("role");
+        } else {
+            return "";
         }
         return role != null ? String.valueOf(role) : "";
     }

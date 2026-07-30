@@ -42,6 +42,20 @@ public class QuestionerDirectReplyHandler {
     private static final Pattern JSON_BLOCK_PATTERN =
         Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * Pattern.compile.
+     *
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_BLOCK_SINGLE_PATTERN =
+        Pattern.compile("^\\s*'''json\\s*|\\s*'''\\s*$", Pattern.CASE_INSENSITIVE);
+
+    private QuestionerConfig config;
+    private Model model;
+    private QuestionerState state;
+    private PromptTemplate prompt;
+    private Object query = "";
+
     private static final class PythonCompatiblePrettyPrinter extends MinimalPrettyPrinter {
         private static final long serialVersionUID = 1L;
 
@@ -60,20 +74,6 @@ public class QuestionerDirectReplyHandler {
             generator.writeRaw(", ");
         }
     }
-
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern JSON_BLOCK_SINGLE_PATTERN =
-        Pattern.compile("^\\s*'''json\\s*|\\s*'''\\s*$", Pattern.CASE_INSENSITIVE);
-
-    private QuestionerConfig config;
-    private Model model;
-    private QuestionerState state;
-    private PromptTemplate prompt;
-    private Object query = "";
 
     /**
      * config.
