@@ -873,7 +873,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
      * {@code session_id} in arguments, so without this the todo would be stored under
      * {@code {tenantId}:default:todo} while the task loop reads {@code {tenantId}:{conversationId}:todo},
      * causing todo data to leak across sessions.
-     * 
+     *
      * @param inputs inputs
      * @return the resolved session id
      * @since 0.1.7
