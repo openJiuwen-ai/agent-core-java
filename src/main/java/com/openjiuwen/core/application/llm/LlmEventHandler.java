@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -1284,10 +1285,7 @@ public class LlmEventHandler extends EventHandler {
 
         for (Object item : interactionData) {
             if (item instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
-                String componentId = extractInteractionComponentId(os.getPayload());
-                if (componentId != null) {
-                    componentIds.add(componentId);
-                }
+                extractInteractionComponentId(os.getPayload()).ifPresent(componentIds::add);
             }
         }
 
@@ -1360,8 +1358,8 @@ public class LlmEventHandler extends EventHandler {
             if (firstInteraction == null) {
                 firstInteraction = chunk;
             }
-            String componentId = extractInteractionComponentId(os.getPayload());
-            if (componentId != null && !"questioner".equals(componentId)) {
+            Optional<String> componentId = extractInteractionComponentId(os.getPayload());
+            if (componentId.filter(value -> !"questioner".equals(value)).isPresent()) {
                 return chunk;
             }
         }
@@ -1372,24 +1370,35 @@ public class LlmEventHandler extends EventHandler {
      * extractInteractionComponentId.
      *
      * @param payload payload
-     * @return the component ID
+     * @return the optional component ID
      * @since 0.1.7
      */
-    private static String extractInteractionComponentId(Object payload) {
+    private static Optional<String> extractInteractionComponentId(Object payload) {
         if (payload instanceof Map<?, ?> map) {
             Object id = map.get("id");
-            return id instanceof String value && !value.isBlank() ? value : null;
+            return toComponentId(id);
         }
         if (payload == null) {
-            return null;
+            return Optional.empty();
         }
         try {
             Object id = payload.getClass().getMethod("getId").invoke(payload);
-            return id instanceof String value && !value.isBlank() ? value : null;
+            return toComponentId(id);
         } catch (ReflectiveOperationException exception) {
             Loggers.CONTROLLER.warning("Failed to extract component_id: {}", exception.getMessage());
-            return null;
+            return Optional.empty();
         }
+    }
+
+    /**
+     * Convert an interaction identifier to a non-blank component ID.
+     *
+     * @param id interaction identifier
+     * @return the optional component ID
+     * @since 0.1.7
+     */
+    private static Optional<String> toComponentId(Object id) {
+        return id instanceof String value && !value.isBlank() ? Optional.of(value) : Optional.empty();
     }
 
     /**

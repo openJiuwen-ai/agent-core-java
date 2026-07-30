@@ -12,14 +12,16 @@ import com.openjiuwen.core.graph.store.PendingNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Pool for executing Pregel node tasks concurrently using virtual threads.
@@ -30,7 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class TaskExecutorPool {
     private static final LoggerProtocol logger = Loggers.GRAPH;
-    private static final long CANCEL_GRACE_TIMEOUT_MS = 5000;
+    private static final long CANCEL_GRACE_TIMEOUT_MS = 5000L;
 
     private final PregelConfig config;
     private final ExecutorService executor;
@@ -75,21 +77,21 @@ public class TaskExecutorPool {
      * @since 0.1.7
      */
     public void submit(PregelNode node, int version) {
-        CompletableFuture<Void> completion = new CompletableFuture<>();
-        AtomicReference<Thread> owner = new AtomicReference<>();
-        CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> {
-            Thread currentThread = Thread.currentThread();
-            owner.set(currentThread);
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        RunningTask runningTask = new RunningTask(node);
+        TaskFuture execution = new TaskFuture(() -> {
+            if (!runningTask.tryStart()) {
+                throw new CancellationException("Pregel node task cancelled before execution");
+            }
             try {
                 return new NodeTask(node, config, version).call();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
             } finally {
-                completion.complete(null);
-                owner.compareAndSet(currentThread, null);
+                runningTask.complete();
             }
-        }, executor);
-        runningTasks.put(future, new RunningTask(node, completion, owner));
+        }, future);
+        runningTask.attach(execution);
+        runningTasks.put(future, runningTask);
+        executor.execute(execution);
     }
 
     /**
@@ -125,7 +127,6 @@ public class TaskExecutorPool {
         } catch (InterruptedException e) {
             cancelPendingFutures(futures);
             awaitActualCompletion(futures);
-            Thread.currentThread().interrupt();
             throw new CancellationException("Pregel task execution cancelled");
         } catch (ExecutionException | CancellationException ignored) {
             // Individual errors will be handled below
@@ -317,21 +318,18 @@ public class TaskExecutorPool {
     }
 
     /**
-     * Cancel a task and interrupt the executor thread that is actually running it.
+     * Request cancellation of an executor-managed task.
      *
      * @param future task future
      * @since 0.1.7
      */
     private void cancelFuture(CompletableFuture<Object> future) {
         RunningTask runningTask = runningTasks.get(future);
-        boolean cancelled = future.cancel(false);
-        if (!cancelled || runningTask == null) {
+        if (runningTask == null) {
+            future.cancel(false);
             return;
         }
-        Thread owner = runningTask.owner().get();
-        if (owner != null) {
-            owner.interrupt();
-        }
+        runningTask.cancel();
     }
 
     /**
@@ -359,7 +357,7 @@ public class TaskExecutorPool {
                     TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             logger.warning("Timed out waiting for cancelled graph tasks to stop");
-        } catch (Exception e) {
+        } catch (InterruptedException | ExecutionException e) {
             logger.warning("Cancelled graph task finished with cleanup error", e);
         }
     }
@@ -378,11 +376,96 @@ public class TaskExecutorPool {
     /**
      * RunningTask.
      * 
-     * @param node node
-     * @param completion actual task completion
-     * @param owner executor thread
      * @since 0.1.7
      */
-    private record RunningTask(PregelNode node, CompletableFuture<Void> completion, AtomicReference<Thread> owner) {
+    private static final class RunningTask {
+        private final PregelNode node;
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+        private FutureTask<Object> execution;
+        private boolean hasStarted;
+        private boolean isCancellationRequested;
+
+        private RunningTask(PregelNode node) {
+            this.node = node;
+        }
+
+        private void attach(FutureTask<Object> taskExecution) {
+            lifecycleLock.lock();
+            try {
+                execution = taskExecution;
+                if (isCancellationRequested) {
+                    execution.cancel(true);
+                }
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private boolean tryStart() {
+            lifecycleLock.lock();
+            try {
+                if (isCancellationRequested) {
+                    return false;
+                }
+                hasStarted = true;
+                return true;
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void cancel() {
+            lifecycleLock.lock();
+            try {
+                isCancellationRequested = true;
+                if (execution != null && execution.cancel(true) && !hasStarted) {
+                    completion.complete(null);
+                }
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private PregelNode node() {
+            return node;
+        }
+
+        private CompletableFuture<Void> completion() {
+            return completion;
+        }
+
+        private void complete() {
+            completion.complete(null);
+        }
+    }
+
+    /**
+     * Bridges an executor-managed task to the result future used by the Pregel pool.
+     *
+     * @since 0.1.7
+     */
+    private static final class TaskFuture extends FutureTask<Object> {
+        private final CompletableFuture<Object> result;
+
+        private TaskFuture(Callable<Object> callable, CompletableFuture<Object> result) {
+            super(callable);
+            this.result = result;
+        }
+
+        @Override
+        protected void done() {
+            try {
+                result.complete(get());
+            } catch (CancellationException exception) {
+                result.cancel(false);
+            } catch (InterruptedException exception) {
+                result.completeExceptionally(exception);
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                result.completeExceptionally(cause != null ? cause : exception);
+            }
+        }
     }
 }

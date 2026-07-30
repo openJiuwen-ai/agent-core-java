@@ -49,12 +49,15 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -781,9 +784,10 @@ public class Workflow {
                 : null;
         WorkflowExecutionControl executionControl = new WorkflowExecutionControl();
 
-        CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
-            Thread currentThread = Thread.currentThread();
-            executionControl.start(currentThread);
+        Future<?> executionFuture = STREAM_EXECUTOR.submit(() -> {
+            if (!executionControl.tryStart()) {
+                return;
+            }
             try {
                 if (terminated.get()) {
                     return;
@@ -801,10 +805,11 @@ public class Workflow {
                     closeStreamEmitter(workflowSession);
                     resetGraphExecutionState();
                     workflowSession.close();
-                    executionControl.complete(currentThread);
+                    executionControl.complete();
                 }
             }
-        }, STREAM_EXECUTOR);
+        });
+        executionControl.attach(executionFuture);
 
         return new Iterator<>() {
             private boolean finalChunkEmitted = false;
@@ -925,7 +930,6 @@ public class Workflow {
                         && baseError.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
                     executionTimedOut.set(true);
                 }
-                executionFuture.cancel(false);
                 executionControl.cancelAndAwait();
                 closeStreamEmitter(workflowSession);
                 workflowSession.close();
@@ -976,39 +980,63 @@ public class Workflow {
      * @since 0.1.7
      */
     private static final class WorkflowExecutionControl {
-        private final AtomicReference<Thread> owner = new AtomicReference<>();
         private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final ReentrantLock lifecycleLock = new ReentrantLock();
 
-        private void start(Thread currentThread) {
-            owner.set(currentThread);
+        private Future<?> execution;
+        private boolean hasStarted;
+        private boolean isCancellationRequested;
+
+        private void attach(Future<?> workflowExecution) {
+            lifecycleLock.lock();
+            try {
+                execution = workflowExecution;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
+            }
         }
 
-        private void complete(Thread currentThread) {
-            owner.compareAndSet(currentThread, null);
+        private boolean tryStart() {
+            lifecycleLock.lock();
+            try {
+                if (isCancellationRequested) {
+                    return false;
+                }
+                hasStarted = true;
+                return true;
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void complete() {
             completion.complete(null);
         }
 
         private void cancelAndAwait() {
-            Thread executionOwner = owner.get();
-            if (executionOwner != null) {
-                executionOwner.interrupt();
-            } else {
-                completion.complete(null);
+            lifecycleLock.lock();
+            try {
+                isCancellationRequested = true;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
             }
 
-            boolean interrupted = Thread.interrupted();
             try {
-                completion.get(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                interrupted = true;
-            } catch (ExecutionException e) {
-                Loggers.WORKFLOW.warning("Cancelled workflow finished with cleanup error", e);
-            } catch (TimeoutException e) {
-                Loggers.WORKFLOW.warning("Timed out waiting for cancelled workflow to stop");
-            } finally {
-                if (interrupted) {
-                    Thread.currentThread().interrupt();
+                completion.orTimeout(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
+            } catch (CompletionException exception) {
+                if (exception.getCause() instanceof TimeoutException) {
+                    Loggers.WORKFLOW.warning("Timed out waiting for cancelled workflow to stop");
+                } else {
+                    Loggers.WORKFLOW.warning("Cancelled workflow finished with cleanup error", exception);
                 }
+            }
+        }
+
+        private void cancelExecutionIfRequested() {
+            if (isCancellationRequested && execution != null && execution.cancel(true) && !hasStarted) {
+                completion.complete(null);
             }
         }
     }
