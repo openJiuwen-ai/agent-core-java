@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.application.workflow;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.schema.DefaultResponse;
@@ -38,6 +37,7 @@ import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.session.tracer.TracerDecorator;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
@@ -317,7 +317,6 @@ public class WorkflowEventHandler extends EventHandler {
 
             // Execute workflow with streaming
             ModelContext context = appContextEngine.createContext(workflowId, session.getInner());
-            addUserMessageToWorkflowContext(context, getDisplayContent(event));
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(workflow, inputs, workflowSession,
                     context, resolveWorkflowStreamModes(session));
 
@@ -348,8 +347,6 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             addAssistantMessageToAgentContext(session, buildAssistantContent(chunks));
-            addAssistantMessageToWorkflowContext(context,
-                    buildWorkflowAssistantContent(chunks, finalResult, hasInteraction));
 
             // Process result
             if (hasInteraction) {
@@ -525,8 +522,9 @@ public class WorkflowEventHandler extends EventHandler {
                     (double) modelInfo.getTimeout());
             Loggers.CONTROLLER.info("Intent detection messages: {}", messages);
 
-            AssistantMessage llmOutput =
-                getModel().invoke(messages, null, null, null, modelInfo.getModelName(), null, null, null, null, null);
+            Model model = TracerDecorator.decorateModelWithTrace(getModel(), session);
+            AssistantMessage llmOutput = model.invoke(messages, null, null, null, modelInfo.getModelName(), null, null,
+                    null, null, null);
             WorkflowSchema detectedWorkflow = mapWorkflowFromIntentOutput(llmOutput, workflows);
             if (detectedWorkflow != null) {
                 return detectedWorkflow;
@@ -1277,32 +1275,6 @@ public class WorkflowEventHandler extends EventHandler {
     }
 
     /**
-     * buildWorkflowAssistantContent.
-     * 
-     * @param chunks chunks
-     * @param finalResult finalResult
-     * @param hasInteraction hasInteraction
-     * @return the result
-     * @since 0.1.7
-     */
-    private String buildWorkflowAssistantContent(List<Object> chunks, Object finalResult, boolean hasInteraction) {
-        if (hasInteraction) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult == null) {
-            return buildAssistantContent(chunks);
-        }
-        if (finalResult instanceof String text) {
-            return text;
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(finalResult);
-        } catch (JsonProcessingException ignored) {
-            return String.valueOf(finalResult);
-        }
-    }
-
-    /**
      * uniqueWorkflows.
      * 
      * @param workflows workflows
@@ -1350,34 +1322,6 @@ public class WorkflowEventHandler extends EventHandler {
             return;
         }
         addMessageToContext(getOrCreateAgentContext(session), new AssistantMessage(content), true);
-    }
-
-    /**
-     * addUserMessageToWorkflowContext.
-     * 
-     * @param workflowContext workflowContext
-     * @param content content
-     * @since 0.1.7
-     */
-    private void addUserMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null || content.isBlank()) {
-            return;
-        }
-        addMessageToContext(workflowContext, new UserMessage(content), true);
-    }
-
-    /**
-     * addAssistantMessageToWorkflowContext.
-     * 
-     * @param workflowContext workflowContext
-     * @param content content
-     * @since 0.1.7
-     */
-    private void addAssistantMessageToWorkflowContext(ModelContext workflowContext, String content) {
-        if (content == null) {
-            return;
-        }
-        addMessageToContext(workflowContext, new AssistantMessage(content), true);
     }
 
     /**

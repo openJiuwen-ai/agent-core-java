@@ -137,6 +137,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         Map<String, Object> params =
             buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
                     topP != null ? topP.doubleValue() : null, model, stop, maxTokens, false, kwargs);
+        recordRequestTrace(params);
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);
@@ -174,6 +175,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         Map<String, Object> params =
             buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
                     topP != null ? topP.doubleValue() : null, model, stop, maxTokens, true, kwargs);
+        recordRequestTrace(params);
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);

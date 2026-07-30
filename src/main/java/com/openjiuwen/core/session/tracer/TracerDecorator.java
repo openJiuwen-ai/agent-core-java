@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.session.internal.AgentSession;
 
 import java.lang.reflect.InvocationHandler;
@@ -84,6 +87,10 @@ public final class TracerDecorator {
         instanceInfo.put("class_name", modelName);
         instanceInfo.put("type", "llm");
 
+        if (model != null && model.getClass() == Model.class && getTracer(innerSession) != null) {
+            Model concreteModel = (Model) model;
+            return (T) new TracedModel(concreteModel, innerSession, instanceInfo);
+        }
         return createTracingProxy(model, innerSession, InvokeType.LLM, instanceInfo);
     }
 
@@ -393,6 +400,115 @@ public final class TracerDecorator {
                 new TracingInvocationHandler(original, session, tracer, invokeType, instanceInfo));
 
         return (T) proxy;
+    }
+
+    /**
+     * Trace-aware wrapper for the concrete {@link Model} class, which cannot be wrapped with a JDK dynamic proxy.
+     */
+    private static class TracedModel extends Model {
+        private final Object session;
+        private final Tracer tracer;
+        private final Map<String, Object> instanceInfo;
+
+        TracedModel(Model model, Object session, Map<String, Object> instanceInfo) {
+            super(model);
+            this.session = session;
+            this.tracer = getTracer(session);
+            this.instanceInfo = new HashMap<>(instanceInfo);
+        }
+
+        /**
+         * invoke.
+         *
+         * @param messages messages
+         * @param tools tools
+         * @param temperature temperature
+         * @param topP topP
+         * @param model model
+         * @param maxTokens maxTokens
+         * @param stop stop
+         * @param outputParser outputParser
+         * @param timeout timeout
+         * @param kwargs kwargs
+         * @return model response
+         * @throws Exception model invocation failure
+         * @since 0.1.13
+         */
+        @Override
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) throws Exception {
+            TraceAgentSpan span = createTraceSpan();
+            try {
+                startTrace(span, messages);
+                TraceAgentSpan requestSpan = span;
+                AssistantMessage response = withRequestTraceCallback(
+                        params -> recordTraceData(requestSpan, "llm_params", params),
+                        () -> super.invoke(messages, tools, temperature, topP, model, maxTokens, stop, outputParser,
+                                timeout, kwargs));
+                recordTraceData(span, "llm_response", toResponseMap(response));
+                finishTrace(span, response);
+                return response;
+            } catch (Exception error) {
+                failTraceSafely(span, error);
+                throw error;
+            }
+        }
+
+        private TraceAgentSpan createTraceSpan() {
+            Span agentSpan = getSpan(session);
+            return tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
+        }
+
+        private void startTrace(TraceAgentSpan span, Object inputs) {
+            Map<String, Object> wrappedInputs = new HashMap<>();
+            wrappedInputs.put("inputs", inputs);
+
+            Map<String, Object> startKwargs = new HashMap<>();
+            startKwargs.put("span", span);
+            startKwargs.put("inputs", wrappedInputs);
+            startKwargs.put("instance_info", instanceInfo);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_start", startKwargs);
+        }
+
+        private void recordTraceData(TraceAgentSpan span, String key, Object value) {
+            Map<String, Object> traceData = new HashMap<>();
+            traceData.put(key, value);
+
+            Map<String, Object> requestKwargs = new HashMap<>();
+            requestKwargs.put("span", span);
+            requestKwargs.put("kwargs", traceData);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_request", requestKwargs);
+        }
+
+        private void finishTrace(TraceAgentSpan span, Object outputs) {
+            Map<String, Object> wrappedOutputs = new HashMap<>();
+            wrappedOutputs.put("outputs", outputs);
+
+            Map<String, Object> endKwargs = new HashMap<>();
+            endKwargs.put("span", span);
+            endKwargs.put("outputs", wrappedOutputs);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_end", endKwargs);
+        }
+
+        private void failTrace(TraceAgentSpan span, Exception error) {
+            Map<String, Object> errorKwargs = new HashMap<>();
+            errorKwargs.put("span", span);
+            errorKwargs.put("error", error);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_error", errorKwargs);
+        }
+
+        private void failTraceSafely(TraceAgentSpan span, Exception error) {
+            try {
+                failTrace(span, error);
+            } catch (RuntimeException traceError) {
+                error.addSuppressed(traceError);
+            }
+        }
+
+        private static Map<String, Object> toResponseMap(AssistantMessage response) {
+            return response == null ? new HashMap<>() : response.toApiFormat();
+        }
     }
 
     /**

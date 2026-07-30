@@ -67,14 +67,19 @@ public class MemUpdateChecker {
      */
     public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories,
             Map.Entry<String, Model> baseChatModel, int retries) {
+        Map<String, String> pendingMemories = removeExactDuplicates(newMemories, oldMemories);
+        if (pendingMemories.isEmpty()) {
+            return List.of();
+        }
+
         // Skip checking if no old memories or no model
         if (oldMemories == null || oldMemories.isEmpty() || baseChatModel == null) {
-            return newMemories.entrySet().stream().map(e -> MemoryActionItem.builder().id(e.getKey())
+            return pendingMemories.entrySet().stream().map(e -> MemoryActionItem.builder().id(e.getKey())
                     .content(e.getValue()).status(MemoryStatus.ADD).build()).collect(Collectors.toList());
         }
 
         // Format input for prompt
-        String[] formattedInput = formatInput(newMemories, oldMemories);
+        String[] formattedInput = formatInput(pendingMemories, oldMemories);
         String newInfoStr = formattedInput[0];
         String oldInfoStr = formattedInput[1];
 
@@ -117,7 +122,7 @@ public class MemUpdateChecker {
                 } else {
                     MEMORY_LOGGER.error("[{}] Memory check failed after retries: {}", LogEventType.MEMORY_PROCESS,
                             e.getMessage());
-                    return newMemories
+                    return pendingMemories
                             .entrySet().stream().map(en -> MemoryActionItem.builder().id(en.getKey())
                                     .content(en.getValue()).status(MemoryStatus.ADD).build())
                             .collect(Collectors.toList());
@@ -136,7 +141,7 @@ public class MemUpdateChecker {
             if (checkItem.getResult() == CheckResult.REDUNDANT) {
                 continue;
             } else if (checkItem.getResult() == CheckResult.CONFLICTING) {
-                String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
+                String newContent = pendingMemories.getOrDefault(newId, checkItem.getInfoText());
                 actionItems
                         .add(MemoryActionItem.builder().id(newId).content(newContent).status(MemoryStatus.ADD).build());
                 for (Map.Entry<String, String> relEntry : checkItem.getRelatedInfos().entrySet()) {
@@ -146,14 +151,14 @@ public class MemUpdateChecker {
                     }
                 }
             } else {
-                String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
+                String newContent = pendingMemories.getOrDefault(newId, checkItem.getInfoText());
                 actionItems
                         .add(MemoryActionItem.builder().id(newId).content(newContent).status(MemoryStatus.ADD).build());
             }
         }
 
         // Add unprocessed new memories
-        for (Map.Entry<String, String> e : newMemories.entrySet()) {
+        for (Map.Entry<String, String> e : pendingMemories.entrySet()) {
             if (!processedNewIds.contains(e.getKey())) {
                 actionItems.add(MemoryActionItem.builder().id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD)
                         .build());
@@ -161,6 +166,22 @@ public class MemUpdateChecker {
         }
 
         return actionItems;
+    }
+
+    private static Map<String, String> removeExactDuplicates(Map<String, String> newMemories,
+            Map<String, String> oldMemories) {
+        if (newMemories == null || newMemories.isEmpty()) {
+            return Map.of();
+        }
+        Set<String> knownContents =
+            oldMemories == null ? new HashSet<>() : new HashSet<>(oldMemories.values());
+        Map<String, String> pending = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : newMemories.entrySet()) {
+            if (knownContents.add(entry.getValue())) {
+                pending.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return pending;
     }
 
     static String[] formatInput(Map<String, String> newMemories, Map<String, String> oldMemories) {

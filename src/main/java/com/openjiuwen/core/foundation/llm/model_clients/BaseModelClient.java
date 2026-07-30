@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 /**
  * LLM Model Client abstract base class.
@@ -58,6 +59,22 @@ public abstract class BaseModelClient {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
+     * Callback for recording the effective parameters sent by a model client.
+     *
+     * @since 0.1.13
+     */
+    @FunctionalInterface
+    public interface ModelRequestTraceCallback {
+        /**
+         * Record effective model request parameters.
+         *
+         * @param requestParams effective request parameters
+         * @since 0.1.13
+         */
+        void record(Map<String, Object> requestParams);
+    }
+
+    /**
      * modelConfig.
      * 
      * @since 0.1.7
@@ -71,6 +88,8 @@ public abstract class BaseModelClient {
      */
     protected final ModelClientConfig modelClientConfig;
 
+    private final ThreadLocal<ModelRequestTraceCallback> requestTraceCallback = new ThreadLocal<>();
+
     /**
      * Initialize the model client.
      * 
@@ -82,6 +101,48 @@ public abstract class BaseModelClient {
         this.modelConfig = modelConfig;
         this.modelClientConfig = modelClientConfig;
         validateConfig();
+    }
+
+    /**
+     * Run a model request with an invocation-scoped trace callback.
+     *
+     * @param callback request trace callback
+     * @param request model request
+     * @param <T> request result type
+     * @return model request result
+     * @throws Exception model request failure
+     * @since 0.1.13
+     */
+    public final <T> T withRequestTraceCallback(ModelRequestTraceCallback callback, Callable<T> request)
+            throws Exception {
+        ModelRequestTraceCallback previous = requestTraceCallback.get();
+        if (callback == null) {
+            requestTraceCallback.remove();
+        } else {
+            requestTraceCallback.set(callback);
+        }
+        try {
+            return request.call();
+        } finally {
+            if (previous == null) {
+                requestTraceCallback.remove();
+            } else {
+                requestTraceCallback.set(previous);
+            }
+        }
+    }
+
+    /**
+     * Record the final effective model request parameters, when tracing is active.
+     *
+     * @param requestParams effective request parameters
+     * @since 0.1.13
+     */
+    protected final void recordRequestTrace(Map<String, Object> requestParams) {
+        ModelRequestTraceCallback callback = requestTraceCallback.get();
+        if (callback != null) {
+            callback.record(new LinkedHashMap<>(requestParams));
+        }
     }
 
     /**

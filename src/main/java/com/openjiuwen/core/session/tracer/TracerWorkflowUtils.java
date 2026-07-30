@@ -8,10 +8,14 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.stream.CustomSchema;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.WorkflowConfig;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -217,7 +221,7 @@ public final class TracerWorkflowUtils {
         kwargs.put("invoke_id", getExecutableId(session));
         kwargs.put("parent_node_id", getParentId(session));
         kwargs.put("need_send", send);
-        kwargs.put("chunk", chunk);
+        kwargs.put("chunk", normalizeStreamChunk(chunk));
         tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_pre_stream", kwargs);
     }
 
@@ -255,8 +259,36 @@ public final class TracerWorkflowUtils {
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("invoke_id", getExecutableId(session));
         kwargs.put("parent_node_id", getParentId(session));
-        kwargs.put("chunk", chunk);
+        kwargs.put("chunk", normalizeStreamChunk(chunk));
         tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_post_stream", kwargs);
+    }
+
+    /**
+     * Convert workflow stream schemas to the map representation stored by the
+     * Python tracer.
+     *
+     * @param chunk stream chunk
+     * @return trace-compatible chunk
+     * @since 0.1.13
+     */
+    static Object normalizeStreamChunk(Object chunk) {
+        if (chunk instanceof OutputSchema output) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            normalized.put("type", output.getType());
+            normalized.put("index", output.getIndex());
+            normalized.put("payload", output.getPayload());
+            return normalized;
+        }
+        if (chunk instanceof TraceSchema trace) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            normalized.put("type", trace.getType());
+            normalized.put("payload", trace.getPayload());
+            return normalized;
+        }
+        if (chunk instanceof CustomSchema custom) {
+            return new LinkedHashMap<>(custom.getProperties());
+        }
+        return chunk;
     }
 
     /**

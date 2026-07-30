@@ -14,6 +14,7 @@ import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -45,6 +46,8 @@ public class WorkflowAgent extends ControllerAgent {
     private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
 
     private final WorkflowAgentConfig agentConfig;
+
+    private final Map<String, Workflow> registeredWorkflowProviders = new LinkedHashMap<>();
 
     /**
      * Create WorkflowAgent with the given configuration.
@@ -220,23 +223,47 @@ public class WorkflowAgent extends ControllerAgent {
         }
         String agentId = getCard() != null ? getCard().getId() : null;
         boolean canRegisterWorkflowResource = agentId != null && !agentId.isBlank();
+        Map<String, WorkflowSchema> configuredWorkflowSchemas = new LinkedHashMap<>();
+        for (WorkflowSchema schema : agentConfig.getWorkflows()) {
+            String workflowResourceId = WorkflowUtils.generateWorkflowKey(schema.getId(), schema.getVersion());
+            configuredWorkflowSchemas.putIfAbsent(workflowResourceId, schema);
+        }
+        Map<String, Workflow> uniqueWorkflows = new LinkedHashMap<>();
         for (Workflow workflow : workflows) {
             WorkflowCard card = workflow.getCard();
-            getAbilityManager().add(card);
-            agentConfig.getWorkflows()
-                    .add(WorkflowSchema.builder().id(card.getId()).name(card.getName()).version(card.getVersion())
-                            .description(card.getDescription())
-                            .inputParams(card.getInputParams() instanceof Map
-                                    ? (Map<String, Object>) card.getInputParams()
-                                    : Map.of())
-                            .build());
             String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            uniqueWorkflows.putIfAbsent(workflowResourceId, workflow);
+        }
+        for (Map.Entry<String, Workflow> entry : uniqueWorkflows.entrySet()) {
+            String workflowResourceId = entry.getKey();
+            Workflow workflow = entry.getValue();
+            if (registeredWorkflowProviders.containsKey(workflowResourceId)) {
+                continue;
+            }
+            WorkflowCard card = workflow.getCard();
             WorkflowCard resourceCard =
                 WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
                         .description(card.getDescription()).inputParams(card.getInputParams()).build();
             if (canRegisterWorkflowResource) {
-                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
+                Result<WorkflowCard> registration =
+                        Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
+                if (registration.isError()) {
+                    continue;
+                }
             }
+            getAbilityManager().add(card);
+            if (!configuredWorkflowSchemas.containsKey(workflowResourceId)) {
+                WorkflowSchema schema =
+                        WorkflowSchema.builder().id(card.getId()).name(card.getName()).version(card.getVersion())
+                                .description(card.getDescription())
+                                .inputParams(card.getInputParams() instanceof Map
+                                        ? (Map<String, Object>) card.getInputParams()
+                                        : Map.of())
+                                .build();
+                agentConfig.getWorkflows().add(schema);
+                configuredWorkflowSchemas.put(workflowResourceId, schema);
+            }
+            registeredWorkflowProviders.put(workflowResourceId, workflow);
         }
     }
 

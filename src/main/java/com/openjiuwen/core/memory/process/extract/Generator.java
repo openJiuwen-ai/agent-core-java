@@ -68,7 +68,8 @@ public class Generator {
         Integer summaryMaxToken = kwargs.get("summary_max_token") instanceof Integer value ? value : null;
         String forbiddenVariables = kwargs.get("forbidden_variables") instanceof String value ? value : null;
 
-        if (messages == null || config == null || userId == null || scopeId == null || model == null) {
+        if (messages.isEmpty() || config == null || userId == null || userId.isBlank()
+                || scopeId == null || scopeId.isBlank() || model == null) {
             MEMORY_LOGGER.error("[{}] Messages, config, user_id, scope_id, model are required parameters",
                     LogEventType.MEMORY_PROCESS);
             return Map.of();

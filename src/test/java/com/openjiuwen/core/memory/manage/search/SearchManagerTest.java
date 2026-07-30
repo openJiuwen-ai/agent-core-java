@@ -116,6 +116,19 @@ class SearchManagerTest {
     }
 
     @Test
+    void searchWithBlankQueryReturnsEmptyWithoutCallingManagers() {
+        RecordingManager manager = new RecordingManager(List.of(result("unexpected", 1.0)));
+        SearchManager search = new SearchManager(Map.of(MemoryType.SUMMARY.getValue(), manager), userMemStore,
+                CRYPTO_KEY);
+
+        List<Map<String, Object>> results = search.search(SearchParams.builder().userId("user").scopeId("scope")
+                .query("   ").searchType(MemoryType.SUMMARY.getValue()).build(), null);
+
+        assertEquals(List.of(), results);
+        assertEquals(0, manager.calls);
+    }
+
+    @Test
     void searchRejectsInvalidSearchType() {
         assertThrows(BaseError.class, () -> searchManager.search(
                 SearchParams.builder().userId("user").scopeId("scope").query("query").searchType("invalid").build(),

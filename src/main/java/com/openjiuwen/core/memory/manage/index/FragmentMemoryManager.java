@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +47,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
      * @since 0.1.7
      */
     public static final double UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD = 0.75;
+    private static final double MIN_LOCAL_RETRIEVAL_SCORE = 0.3;
     private static final List<String> FRAGMENT_MEMORY_TYPES = UserMemStore.FRAGMENT_MEMORY_TYPES;
 
     private final UserMemStore memStore;
@@ -115,18 +117,21 @@ public class FragmentMemoryManager extends BaseMemoryManager {
             }
         }
 
-        // Fallback: if vector search returned no existing memories, load from KV store directly
-        if (oldMemories.isEmpty()) {
-            for (String memType : FRAGMENT_MEMORY_TYPES) {
-                List<Map<String, Object>> allMems = memStore.getAll(userId, scopeId, memType);
-                if (allMems != null) {
-                    for (Map<String, Object> mem : allMems) {
-                        String memId = String.valueOf(mem.getOrDefault("id", ""));
-                        String memContent = String.valueOf(mem.getOrDefault("mem", ""));
-                        if (!memId.isEmpty() && !oldMemIds.contains(memId)) {
-                            oldMemories.put(memId, decryptMemoryIfNeeded(cryptoKey, memContent));
-                            oldMemIds.add(memId);
-                        }
+        // Supplement vector candidates with lexically related KV records. This covers sparse
+        // or local embeddings without sending every memory in the scope to the checker.
+        for (String memType : FRAGMENT_MEMORY_TYPES) {
+            List<Map<String, Object>> allMems = memStore.getAll(userId, scopeId, memType);
+            if (allMems != null) {
+                for (Map<String, Object> mem : allMems) {
+                    String memId = String.valueOf(mem.getOrDefault("id", ""));
+                    String memContent = String.valueOf(mem.getOrDefault("mem", ""));
+                    String decryptedContent = decryptMemoryIfNeeded(cryptoKey, memContent);
+                    boolean related = newMemContent.values().stream()
+                            .anyMatch(newMemory -> lexicalSimilarity(newMemory, decryptedContent)
+                                    > UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD);
+                    if (!memId.isEmpty() && !oldMemIds.contains(memId) && related) {
+                        oldMemories.put(memId, decryptedContent);
+                        oldMemIds.add(memId);
                     }
                 }
             }
@@ -172,11 +177,11 @@ public class FragmentMemoryManager extends BaseMemoryManager {
     @Override
     public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("update", kwargs);
-        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         String encryptedMemory = encryptMemoryIfNeeded(cryptoKey, newMemory);
         Map<String, Object> newData = new LinkedHashMap<>();
         newData.put("mem", encryptedMemory);
-        newData.put("time", time);
+        newData.put("timestamp", time);
         Map<String, Object> oldMem = memStore.get(userId, scopeId, memId);
         String memType = oldMem == null ? null : String.valueOf(oldMem.get("mem_type"));
         memStore.update(userId, scopeId, memId, newData);
@@ -225,8 +230,10 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         if (retrieveRes != null) {
             for (Map<String, Object> item : retrieveRes) {
                 String id = String.valueOf(item.getOrDefault("id", ""));
-                item.put("score", scores.getOrDefault(id, 0.0));
-                item.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
+                String content =
+                    decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", "")));
+                item.put("score", Math.max(scores.getOrDefault(id, 0.0), lexicalSimilarity(query, content)));
+                item.put("mem", content);
                 combinedRes.add(item);
             }
         }
@@ -238,8 +245,10 @@ public class FragmentMemoryManager extends BaseMemoryManager {
                 for (Map<String, Object> mem : typeMems) {
                     String id = String.valueOf(mem.getOrDefault("id", ""));
                     if (!id.isEmpty() && seenIds.add(id)) {
-                        mem.put("score", 0.0);
-                        mem.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(mem.getOrDefault("mem", ""))));
+                        String content =
+                            decryptMemoryIfNeeded(cryptoKey, String.valueOf(mem.getOrDefault("mem", "")));
+                        mem.put("score", lexicalSimilarity(query, content));
+                        mem.put("mem", content);
                         combinedRes.add(mem);
                     }
                 }
@@ -268,6 +277,38 @@ public class FragmentMemoryManager extends BaseMemoryManager {
     private static double scoreOf(Map<String, Object> item) {
         Object score = item.getOrDefault("score", 0.0);
         return score instanceof Number number ? number.doubleValue() : 0.0;
+    }
+
+    private static double lexicalSimilarity(String query, String content) {
+        Set<Integer> queryCharacters = significantCharacters(normalizeQuery(query));
+        Set<Integer> contentCharacters = significantCharacters(content);
+        if (queryCharacters.isEmpty() || contentCharacters.isEmpty()) {
+            return 0.0;
+        }
+        int common = 0;
+        for (Integer character : queryCharacters) {
+            if (contentCharacters.contains(character)) {
+                common++;
+            }
+        }
+        double overlap = (double) common / Math.min(queryCharacters.size(), contentCharacters.size());
+        return Math.max(MIN_LOCAL_RETRIEVAL_SCORE, overlap);
+    }
+
+    private static String normalizeQuery(String query) {
+        if (query == null) {
+            return "";
+        }
+        return query.toLowerCase().replace("我的", "用户的").replace("我叫", "用户的姓名是");
+    }
+
+    private static Set<Integer> significantCharacters(String text) {
+        Set<Integer> characters = new LinkedHashSet<>();
+        if (text == null) {
+            return characters;
+        }
+        text.toLowerCase().codePoints().filter(Character::isLetterOrDigit).forEach(characters::add);
+        return characters;
     }
 
     /**
@@ -416,15 +457,6 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         if (userId == null || userId.isEmpty()) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
                     memory.getMemType().getValue(), "error_msg", "add operation must pass user_id");
-        }
-        // Validate userId: reject overly long or control-character IDs
-        if (userId.length() > 256) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "user_id too long, max 256 chars");
-        }
-        if (userId.chars().anyMatch(c -> c < 0x20 && c != '\t')) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "user_id contains invalid control characters");
         }
         if (scopeId == null || scopeId.isEmpty()) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",

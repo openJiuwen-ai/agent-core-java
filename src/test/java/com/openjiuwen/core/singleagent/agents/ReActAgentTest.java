@@ -7,11 +7,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
+import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -25,9 +40,11 @@ import com.openjiuwen.harness.task_loop.LoopQueues;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -59,6 +76,20 @@ class ReActAgentTest {
         @Override
         public void updateState(Map<String, Object> state) {
             this.state.putAll(state);
+        }
+    }
+
+    private static final class TestableReActAgent extends ReActAgent {
+        private final AbilityManager abilityManager = mock(AbilityManager.class);
+
+        private TestableReActAgent(String id) {
+            super(AgentCard.builder().id(id).name(id).description(id).build());
+            when(abilityManager.listToolInfo()).thenReturn(List.of());
+        }
+
+        @Override
+        public AbilityManager getAbilityManager() {
+            return abilityManager;
         }
     }
 
@@ -371,6 +402,179 @@ class ReActAgentTest {
 
         assertThat(((Map<?, ?>) result).get("output")).isEqualTo("done");
         assertThat(queues.drainSteering()).isEmpty();
+    }
+
+    @Test
+    void testInvokeRedactsMessagesAfterModelCallRailsWhenSensitive() throws Exception {
+        boolean previousSensitive = UserConfig.isSensitive();
+        UserConfig.setSensitive(true);
+        Logger agentLogger = (Logger) LoggerFactory.getLogger("agent");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        agentLogger.addAppender(appender);
+        TestableReActAgent testAgent = new TestableReActAgent("react-sensitive-log");
+        try {
+            testAgent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+            testAgent.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, callbackContext -> {
+                ModelCallInputs modelInputs = (ModelCallInputs) callbackContext.getInputs();
+                modelInputs.setMessages(List.of(new SystemMessage("rail-system-secret"),
+                        new UserMessage("rail-user-secret"), new ToolMessage("30.0", "call-sensitive-log")));
+            }, 50);
+            Model model = mock(Model.class);
+            when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenReturn(AssistantMessage.builder().content("done").build());
+            testAgent.setLlm(model);
+
+            testAgent.invoke(Map.of("query", "original-user-secret"), new TestSession("react-sensitive-log-session"));
+
+            List<String> messages =
+                    appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+            assertThat(messages).contains(
+                    "LLM request messages redacted: message_count=3, role_counts={system=1, user=1, tool=1}",
+                    "{\"role\": \"tool\", \"content\": \"30.0\"}");
+            assertThat(messages).noneMatch(message -> message.contains("original-user-secret")
+                    || message.contains("rail-system-secret") || message.contains("rail-user-secret"));
+        } finally {
+            testAgent.getAgentCallbackManager().clear(null);
+            agentLogger.detachAppender(appender);
+            appender.stop();
+            UserConfig.setSensitive(previousSensitive);
+        }
+    }
+
+    @Test
+    void testStreamLogsPostRailToolMessageWhenNotSensitive() throws Exception {
+        boolean previousSensitive = UserConfig.isSensitive();
+        UserConfig.setSensitive(false);
+        Logger agentLogger = (Logger) LoggerFactory.getLogger("agent");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        agentLogger.addAppender(appender);
+        TestableReActAgent testAgent = new TestableReActAgent("react-stream-log");
+        try {
+            testAgent.configure(ReActAgentConfig.builder().maxIterations(2).build());
+            testAgent.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, callbackContext -> {
+                ModelCallInputs modelInputs = (ModelCallInputs) callbackContext.getInputs();
+                List<Object> rewritten = new ArrayList<>();
+                for (Object message : modelInputs.getMessages()) {
+                    rewritten.add(message instanceof UserMessage
+                            ? new UserMessage("rail-rewritten-query")
+                            : message);
+                }
+                modelInputs.setMessages(rewritten);
+            }, 50);
+            Model model = mock(Model.class);
+            when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenReturn(List.of(AssistantMessageChunk.builder().content("").toolCalls(List.of(
+                                    ToolCall.builder().id("call-log").name("logged-tool").arguments("{}").index(0)
+                                            .build()))
+                                    .build())
+                                    .iterator(),
+                            List.of(AssistantMessageChunk.builder().content("done").build()).iterator());
+            when(testAgent.getAbilityManager()
+                    .execute(any(AgentCallbackContext.class), any(), any(Session.class), isNull()))
+                    .thenReturn(List.of(
+                            new AbilityManager.ToolExecutionEntry("30.0", new ToolMessage("30.0", "call-log"))));
+            testAgent.setLlm(model);
+            AgentSessionApi session =
+                    new AgentSessionApi("react-stream-log-session", null, testAgent.getCard(),
+                            List.of(StreamMode.OUTPUT));
+
+            Iterator<Object> stream =
+                    testAgent.stream(Map.of("query", "original-stream-query"), session, List.of(StreamMode.OUTPUT));
+            stream.forEachRemaining(ignored -> {
+            });
+
+            List<String> messages =
+                    appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+            assertThat(messages).contains("{\"role\": \"user\", \"content\": \"rail-rewritten-query\"}");
+            assertThat(messages).contains("{\"role\": \"tool\", \"content\": \"30.0\"}");
+            assertThat(messages).noneMatch(message -> message.contains("original-stream-query"));
+        } finally {
+            testAgent.getAgentCallbackManager().clear(null);
+            agentLogger.detachAppender(appender);
+            appender.stop();
+            UserConfig.setSensitive(previousSensitive);
+        }
+    }
+
+    @Test
+    void testInvokeDoesNotExecuteToolCallAtIterationLimit() throws Exception {
+        TestableReActAgent testAgent = new TestableReActAgent("react-iteration-limit");
+        testAgent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(AssistantMessage.builder().content("").toolCalls(List.of(
+                        ToolCall.builder().id("call-limit").name("should-not-run").arguments("{}").build())).build());
+        testAgent.setLlm(model);
+        TestSession session = new TestSession("react-iteration-limit-session");
+
+        Object result = testAgent.invoke(Map.of("query", "run"), session);
+
+        assertThat(result).isInstanceOf(Map.class);
+        Map<?, ?> resultMap = (Map<?, ?>) result;
+        assertThat(resultMap.get("result_type")).isEqualTo("error");
+        assertThat(resultMap.get("output")).isEqualTo("Max iterations reached without completion");
+        verify(testAgent.getAbilityManager(), never()).execute(any(AgentCallbackContext.class), any(),
+                any(Session.class), isNull());
+        ModelContext context = testAgent.getContextEngine().getContext(null, session.getSessionId());
+        assertThat(context.getMessages()).singleElement().isInstanceOf(UserMessage.class);
+    }
+
+    @Test
+    void testStreamDoesNotExecuteToolCallAtIterationLimit() throws Exception {
+        TestableReActAgent testAgent = new TestableReActAgent("react-stream-iteration-limit");
+        testAgent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(AssistantMessageChunk.builder().content("").toolCalls(List.of(
+                        ToolCall.builder().id("call-stream-limit").name("should-not-run").arguments("{}").index(0)
+                                .build())).build()).iterator());
+        testAgent.setLlm(model);
+        AgentSessionApi session =
+                new AgentSessionApi("react-stream-iteration-limit-session", null, testAgent.getCard(),
+                        List.of(StreamMode.OUTPUT));
+
+        Iterator<Object> stream = testAgent.stream(Map.of("query", "run"), session, List.of(StreamMode.OUTPUT));
+        List<Object> outputs = new ArrayList<>();
+        stream.forEachRemaining(outputs::add);
+
+        assertThat(outputs).anyMatch(output -> output instanceof OutputSchema outputSchema
+                && outputSchema.getPayload() instanceof Map<?, ?> payload
+                && "Max iterations reached without completion".equals(payload.get("output")));
+        verify(testAgent.getAbilityManager(), never()).execute(any(AgentCallbackContext.class), any(),
+                any(Session.class), isNull());
+        ModelContext context = testAgent.getContextEngine().getContext(null, session.getSessionId());
+        assertThat(context.getMessages()).singleElement().isInstanceOf(UserMessage.class);
+    }
+
+    @Test
+    void testInvokeNormalizesMissingToolCallIndexInStoredContext() throws Exception {
+        TestableReActAgent testAgent = new TestableReActAgent("react-context-tool-index");
+        testAgent.configure(ReActAgentConfig.builder().maxIterations(2).build());
+        ToolCall rawToolCall =
+                ToolCall.builder().id("call-index").name("indexed-tool").arguments("{}").build();
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(AssistantMessage.builder().content("").toolCalls(List.of(rawToolCall)).build(),
+                        AssistantMessage.builder().content("done").build());
+        when(testAgent.getAbilityManager()
+                .execute(any(AgentCallbackContext.class), any(), any(Session.class), isNull()))
+                .thenReturn(List.of(new AbilityManager.ToolExecutionEntry("ok", new ToolMessage("ok", "call-index"))));
+        testAgent.setLlm(model);
+        TestSession session = new TestSession("react-context-tool-index-session");
+
+        Object result = testAgent.invoke(Map.of("query", "run"), session);
+
+        assertThat(result).isInstanceOf(Map.class);
+        Map<?, ?> resultMap = (Map<?, ?>) result;
+        assertThat(resultMap.get("result_type")).isEqualTo("answer");
+        assertThat(resultMap.get("output")).isEqualTo("done");
+        assertThat(rawToolCall.getIndex()).isNull();
+        ModelContext context = testAgent.getContextEngine().getContext(null, session.getSessionId());
+        assertThat(context.getMessages()).hasSize(4);
+        AssistantMessage storedAssistant = (AssistantMessage) context.getMessages().get(1);
+        assertThat(storedAssistant.getToolCalls()).singleElement().extracting(ToolCall::getIndex).isEqualTo(0);
     }
 
     @Test

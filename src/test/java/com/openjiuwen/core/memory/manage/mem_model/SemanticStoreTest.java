@@ -64,6 +64,17 @@ class SemanticStoreTest {
         assertEquals(0, vectorStore.deleteCalls);
     }
 
+    @Test
+    void addDocsRejectsCollectionNamesUnsupportedByVectorBackends() {
+        RecordingVectorStore vectorStore = new RecordingVectorStore("default");
+        SemanticStore semanticStore = new SemanticStore(vectorStore, new FixedEmbedding());
+
+        assertFalse(semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "uid_用户😁"));
+        assertFalse(semanticStore.addDocs(List.of(Map.entry("mem-2", "remember this")), "a".repeat(256)));
+        assertEquals(List.of(), vectorStore.collections);
+        assertTrue(vectorStore.rows.isEmpty());
+    }
+
     private static final class FixedEmbedding implements Embedding {
         @Override
         public List<Float> embedQuery(String text) {

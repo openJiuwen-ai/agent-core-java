@@ -285,6 +285,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             params.put("cache_sharing", true);
             params.put("cache_salt", String.valueOf(sessionId));
         }
+        recordRequestTrace(params);
         return params;
     }
 

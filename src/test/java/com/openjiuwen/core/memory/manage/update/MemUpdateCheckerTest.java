@@ -37,6 +37,16 @@ class MemUpdateCheckerTest {
     }
 
     @Test
+    void checkSkipsExactDuplicatesWithoutCallingModel() {
+        MemUpdateChecker checker = new MemUpdateChecker();
+
+        List<MemoryActionItem> results =
+            checker.check(Map.of("new", "same memory"), Map.of("old", "same memory"), null);
+
+        assertTrue(results.isEmpty());
+    }
+
+    @Test
     void checkWithConflictingResultAddsNewAndDeletesOld() throws Exception {
         Model model = mock(Model.class);
         doReturn(AssistantMessage.builder().content(

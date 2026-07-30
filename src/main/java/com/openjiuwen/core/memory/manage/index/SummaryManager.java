@@ -82,11 +82,11 @@ public class SummaryManager extends BaseMemoryManager {
     @Override
     public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("update", kwargs);
-        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         String encryptedMemory = encryptMemoryIfNeeded(cryptoKey, newMemory);
         Map<String, Object> newData = new LinkedHashMap<>();
         newData.put("mem", encryptedMemory);
-        newData.put("time", time);
+        newData.put("timestamp", time);
         memStore.update(userId, scopeId, memId, newData);
 
         String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());

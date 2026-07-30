@@ -53,10 +53,10 @@ public class InMemoryKVStore extends BaseKVStore {
     @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
         cleanupIfExpired(key);
-        if (values.containsKey(key)) {
+        Object existing = values.putIfAbsent(key, value);
+        if (existing != null) {
             return false;
         }
-        values.put(key, value);
         if (expiry != null && expiry > 0) {
             expiryAt.put(key, System.currentTimeMillis() + expiry * 1000L);
         }

@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.workflow.component.llm;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.util.MinimalPrettyPrinter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
@@ -14,6 +19,7 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.session.NodeSessionApi;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,8 +36,30 @@ import java.util.stream.Collectors;
  * @since 0.1.7
  */
 public class QuestionerDirectReplyHandler {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectWriter CONTEXT_JSON_WRITER =
+            OBJECT_MAPPER.writer(new PythonCompatiblePrettyPrinter());
     private static final Pattern JSON_BLOCK_PATTERN =
         Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$", Pattern.CASE_INSENSITIVE);
+
+    private static final class PythonCompatiblePrettyPrinter extends MinimalPrettyPrinter {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public void writeObjectFieldValueSeparator(JsonGenerator generator) throws IOException {
+            generator.writeRaw(": ");
+        }
+
+        @Override
+        public void writeObjectEntrySeparator(JsonGenerator generator) throws IOException {
+            generator.writeRaw(", ");
+        }
+
+        @Override
+        public void writeArrayValueSeparator(JsonGenerator generator) throws IOException {
+            generator.writeRaw(", ");
+        }
+    }
 
     /**
      * Pattern.compile.
@@ -138,6 +166,7 @@ public class QuestionerDirectReplyHandler {
         OutputCache output = new OutputCache();
         this.query = questionerInput.getQuery() != null ? questionerInput.getQuery() : "";
 
+        writeUserMessageToContext(query, context);
         List<BaseMessage> chatHistory = getChatHistory(context);
 
         if (isSetQuestionContent()) {
@@ -145,6 +174,7 @@ public class QuestionerDirectReplyHandler {
             output.setQuestion(QuestionerUtils.formatTemplate(config.getQuestionContent(), userFields));
             state.setQuestion(output.getQuestion());
             state = state.handleEvent(QuestionerEvent.USER_INTERACT_EVENT);
+            writeAssistantMessageToContext(output.getQuestion(), context);
             return QuestionerUtils.formatQuestionerOutput(output);
         }
 
@@ -153,6 +183,9 @@ public class QuestionerDirectReplyHandler {
             QuestionerEvent event = isContinueAsk ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
+                writeAssistantMessageToContext(output.getQuestion(), context);
+            } else {
+                writeAssistantMessageToContext(serializeContextOutput(output.getKeyFields()), context);
             }
             state = state.handleEvent(event);
         } else {
@@ -184,6 +217,7 @@ public class QuestionerDirectReplyHandler {
         output.setQuestion(state.getQuestion());
         output.setUserResponse(query);
 
+        writeUserMessageToContext(query, context);
         List<BaseMessage> chatHistory = getChatHistory(context);
         Object userResponse = !chatHistory.isEmpty() ? chatHistory.get(chatHistory.size() - 1).getContent() : "";
 
@@ -198,6 +232,9 @@ public class QuestionerDirectReplyHandler {
             QuestionerEvent event = isContinueAsk ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
+                writeAssistantMessageToContext(output.getQuestion(), context);
+            } else {
+                writeAssistantMessageToContext(serializeContextOutput(output.getKeyFields()), context);
             }
             state = state.handleEvent(event);
         } else {
@@ -325,13 +362,13 @@ public class QuestionerDirectReplyHandler {
         try {
             String cleaned = JSON_BLOCK_PATTERN.matcher(response.strip()).replaceAll("");
             cleaned = JSON_BLOCK_SINGLE_PATTERN.matcher(cleaned).replaceAll("");
-            Object parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(cleaned, Object.class);
+            Object parsed = OBJECT_MAPPER.readValue(cleaned, Object.class);
             if (!(parsed instanceof Map)) {
                 throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_EXECUTION_PROCESS_ERROR, "error_msg",
                         "failed to parse json from llm response");
             }
             result = (Map<String, Object>) parsed;
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             return new LinkedHashMap<>();
         }
 
@@ -446,9 +483,33 @@ public class QuestionerDirectReplyHandler {
         if (isContinueAsk) {
             output.getKeyFields().clear();
         } else {
-            output.getKeyFields().putAll(state.getExtractedKeyFields());
+            mergeExtractedFields(output);
         }
         return isContinueAsk;
+    }
+
+    /**
+     * Keep fields extracted in the current turn first, then append restored
+     * fields in configured order. Checkpoint serialization must not affect the
+     * final context message order.
+     *
+     * @param output output for the current turn
+     * @since 0.1.13
+     */
+    private void mergeExtractedFields(OutputCache output) {
+        Map<String, Object> merged = new LinkedHashMap<>(output.getKeyFields());
+        Map<String, Object> extracted = state.getExtractedKeyFields();
+        for (FieldInfo field : config.getFieldNames()) {
+            String fieldName = field.getFieldName();
+            if (!merged.containsKey(fieldName) && extracted.containsKey(fieldName)) {
+                merged.put(fieldName, extracted.get(fieldName));
+            }
+        }
+        for (Map.Entry<String, Object> entry : extracted.entrySet()) {
+            merged.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+        output.getKeyFields().clear();
+        output.getKeyFields().putAll(merged);
     }
 
     /**
@@ -480,6 +541,50 @@ public class QuestionerDirectReplyHandler {
     private boolean needExtractFields() {
         return config.isExtractFieldsFromResponse()
                 && config.getFieldNames().size() > state.getExtractedKeyFields().size();
+    }
+
+    /**
+     * Write a user message to the workflow context when chat history is enabled.
+     *
+     * @param content message content
+     * @param context workflow context
+     * @since 0.1.13
+     */
+    private void writeUserMessageToContext(Object content, ModelContext context) {
+        if (!config.isWithChatHistory() || context == null || content == null || "".equals(content)) {
+            return;
+        }
+        Object messageContent = content instanceof Map<?, ?> ? List.of(content) : content;
+        context.addMessages(UserMessage.builder().content(messageContent).build());
+    }
+
+    /**
+     * Write an assistant message to the workflow context when chat history is enabled.
+     *
+     * @param content message content
+     * @param context workflow context
+     * @since 0.1.13
+     */
+    private void writeAssistantMessageToContext(String content, ModelContext context) {
+        if (!config.isWithChatHistory() || context == null || content == null || content.isEmpty()) {
+            return;
+        }
+        context.addMessages(new AssistantMessage(content));
+    }
+
+    /**
+     * Serialize extracted fields using Python-compatible JSON separators.
+     *
+     * @param fields extracted fields
+     * @return serialized fields
+     * @since 0.1.13
+     */
+    private String serializeContextOutput(Map<String, Object> fields) {
+        try {
+            return CONTEXT_JSON_WRITER.writeValueAsString(fields);
+        } catch (JsonProcessingException e) {
+            return String.valueOf(fields);
+        }
     }
 
     /**

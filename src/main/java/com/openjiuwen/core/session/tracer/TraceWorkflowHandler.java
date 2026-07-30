@@ -149,10 +149,9 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
      * @since 0.1.7
      */
     @TriggerEvent
-    @SuppressWarnings("unchecked")
     public void onPreStream(String invokeId, Object chunk, boolean needSend) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
-        if (chunk instanceof Map) {
+        if (chunk instanceof Map<?, ?> chunkMap && !chunkMap.isEmpty()) {
             span.appendStreamInput(chunk);
         }
         if (needSend) {

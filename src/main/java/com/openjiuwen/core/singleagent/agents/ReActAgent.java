@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -49,6 +50,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -313,7 +315,6 @@ public class ReActAgent extends BaseAgent {
             List<ToolInfo> tools) {
         var contextWindow =
             context.getContextWindow(systemMessages, tools != null ? tools : null, (Integer) null, (Integer) null);
-        logLlmRequest(contextWindow.getMessages());
 
         ctx.setInputs(ModelCallInputs.builder().messages(new ArrayList<>(contextWindow.getMessages()))
                 .tools(contextWindow.getToolList()).build());
@@ -345,22 +346,107 @@ public class ReActAgent extends BaseAgent {
     /**
      * logLlmRequest.
      * 
-     * @param messages messages
+     * @param messages messages actually sent after model-call rails
      * @since 0.1.7
      */
-    private void logLlmRequest(List<BaseMessage> messages) {
+    private void logLlmRequest(List<?> messages) {
         if (messages == null) {
             return;
         }
-        for (BaseMessage message : messages) {
-            if (message == null) {
-                continue;
+        if (UserConfig.isSensitive()) {
+            Loggers.AGENT.info("LLM request messages redacted: message_count={}, role_counts={}",
+                    messages.size(), summarizeMessageRoles(messages));
+            for (Object message : messages) {
+                if ("tool".equals(extractMessageRole(message))) {
+                    logLlmMessage(message);
+                }
             }
-            String role = message.getRole() != null ? message.getRole() : "";
-            String content = String.valueOf(message.getContent());
-            String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
-            Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
+            return;
         }
+        for (Object message : messages) {
+            logLlmMessage(message);
+        }
+    }
+
+    /**
+     * Log one model input using the stable role/content representation required
+     * for tool-call diagnostics.
+     *
+     * @param message model input message
+     * @since 0.1.13
+     */
+    private void logLlmMessage(Object message) {
+        if (message == null) {
+            return;
+        }
+        String role = extractMessageRole(message);
+        String content = String.valueOf(extractMessageContent(message));
+        String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
+        Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
+    }
+
+    /**
+     * Summarize message roles without including user-controlled role values.
+     *
+     * @param messages messages to summarize
+     * @return counts grouped by safe role names
+     * @since 0.1.7
+     */
+    private Map<String, Integer> summarizeMessageRoles(List<?> messages) {
+        Map<String, Integer> roleCounts = new LinkedHashMap<String, Integer>();
+        for (Object message : messages) {
+            String role = normalizeRoleForLogging(extractMessageRole(message));
+            roleCounts.merge(role, 1, Integer::sum);
+        }
+        return roleCounts;
+    }
+
+    /**
+     * Extract a message role from supported model input shapes.
+     *
+     * @param message model input message
+     * @return role or an empty string when unavailable
+     * @since 0.1.7
+     */
+    private String extractMessageRole(Object message) {
+        Object role = null;
+        if (message instanceof BaseMessage baseMessage) {
+            role = baseMessage.getRole();
+        } else if (message instanceof Map<?, ?> messageMap) {
+            role = messageMap.get("role");
+        }
+        return role != null ? String.valueOf(role) : "";
+    }
+
+    /**
+     * Extract message content from supported model input shapes.
+     *
+     * @param message model input message
+     * @return message content
+     * @since 0.1.7
+     */
+    private Object extractMessageContent(Object message) {
+        if (message instanceof BaseMessage baseMessage) {
+            return baseMessage.getContent();
+        }
+        if (message instanceof Map<?, ?> messageMap) {
+            return messageMap.get("content");
+        }
+        return message;
+    }
+
+    /**
+     * Restrict role metadata to known protocol values before logging it.
+     *
+     * @param role raw role
+     * @return safe role bucket
+     * @since 0.1.7
+     */
+    private String normalizeRoleForLogging(String role) {
+        return switch (role) {
+            case "system", "developer", "user", "assistant", "tool" -> role;
+            default -> "other";
+        };
     }
 
     static String toText(Object content) {
@@ -379,6 +465,7 @@ public class ReActAgent extends BaseAgent {
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
                     Model model = getLlm();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
+                    logLlmRequest(inputs.getMessages());
 
                     AssistantMessage aiMessage = model.invoke(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
@@ -404,6 +491,7 @@ public class ReActAgent extends BaseAgent {
                     if (!(ctx.getInputs() instanceof ModelCallInputs inputs)) {
                         return null;
                     }
+                    logLlmRequest(inputs.getMessages());
                     Iterator<AssistantMessageChunk> stream = model.stream(inputs.getMessages(),
                             inputs.getTools() != null && !inputs.getTools().isEmpty() ? inputs.getTools() : null, null,
                             null, config.getModelName(), null, null, null, null, null);
@@ -708,10 +796,17 @@ public class ReActAgent extends BaseAgent {
                     return result;
                 }
 
-                context.addMessages(AssistantMessage.builder().content(aiMessage.getContent())
-                        .toolCalls(aiMessage.getToolCalls()).build());
+                boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
+                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                    break;
+                }
 
-                if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+                context.addMessages(AssistantMessage.builder().content(aiMessage.getContent())
+                        .toolCalls(hasToolCalls ? cloneToolCallsForContext(aiMessage.getToolCalls())
+                                : aiMessage.getToolCalls())
+                        .build());
+
+                if (hasToolCalls) {
                     List<ToolExecutionEntry> results =
                         executeToolCallEntries(ctx, aiMessage.getToolCalls(), session, context);
 
@@ -1049,6 +1144,25 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * Clone tool calls for context persistence and assign a stable positional index
+     * when a non-streaming model response omitted one.
+     *
+     * @param toolCalls tool calls returned by the model
+     * @return cloned tool calls with missing indexes normalized
+     * @since 0.1.7
+     */
+    private List<ToolCall> cloneToolCallsForContext(List<ToolCall> toolCalls) {
+        List<ToolCall> cloned = cloneToolCalls(toolCalls);
+        for (int index = 0; index < cloned.size(); index++) {
+            ToolCall toolCall = cloned.get(index);
+            if (toolCall != null && toolCall.getIndex() == null) {
+                toolCall.setIndex(index);
+            }
+        }
+        return cloned;
+    }
+
+    /**
      * normalizeResumePayload.
      * 
      * @param queryPayload queryPayload
@@ -1244,10 +1358,17 @@ public class ReActAgent extends BaseAgent {
                     return result;
                 }
 
-                context.addMessages(AssistantMessage.builder().content(aiMessage.getContent())
-                        .toolCalls(aiMessage.getToolCalls()).build());
+                boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
+                if (hasToolCalls && iteration + 1 >= config.getMaxIterations()) {
+                    break;
+                }
 
-                if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+                context.addMessages(AssistantMessage.builder().content(aiMessage.getContent())
+                        .toolCalls(hasToolCalls ? cloneToolCallsForContext(aiMessage.getToolCalls())
+                                : aiMessage.getToolCalls())
+                        .build());
+
+                if (hasToolCalls) {
                     List<ToolExecutionEntry> results =
                         executeToolCallEntries(ctx, aiMessage.getToolCalls(), session, context);
 
