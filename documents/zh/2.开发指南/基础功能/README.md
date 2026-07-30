@@ -1,4 +1,4 @@
-# 基础功能
+﻿# 基础功能
 
 本栏目面向第一次接入 openJiuwen Java 的开发者，聚焦模型调用、提示词模板和工具系统三条基础主线。内容严格以 Java 当前的 `foundation` API、可运行示例和已有测试为准。
 
@@ -12,9 +12,9 @@
 
 | 页面 | 关注点 | 主要 Java 依据 | 说明 |
 | --- | --- | --- | --- |
-| [接入大模型](接入大模型.md) | 创建模型连接、准备配置、发起基础调用 | `com.openjiuwen.core.foundation.llm`、`examples/reac_agent` | 只讲基础模型接入，不提前展开 agent 编排。 |
-| [填充提示词模板](填充提示词模板.md) | 模板内容组织、变量替换、消息模板复用 | `com.openjiuwen.core.foundation.prompt`、`examples/reac_agent` | 重点是运行时 prompt template，不混入离线 prompt builder。 |
-| [自定义工具](自定义工具.md) | 本地函数、REST 工具、MCP 与工具卡片接入 | `com.openjiuwen.core.foundation.tool`、`examples/reac_agent` | 以 Java 当前真实注册方式为准。 |
+| [接入大模型](接入大模型.md) | 创建模型连接、准备配置、发起基础调用 | `com.openjiuwen.core.foundation.llm`、`examples/react_agent` | 只讲基础模型接入，不提前展开 agent 编排。 |
+| [填充提示词模板](填充提示词模板.md) | 模板内容组织、变量替换、消息模板复用 | `com.openjiuwen.core.foundation.prompt`、`examples/react_agent` | 重点是运行时 prompt template，不混入离线 prompt builder。 |
+| [自定义工具](自定义工具.md) | 本地函数、REST 工具、MCP 与工具卡片接入 | `com.openjiuwen.core.foundation.tool`、`examples/react_agent` | 以 Java 当前真实注册方式为准。 |
 
 ## 推荐阅读顺序
 
@@ -25,7 +25,7 @@
 ## 参考入口
 
 - [API 文档：foundation](../API文档/com.openjiuwen.core/foundation.README.md)
-- [示例：ReAct Agent Java Example](../../../../examples/reac_agent/README.md)
+- [示例：ReAct Agent Java Example](../../../../examples/react_agent/README.md)
 
 ## 使用边界
 

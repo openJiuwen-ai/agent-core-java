@@ -25,11 +25,13 @@ class ToolMetadataRegistryTest {
 
         assertThat(card.getName()).isEqualTo("ask_user");
         assertThat(card.getId()).isEqualTo("ask_user");
-        assertThat(card.getDescription()).isEqualTo("中断执行并向用户请求输入");
+        assertThat(card.getDescription()).contains("向用户提问以收集信息");
         assertThat(card.getInputParams()).containsEntry("type", "object");
+        assertThat(card.getInputParams()).containsEntry("required", java.util.List.of("questions"));
         @SuppressWarnings("unchecked")
         Map<String, Object> properties = (Map<String, Object>) card.getInputParams().get("properties");
-        assertThat(properties).containsKey("query");
+        assertThat(properties).containsKey("questions");
+        assertThat(properties).doesNotContainKey("query");
     }
 
     @Test

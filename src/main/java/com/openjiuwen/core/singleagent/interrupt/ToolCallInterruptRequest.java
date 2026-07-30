@@ -18,6 +18,7 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
     private static final long serialVersionUID = 1L;
     private String toolCallId;
     private String toolName;
+    private java.util.List<java.util.Map<String, Object>> questions;
 
     /**
      * Return the interrupted tool call id.
@@ -75,11 +76,35 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
             result.setContext(request.getContext());
             result.setPayloadSchema(request.getPayloadSchema());
             result.setAutoConfirmKey(request.getAutoConfirmKey());
+            // Preserve AskUserRequest.questions (Python ToolCallInterruptRequest.model_dump parity)
+            if (request instanceof AskUserRequest askUserRequest) {
+                result.setQuestions(askUserRequest.getQuestions());
+            }
         }
         if (toolCall != null) {
             result.setToolCallId(toolCall.getId());
             result.setToolName(toolCall.getName());
         }
         return result;
+    }
+
+    /**
+     * Return structured ask-user questions when present.
+     *
+     * @return questions list or null
+     * @since 0.1.14
+     */
+    public java.util.List<java.util.Map<String, Object>> getQuestions() {
+        return questions;
+    }
+
+    /**
+     * Set structured ask-user questions.
+     *
+     * @param questions questions to present
+     * @since 0.1.14
+     */
+    public void setQuestions(java.util.List<java.util.Map<String, Object>> questions) {
+        this.questions = questions;
     }
 }

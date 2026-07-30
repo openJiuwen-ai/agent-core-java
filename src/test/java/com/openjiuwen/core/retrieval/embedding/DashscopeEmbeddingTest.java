@@ -153,9 +153,12 @@ class DashscopeEmbeddingTest {
 
         assertEquals(3, embeddings.size());
         assertEquals(2, model.calls.size());
-        assertEquals("plain text", model.calls.get(0).get(0));
-        assertEquals(doc.getDashscopeInput(), model.calls.get(0).get(1));
-        assertEquals("another string", model.calls.get(1).get(0));
+        // Batches run via supplyAsync; completion order is not guaranteed across platforms.
+        List<List<Object>> expectedBatches = List.of(
+                List.of("plain text", doc.getDashscopeInput()),
+                List.of("another string"));
+        assertTrue(model.calls.containsAll(expectedBatches) && expectedBatches.containsAll(model.calls),
+                () -> "unexpected batches: " + model.calls);
     }
 
     @Test

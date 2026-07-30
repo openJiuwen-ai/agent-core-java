@@ -61,4 +61,22 @@ class InteractiveInputTest {
         InteractiveInput input = new InteractiveInput();
         assertThrows(BaseError.class, () -> input.update("id", null));
     }
+
+    @Test
+    @DisplayName("InteractiveInput is Java-serializable for Redis checkpointer")
+    void testInteractiveInputIsSerializable() throws Exception {
+        InteractiveInput input = new InteractiveInput("raw");
+        input.getUserInputs().put("n1", "v1");
+
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(bos)) {
+            oos.writeObject(input);
+        }
+        try (java.io.ObjectInputStream ois =
+                new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bos.toByteArray()))) {
+            InteractiveInput restored = (InteractiveInput) ois.readObject();
+            assertEquals("raw", restored.getRawInputs());
+            assertEquals("v1", restored.getUserInputs().get("n1"));
+        }
+    }
 }

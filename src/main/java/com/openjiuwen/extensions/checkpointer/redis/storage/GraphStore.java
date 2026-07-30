@@ -91,7 +91,7 @@ public class GraphStore extends BaseRedisStorage {
         try {
             var stateBlob = serializeState(state);
             if (stateBlob == null) {
-                log.warn("Failed to serialize graph state for session {}, ns {}", sessionId, ns);
+                // Null graph state means nothing to persist (not a serialization failure).
                 return CompletableFuture.completedFuture(null);
             }
 

@@ -1,9 +1,9 @@
-# Interact Weather Assistant (Java)
+﻿# Interact Weather Assistant (Java)
 
 这个目录提供一个 Java 交互天气助理示例，实现上做了两件额外的事：
 
 1. 交互、并发提问、同一 `sessionId` 的 checkpoint 恢复，仍然使用原生 `Workflow`
-2. 模型配置改为读取真实 `examples/apiconfig.json`，天气查询接口复用 `examples/reac_agent/ReActWeatherAgentExample.java` 的同款天气 API
+2. 模型配置改为读取真实 `examples/apiconfig.json`，天气查询接口复用 `examples/react_agent/ReActWeatherAgentExample.java` 的同款天气 API
 
 ## 文件说明
 
