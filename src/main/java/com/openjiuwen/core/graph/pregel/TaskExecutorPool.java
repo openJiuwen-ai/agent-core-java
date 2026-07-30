@@ -16,8 +16,10 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Pool for executing Pregel node tasks concurrently using virtual threads.
@@ -74,16 +76,20 @@ public class TaskExecutorPool {
      */
     public void submit(PregelNode node, int version) {
         CompletableFuture<Void> completion = new CompletableFuture<>();
+        AtomicReference<Thread> owner = new AtomicReference<>();
         CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> {
+            Thread currentThread = Thread.currentThread();
+            owner.set(currentThread);
             try {
                 return new NodeTask(node, config, version).call();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             } finally {
                 completion.complete(null);
+                owner.compareAndSet(currentThread, null);
             }
         }, executor);
-        runningTasks.put(future, new RunningTask(node, completion));
+        runningTasks.put(future, new RunningTask(node, completion, owner));
     }
 
     /**
@@ -115,8 +121,13 @@ public class TaskExecutorPool {
         // Wait for either all-done or first-exception (FIRST_EXCEPTION semantics)
         CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         try {
-            CompletableFuture.anyOf(allDone, firstFailure).join();
-        } catch (Exception ignored) {
+            CompletableFuture.anyOf(allDone, firstFailure).get();
+        } catch (InterruptedException e) {
+            cancelPendingFutures(futures);
+            awaitActualCompletion(futures);
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Pregel task execution cancelled");
+        } catch (ExecutionException | CancellationException ignored) {
             // Individual errors will be handled below
         }
 
@@ -196,7 +207,7 @@ public class TaskExecutorPool {
                 }
             } else {
                 // Cancel pending task
-                future.cancel(true);
+                cancelFuture(future);
                 commitFailure(node, new CancellationException());
             }
         }
@@ -217,8 +228,10 @@ public class TaskExecutorPool {
      * @since 0.1.7
      */
     public void cancelAll() {
+        List<CompletableFuture<Object>> futures = new ArrayList<>(runningTasks.keySet());
+        cancelPendingFutures(futures);
+        awaitActualCompletion(futures);
         for (Map.Entry<CompletableFuture<Object>, RunningTask> entry : runningTasks.entrySet()) {
-            entry.getKey().cancel(true);
             commitFailure(entry.getValue().node(), new CancellationException());
         }
         runningTasks.clear();
@@ -298,8 +311,26 @@ public class TaskExecutorPool {
     private void cancelPendingFutures(List<CompletableFuture<Object>> pendingFutures) {
         for (CompletableFuture<Object> future : pendingFutures) {
             if (!future.isDone()) {
-                future.cancel(true);
+                cancelFuture(future);
             }
+        }
+    }
+
+    /**
+     * Cancel a task and interrupt the executor thread that is actually running it.
+     *
+     * @param future task future
+     * @since 0.1.7
+     */
+    private void cancelFuture(CompletableFuture<Object> future) {
+        RunningTask runningTask = runningTasks.get(future);
+        boolean cancelled = future.cancel(false);
+        if (!cancelled || runningTask == null) {
+            return;
+        }
+        Thread owner = runningTask.owner().get();
+        if (owner != null) {
+            owner.interrupt();
         }
     }
 
@@ -348,9 +379,10 @@ public class TaskExecutorPool {
      * RunningTask.
      * 
      * @param node node
-     * @param completion completion
+     * @param completion actual task completion
+     * @param owner executor thread
      * @since 0.1.7
      */
-    private record RunningTask(PregelNode node, CompletableFuture<Void> completion) {
+    private record RunningTask(PregelNode node, CompletableFuture<Void> completion, AtomicReference<Thread> owner) {
     }
 }

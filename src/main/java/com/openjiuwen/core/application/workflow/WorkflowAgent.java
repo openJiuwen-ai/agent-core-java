@@ -354,6 +354,16 @@ public class WorkflowAgent extends ControllerAgent {
             return result;
         }
 
+        for (int i = outputs.size() - 1; i >= 0; i--) {
+            Object output = outputs.get(i);
+            if (output instanceof OutputSchema os && "cancelled".equals(os.getType())
+                    && os.getPayload() instanceof Map<?, ?> payloadMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> cancellation = (Map<String, Object>) payloadMap;
+                return new ControllerOutput(result.getType(), cancellation);
+            }
+        }
+
         List<Object> interactionOutputs =
             outputs.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
                     .filter(os -> "__interaction__".equals(os.getType())).map(Object.class::cast).toList();

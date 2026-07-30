@@ -17,6 +17,7 @@ import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 
 /**
  * A compiled graph that wraps a Pregel engine and a Checkpointer for execution.
@@ -96,6 +97,8 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
             try {
                 result = pregel.run(pregelConfig);
+            } catch (CancellationException e) {
+                throw e;
             } catch (Exception e) {
                 exception = e;
             }
@@ -111,6 +114,11 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
             }
 
             return result;
+        } catch (CancellationException e) {
+            if (isMain && checkpointer != null) {
+                checkpointer.postWorkflowExecute(session, Map.of(), null);
+            }
+            throw e;
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

@@ -67,6 +67,7 @@ import java.util.function.Function;
  */
 public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
 
@@ -77,7 +78,7 @@ public class Workflow {
 
     /**
      * Workflow.
-     * 
+     *
      * @param card card
      * @since 0.1.7
      */
@@ -778,9 +779,15 @@ public class Workflow {
         AsyncStreamQueue streamQueue = workflowSession.streamWriterManager() != null
                 ? workflowSession.streamWriterManager().getStreamEmitter().getStreamQueue()
                 : null;
+        WorkflowExecutionControl executionControl = new WorkflowExecutionControl();
 
         CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
+            Thread currentThread = Thread.currentThread();
+            executionControl.start(currentThread);
             try {
+                if (terminated.get()) {
+                    return;
+                }
                 traceWorkflowStart(workflowSession, validatedInputs);
                 Object graphResult = executeCompiledGraph(validatedInputs, workflowSession, context, null);
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
@@ -794,6 +801,7 @@ public class Workflow {
                     closeStreamEmitter(workflowSession);
                     resetGraphExecutionState();
                     workflowSession.close();
+                    executionControl.complete(currentThread);
                 }
             }
         }, STREAM_EXECUTOR);
@@ -917,7 +925,8 @@ public class Workflow {
                         && baseError.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
                     executionTimedOut.set(true);
                 }
-                executionFuture.cancel(true);
+                executionFuture.cancel(false);
+                executionControl.cancelAndAwait();
                 closeStreamEmitter(workflowSession);
                 workflowSession.close();
             }
@@ -935,6 +944,7 @@ public class Workflow {
                     }
                     throw wrapWorkflowException(new Exception(e));
                 } catch (InterruptedException e) {
+                    terminateStream(wrapWorkflowException(e));
                     Thread.currentThread().interrupt();
                     throw wrapWorkflowException(e);
                 } catch (ExecutionException e) {
@@ -958,6 +968,49 @@ public class Workflow {
                 streamQueue.close();
             }
         };
+    }
+
+    /**
+     * Tracks the thread and actual completion of an asynchronous workflow execution.
+     *
+     * @since 0.1.7
+     */
+    private static final class WorkflowExecutionControl {
+        private final AtomicReference<Thread> owner = new AtomicReference<>();
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+
+        private void start(Thread currentThread) {
+            owner.set(currentThread);
+        }
+
+        private void complete(Thread currentThread) {
+            owner.compareAndSet(currentThread, null);
+            completion.complete(null);
+        }
+
+        private void cancelAndAwait() {
+            Thread executionOwner = owner.get();
+            if (executionOwner != null) {
+                executionOwner.interrupt();
+            } else {
+                completion.complete(null);
+            }
+
+            boolean interrupted = Thread.interrupted();
+            try {
+                completion.get(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                interrupted = true;
+            } catch (ExecutionException e) {
+                Loggers.WORKFLOW.warning("Cancelled workflow finished with cleanup error", e);
+            } catch (TimeoutException e) {
+                Loggers.WORKFLOW.warning("Timed out waiting for cancelled workflow to stop");
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
     }
 
     /**

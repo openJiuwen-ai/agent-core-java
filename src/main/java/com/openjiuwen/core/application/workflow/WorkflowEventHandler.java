@@ -48,6 +48,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Workflow Controller - Implements workflow-specific execution logic.
@@ -69,6 +73,7 @@ public class WorkflowEventHandler extends EventHandler {
     private static final String INTERACTION = "__interaction__";
     private static final String STATE_KEY = "workflow_controller";
     private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
+    private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
 
     /**
      * ObjectMapper.
@@ -94,6 +99,7 @@ public class WorkflowEventHandler extends EventHandler {
 
     private final WorkflowAgentConfig agentConfig;
     private final ContextEngine appContextEngine;
+    private final Map<String, RunningWorkflow> runningWorkflows = new ConcurrentHashMap<>();
 
     /**
      * WorkflowEventHandler.
@@ -290,13 +296,28 @@ public class WorkflowEventHandler extends EventHandler {
      */
     Map<String, Object> execTask(Event event, Task task, AgentSessionApi session, WorkflowSchema workflowSchema) {
         String workflowId = workflowSchema.getId() + "_" + workflowSchema.getVersion();
-        boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
+        String conversationId = session.getSessionId();
+        RunningWorkflow runningWorkflow = registerWorkflow(conversationId);
+        return executeRegisteredTask(task, session, workflowId, conversationId, runningWorkflow);
+    }
 
+    /**
+     * Execute a workflow after registering it as the active request for its conversation.
+     *
+     * @param task workflow task
+     * @param session agent session
+     * @param workflowId workflow ID
+     * @param conversationId conversation ID
+     * @param runningWorkflow registered execution
+     * @return workflow result
+     * @since 0.1.7
+     */
+    private Map<String, Object> executeRegisteredTask(Task task, AgentSessionApi session, String workflowId,
+            String conversationId, RunningWorkflow runningWorkflow) {
         try {
             if (agentConfig.getId() == null || agentConfig.getId().isBlank()) {
                 throw new IllegalStateException("Workflow not found: " + workflowId);
             }
-            task.setStatus(TaskStatus.WORKING);
 
             // Get workflow object
             Object workflow = Runner.resourceMgr().getWorkflow(workflowId);
@@ -304,18 +325,17 @@ public class WorkflowEventHandler extends EventHandler {
                 throw new IllegalStateException("Workflow not found: " + workflowId);
             }
 
-            // Create workflow session
-            WorkflowSessionApi workflowSession = session.createWorkflowSession();
-
-            // Prepare inputs
-            Object inputs = getTaskArguments(task);
+            boolean isResume = task.getStatus() == TaskStatus.INPUT_REQUIRED;
             if (isResume) {
                 Loggers.CONTROLLER.info("Resuming workflow: {}", workflowId);
             } else {
                 Loggers.CONTROLLER.info("Starting workflow: {}", workflowId);
             }
+            task.setStatus(TaskStatus.WORKING);
 
             // Execute workflow with streaming
+            WorkflowSessionApi workflowSession = session.createWorkflowSession();
+            Object inputs = getTaskArguments(task);
             ModelContext context = appContextEngine.createContext(workflowId, session.getInner());
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(workflow, inputs, workflowSession,
                     context, resolveWorkflowStreamModes(session));
@@ -385,6 +405,11 @@ public class WorkflowEventHandler extends EventHandler {
                 return result;
             }
         } catch (Exception e) {
+            if (runningWorkflow.isCancelled()) {
+                Thread.interrupted();
+                task.setStatus(TaskStatus.CANCELED);
+                return writeCancellationResult(session, task, workflowId);
+            }
             Loggers.CONTROLLER.error("Workflow execution failed: {}, error: {}", workflowId, e.getMessage());
             task.setStatus(TaskStatus.FAILED);
             if (e instanceof BaseError be) {
@@ -395,6 +420,91 @@ public class WorkflowEventHandler extends EventHandler {
                 throw nested;
             }
             throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", e.getMessage());
+        } finally {
+            runningWorkflow.complete();
+            runningWorkflows.remove(conversationId, runningWorkflow);
+        }
+    }
+
+    /**
+     * Register the workflow currently serving a conversation and cancel its predecessor.
+     *
+     * @param conversationId conversation ID
+     * @return registered workflow execution
+     * @since 0.1.7
+     */
+    private RunningWorkflow registerWorkflow(String conversationId) {
+        RunningWorkflow current = new RunningWorkflow(Thread.currentThread());
+        RunningWorkflow previous = runningWorkflows.put(conversationId, current);
+        if (previous != null) {
+            previous.cancelAndAwait();
+        }
+        return current;
+    }
+
+    /**
+     * Write the terminal marker expected when a workflow is superseded by a new request.
+     *
+     * @param session agent session
+     * @param task cancelled task
+     * @param workflowId workflow ID
+     * @return cancellation result
+     * @since 0.1.7
+     */
+    private static Map<String, Object> writeCancellationResult(AgentSessionApi session, Task task,
+            String workflowId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "cancelled");
+        result.put("conversation_id", session.getSessionId());
+        result.put("task_id", task.getTaskId());
+        result.put("workflow_id", workflowId);
+        session.writeStream(new OutputSchema("cancelled", 0, result));
+        Loggers.CONTROLLER.info("Workflow cancelled: workflow={}, conversation={}", workflowId,
+                session.getSessionId());
+        return result;
+    }
+
+    /**
+     * Tracks one workflow handler serving a conversation.
+     *
+     * @since 0.1.7
+     */
+    private static final class RunningWorkflow {
+        private final Thread owner;
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private final CountDownLatch completion = new CountDownLatch(1);
+
+        private RunningWorkflow(Thread owner) {
+            this.owner = owner;
+        }
+
+        private void cancelAndAwait() {
+            if (owner == Thread.currentThread()) {
+                return;
+            }
+            if (cancelled.compareAndSet(false, true)) {
+                owner.interrupt();
+            }
+            boolean interrupted = Thread.interrupted();
+            try {
+                if (!completion.await(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    Loggers.CONTROLLER.warning("Timed out waiting for cancelled workflow handler to stop");
+                }
+            } catch (InterruptedException e) {
+                interrupted = true;
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        private boolean isCancelled() {
+            return cancelled.get();
+        }
+
+        private void complete() {
+            completion.countDown();
         }
     }
 
