@@ -35,6 +35,9 @@ public final class Runner
 | `public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context, Map<String, Object> envs)` | Execute a single agent with given inputs and environment overrides. |
 | `public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | Execute a single agent with streaming output support. |
 | `public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs)` | Execute a single agent with streaming output support and environment overrides. |
+| `public static Iterator<Object> runAgentTeamStreaming(Object agentTeam, Object inputs, Object session)` | Execute an agent team with streaming output and managed lifecycle. |
+| `public static Iterator<Object> runAgentTeamStreaming(Object agentTeam, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | Execute an agent team with streaming output, model context, streaming modes, and managed lifecycle. |
+| `public static boolean destroyAgentTeam(String teamName, boolean isForceEnabled)` | Destroy and unregister a managed persistent agent team. |
 | `public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context)` | Execute a group of agents with given inputs. |
 | `public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context, Map<String, Object> envs)` | Execute a group of agents with given inputs and environment overrides. |
 | `public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session, ModelContext context, List<StreamMode> streamModes)` | Execute a group of agents with streaming output support. |
@@ -44,3 +47,4 @@ public final class Runner
 ## 相关测试
 
 - `RunnerTest`
+- `RunnerAgentTeamTest`

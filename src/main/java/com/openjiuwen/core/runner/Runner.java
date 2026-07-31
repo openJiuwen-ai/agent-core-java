@@ -269,6 +269,58 @@ public final class Runner {
     }
 
     /**
+     * Execute an agent team with streaming output and managed lifecycle.
+     *
+     * <p>The team may be supplied as a team spec, a
+     * {@code LeaderTeammateAgentTeam}, a built {@code TeamAgent}, or the name
+     * of a persistent team registered by an earlier round.</p>
+     *
+     * @param agentTeam team name, team spec, facade, or runtime agent
+     * @param inputs team input
+     * @param session session identifier or session object
+     * @param context model context
+     * @param streamModes streaming modes
+     * @return iterator of team streaming chunks
+     * @since 0.1.13
+     */
+    public static Iterator<Object> runAgentTeamStreaming(
+            Object agentTeam,
+            Object inputs,
+            Object session,
+            ModelContext context,
+            List<StreamMode> streamModes) {
+        return GLOBAL_RUNNER.runAgentTeamStreaming(agentTeam, inputs, session, context, streamModes);
+    }
+
+    /**
+     * Execute an agent team with default model context and streaming modes.
+     *
+     * @param agentTeam team name, team spec, facade, or runtime agent
+     * @param inputs team input
+     * @param session session identifier or session object
+     * @return iterator of team streaming chunks
+     * @since 0.1.13
+     */
+    public static Iterator<Object> runAgentTeamStreaming(
+            Object agentTeam,
+            Object inputs,
+            Object session) {
+        return runAgentTeamStreaming(agentTeam, inputs, session, null, null);
+    }
+
+    /**
+     * Destroy a registered agent team.
+     *
+     * @param teamName team name
+     * @param isForceEnabled whether other members should be force-shut down
+     * @return {@code true} when the registered team was cleaned
+     * @since 0.1.13
+     */
+    public static boolean destroyAgentTeam(String teamName, boolean isForceEnabled) {
+        return GLOBAL_RUNNER.destroyAgentTeam(teamName, isForceEnabled);
+    }
+
+    /**
      * spawnAgent.
      * 
      * @param agentConfig agentConfig
