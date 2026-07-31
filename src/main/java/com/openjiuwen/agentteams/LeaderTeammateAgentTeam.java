@@ -134,6 +134,11 @@ public class LeaderTeammateAgentTeam {
     private final Object agentLock = new Object();
     private volatile TeamAgent agent;
 
+    LeaderTeammateAgentTeam(TeamAgentSpec spec, Function<TeamAgentSpec, TeamAgent> agentFactory) {
+        this.spec = Objects.requireNonNull(spec, "spec");
+        this.agentFactory = Objects.requireNonNull(agentFactory, "agentFactory");
+    }
+
     /**
      * LeaderTeammateAgentTeam.
      * 
@@ -142,11 +147,6 @@ public class LeaderTeammateAgentTeam {
      */
     private LeaderTeammateAgentTeam(TeamAgentSpec spec) {
         this(spec, TeamFactory::createAgentTeam);
-    }
-
-    LeaderTeammateAgentTeam(TeamAgentSpec spec, Function<TeamAgentSpec, TeamAgent> agentFactory) {
-        this.spec = Objects.requireNonNull(spec, "spec");
-        this.agentFactory = Objects.requireNonNull(agentFactory, "agentFactory");
     }
 
     /**

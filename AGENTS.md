@@ -182,12 +182,19 @@ every Java review:
   reading the complete concurrency rules.
 - `G.NAM.08`: boolean variables begin with an affirmative predicate such as
   `is`, `has`, `can`, or `should`.
+- `G.FMT.04`: declare class members in the order static fields, static
+  initializers, instance fields, instance initializers, constructors, then
+  methods. Within fields and constructors, order access from `public` through
+  `protected` and package-private to `private`.
 - `G.CTL.02`: an `else if` chain ends with a meaningful `else`. Prefer guard
   clauses or independent checks when there is no meaningful final branch; do
   not add an empty `else` solely for compliance.
 - `G.EXP.03`: the second and third operands of `?:` have the same declared
   type. When types differ or are unclear, use an explicitly typed local
   variable and an `if` statement instead of adding a cosmetic cast.
+- `G.ERR.05`: throw an exception type that matches the method's abstraction
+  level and includes enough context to identify the failed operation. Do not
+  throw a raw `RuntimeException`, `Exception`, or `Throwable`.
 - `G.FMT.02`/`G.FMT.03`/`G.FMT.08`/`G.FMT.10`: imports are explicit, grouped,
   and sorted; indentation uses four spaces without tabs; lines do not exceed
   120 narrow characters.

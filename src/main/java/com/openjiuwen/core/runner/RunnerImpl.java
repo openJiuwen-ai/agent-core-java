@@ -1172,7 +1172,7 @@ public class RunnerImpl {
      */
     private Object invokeFirstCompatibleMethod(Object target, String methodName, List<Object[]> argVariants,
             String unsupportedMessage) {
-        RuntimeException lastFailure = null;
+        IllegalStateException lastFailure = null;
         for (Object[] args : argVariants) {
             Method method = findCompatibleMethod(target.getClass(), methodName, args);
             if (method == null) {
@@ -1181,22 +1181,22 @@ public class RunnerImpl {
             try {
                 return method.invoke(target, args);
             } catch (IllegalAccessException e) {
-                lastFailure = new RuntimeException("Cannot access " + methodName + " method", e);
+                lastFailure = new IllegalStateException("Cannot access " + methodName + " method", e);
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause();
                 if (cause instanceof RuntimeException runtimeException) {
                     throw runtimeException;
                 }
                 if (cause != null) {
-                    throw new RuntimeException(cause);
+                    throw new IllegalStateException("Failed to invoke " + methodName + " method", cause);
                 }
-                throw new RuntimeException(e);
+                throw new IllegalStateException("Failed to invoke " + methodName + " method", e);
             }
         }
         if (lastFailure != null) {
             throw lastFailure;
         }
-        throw new RuntimeException(unsupportedMessage);
+        throw new UnsupportedOperationException(unsupportedMessage);
     }
 
     /**
