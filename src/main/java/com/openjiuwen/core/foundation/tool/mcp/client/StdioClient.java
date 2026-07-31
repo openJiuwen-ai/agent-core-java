@@ -144,12 +144,12 @@ public class StdioClient implements McpClient {
             return resolveDefaultAllowedCommand(requestedCommand).toString();
         }
 
-        Path allowedExecutable = resolveExecutable(declaredCommand);
-        Path requestedExecutable = resolveExecutable(requestedCommand);
-        if (!requestedExecutable.equals(allowedExecutable)) {
+        ResolvedCommand allowedExecutable = resolveCommand(declaredCommand);
+        ResolvedCommand requestedExecutable = resolveCommand(requestedCommand);
+        if (!requestedExecutable.realPath().equals(allowedExecutable.realPath())) {
             throw new SecurityException("MCP stdio command is not in the configured allowlist.");
         }
-        return allowedExecutable.toString();
+        return allowedExecutable.launchPath().toString();
     }
 
     private static Path resolveDefaultAllowedCommand(String requestedCommand) throws IOException {
@@ -160,29 +160,33 @@ public class StdioClient implements McpClient {
             throw new SecurityException("MCP stdio command is not in the default allowlist.");
         }
 
-        Path requestedExecutable = resolveExecutable(requestedCommand);
+        ResolvedCommand requestedExecutable = resolveCommand(requestedCommand);
+        if (requestedPath.isAbsolute()) {
+            return requestedExecutable.launchPath();
+        }
         if ("java".equals(commandName) || "java.exe".equals(commandName)) {
             Path javaExecutable = Path.of(System.getProperty("java.home"), "bin", commandName);
             if (Files.isRegularFile(javaExecutable) && Files.isExecutable(javaExecutable)
-                    && requestedExecutable.equals(validateExecutable(javaExecutable))) {
-                return validateExecutable(javaExecutable);
+                    && requestedExecutable.realPath().equals(validateExecutable(javaExecutable))) {
+                return requestedExecutable.launchPath();
             }
         }
 
-        Path pathExecutable = resolveExecutable(commandName);
-        if (!requestedExecutable.equals(pathExecutable)) {
+        ResolvedCommand pathExecutable = resolveCommand(commandName);
+        if (!requestedExecutable.realPath().equals(pathExecutable.realPath())) {
             throw new SecurityException("MCP stdio command does not match the trusted PATH executable.");
         }
-        return pathExecutable;
+        return requestedExecutable.launchPath();
     }
 
-    private static Path resolveExecutable(String command) throws IOException {
+    private static ResolvedCommand resolveCommand(String command) throws IOException {
         if (command.indexOf('\0') >= 0) {
             throw new SecurityException("MCP stdio command contains an invalid character.");
         }
         Path commandPath = Path.of(command);
         if (commandPath.isAbsolute() || commandPath.getNameCount() > 1) {
-            return validateExecutable(commandPath.toAbsolutePath().normalize());
+            Path launchPath = commandPath.toAbsolutePath().normalize();
+            return new ResolvedCommand(launchPath, validateExecutable(launchPath));
         }
 
         String systemPath = System.getenv("PATH");
@@ -195,7 +199,7 @@ public class StdioClient implements McpClient {
             }
             Path candidate = Path.of(directory).resolve(command).toAbsolutePath().normalize();
             if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return validateExecutable(candidate);
+                return new ResolvedCommand(candidate, validateExecutable(candidate));
             }
         }
         throw new SecurityException("MCP stdio command is not an executable file: " + command);
@@ -207,6 +211,9 @@ public class StdioClient implements McpClient {
             throw new SecurityException("MCP stdio command is not an executable file: " + executable);
         }
         return realExecutable;
+    }
+
+    private record ResolvedCommand(Path launchPath, Path realPath) {
     }
 
     /**
