@@ -280,8 +280,8 @@ public class ActorManager {
         return restoredCompletedSources;
     }
 
-    private synchronized Set<String> completedSourcesSnapshot(String activeSourceKey, boolean firstFrame) {
-        if (firstFrame) {
+    private synchronized Set<String> completedSourcesSnapshot(String activeSourceKey, boolean isFirstFrame) {
+        if (isFirstFrame) {
             updateCompletedSource(activeSourceKey, false);
         }
         Set<String> completedSources = new HashSet<>(restoredCompletedSources());
@@ -289,9 +289,9 @@ public class ActorManager {
         return completedSources;
     }
 
-    private synchronized void updateCompletedSource(String sourceKey, boolean completed) {
+    private synchronized void updateCompletedSource(String sourceKey, boolean isCompleted) {
         Set<String> restoredSources = restoredCompletedSources();
-        if (completed) {
+        if (isCompleted) {
             restoredSources.add(sourceKey);
         } else {
             restoredSources.remove(sourceKey);
@@ -306,7 +306,7 @@ public class ActorManager {
                 completedSources.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
-        if (completed) {
+        if (isCompleted) {
             completedSources.put(sourceKey, true);
         } else {
             completedSources.remove(sourceKey);
