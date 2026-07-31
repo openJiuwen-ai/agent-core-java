@@ -39,7 +39,7 @@ public class StdioClient implements McpClient
 
 - `serverPath` 声明受信的 MCP 服务可执行文件，相当于单项命令白名单。
 - `params.command` 表示本次实际执行的命令；未提供时直接使用 `serverPath`，提供时其解析后的真实可执行文件必须与 `serverPath` 完全一致。例如，`serverPath` 为 `/usr/bin/python3`、`params.command` 为 `python3` 时，二者解析到同一真实文件才允许启动。
-- 兼容旧配置而省略 `serverPath` 时，`params.command` 只允许当前 JDK 或 `PATH` 中的 `java`、`python`、`python3` 启动器。
+- 兼容旧配置而省略 `serverPath` 时，`params.command` 只允许 `java`、`python`、`python3` 启动器，既可填写 `PATH` 中的命令名，也可填写绝对路径。绝对路径会解析为真实路径并校验为普通可执行文件；校验通过后仍使用配置的启动器路径，以保留 Python 虚拟环境等启动语义。
 - 默认白名单选择 Java 和 Python 启动器，是因为仓库内现有的 stdio MCP 场景分别使用 Java 进程和 Python 脚本。该名单仅用于兼容未配置 `serverPath` 的旧配置，不代表完整的业务支持范围。
 - 新增其他启动器时，应优先通过 `serverPath` 显式指定单项白名单；是否扩充默认名单，需要结合实际 MCP 服务需求完成需求与安全评审，并补充兼容性和安全测试。
 - 命令必须解析为真实的普通可执行文件，不能把任意字符串直接作为进程命令。
