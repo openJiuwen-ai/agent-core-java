@@ -317,9 +317,12 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
      */
     private boolean isIndexWithinBounds(String prompt, String mode, Integer startPos, Integer endPos) {
         if (MODE_SELECT.equals(mode)) {
+            // Python checks isinstance(int) first, then bounds. A non-int start_pos/end_pos
+            // reports "start_pos and end_pos must be provided for int type" before the bounds
+            // validation, matching the Python ordering for select mode.
             if (startPos == null || endPos == null) {
                 throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
-                        "start_pos and end_pos must be provided for select mode");
+                        "start_pos and end_pos must be provided for int type");
             }
             if (startPos < 0 || endPos <= startPos || endPos > prompt.length()) {
                 throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
@@ -327,9 +330,12 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
             }
             return true;
         } else if (MODE_INSERT.equals(mode)) {
+            // Python checks isinstance(int) before the bounds check, so a non-int
+            // start_pos reports "start_pos must be provided for int type" rather than
+            // the bounds message.
             if (startPos == null) {
                 throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
-                        "start_pos must be provided for insert mode");
+                        "start_pos must be provided for int type");
             }
             if (startPos < 0 || startPos > prompt.length()) {
                 throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",

@@ -5,6 +5,8 @@
 package com.openjiuwen.dev_tools.tune.optimizer;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
@@ -195,7 +197,8 @@ public abstract class BaseOptimizer implements AutoCloseable {
      */
     protected void validateParameters() {
         if (parameters.isEmpty()) {
-            throw new IllegalStateException("Cannot optimize empty parameters");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg",
+                    "cannot optimize empty parameters");
         }
     }
 
