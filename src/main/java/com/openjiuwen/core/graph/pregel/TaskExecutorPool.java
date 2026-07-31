@@ -463,8 +463,11 @@ public class TaskExecutorPool {
             } catch (InterruptedException exception) {
                 result.completeExceptionally(exception);
             } catch (ExecutionException exception) {
-                Throwable cause = exception.getCause();
-                result.completeExceptionally(cause != null ? cause : exception);
+                Throwable failure = exception.getCause();
+                if (failure == null) {
+                    failure = exception;
+                }
+                result.completeExceptionally(failure);
             }
         }
     }

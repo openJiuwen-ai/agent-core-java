@@ -396,15 +396,16 @@ public class WorkflowEventHandler extends EventHandler {
         Object finalResult = null;
         while (workflowStream.hasNext()) {
             WorkflowChunk chunk = workflowStream.next();
+            chunks.add(chunk);
             if (chunk instanceof OutputSchema output) {
                 if (INTERACTION.equals(output.getType())) {
                     hasInteraction = true;
-                } else {
-                    if ("workflow_final".equals(output.getType())) {
-                        finalResult = output.getPayload();
-                    }
-                    session.writeStream(output);
+                    continue;
                 }
+                if ("workflow_final".equals(output.getType())) {
+                    finalResult = output.getPayload();
+                }
+                session.writeStream(output);
             } else if (chunk instanceof CustomSchema customSchema) {
                 session.writeCustomStream(customSchema.getProperties());
             } else if (chunk instanceof TraceSchema traceSchema) {
@@ -412,7 +413,6 @@ public class WorkflowEventHandler extends EventHandler {
             } else {
                 session.writeStream(chunk);
             }
-            chunks.add(chunk);
         }
         return new WorkflowTaskResult(chunks, hasInteraction, finalResult);
     }

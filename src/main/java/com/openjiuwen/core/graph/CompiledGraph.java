@@ -178,10 +178,14 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
             GraphExecutionResult executionResult) {
         if (isMain && checkpointer != null) {
             checkpointer.postWorkflowExecute(session, executionResult.result(), executionResult.failure());
-        } else if (executionResult.failure() instanceof RuntimeException runtimeException) {
+            return executionResult.result();
+        }
+        Exception failure = executionResult.failure();
+        if (failure instanceof RuntimeException runtimeException) {
             throw runtimeException;
-        } else if (executionResult.failure() != null) {
-            throw new IllegalStateException("Pregel execution failed", executionResult.failure());
+        }
+        if (failure != null) {
+            throw new IllegalStateException("Pregel execution failed", failure);
         }
         return executionResult.result();
     }
