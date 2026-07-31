@@ -1,0 +1,16 @@
+{
+  "bindHost": "127.0.0.1",
+  "port": 8081,
+  "dataDir": "/var/lib/gitcode-issue-evolver/data",
+  "worktreeRoot": "/var/lib/gitcode-issue-evolver/worktrees",
+  "localRepository": "/opt/gitcode-issue-evolver/repo",
+  "codingStandardSkill": "/opt/gitcode-issue-evolver/repo/resources/skills/coding-standard",
+  "issueWorkerSkill": "/opt/gitcode-issue-evolver/repo/examples/gitcode_issue_evolver/skills/gitcode-issue-evolver-worker",
+  "targetRepository": "openJiuwen/agent-core-java",
+  "publishRepository": "<fork-owner>/agent-core-java",
+  "baseBranch": "730",
+  "assignees": ["<gitcode-admin>"],
+  "workerConcurrency": 1,
+  "gitUserName": "gitcode-issue-evolver",
+  "gitUserEmail": "gitcode-issue-evolver@localhost"
+}

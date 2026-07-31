@@ -34,6 +34,7 @@ public class SemanticStore {
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final String VECTOR_FIELD = "embedding";
     private static final String ID_FIELD = "id";
+    private static final int MAX_COLLECTION_NAME_LENGTH = 255;
 
     private final VectorStore vectorStore;
     private Embedding embeddingModel;
@@ -130,6 +131,10 @@ public class SemanticStore {
         if (docs == null || docs.isEmpty()) {
             return true;
         }
+        if (!isValidCollectionName(tableName)) {
+            MEMORY_LOGGER.error("[{}] Invalid vector collection name.", LogEventType.MEMORY_STORE);
+            return false;
+        }
         if (embeddingModel == null) {
             MEMORY_LOGGER.error("[{}] Embedding model not initialized for collection {}.", LogEventType.MEMORY_STORE,
                     tableName);
@@ -165,6 +170,23 @@ public class SemanticStore {
             data.add(row);
         }
         scoped.add(data, null, bootstrapOptions(vectors));
+        return true;
+    }
+
+    private static boolean isValidCollectionName(String collectionName) {
+        if (collectionName == null || collectionName.isBlank()
+                || collectionName.length() > MAX_COLLECTION_NAME_LENGTH) {
+            return false;
+        }
+        if (!Character.isLetter(collectionName.charAt(0)) && collectionName.charAt(0) != '_') {
+            return false;
+        }
+        for (int i = 0; i < collectionName.length(); i++) {
+            char current = collectionName.charAt(i);
+            if (current > 0x7F || (!Character.isLetterOrDigit(current) && current != '_')) {
+                return false;
+            }
+        }
         return true;
     }
 

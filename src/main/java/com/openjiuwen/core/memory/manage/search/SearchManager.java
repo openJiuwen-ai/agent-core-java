@@ -77,6 +77,10 @@ public class SearchManager {
         double threshold = params.getThreshold();
         String searchType = params.getSearchType();
 
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+
         if (searchType != null && !ALL_MEM_MANAGER_LIST.contains(searchType)) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", searchType,
                     "error_msg", searchType + " is not a valid search type");

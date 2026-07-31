@@ -4,14 +4,28 @@
 
 package com.openjiuwen.core.session.tracer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.stream.CustomSchema;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -190,6 +204,66 @@ class TracerTest {
             assertNull(span.getStreamInputs());
             span.appendStreamInput(Map.of("data", "input1"));
             assertEquals(1, span.getStreamInputs().size());
+        }
+    }
+
+    // ---------- TraceWorkflowHandler tests ----------
+
+    @Nested
+    @DisplayName("TraceWorkflowHandler")
+    class WorkflowHandlerTests {
+        @Test
+        @DisplayName("workflow stream schemas use map representation in traces")
+        void normalizeStreamChunk_workflowSchemas_matchPythonTraceRepresentation() {
+            Map<String, Object> payload = Map.of("response", "done");
+            assertEquals(Map.of("type", "end node stream", "index", 2, "payload", payload),
+                    TracerWorkflowUtils.normalizeStreamChunk(
+                            new OutputSchema("end node stream", 2, payload)));
+            assertEquals(Map.of("type", "trace", "payload", payload),
+                    TracerWorkflowUtils.normalizeStreamChunk(new TraceSchema("trace", payload)));
+
+            Map<String, Object> properties = new LinkedHashMap<>();
+            properties.put("event", "custom");
+            properties.put("payload", payload);
+            assertEquals(properties,
+                    TracerWorkflowUtils.normalizeStreamChunk(new CustomSchema(properties)));
+        }
+
+        @Test
+        @DisplayName("component stream input normalizes workflow schemas before tracing")
+        @SuppressWarnings("unchecked")
+        void traceComponentStreamInput_workflowSchema_passesMapToTracer() {
+            Tracer tracer = mock(Tracer.class);
+            BaseSession session = mock(BaseSession.class);
+            when(session.tracer()).thenReturn(tracer);
+            when(session.sessionId()).thenReturn("node-1");
+            OutputSchema chunk = new OutputSchema(
+                    "end node stream", 3, Map.of("response", "done"));
+
+            TracerWorkflowUtils.traceComponentStreamInput(session, chunk, false);
+
+            ArgumentCaptor<Map<String, Object>> kwargsCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(tracer).trigger(eq(TracerHandlerName.TRACER_WORKFLOW.getValue()),
+                    eq("on_pre_stream"), kwargsCaptor.capture());
+            assertEquals(Map.of(
+                    "type", "end node stream",
+                    "index", 3,
+                    "payload", Map.of("response", "done")),
+                    kwargsCaptor.getValue().get("chunk"));
+        }
+
+        @Test
+        @DisplayName("onPreStream ignores the empty trace flush chunk")
+        void onPreStream_emptyFlushChunk_doesNotAppendStreamInput() {
+            SpanManager manager = new SpanManager("trace-1");
+            TraceWorkflowHandler handler = new TraceWorkflowHandler(null, null, manager);
+            handler.onCallStart("node-1", Map.of(), null, false, List.of());
+
+            handler.onPreStream("node-1", Map.of("end_result", 13), false);
+            handler.onPreStream("node-1", Map.of(), true);
+
+            TraceWorkflowSpan span = handler.getTracerWorkflowSpan("node-1");
+            assertEquals(List.of(Map.of("end_result", 13)), span.getStreamInputs());
         }
     }
 

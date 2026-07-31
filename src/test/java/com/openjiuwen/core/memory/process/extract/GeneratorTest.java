@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -61,6 +62,19 @@ class GeneratorTest {
         assertTrue(memories.containsKey(MemoryType.USER_PROFILE.getValue()));
         assertFalse(memories.containsKey(MemoryType.SEMANTIC_MEMORY.getValue()));
         assertTrue(memories.containsKey(MemoryType.EPISODIC_MEMORY.getValue()));
+    }
+
+    @Test
+    void genAllMemoryRejectsBlankUserIdBeforeInvokingModel() {
+        Model model = mock(Model.class);
+
+        Map<String, List<BaseMemoryUnit>> memories =
+            new Generator(new DataIdManager()).genAllMemory(Map.of("scope_id", "scope-1", "user_id", " ",
+                    "messages", List.of(new BaseMessage("user", "I like Java")), "config",
+                    AgentMemoryConfig.builder().build(), "base_chat_model", Map.entry("test-model", model)));
+
+        assertTrue(memories.isEmpty());
+        verifyNoInteractions(model);
     }
 
     @Test

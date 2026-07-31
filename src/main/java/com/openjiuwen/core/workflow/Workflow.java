@@ -52,12 +52,15 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -70,6 +73,7 @@ import java.util.function.Function;
  */
 public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
     private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
@@ -81,7 +85,7 @@ public class Workflow {
 
     /**
      * Workflow.
-     * 
+     *
      * @param card card
      * @since 0.1.7
      */
@@ -782,9 +786,16 @@ public class Workflow {
         AsyncStreamQueue streamQueue = workflowSession.streamWriterManager() != null
                 ? workflowSession.streamWriterManager().getStreamEmitter().getStreamQueue()
                 : null;
+        WorkflowExecutionControl executionControl = new WorkflowExecutionControl();
 
-        CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
+        Future<?> executionFuture = STREAM_EXECUTOR.submit(() -> {
+            if (!executionControl.tryStart()) {
+                return;
+            }
             try {
+                if (terminated.get()) {
+                    return;
+                }
                 traceWorkflowStart(workflowSession, validatedInputs);
                 Object graphResult = executeCompiledGraph(validatedInputs, workflowSession, context, null);
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
@@ -798,9 +809,11 @@ public class Workflow {
                     closeStreamEmitter(workflowSession);
                     resetGraphExecutionState();
                     workflowSession.close();
+                    executionControl.complete();
                 }
             }
-        }, STREAM_EXECUTOR);
+        });
+        executionControl.attach(executionFuture);
 
         return new Iterator<>() {
             private boolean finalChunkEmitted = false;
@@ -921,7 +934,7 @@ public class Workflow {
                         && baseError.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
                     executionTimedOut.set(true);
                 }
-                executionFuture.cancel(true);
+                executionControl.cancelAndAwait();
                 closeStreamEmitter(workflowSession);
                 workflowSession.close();
             }
@@ -939,6 +952,7 @@ public class Workflow {
                     }
                     throw wrapWorkflowException(new Exception(e));
                 } catch (InterruptedException e) {
+                    terminateStream(wrapWorkflowException(e));
                     Thread.currentThread().interrupt();
                     throw wrapWorkflowException(e);
                 } catch (ExecutionException e) {
@@ -962,6 +976,73 @@ public class Workflow {
                 streamQueue.close();
             }
         };
+    }
+
+    /**
+     * Tracks the thread and actual completion of an asynchronous workflow execution.
+     *
+     * @since 0.1.7
+     */
+    private static final class WorkflowExecutionControl {
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+        private Future<?> execution;
+        private boolean hasStarted;
+        private boolean isCancellationRequested;
+
+        private void attach(Future<?> workflowExecution) {
+            lifecycleLock.lock();
+            try {
+                execution = workflowExecution;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private boolean tryStart() {
+            lifecycleLock.lock();
+            try {
+                if (isCancellationRequested) {
+                    return false;
+                }
+                hasStarted = true;
+                return true;
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void complete() {
+            completion.complete(null);
+        }
+
+        private void cancelAndAwait() {
+            lifecycleLock.lock();
+            try {
+                isCancellationRequested = true;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
+            }
+
+            try {
+                completion.orTimeout(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
+            } catch (CompletionException exception) {
+                if (exception.getCause() instanceof TimeoutException) {
+                    Loggers.WORKFLOW.warning("Timed out waiting for cancelled workflow to stop");
+                } else {
+                    Loggers.WORKFLOW.warning("Cancelled workflow finished with cleanup error", exception);
+                }
+            }
+        }
+
+        private void cancelExecutionIfRequested() {
+            if (isCancellationRequested && execution != null && execution.cancel(true) && !hasStarted) {
+                completion.complete(null);
+            }
+        }
     }
 
     /**

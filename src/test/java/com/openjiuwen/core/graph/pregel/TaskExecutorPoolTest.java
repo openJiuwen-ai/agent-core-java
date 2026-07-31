@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -161,6 +163,31 @@ class TaskExecutorPoolTest {
             PregelConfig config = new PregelConfig();
             TaskExecutorPool pool = new TaskExecutorPool(config);
             assertDoesNotThrow(pool::waitAll);
+        }
+
+        @Test
+        @DisplayName("cancelAll interrupts the running node task")
+        void testCancelAllInterruptsRunningTask() throws Exception {
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch interrupted = new CountDownLatch(1);
+            Callable<Object> blockingTask = () -> {
+                started.countDown();
+                try {
+                    Thread.sleep(TimeUnit.SECONDS.toMillis(30));
+                } catch (InterruptedException e) {
+                    interrupted.countDown();
+                    throw e;
+                }
+                return null;
+            };
+            PregelNode node = new PregelNode("blocking", blockingTask, List.of());
+            TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig());
+            pool.submit(node, 1);
+
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            pool.cancelAll();
+
+            assertTrue(interrupted.await(1, TimeUnit.SECONDS));
         }
     }
 

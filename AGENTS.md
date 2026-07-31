@@ -71,7 +71,9 @@ tests over assumptions.
 - Run targeted test: `mvn test -Dtest=ClassName` or `-Dtest=ClassName#methodName`
 - Skip tests: `mvn compile -DskipTests`
 - Code coverage report: `mvn test jacoco:report`
-- Lint / code check: follow `.claude/rules/coding-standard.md` (Huawei CodeArts Check 102 rules)
+- Lint / code check: follow
+  `.claude/skills/coding-standard-full/SKILL.md` (Huawei CodeArts Check,
+  144 rules)
 
 `mvn test` excludes `system-test` tagged tests by default (configured in
 surefire plugin `<excludedGroups>`). To run them, pass
@@ -91,11 +93,41 @@ surefire plugin `<excludedGroups>`). To run them, pass
   throughput (see `.claude/rules/performance-tuning.md`).
 - Do not use `Executors.newCachedThreadPool()` / `newFixedThreadPool()` —
   create `ThreadPoolExecutor` explicitly with bounded queue and named threads
-  (see `X.CON.06` in coding-standard).
+  (see `G.CON.12` in the full coding standard).
+
+## Java Coding Standard (Mandatory)
+
+- For every Java edit or review, first read
+  `.claude/skills/coding-standard-full/SKILL.md`, then read every applicable
+  category under `.claude/skills/coding-standard-full/rules/`. For broad or
+  cross-module changes, load all categories relevant to the complete diff.
+- Treat severity 0 and 1 findings as mandatory fixes. Fix severity 2 findings
+  in changed code unless doing so would alter required behavior. Resolve
+  severity 3 findings when they are in the edited scope and the correction is
+  behavior-neutral. Do not suppress a finding merely to make a check pass.
+- New and changed Java code must use UTF-8, four-space indentation, no tabs or
+  trailing whitespace, and lines no longer than 120 narrow characters. Use
+  braces for control statements and keep one statement per line.
+- Keep imports explicit; wildcard imports are prohibited. Put static imports
+  first, separate import categories with one blank line, and sort each category
+  alphabetically as required by `G.FMT.02` and `G.FMT.03`.
+- Follow the declaration order, naming, Javadoc, exception handling, logging,
+  collection, concurrency, resource-management, serialization, and security
+  rules in the applicable category files. Public and protected APIs require
+  complete Javadoc, including ordered tags and `@since`.
+- Formatting-only changes must remain behavior-neutral and should be separated
+  from functional changes when practical. Do not refactor unrelated code while
+  resolving style findings.
+- Before committing, run `git diff --check`, scan changed Java files for tabs,
+  wildcard imports, and lines over 120 characters, then run `mvn compile` and
+  the affected tests. Run CodeArts Check when it is available; do not claim
+  CodeArts compliance when the service was not run.
 
 ## More Detail
 
-- Coding standards (102 rules): `.claude/rules/coding-standard.md`
+- Full coding standards (144 rules):
+  `.claude/skills/coding-standard-full/SKILL.md`
+- Coding standards quick reference: `.claude/rules/coding-standard.md`
 - Performance tuning (JDK 17 baseline): `.claude/rules/performance-tuning.md`
 - Agent Team quick build guide: `.claude/rules/agent-team-guide.md`
 - Workflow application guide: `.claude/rules/workflow-guide.md`

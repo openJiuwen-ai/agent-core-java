@@ -10,9 +10,9 @@ import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
 import com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit;
-import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
 import com.openjiuwen.core.memory.manage.mem_model.SummaryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
@@ -68,7 +68,7 @@ public class Generator {
         Integer summaryMaxToken = kwargs.get("summary_max_token") instanceof Integer value ? value : null;
         String forbiddenVariables = kwargs.get("forbidden_variables") instanceof String value ? value : null;
 
-        if (messages == null || config == null || userId == null || scopeId == null || model == null) {
+        if (hasMissingRequiredParameters(messages, config, model, userId, scopeId)) {
             MEMORY_LOGGER.error("[{}] Messages, config, user_id, scope_id, model are required parameters",
                     LogEventType.MEMORY_PROCESS);
             return Map.of();
@@ -124,6 +124,18 @@ public class Generator {
 
         MEMORY_LOGGER.info("[{}] Memory units generated successfully", LogEventType.MEMORY_PROCESS);
         return allMemoryResults;
+    }
+
+    private static boolean hasMissingRequiredParameters(List<BaseMessage> messages, AgentMemoryConfig config,
+            Map.Entry<String, Model> model, String userId, String scopeId) {
+        if (messages.isEmpty() || config == null || model == null) {
+            return true;
+        }
+        return isBlank(userId) || isBlank(scopeId);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

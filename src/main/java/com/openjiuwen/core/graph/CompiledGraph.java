@@ -17,6 +17,9 @@ import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 
 /**
  * A compiled graph that wraps a Pregel engine and a Checkpointer for execution.
@@ -53,69 +56,148 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
      * @since 0.1.7
      */
     @Override
-    @SuppressWarnings("unchecked")
     protected Map<String, Object> doInvoke(Object inputs, BaseSession session, Object config) {
         boolean isMain = session instanceof WorkflowSession;
         String sessionId = session.sessionId();
-        String workflowId = "";
-
-        if (session instanceof WorkflowSession) {
-            workflowId = ((WorkflowSession) session).workflowId();
-        } else {
-            workflowId = sessionId;
-        }
-
-        PregelConfig pregelConfig;
-        if (config == null) {
-            pregelConfig = new PregelConfig(sessionId, workflowId, PregelConstants.MAX_RECURSIVE_LIMIT);
-        } else if (config instanceof PregelConfig) {
-            pregelConfig = (PregelConfig) config;
-        } else {
-            pregelConfig = new PregelConfig(sessionId, workflowId, PregelConstants.MAX_RECURSIVE_LIMIT);
-        }
-
+        String workflowId = session instanceof WorkflowSession workflowSession
+                ? workflowSession.workflowId()
+                : sessionId;
+        PregelConfig pregelConfig = resolvePregelConfig(config, sessionId, workflowId);
         try {
-            // Pre-execution checkpoint
+            prepareExecution(inputs, session, isMain);
+            GraphExecutionResult executionResult = executePregel(pregelConfig);
+            return finishExecution(session, isMain, executionResult);
+        } catch (CancellationException exception) {
             if (isMain && checkpointer != null) {
-                if (inputs instanceof InteractiveInput interactiveInput) {
-                    checkpointer.preWorkflowExecute(session, interactiveInput);
-                } else {
-                    checkpointer.preWorkflowExecute(session, null);
-                }
+                checkpointer.postWorkflowExecute(session, Map.of(), null);
             }
-
-            // Commit user inputs to state
-            if (!(inputs instanceof InteractiveInput) && inputs instanceof Map) {
-                if (session.state() instanceof WorkflowStateCollection) {
-                    ((WorkflowStateCollection) session.state()).commitUserInputs((Map<String, Object>) inputs);
-                }
-            }
-
-            Map<String, Object> result = null;
-            Exception exception = null;
-
-            try {
-                result = pregel.run(pregelConfig);
-            } catch (Exception e) {
-                exception = e;
-            }
-
-            // Post-execution checkpoint
-            if (isMain && checkpointer != null) {
-                checkpointer.postWorkflowExecute(session, result, exception);
-            } else if (exception != null) {
-                if (exception instanceof RuntimeException) {
-                    throw (RuntimeException) exception;
-                }
-                throw new RuntimeException(exception);
-            }
-
-            return result;
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw exception;
         }
+    }
+
+    /**
+     * Resolve the Pregel configuration for this invocation.
+     *
+     * @param config optional invocation configuration
+     * @param sessionId session ID
+     * @param workflowId workflow ID
+     * @return resolved Pregel configuration
+     * @since 0.1.7
+     */
+    private static PregelConfig resolvePregelConfig(Object config, String sessionId, String workflowId) {
+        if (config instanceof PregelConfig pregelConfig) {
+            return pregelConfig;
+        }
+        return new PregelConfig(sessionId, workflowId, PregelConstants.MAX_RECURSIVE_LIMIT);
+    }
+
+    /**
+     * Run pre-execution checkpointing and commit fresh user input.
+     *
+     * @param inputs workflow inputs
+     * @param session workflow session
+     * @param isMain whether this is a top-level workflow session
+     * @since 0.1.7
+     */
+    private void prepareExecution(Object inputs, BaseSession session, boolean isMain) {
+        if (isMain && checkpointer != null) {
+            InteractiveInput interactiveInput = inputs instanceof InteractiveInput value ? value : null;
+            checkpointer.preWorkflowExecute(session, interactiveInput);
+        }
+        commitUserInputs(inputs, session);
+    }
+
+    /**
+     * Commit non-interactive workflow inputs to the state collection.
+     *
+     * @param inputs workflow inputs
+     * @param session workflow session
+     * @since 0.1.7
+     */
+    @SuppressWarnings("unchecked")
+    private static void commitUserInputs(Object inputs, BaseSession session) {
+        if (!(inputs instanceof InteractiveInput) && inputs instanceof Map
+                && session.state() instanceof WorkflowStateCollection state) {
+            state.commitUserInputs((Map<String, Object>) inputs);
+        }
+    }
+
+    /**
+     * Execute Pregel synchronously while retaining its checked failure for checkpointing.
+     *
+     * @param pregelConfig Pregel configuration
+     * @return execution result and optional failure
+     * @since 0.1.7
+     */
+    private GraphExecutionResult executePregel(PregelConfig pregelConfig) {
+        FutureTask<Map<String, Object>> execution = new FutureTask<>(() -> pregel.run(pregelConfig));
+        execution.run();
+        try {
+            return new GraphExecutionResult(execution.get(), null);
+        } catch (CancellationException exception) {
+            throw exception;
+        } catch (InterruptedException exception) {
+            CancellationException cancellation = new CancellationException("Pregel execution cancelled");
+            cancellation.initCause(exception);
+            throw cancellation;
+        } catch (ExecutionException exception) {
+            return handlePregelFailure(exception.getCause());
+        }
+    }
+
+    /**
+     * Convert a captured Pregel failure to the graph execution result.
+     *
+     * @param failure Pregel failure
+     * @return failed graph execution result
+     * @since 0.1.7
+     */
+    private static GraphExecutionResult handlePregelFailure(Throwable failure) {
+        if (failure instanceof CancellationException cancellation) {
+            throw cancellation;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        if (failure instanceof Exception exception) {
+            return new GraphExecutionResult(null, exception);
+        }
+        return new GraphExecutionResult(null, new IllegalStateException("Pregel execution failed", failure));
+    }
+
+    /**
+     * Run post-execution checkpointing or propagate the captured graph failure.
+     *
+     * @param session workflow session
+     * @param isMain whether this is a top-level workflow session
+     * @param executionResult graph execution result
+     * @return graph result
+     * @since 0.1.7
+     */
+    private Map<String, Object> finishExecution(BaseSession session, boolean isMain,
+            GraphExecutionResult executionResult) {
+        if (isMain && checkpointer != null) {
+            checkpointer.postWorkflowExecute(session, executionResult.result(), executionResult.failure());
+            return executionResult.result();
+        }
+        Exception failure = executionResult.failure();
+        if (failure instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (failure != null) {
+            throw new IllegalStateException("Pregel execution failed", failure);
+        }
+        return executionResult.result();
+    }
+
+    /**
+     * Captures the Pregel result and the checked failure passed to checkpointing.
+     *
+     * @param result graph result
+     * @param failure graph failure
+     * @since 0.1.7
+     */
+    private record GraphExecutionResult(Map<String, Object> result, Exception failure) {
     }
 
     /**
