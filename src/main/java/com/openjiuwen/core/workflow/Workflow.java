@@ -689,7 +689,10 @@ public class Workflow {
                     }
                     List<Object> outputChunks = collectOutputChunks(workflowSession);
                     if (isInterrupted(executionResult, outputChunks)) {
-                        return new WorkflowOutput(resolveInterruptedOutputChunks(executionResult, outputChunks),
+                        List<Object> interruptedChunks = new ArrayList<>(
+                                resolveInterruptedOutputChunks(executionResult, outputChunks));
+                        appendPartialWorkflowFinal(workflowSession, interruptedChunks);
+                        return new WorkflowOutput(interruptedChunks,
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result = isStreaming
@@ -1769,6 +1772,30 @@ public class Workflow {
             }
         }
         return outputChunks;
+    }
+
+    /**
+     * Append the partial End output produced before another branch interrupted.
+     *
+     * @param workflowSession workflowSession
+     * @param outputChunks outputChunks
+     * @since 0.1.7
+     */
+    private void appendPartialWorkflowFinal(WorkflowSession workflowSession, List<Object> outputChunks) {
+        if (!(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
+            return;
+        }
+        Object partialOutput = stateCollection.getOutputs(endCompId);
+        if (partialOutput == null) {
+            return;
+        }
+        for (Object chunk : outputChunks) {
+            if (chunk instanceof OutputSchema outputSchema
+                    && "workflow_final".equals(outputSchema.getType())) {
+                return;
+            }
+        }
+        outputChunks.add(new OutputSchema("workflow_final", 0, partialOutput));
     }
 
     /**

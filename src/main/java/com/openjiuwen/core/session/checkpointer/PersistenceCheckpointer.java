@@ -16,7 +16,6 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
-import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
@@ -415,8 +414,8 @@ public class PersistenceCheckpointer extends Checkpointer {
             pipeline.set(blobKey, state);
 
             // Save updates if state supports commits
-            if (session.state() instanceof CommitStateLike commitState) {
-                Map<String, Object> updates = commitState.getUpdates();
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                Map<String, Object> updates = workflowState.getUpdates();
                 if (updates != null) {
                     String updatesDumpTypeKey =
                         resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
@@ -479,8 +478,9 @@ public class PersistenceCheckpointer extends Checkpointer {
 
             // Recover updates
             Object updatesBlob = results.get(3);
-            if (updatesBlob instanceof Map && session.state() instanceof CommitStateLike commitState) {
-                commitState.setUpdates((Map<String, Object>) updatesBlob);
+            if (updatesBlob instanceof Map && session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.setUpdates((Map<String, Object>) updatesBlob);
+                workflowState.commit();
             }
         }
 
@@ -586,8 +586,8 @@ public class PersistenceCheckpointer extends Checkpointer {
                 }
                 nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
-            if (session.state() instanceof CommitStateLike commitState) {
-                commitState.commit();
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.commit();
             }
         }
     }
