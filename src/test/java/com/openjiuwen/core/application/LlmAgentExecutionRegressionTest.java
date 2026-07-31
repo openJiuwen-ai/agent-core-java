@@ -241,7 +241,7 @@ public class LlmAgentExecutionRegressionTest {
             if (hasToolMessage) {
                 String toolResult = messageViews.stream().filter(message -> "tool".equals(message.role))
                         .reduce((left, right) -> right).map(message -> message.content).orElse("30");
-                return new AssistantMessage(toolResult);
+                return new AssistantMessage(extractPluginOutput(toolResult));
             }
 
             String userContent = messageViews.stream().filter(message -> "user".equals(message.role))
@@ -250,6 +250,20 @@ public class LlmAgentExecutionRegressionTest {
                 return new AssistantMessage("珠穆朗玛峰");
             }
             return new AssistantMessage("默认回答");
+        }
+
+        private static String extractPluginOutput(String toolMessage) {
+            String outputMarker = "'output': '";
+            if (!toolMessage.contains("OutputSchema(type='plugin_final'")) {
+                return toolMessage;
+            }
+            int outputStart = toolMessage.indexOf(outputMarker);
+            if (outputStart < 0) {
+                return toolMessage;
+            }
+            outputStart += outputMarker.length();
+            int outputEnd = toolMessage.indexOf('\'', outputStart);
+            return outputEnd < 0 ? toolMessage : toolMessage.substring(outputStart, outputEnd);
         }
 
         @Override

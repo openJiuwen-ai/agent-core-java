@@ -494,7 +494,7 @@ public class LlmEventHandler extends EventHandler {
         List<Object> streamData = List.of(new OutputSchema("plugin_final", 0, payload));
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("tool_name", toolName);
-        metadata.put("tool_message", executionEntry.toolMessage());
+        metadata.put("tool_message", new ToolMessage(toPythonLiteral(streamData), task.getTaskId()));
         return new TaskExecutionResult(TaskStatus.COMPLETED, streamData, null, metadata);
     }
 
@@ -661,6 +661,10 @@ public class LlmEventHandler extends EventHandler {
         }
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
+        }
+        if (value instanceof OutputSchema output) {
+            return "OutputSchema(type=" + toPythonLiteral(output.getType()) + ", index=" + output.getIndex()
+                    + ", payload=" + toPythonLiteral(output.getPayload()) + ")";
         }
         if (value instanceof Map<?, ?> map) {
             StringBuilder sb = new StringBuilder("{");
