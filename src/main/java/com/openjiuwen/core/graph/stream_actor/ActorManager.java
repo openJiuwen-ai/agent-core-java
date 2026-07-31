@@ -10,6 +10,10 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.internal.WorkflowSession;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import java.util.ArrayList;
@@ -32,8 +36,11 @@ import java.util.function.Consumer;
  */
 public class ActorManager {
     private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final String COMPLETED_STREAM_SOURCES = "__completed_stream_sources__";
 
     private final Map<String, List<String>> streamEdges;
+    private final BaseSession session;
+    private final String completedStreamSourcesKey;
 
     /**
      * LinkedHashMap<>.
@@ -50,6 +57,7 @@ public class ActorManager {
     private final StreamTransform streamsTransform = new StreamTransform();
     private final boolean isSubGraph;
     private final BlockingQueue<Object> subWorkflowStreamQueue;
+    private Set<String> restoredCompletedSources;
 
     /**
      * Create an ActorManager.
@@ -66,6 +74,8 @@ public class ActorManager {
             Map<String, List<java.util.Set<String>>> streamSourceGroups, StreamGraph graph, boolean isSubGraph,
             BaseSession session, java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
         this.streamEdges = streamEdges != null ? streamEdges : new HashMap<>();
+        this.session = session;
+        this.completedStreamSourcesKey = completedStreamSourcesKey(session);
         this.isSubGraph = isSubGraph;
         this.subWorkflowStreamQueue = isSubGraph ? new LinkedBlockingQueue<>(10 * 1024) : null;
 
@@ -138,11 +148,15 @@ public class ActorManager {
      * @since 0.1.7
      */
     public void produce(String producerId, Object messageContent, ComponentAbility ability, boolean firstFrame) {
+        String activeSourceKey = sourceKey(producerId, ability);
+        Set<String> completedSources = completedSourcesSnapshot(activeSourceKey, firstFrame);
+
         List<String> consumerIds = streamEdges.get(producerId);
         if (consumerIds != null && !consumerIds.isEmpty()) {
             for (String consumerId : consumerIds) {
                 StreamActor actor = streams.get(consumerId);
                 if (actor != null) {
+                    actor.seedCompletedSources(completedSources);
                     Map<String, Object> message = Map.of(producerId, messageContent);
                     actor.send(message, ability, firstFrame, producerId);
                 }
@@ -162,6 +176,7 @@ public class ActorManager {
     public void endMessage(String producerId, ComponentAbility ability) {
         String endContent = "END_" + producerId;
         produce(producerId, endContent, ability, false);
+        updateCompletedSource(sourceKey(producerId, ability), true);
     }
 
     /**
@@ -244,6 +259,82 @@ public class ActorManager {
             return ((Number) timeout).longValue();
         }
         return 1L;
+    }
+
+    private synchronized Set<String> restoredCompletedSources() {
+        if (restoredCompletedSources != null) {
+            return restoredCompletedSources;
+        }
+        restoredCompletedSources = new HashSet<>();
+        if (session == null || !(session.state() instanceof WorkflowStateCollection stateCollection)) {
+            return restoredCompletedSources;
+        }
+        Object stored = stateCollection.getWorkflow(completedStreamSourcesKey);
+        if (stored instanceof Map<?, ?> storedMap) {
+            for (Map.Entry<?, ?> entry : storedMap.entrySet()) {
+                if (Boolean.TRUE.equals(entry.getValue())) {
+                    restoredCompletedSources.add(String.valueOf(entry.getKey()));
+                }
+            }
+        }
+        return restoredCompletedSources;
+    }
+
+    private synchronized Set<String> completedSourcesSnapshot(String activeSourceKey, boolean firstFrame) {
+        if (firstFrame) {
+            updateCompletedSource(activeSourceKey, false);
+        }
+        Set<String> completedSources = new HashSet<>(restoredCompletedSources());
+        completedSources.remove(activeSourceKey);
+        return completedSources;
+    }
+
+    private synchronized void updateCompletedSource(String sourceKey, boolean completed) {
+        Set<String> restoredSources = restoredCompletedSources();
+        if (completed) {
+            restoredSources.add(sourceKey);
+        } else {
+            restoredSources.remove(sourceKey);
+        }
+        if (session == null || !(session.state() instanceof WorkflowStateCollection stateCollection)) {
+            return;
+        }
+        Map<String, Object> completedSources = new HashMap<>();
+        Object stored = stateCollection.getWorkflow(completedStreamSourcesKey);
+        if (stored instanceof Map<?, ?> storedMap) {
+            for (Map.Entry<?, ?> entry : storedMap.entrySet()) {
+                completedSources.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        if (completed) {
+            completedSources.put(sourceKey, true);
+        } else {
+            completedSources.remove(sourceKey);
+        }
+
+        Map<String, Object> update = new HashMap<>();
+        update.put(completedStreamSourcesKey, completedSources.isEmpty() ? null : completedSources);
+        stateCollection.updateWorkflow(update);
+        if (stateCollection instanceof WorkflowCommitState commitState) {
+            commitState.commitWorkflow();
+        }
+    }
+
+    private static String sourceKey(String producerId, ComponentAbility ability) {
+        return producerId + "-" + ability.name();
+    }
+
+    private static String completedStreamSourcesKey(BaseSession session) {
+        if (session == null) {
+            return COMPLETED_STREAM_SOURCES;
+        }
+        if (session instanceof NodeSession nodeSession) {
+            return COMPLETED_STREAM_SOURCES + ":" + nodeSession.workflowId() + ":" + nodeSession.nodeId();
+        }
+        if (session instanceof WorkflowSession workflowSession) {
+            return COMPLETED_STREAM_SOURCES + ":" + workflowSession.workflowId();
+        }
+        return COMPLETED_STREAM_SOURCES + ":" + session.sessionId();
     }
 
     /**

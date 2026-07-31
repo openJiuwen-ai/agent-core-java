@@ -225,7 +225,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object>
 
         if (!continueLoop) {
             Map<String, Object> stateReset = new java.util.HashMap<>();
-            stateReset.put(Constant.INDEX, 0);
+            stateReset.put(Constant.INDEX, null);
             stateReset.put(BROKEN, false);
             state.update(stateReset);
             postBody.setFinishIndex(-1);

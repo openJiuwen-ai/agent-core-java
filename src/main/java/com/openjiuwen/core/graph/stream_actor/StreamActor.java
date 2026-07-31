@@ -49,6 +49,7 @@ public class StreamActor {
     private CompletableFuture<Void> taskError;
     private final StreamConsumer vertex;
     private final String nodeId;
+    private boolean completedSourcesSeeded;
 
     /**
      * ArrayList<>.
@@ -153,6 +154,22 @@ public class StreamActor {
         for (StreamProcessor processor : processors.values()) {
             processor.receive(payload);
         }
+    }
+
+    /**
+     * Seed source completions restored from a previous interrupted invocation.
+     *
+     * @param completedSources completed producer-ability keys
+     * @since 0.1.7
+     */
+    public synchronized void seedCompletedSources(Set<String> completedSources) {
+        if (completedSourcesSeeded || completedSources == null || completedSources.isEmpty()) {
+            return;
+        }
+        for (StreamProcessor processor : processors.values()) {
+            processor.seedCompletedSources(completedSources);
+        }
+        completedSourcesSeeded = true;
     }
 
     /**

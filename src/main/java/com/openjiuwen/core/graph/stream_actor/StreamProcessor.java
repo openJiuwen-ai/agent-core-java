@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -73,6 +74,7 @@ public class StreamProcessor {
      * @since 0.1.7
      */
     private final Set<String> sources;
+    private final Set<String> completedSources = ConcurrentHashMap.newKeySet();
 
     private final long timeoutSeconds;
 
@@ -115,9 +117,16 @@ public class StreamProcessor {
      * @since 0.1.7
      */
     public void run(ComponentAbility ability) {
-        Set<String> handleMap = new HashSet<>();
+        Set<String> handleMap = new HashSet<>(completedSources);
         // source_path_map[producer_id] = set of schema paths this source produced.
         Map<String, Set<String>> sourcePathMap = new HashMap<>();
+        for (String completedSource : completedSources) {
+            closeQueuesForSource(producerIdFromSourceKey(completedSource));
+        }
+        if (allSourceGroupsFinished(handleMap)) {
+            closeAllQueues("");
+            return;
+        }
 
         while (true) {
             StreamPayload payload;
@@ -276,6 +285,18 @@ public class StreamProcessor {
      */
     public void receive(StreamPayload payload) {
         queue.offer(payload);
+    }
+
+    /**
+     * Seed source completions restored from an earlier interrupted invocation.
+     *
+     * @param sourceKeys completed producer-ability keys
+     * @since 0.1.7
+     */
+    public void seedCompletedSources(Set<String> sourceKeys) {
+        if (sourceKeys != null) {
+            completedSources.addAll(sourceKeys);
+        }
     }
 
     /**
