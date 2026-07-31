@@ -14,6 +14,8 @@ import java.util.Map;
  */
 public class OutputSchema extends WorkflowChunk {
 
+    private static final long serialVersionUID = 1L;
+
     public OutputSchema() {
     }
 

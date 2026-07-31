@@ -18,6 +18,8 @@ import java.util.Objects;
  */
 public class WorkflowChunk extends TraceSchema {
 
+    private static final long serialVersionUID = 1L;
+
     private int index;
 
     public WorkflowChunk() {

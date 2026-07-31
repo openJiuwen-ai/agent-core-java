@@ -150,15 +150,11 @@ public class PersistenceCheckpointer extends Checkpointer {
             workflowStorage.clear(workflowId, sessionId);
             return;
         }
-        throw ErrorHelper.buildError(
-                StatusCode.CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR,
-                "session_id",
-                sessionId,
-                "workflow",
-                workflowId,
-                "reason",
-                "workflow state exists but non-interactive input and cleanup is disabled"
-        );
+        // Workflow state exists and input is a non-InteractiveInput query (e.g. String).
+        // Recover the saved state without interactive input processing so the workflow
+        // can resume with the new query input. This mirrors Python's behavior where
+        // a query recovery is treated as a valid resumption path.
+        workflowStorage.recover(session, null);
     }
 
     @Override
@@ -610,6 +606,14 @@ public class PersistenceCheckpointer extends Checkpointer {
             Map<String, Object> userInputs = inputs.getUserInputs();
             if (userInputs == null || userInputs.isEmpty()) {
                 return;
+            }
+            // Also store at workflow level so popWorkflowInteractiveInput can find it.
+            // Store userInputs values as a List, matching the rawInputs format.
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                Object existing = workflowState.getWorkflowState(Constant.INTERACTIVE_INPUT);
+                List<Object> values = existing instanceof List<?> list ? new ArrayList<>(list) : new ArrayList<>();
+                values.addAll(userInputs.values());
+                workflowState.updateAndCommitWorkflowState(mapOf(Constant.INTERACTIVE_INPUT, values));
             }
             for (Map.Entry<String, Object> entry : userInputs.entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());

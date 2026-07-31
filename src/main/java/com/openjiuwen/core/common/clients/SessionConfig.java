@@ -258,7 +258,7 @@ public class SessionConfig extends AbstractMap<String, Object> {
     }
 
     public Map<String, String> getHeaders() {
-        return headers;
+        return headers != null ? headers : Map.of();
     }
 
     public void setHeaders(Map<String, String> headers) {

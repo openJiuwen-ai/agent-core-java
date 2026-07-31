@@ -9,7 +9,14 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.context.ContextUtils;
 import com.openjiuwen.core.context_engine.context.KVCacheManager;
 import com.openjiuwen.core.context_engine.context.SessionModelContext;
+import com.openjiuwen.core.context_engine.processor.compressor.CurrentRoundCompressor;
 import com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressor;
+import com.openjiuwen.core.context_engine.processor.compressor.FullCompactProcessor;
+import com.openjiuwen.core.context_engine.processor.compressor.MicroCompactProcessor;
+import com.openjiuwen.core.context_engine.processor.compressor.RoundLevelCompressor;
+import com.openjiuwen.core.context_engine.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context_engine.processor.offloader.MessageSummaryOffloader;
+import com.openjiuwen.core.context_engine.processor.offloader.ToolResultBudgetProcessor;
 import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 
@@ -38,6 +45,13 @@ public class ContextEngine {
 
     static {
         registerProcessor("DialogueCompressor", DialogueCompressor.class);
+        registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class);
+        registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class);
+        registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+        registerProcessor("FullCompactProcessor", FullCompactProcessor.class);
+        registerProcessor("MessageOffloader", MessageOffloader.class);
+        registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class);
+        registerProcessor("ToolResultBudgetProcessor", ToolResultBudgetProcessor.class);
     }
 
     private final ContextEngineConfig config;

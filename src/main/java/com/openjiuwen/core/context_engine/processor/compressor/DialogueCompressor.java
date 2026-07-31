@@ -141,7 +141,9 @@ public class DialogueCompressor extends ContextProcessor {
                                                        Map<String, Object> kwargs) {
         List<BaseMessage> incoming = messagesToAdd == null ? List.of() : messagesToAdd;
         int messageSize = context.length() + incoming.size();
+        System.out.println("[DEBUG-DC-triggerAddMessages] context.length()=" + context.length() + ", incoming.size()=" + incoming.size() + ", messageSize=" + messageSize + ", messageNumThreshold=" + messageNumThreshold + ", messagesToKeep=" + messagesToKeep);
         if (messageNumThreshold != null && messageSize > messageNumThreshold) {
+            System.out.println("[DEBUG-DC-triggerAddMessages] TRIGGERED by messageNumThreshold: " + messageSize + " > " + messageNumThreshold);
             return CompletableFuture.completedFuture(true);
         }
         if (messagesToKeep != null && messageSize < messagesToKeep) {

@@ -220,7 +220,10 @@ public class MessageSummaryOffloader extends MessageOffloader {
         if ("tool".equals(message.getRole()) && isProtectedToolMessage(message, safeContextMessages)) {
             return false;
         }
-        return messageSize(message, context) > summaryConfig.getLargeMessageThreshold();
+        if (!(message.getContent() instanceof String content)) {
+            return false;
+        }
+        return content.length() > summaryConfig.getLargeMessageThreshold();
     }
 
     CompletionStage<BaseMessage> offloadMessageAdaptive(BaseMessage message, SessionModelContext context,

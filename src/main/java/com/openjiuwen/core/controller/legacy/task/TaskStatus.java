@@ -14,5 +14,6 @@ public enum TaskStatus {
     SUCCESS,
     FAILED,
     CANCELLED,
-    INTERRUPTED
+    INTERRUPTED,
+    INPUT_REQUIRED
 }

@@ -240,6 +240,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
                 isInvokeStreamBridgeEnabled());
     }
 
+    @Override
+    public StreamWriterManager rawStreamWriterManager() {
+        return streamWriterManager;
+    }
+
     public StreamWriterManager runtimeStreamWriterManager() {
         return streamWriterManager;
     }

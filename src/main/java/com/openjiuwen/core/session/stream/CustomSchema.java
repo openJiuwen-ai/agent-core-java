@@ -13,6 +13,8 @@ import java.util.Map;
  */
 public class CustomSchema implements StreamSchema {
 
+    private static final long serialVersionUID = 1L;
+
     private final Map<String, Object> properties = new LinkedHashMap<>();
 
     public CustomSchema() {

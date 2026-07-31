@@ -38,6 +38,22 @@ public abstract class BaseSession {
         return null;
     }
 
+    /**
+     * Get the raw {@link StreamWriterManager} instance, bypassing any adapter layer.
+     *
+     * <p>Subclasses that wrap or adapt the stream writer manager (e.g., returning a
+     * {@code Vertex.VertexStreamWriterManager} adapter from {@link #streamWriterManager()})
+     * should override this method to return the underlying {@code StreamWriterManager}
+     * directly. This allows downstream code that requires the concrete
+     * {@code StreamWriterManager} type to access it without reflection.</p>
+     *
+     * @return the raw StreamWriterManager, or null if not available
+     */
+    public StreamWriterManager rawStreamWriterManager() {
+        Object manager = streamWriterManager();
+        return manager instanceof StreamWriterManager typed ? typed : null;
+    }
+
     public String sessionId() {
         return "";
     }

@@ -5,9 +5,11 @@
 package com.openjiuwen.core.workflow.component.llm;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.singleagent.AbilityManager;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Executable for ReActAgentComp workflow component.
@@ -63,6 +66,9 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         com.openjiuwen.core.session.AgentSessionApi agentSession = toAgentSession(session);
         Object result = reactAgent.invoke(inputs, agentSession);
+        if (result instanceof CompletionStage<?> stage) {
+            result = stage.toCompletableFuture().join();
+        }
         if (result instanceof Map<?, ?> map) {
             return map;
         }
@@ -71,19 +77,48 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
 
     @Override
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
-        com.openjiuwen.core.session.AgentSessionApi agentSession = toAgentSession(session);
-        Iterator<Object> agentStream = reactAgent.stream(inputs, agentSession,
-                List.of(StreamMode.OUTPUT));
+        // 创建独立的 StreamEmitter + StreamWriterManager 收集 ReActAgent 的流式输出
+        StreamEmitter emitter = new StreamEmitter();
+        StreamWriterManager collectManager = StreamWriterManager.createManager(
+                emitter, List.of(StreamMode.OUTPUT));
 
+        // 创建独立 AgentSession，让 ReActAgent 的流式输出写入我们的 collectManager
+        String sessionId = session != null ? session.getSessionId() : "react_comp_stream";
+        AgentSession agentSession = new AgentSession(
+                sessionId, null, reactAgent.getCard(),
+                collectManager, true, null);
+
+        // 同步执行 ReActAgent 的流式 invoke，输出会写入 collectManager
+        try {
+            reactAgent.invoke(inputs, agentSession, Map.of("_streaming", true))
+                    .toCompletableFuture().join();
+        } catch (RuntimeException exception) {
+            writeInvokeResultToStream(emitter, exception);
+        } finally {
+            emitter.emit(StreamEmitter.END_FRAME);
+        }
+
+        // 从 collectManager 中读取流数据并处理
         List<Object> results = new ArrayList<>();
-        while (agentStream.hasNext()) {
-            Object chunk = agentStream.next();
+        Iterator<Object> it = collectManager.streamIterator();
+        while (it.hasNext()) {
+            Object chunk = it.next();
             Object processed = processStreamChunk(chunk);
             if (processed != null) {
                 results.add(processed);
             }
         }
         return results.iterator();
+    }
+
+    private static void writeInvokeResultToStream(StreamEmitter emitter, RuntimeException exception) {
+        try {
+            Map<String, Object> errorResult = new java.util.LinkedHashMap<>(
+                    Map.of("output", exception.getMessage(), "result_type", "error"));
+            emitter.emit(new OutputSchema("error", 0, errorResult));
+        } catch (Exception ignored) {
+            // best-effort write
+        }
     }
 
     @Override
