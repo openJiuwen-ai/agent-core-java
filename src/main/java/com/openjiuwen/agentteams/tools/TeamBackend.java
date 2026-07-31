@@ -36,9 +36,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -66,7 +66,6 @@ public class TeamBackend {
     private final Messager messager;
     private final String displayName;
     private final String description;
-
 
     // Non-final: the leader constructs the backend before its agent session is
     // resolved, so the session id is latched later via setTeamSessionId once
@@ -103,7 +102,27 @@ public class TeamBackend {
      * @param messager messager for event publishing
      */
     public TeamBackend(String teamName, String memberName, boolean isLeader, Messager messager) {
-        this(teamName, memberName, isLeader, messager, SpawnContext.getSessionId());
+        this(teamName, memberName, isLeader, messager,
+                new InitializationOptions(SpawnContext.getSessionId(), DatabaseConfig.builder().build()));
+    }
+
+    /**
+     * Create a TeamBackend with an explicit database configuration.
+     *
+     * @param databaseConfig database configuration used to select the shared database
+     * @param teamName team id
+     * @param memberName local member name
+     * @param isLeader leader flag
+     * @param messager messager for event publishing
+     * @throws IllegalArgumentException if a persistent database connection string is invalid
+     * @throws IllegalStateException if database initialization fails
+     * @throws UnsupportedOperationException if the selected database backend has no DAO implementation
+     * @since 0.1.13
+     */
+    public TeamBackend(DatabaseConfig databaseConfig, String teamName, String memberName, boolean isLeader,
+            Messager messager) {
+        this(teamName, memberName, isLeader, messager,
+                new InitializationOptions("", databaseConfig));
     }
 
     /**
@@ -124,15 +143,21 @@ public class TeamBackend {
      * @since 0.1.13
      */
     public TeamBackend(String teamName, String memberName, boolean isLeader, Messager messager,
-                       String teamSessionId) {
+            String teamSessionId) {
+        this(teamName, memberName, isLeader, messager,
+                new InitializationOptions(teamSessionId, DatabaseConfig.builder().build()));
+    }
+
+    private TeamBackend(String teamName, String memberName, boolean isLeader, Messager messager,
+            InitializationOptions options) {
         this.teamName = teamName;
         this.memberName = memberName;
         this.isLeader = isLeader;
         this.messager = messager;
         this.displayName = teamName;
         this.description = "";
-        this.teamSessionId = teamSessionId != null ? teamSessionId : "";
-        this.db = getSharedDb(DatabaseConfig.builder().build());
+        this.teamSessionId = options.teamSessionId() != null ? options.teamSessionId() : "";
+        this.db = getSharedDb(options.databaseConfig());
         this.db.setTeamSessionId(this.teamSessionId);
         this.db.initialize();
         Loggers.TOOL.info("TeamBackend created: db={} team={} member={} session={}",
@@ -1390,5 +1415,8 @@ public class TeamBackend {
         return messager.publish(
                 TeamTopic.TEAM.build(teamSessionId, teamName),
                 EventMessage.builder().eventType(eventType).payload(payload).build());
+    }
+
+    private record InitializationOptions(String teamSessionId, DatabaseConfig databaseConfig) {
     }
 }

@@ -7,12 +7,16 @@ package com.openjiuwen.agentteams;
 import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.factory.TeamFactory;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
+import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * LeaderTeammateAgentTeam.
@@ -126,7 +130,9 @@ public class LeaderTeammateAgentTeam {
     public static final String TEAM_MODE_HYBRID = "hybrid";
 
     private final TeamAgentSpec spec;
-    private TeamAgent agent;
+    private final Function<TeamAgentSpec, TeamAgent> agentFactory;
+    private final Object agentLock = new Object();
+    private volatile TeamAgent agent;
 
     /**
      * LeaderTeammateAgentTeam.
@@ -135,7 +141,12 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     private LeaderTeammateAgentTeam(TeamAgentSpec spec) {
-        this.spec = spec;
+        this(spec, TeamFactory::createAgentTeam);
+    }
+
+    LeaderTeammateAgentTeam(TeamAgentSpec spec, Function<TeamAgentSpec, TeamAgent> agentFactory) {
+        this.spec = Objects.requireNonNull(spec, "spec");
+        this.agentFactory = Objects.requireNonNull(agentFactory, "agentFactory");
     }
 
     /**
@@ -160,24 +171,39 @@ public class LeaderTeammateAgentTeam {
     }
 
     /**
-     * build.
-     * 
-     * @return the result
+     * Build the runtime agent once.
+     *
+     * @return this team facade
      * @since 0.1.7
      */
     public LeaderTeammateAgentTeam build() {
-        this.agent = TeamFactory.createAgentTeam(spec);
+        synchronized (agentLock) {
+            if (!isBuilt()) {
+                this.agent = Objects.requireNonNull(agentFactory.apply(spec), "agentFactory result");
+            }
+        }
         return this;
     }
 
     /**
-     * agent.
-     * 
-     * @return the result
+     * Return the runtime agent, building it lazily when necessary.
+     *
+     * @return the runtime team agent
      * @since 0.1.7
      */
     public TeamAgent agent() {
+        build();
         return agent;
+    }
+
+    /**
+     * Check whether the runtime agent has been built.
+     *
+     * @return {@code true} when the runtime agent is available
+     * @since 0.1.13
+     */
+    public boolean isBuilt() {
+        return agent != null;
     }
 
     /**
@@ -317,10 +343,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public void interact(String message) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        agent.interact(message);
+        agent().interact(message);
     }
 
     /**
@@ -330,10 +353,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public void deliverInput(String content) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        agent.deliverInput(content);
+        agent().deliverInput(content);
     }
 
     /**
@@ -344,10 +364,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public String broadcast(String content) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        return agent.broadcast(content);
+        return agent().broadcast(content);
     }
 
     /**
@@ -358,10 +375,19 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public Map<String, Object> dispatchTask(String query) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        return agent.dispatchTask(query);
+        return agent().dispatchTask(query);
+    }
+
+    /**
+     * Stream team execution through the runtime agent.
+     *
+     * @param inputs team execution inputs
+     * @param session session identifier or session object
+     * @return iterator of streaming output chunks
+     * @since 0.1.13
+     */
+    public Iterator<Object> stream(Map<String, Object> inputs, Object session) {
+        return agent().stream(inputs, session);
     }
 
     /**
@@ -372,10 +398,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public LeaderTeammateAgentTeam resumeForNewSession(String sessionId) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        agent.resumeForNewSession(sessionId);
+        agent().resumeForNewSession(sessionId);
         return this;
     }
 
@@ -387,10 +410,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public LeaderTeammateAgentTeam recoverForExistingSession(String sessionId) {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        agent.recoverForExistingSession(sessionId);
+        agent().recoverForExistingSession(sessionId);
         return this;
     }
 
@@ -401,10 +421,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public List<String> recoverTeam() {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        return agent.recoverTeam();
+        return agent().recoverTeam();
     }
 
     /**
@@ -414,10 +431,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public Map<String, Object> snapshot() {
-        if (agent == null) {
-            throw new IllegalStateException("Team not built yet; call build() first");
-        }
-        return agent.snapshot();
+        return agent().snapshot();
     }
 
     /**
@@ -436,7 +450,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public void destroyTeam(boolean isForceEnabled) {
-        if (agent != null) {
+        if (isBuilt()) {
             agent.destroyTeam(isForceEnabled);
         }
     }
@@ -460,6 +474,8 @@ public class LeaderTeammateAgentTeam {
         private String leaderMemberName = "team_leader";
         private String leaderDisplayName = "Team Leader";
         private String leaderPersona;
+        private List<ModelPoolEntry> modelPool = new ArrayList<>();
+        private String modelPoolStrategy = "round_robin";
 
         /**
          * ArrayList<>.
@@ -627,6 +643,30 @@ public class LeaderTeammateAgentTeam {
         }
 
         /**
+         * Configure the models available to team members.
+         *
+         * @param entries model pool entries
+         * @return this builder
+         * @since 0.1.13
+         */
+        public Builder modelPool(List<ModelPoolEntry> entries) {
+            this.modelPool = new ArrayList<>(Objects.requireNonNull(entries, "entries"));
+            return this;
+        }
+
+        /**
+         * Configure the model allocation strategy.
+         *
+         * @param strategy model pool strategy
+         * @return this builder
+         * @since 0.1.13
+         */
+        public Builder modelPoolStrategy(String strategy) {
+            this.modelPoolStrategy = strategy;
+            return this;
+        }
+
+        /**
          * addPredefinedMember.
          * 
          * @param member member
@@ -663,9 +703,9 @@ public class LeaderTeammateAgentTeam {
         }
 
         /**
-         * build.
-         * 
-         * @return the result
+         * Build the team facade and its specification.
+         *
+         * @return the configured facade whose runtime agent is created lazily
          * @since 0.1.7
          */
         public LeaderTeammateAgentTeam build() {
@@ -680,17 +720,17 @@ public class LeaderTeammateAgentTeam {
             String resolvedTeamMode = teamMode;
             if (resolvedTeamMode == null) {
                 boolean hasNonHumanPredefined =
-                    predefinedMembers.stream().anyMatch(m -> m.getRole() != TeamRole.HUMAN_AGENT);
+                        predefinedMembers.stream().anyMatch(member -> member.getRole() != TeamRole.HUMAN_AGENT);
                 resolvedTeamMode = hasNonHumanPredefined ? TEAM_MODE_HYBRID : TEAM_MODE_DEFAULT;
             }
 
-            TeamAgentSpec builtSpec = TeamAgentSpec.builder().name(teamName).description(description)
-                    .lifecycle(lifecycle).teammateMode(teammateMode).spawnMode(spawnMode).transport(transport)
-                    .storage(storage).connectionString(connectionString).teamMode(resolvedTeamMode).language(language)
-                    .members(members).humanAgentEnabled(isHumanAgentEnabled)
-                    .isExposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build();
-
-            return new LeaderTeammateAgentTeam(builtSpec);
+            return new LeaderTeammateAgentTeam(
+                    TeamAgentSpec.builder().name(teamName).description(description).lifecycle(lifecycle)
+                            .teammateMode(teammateMode).spawnMode(spawnMode).transport(transport).storage(storage)
+                            .connectionString(connectionString).teamMode(resolvedTeamMode).language(language)
+                            .members(members).modelPool(modelPool).modelPoolStrategy(modelPoolStrategy)
+                            .humanAgentEnabled(isHumanAgentEnabled)
+                            .isExposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build());
         }
     }
 }

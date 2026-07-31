@@ -243,6 +243,7 @@ Java 当前把流式入口统一成以下几组方法：
 
 - `Runner.runWorkflowStreaming(...)`
 - `Runner.runAgentStreaming(...)`
+- `Runner.runAgentTeamStreaming(...)`
 - `Runner.runAgentGroupStreaming(...)`
 
 它们都返回 `Iterator<?>`，常见调用形态如下：
@@ -272,6 +273,29 @@ while (stream.hasNext()) {
 ```
 
 在 `examples/workflow_agent/WorkflowAgentExampleSupport.java` 里，命令行示例就是通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
+
+Agent Team 使用独立的受管流式入口。首次运行可传团队 spec、`LeaderTeammateAgentTeam` 门面或
+`TeamAgent`；persistent 团队在流结束后暂停，同一 session 的下一轮可按团队名称恢复：
+
+```java
+Iterator<Object> firstRound = Runner.runAgentTeamStreaming(
+        teamSpec,
+        Map.of("query", "创建团队并拆解任务"),
+        "team-session-001");
+firstRound.forEachRemaining(chunk -> {
+    // 处理第一轮输出
+});
+
+Iterator<Object> secondRound = Runner.runAgentTeamStreaming(
+        teamSpec.getName(),
+        Map.of("query", "继续完成任务"),
+        "team-session-001");
+secondRound.forEachRemaining(chunk -> {
+    // 处理恢复后的输出
+});
+
+Runner.destroyAgentTeam(teamSpec.getName(), true);
+```
 
 ## Runner 会怎样准备 session
 
