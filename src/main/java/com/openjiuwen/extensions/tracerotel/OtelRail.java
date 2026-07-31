@@ -11,6 +11,7 @@ import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.session.tracer.TracerHandlerName;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -422,6 +423,14 @@ public class OtelRail extends AgentRail {
 
     /**
      * Extract model name from agent config object.
+     *
+     * <p>Resolution order:
+     * <ol>
+     *   <li>{@code ReActAgentConfig.getModelName()} — explicitly set model name</li>
+     *   <li>{@code ReActAgentConfig.getModelConfigObj().getModelName()} — model name from
+     *       the request config (e.g. {@code "qwen-plus"})</li>
+     *   <li>Empty {@link Optional} — caller falls back to {@code "LLM"}</li>
+     * </ol>
      *
      * @param config the agent config object (may be {@code null})
      * @return an {@link Optional} containing the model name, or empty if not found
