@@ -13,10 +13,11 @@ import com.openjiuwen.core.sys_operation.local.LocalCodeOperation;
 import com.openjiuwen.core.sys_operation.local.StreamEventType;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeResult;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestFactory;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -61,7 +62,6 @@ class SandboxCodeOperationPythonParityTest {
             "test_sandbox_discovery"
     );
 
-    @Disabled("remote env do not support node")
     @TestFactory
     Collection<DynamicTest> pythonSandboxCodeCases() {
         return PYTHON_TESTS.stream()
@@ -114,7 +114,7 @@ class SandboxCodeOperationPythonParityTest {
     }
 
     private void executeJavascriptCodeSuccess() throws Exception {
-        assertNodeAvailable();
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping JavaScript test");
         String code = "console.log(\"Hello, JavaScript!\"); console.log(\"12\")";
 
         ExecuteCodeResult result = execute(code, BaseCodeOperation.CodeLanguage.JAVASCRIPT, 10, null, null, null);
@@ -229,7 +229,7 @@ class SandboxCodeOperationPythonParityTest {
     }
 
     private void executeCodeForceFileTrueJavascript() throws Exception {
-        assertNodeAvailable();
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping JavaScript test");
         String code = """
                 console.log("JS Exec Mode: Temp File");
                 console.log("15 * 25 = 375");
@@ -313,7 +313,7 @@ class SandboxCodeOperationPythonParityTest {
     }
 
     private void executeCodeStreamJavascriptNormal() throws Exception {
-        assertNodeAvailable();
+        Assumptions.assumeTrue(isNodeAvailable(), "Node.js not found, skipping JavaScript test");
         String code = """
                 console.log("hello javascript");
                 console.log("stream test for js");
@@ -436,11 +436,26 @@ class SandboxCodeOperationPythonParityTest {
         return subscriber.await();
     }
 
-    private static void assertNodeAvailable() throws Exception {
-        Process process = new ProcessBuilder("node", "-v").start();
-        boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-        assertThat(finished).isTrue();
-        assertThat(process.exitValue()).isZero();
+    /**
+     * Checks whether Node.js is available on the PATH.
+     * <p>Returns {@code false} when the executable is missing instead of throwing, so callers can
+     * use {@link Assumptions#assumeTrue(boolean, String)} to skip the affected test cleanly.</p>
+     *
+     * @return {@code true} if the {@code node} executable is found and executable on the PATH
+     */
+    private static boolean isNodeAvailable() {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) {
+            return false;
+        }
+        String nodeExe = System.getProperty("os.name", "").toLowerCase().contains("win") ? "node.exe" : "node";
+        for (String dir : pathEnv.split(File.pathSeparator)) {
+            File f = new File(dir, nodeExe);
+            if (f.exists() && f.isFile() && f.canExecute()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class CapturingSubscriber<T> implements Flow.Subscriber<T> {

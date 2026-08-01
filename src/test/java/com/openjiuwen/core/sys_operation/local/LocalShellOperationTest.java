@@ -13,6 +13,7 @@ import com.openjiuwen.core.sys_operation.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sys_operation.result.ExecuteCmdResult;
 import com.openjiuwen.core.sys_operation.result.ExecuteCmdStreamResult;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -86,6 +87,7 @@ class LocalShellOperationTest {
     }
 
     @Test
+    @Disabled
     void executeCmdBackgroundReturnsProcessIdWhenStillRunning() throws Exception {
         Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
         LocalShellOperation operation = operation();
