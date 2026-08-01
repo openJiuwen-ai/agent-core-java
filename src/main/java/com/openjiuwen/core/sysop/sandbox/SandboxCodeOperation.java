@@ -10,14 +10,15 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Sandbox code operation routed through the sandbox gateway/provider chain.
- *
- * @since 2026-01-01
+ * 
+ * @since 0.1.7
  */
 @Operation(name = "code", mode = OperationMode.SANDBOX, description = "sandbox code operation")
 public class SandboxCodeOperation extends BaseCodeOperation {
@@ -26,9 +27,10 @@ public class SandboxCodeOperation extends BaseCodeOperation {
     private final SandboxGatewayClient gatewayClient;
 
     /**
-     * Auto-generated for codecheck compliance.
-     *
+     * SandboxCodeOperation.
+     * 
      * @param runConfig 运行配置对象，包含沙箱执行所需的配置信息
+     * @since 0.1.7
      */
     public SandboxCodeOperation(Object runConfig) {
         super("code", OperationMode.SANDBOX.toNewMode(), "sandbox code operation", runConfig);
@@ -45,8 +47,18 @@ public class SandboxCodeOperation extends BaseCodeOperation {
         return SandboxGatewayConfig.builder().build();
     }
 
+    /**
+     * executeCode.
+     * 
+     * @param code code
+     * @param language language
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public ExecuteCodeResult executeCode(String code, String language, int timeout, Map<String, String> environment,
             Map<String, Object> options) {
         try {
@@ -57,15 +69,25 @@ public class SandboxCodeOperation extends BaseCodeOperation {
         }
     }
 
+    /**
+     * executeCodeStream.
+     * 
+     * @param code code
+     * @param language language
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
             Map<String, String> environment, Map<String, Object> options) {
         try {
             @SuppressWarnings("unchecked")
-            Iterator<ExecuteCodeStreamResult> iterator = invoke("executeCodeStream", Iterator.class,
-                    SandboxOperationSupport.paramsOf("code", code, "language", language, "timeout", timeout,
-                            "environment", environment, "options", options));
+            Iterator<ExecuteCodeStreamResult> iterator =
+                invoke("executeCodeStream", Iterator.class, SandboxOperationSupport.paramsOf("code", code, "language",
+                        language, "timeout", timeout, "environment", environment, "options", options));
             return iterator;
         } catch (IllegalArgumentException ex) {
             return List.of(SandboxOperationSupport.buildCodeStreamError("execute_code_stream", ex.getMessage(), code,
@@ -73,6 +95,15 @@ public class SandboxCodeOperation extends BaseCodeOperation {
         }
     }
 
+    /**
+     * invoke.
+     * 
+     * @param method method
+     * @param type type
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> T invoke(String method, Class<T> type, Map<String, Object> params) {
         Object result = gatewayClient.invoke(OP_TYPE, method, params);
         if (type.isInstance(result)) {

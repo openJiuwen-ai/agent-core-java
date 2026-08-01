@@ -16,15 +16,21 @@ import java.util.List;
  * Event emitted by a {@link ContextProcessor} describing what was modified.
  * <p>
  * Mirrors Python's {@code ContextEvent} from {@code processor/base.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ContextEvent {
-
     private String eventType;
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Integer> messagesToModify = new ArrayList<>();
 }

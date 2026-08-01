@@ -8,15 +8,18 @@ import java.util.Locale;
 
 /**
  * Public enum PromptMode used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum PromptMode {
     PROACTIVE,
     PASSIVE;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return name().toLowerCase(Locale.ROOT);

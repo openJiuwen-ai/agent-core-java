@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.state;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Disabled;
@@ -9,23 +12,17 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for state subsystem: {@link InMemoryStateLike}, {@link InMemoryCommitState},
  * {@link WorkflowCommitState}, {@link AgentStateCollection}, {@link WorkflowStateCollection}.
  */
 class StateTest {
-
     // ---------- InMemoryStateLike tests ----------
-
     @Nested
     @DisplayName("InMemoryStateLike")
     class InMemoryStateLikeTests {
-
         @Test
         @DisplayName("default constructor creates empty state")
         void testDefaultConstructor() {
@@ -59,8 +56,8 @@ class StateTest {
         @Test
         @DisplayName("update merges nested maps")
         void testUpdateMergesNested() {
-            InMemoryStateLike state = new InMemoryStateLike(
-                    new HashMap<>(Map.of("data", new HashMap<>(Map.of("a", 1)))));
+            InMemoryStateLike state =
+                new InMemoryStateLike(new HashMap<>(Map.of("data", new HashMap<>(Map.of("a", 1)))));
             state.update(Map.of("data", Map.of("b", 2)));
 
             @SuppressWarnings("unchecked")
@@ -100,7 +97,6 @@ class StateTest {
     @Nested
     @DisplayName("InMemoryCommitState")
     class InMemoryCommitStateTests {
-
         @Test
         @DisplayName("updateById and commit")
         void testUpdateByIdAndCommit() {
@@ -188,7 +184,6 @@ class StateTest {
     @Nested
     @DisplayName("WorkflowCommitState")
     class WorkflowCommitStateTests {
-
         @Test
         @DisplayName("create with InMemoryState.create()")
         void testCreateDefault() {
@@ -255,11 +250,8 @@ class StateTest {
         @Test
         @DisplayName("InMemoryState.create with initial data")
         void testCreateWithInitialData() {
-            WorkflowCommitState state = InMemoryState.create(
-                    null,
-                    Map.of("globalKey", "globalValue"),
-                    null, null, null
-            );
+            WorkflowCommitState state =
+                InMemoryState.create(null, Map.of("globalKey", "globalValue"), null, null, null);
             assertEquals("globalValue", state.getGlobalState().get("globalKey"));
         }
 
@@ -290,7 +282,6 @@ class StateTest {
     @Nested
     @DisplayName("AgentStateCollection")
     class AgentStateCollectionTests {
-
         @Test
         @DisplayName("default constructor creates empty collections")
         void testDefaultConstructor() {
@@ -363,10 +354,8 @@ class StateTest {
         @DisplayName("setState restores from map")
         void testSetState() {
             AgentStateCollection state = new AgentStateCollection();
-            state.setState(Map.of(
-                    "global_state", Map.of("restored", "value"),
-                    "agent_state", Map.of("agent_restored", "value2")
-            ));
+            state.setState(Map.of("global_state", Map.of("restored", "value"), "agent_state",
+                    Map.of("agent_restored", "value2")));
             assertEquals("value", state.getGlobal("restored"));
             assertEquals("value2", state.get("agent_restored"));
         }
@@ -377,7 +366,6 @@ class StateTest {
     @Nested
     @DisplayName("WorkflowStateCollection")
     class WorkflowStateCollectionTests {
-
         @Test
         @DisplayName("node state isolation: different nodes have separate component state")
         void testNodeStateIsolation() {

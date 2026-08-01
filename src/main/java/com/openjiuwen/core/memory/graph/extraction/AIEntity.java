@@ -6,10 +6,14 @@ package com.openjiuwen.core.memory.graph.extraction;
 
 /**
  * AI assistant entity type.
+ * 
+ * @since 0.1.7
  */
 public class AIEntity extends EntityDef {
     /**
-     * Auto-generated for codecheck compliance.
+     * AIEntity.
+     * 
+     * @since 0.1.7
      */
     public AIEntity() {
         setName("AI");

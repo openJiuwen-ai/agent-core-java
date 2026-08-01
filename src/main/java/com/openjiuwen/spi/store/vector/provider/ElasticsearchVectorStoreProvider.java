@@ -15,16 +15,17 @@ import java.util.Map;
  * <p>
  * Creates vector store instances backed by Elasticsearch, leveraging its
  * dense vector field type for similarity search and RAG retrieval pipelines.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see com.openjiuwen.core.foundation.store.vector.ElasticsearchVectorStore
+ * @since 0.1.7
  */
 public final class ElasticsearchVectorStoreProvider implements VectorStoreProvider {
     /**
-     * Returns the Elasticsearch vector store type name.
-     *
-     * @return the type name "elasticsearch"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -33,9 +34,10 @@ public final class ElasticsearchVectorStoreProvider implements VectorStoreProvid
 
     /**
      * Creates a new Elasticsearch vector store instance.
-     *
+     * 
      * @param conf the configuration map for Elasticsearch connection
      * @return a new ElasticsearchVectorStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {

@@ -6,8 +6,8 @@ package com.openjiuwen.harness.task_loop;
 
 /**
  * Public enum DeepLoopEventType used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum DeepLoopEventType {
     FOLLOWUP("followup"),
@@ -21,7 +21,10 @@ public enum DeepLoopEventType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;

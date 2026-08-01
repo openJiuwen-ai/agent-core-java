@@ -11,6 +11,8 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.ToolCallDetail.
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolCallDetail {
@@ -22,20 +24,26 @@ public class ToolCallDetail {
     private String toolCallId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallDetail.
+     * 
+     * @since 0.1.7
      */
     public ToolCallDetail() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallDetail.
+     * 
+     * @param toolName toolName
+     * @param callArgs callArgs
+     * @param callResult callResult
+     * @param toolDescription toolDescription
+     * @param toolSchema toolSchema
+     * @param toolCallId toolCallId
+     * @since 0.1.7
      */
-    public ToolCallDetail(String toolName,
-                          Object callArgs,
-                          Object callResult,
-                          String toolDescription,
-                          Map<String, Object> toolSchema,
-                          String toolCallId) {
+    public ToolCallDetail(String toolName, Object callArgs, Object callResult, String toolDescription,
+            Map<String, Object> toolSchema, String toolCallId) {
         this.toolName = toolName;
         this.callArgs = callArgs;
         this.callResult = callResult;
@@ -45,84 +53,120 @@ public class ToolCallDetail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getToolName() {
         return toolName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolName.
+     * 
+     * @param toolName toolName
+     * @since 0.1.7
      */
     public void setToolName(String toolName) {
         this.toolName = toolName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getCallArgs() {
         return callArgs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCallArgs.
+     * 
+     * @param callArgs callArgs
+     * @since 0.1.7
      */
     public void setCallArgs(Object callArgs) {
         this.callArgs = callArgs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallResult.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getCallResult() {
         return callResult;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCallResult.
+     * 
+     * @param callResult callResult
+     * @since 0.1.7
      */
     public void setCallResult(Object callResult) {
         this.callResult = callResult;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getToolDescription() {
         return toolDescription;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolDescription.
+     * 
+     * @param toolDescription toolDescription
+     * @since 0.1.7
      */
     public void setToolDescription(String toolDescription) {
         this.toolDescription = toolDescription;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getToolSchema() {
         return toolSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolSchema.
+     * 
+     * @param toolSchema toolSchema
+     * @since 0.1.7
      */
     public void setToolSchema(Map<String, Object> toolSchema) {
         this.toolSchema = toolSchema != null ? new LinkedHashMap<>(toolSchema) : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolCallId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getToolCallId() {
         return toolCallId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolCallId.
+     * 
+     * @param toolCallId toolCallId
+     * @since 0.1.7
      */
     public void setToolCallId(String toolCallId) {
         this.toolCallId = toolCallId;

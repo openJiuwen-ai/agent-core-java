@@ -9,31 +9,48 @@ import java.util.Map;
 
 /**
  * Public class LoadToolsTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class LoadToolsTool {
     private final LoadHandler handler;
 
     /**
- * Public interface LoadHandler used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface LoadHandler used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface LoadHandler {
+    public interface LoadHandler {
+        /**
+         * load.
+         * 
+         * @param toolNames toolNames
+         * @param isReplace isReplace
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Map<String, Object> load(List<String> toolNames, boolean isReplace) throws Exception;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoadToolsTool.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
     public LoadToolsTool(LoadHandler handler) {
         this.handler = handler;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param toolNames toolNames
+     * @param isReplace isReplace
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(List<String> toolNames, boolean isReplace) {
         try {

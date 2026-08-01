@@ -6,21 +6,27 @@ package com.openjiuwen.harness.tools;
 
 /**
  * Public class SessionsListTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SessionsListTool {
     private final SessionToolkit toolkit;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionsListTool.
+     * 
+     * @param toolkit toolkit
+     * @since 0.1.7
      */
     public SessionsListTool(SessionToolkit toolkit) {
         this.toolkit = toolkit;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * list.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput list() {
         return ToolOutput.builder().success(true).data(toolkit.listAll()).build();

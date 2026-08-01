@@ -11,28 +11,35 @@ import java.util.List;
  * <p>
  * Mirrors Python's {@code Embedding} ABC.
  * Java synchronous equivalent of Python's async interface.
+ * 
+ * @since 0.1.7
  */
 public abstract class Embedding {
-
     /**
-     * Embed query text into a vector.
-     *
-     * @param text the query text
-     * @return embedding vector
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<Float> embedQuery(String text);
 
     /**
      * Embed document texts into vectors.
-     *
-     * @param texts     the document texts
+     * 
+     * @param texts the document texts
      * @param batchSize optional batch size (null for default)
      * @return list of embedding vectors
+     * @since 0.1.7
      */
     public abstract List<List<Float>> embedDocuments(List<String> texts, Integer batchSize);
 
     /**
      * Embed document texts into vectors with default batch size.
+     * 
+     * @param texts texts
+     * @return the result
+     * @since 0.1.7
      */
     public List<List<Float>> embedDocuments(List<String> texts) {
         return embedDocuments(texts, null);
@@ -40,6 +47,9 @@ public abstract class Embedding {
 
     /**
      * Return the embedding dimension.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract int getDimension();
 }

@@ -1,15 +1,16 @@
-package com.openjiuwen.core.memory.config;
 
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.memory.config;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class MemoryEngineConfigTest {
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 
+import org.junit.jupiter.api.Test;
+
+class MemoryEngineConfigTest {
     @Test
     void builderExposesForbiddenVariablesAndCryptoKeyDefaults() {
         MemoryEngineConfig config = MemoryEngineConfig.builder().build();
@@ -20,8 +21,7 @@ class MemoryEngineConfigTest {
 
     @Test
     void validateCryptoKeyRejectsNonAesLength() {
-        MemoryEngineConfig config = MemoryEngineConfig.builder()
-                .build();
+        MemoryEngineConfig config = MemoryEngineConfig.builder().build();
 
         BaseError error = assertThrows(BaseError.class, () -> config.setCryptoKey("short-key".getBytes()));
         assertEquals(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR, error.getStatus());
@@ -29,9 +29,8 @@ class MemoryEngineConfigTest {
 
     @Test
     void builderRejectsNonAesLengthCryptoKeyDuringConstruction() {
-        BaseError error = assertThrows(BaseError.class, () -> MemoryEngineConfig.builder()
-                .cryptoKey("short-key".getBytes())
-                .build());
+        BaseError error =
+            assertThrows(BaseError.class, () -> MemoryEngineConfig.builder().cryptoKey("short-key".getBytes()).build());
 
         assertEquals(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR, error.getStatus());
     }

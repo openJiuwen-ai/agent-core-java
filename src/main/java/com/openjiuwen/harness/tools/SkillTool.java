@@ -13,21 +13,29 @@ import java.util.Map;
 
 /**
  * Public class SkillTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SkillTool {
     private final Path skillsRoot;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SkillTool.
+     * 
+     * @param skillsRoot skillsRoot
+     * @since 0.1.7
      */
     public SkillTool(String skillsRoot) {
         this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readSkill.
+     * 
+     * @param skillName skillName
+     * @param relativeFilePath relativeFilePath
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput readSkill(String skillName, String relativeFilePath) {
         String fileName = (relativeFilePath == null || relativeFilePath.isBlank()) ? "SKILL.md" : relativeFilePath;

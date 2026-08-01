@@ -8,6 +8,8 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
 /**
  * Legacy Java sandbox client facade backed by gateway-routed sandbox operations.
+ * 
+ * @since 0.1.7
  */
 public class SandboxClient {
     private final SandboxGatewayConfig config;
@@ -16,7 +18,10 @@ public class SandboxClient {
     private final SandboxCodeOperation codeOperation;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SandboxClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public SandboxClient(SandboxGatewayConfig config) {
         this.config = config != null ? config : SandboxGatewayConfig.builder().build();
@@ -26,28 +31,40 @@ public class SandboxClient {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SandboxGatewayConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SandboxFsOperation fs() {
         return fsOperation;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shell.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SandboxShellOperation shell() {
         return shellOperation;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * code.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SandboxCodeOperation code() {
         return codeOperation;

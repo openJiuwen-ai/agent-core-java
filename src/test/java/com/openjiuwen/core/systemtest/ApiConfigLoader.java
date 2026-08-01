@@ -1,6 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -14,7 +15,6 @@ import java.util.Map;
  * Ensures that no API keys or URLs are hard-coded in test source files.
  */
 public final class ApiConfigLoader {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static volatile Map<String, String> configCache;
 
@@ -30,8 +30,8 @@ public final class ApiConfigLoader {
         if (configCache == null) {
             synchronized (ApiConfigLoader.class) {
                 if (configCache == null) {
-                    try (InputStream is = ApiConfigLoader.class.getClassLoader()
-                            .getResourceAsStream("APIKEY/apiconfig.json")) {
+                    try (InputStream is =
+                        ApiConfigLoader.class.getClassLoader().getResourceAsStream("APIKEY/apiconfig.json")) {
                         if (is == null) {
                             throw new IllegalStateException(
                                     "apiconfig.json not found on classpath at APIKEY/apiconfig.json");
@@ -80,9 +80,8 @@ public final class ApiConfigLoader {
     }
 
     public static boolean getEmbeddingSslVerify() {
-        return Boolean.parseBoolean(load().getOrDefault(
-                "EMBEDDING_SSL_VERIFY",
-                load().getOrDefault("LLM_SSL_VERIFY", "true")));
+        return Boolean.parseBoolean(
+                load().getOrDefault("EMBEDDING_SSL_VERIFY", load().getOrDefault("LLM_SSL_VERIFY", "true")));
     }
 
     public static String getEmbeddingSslCert() {

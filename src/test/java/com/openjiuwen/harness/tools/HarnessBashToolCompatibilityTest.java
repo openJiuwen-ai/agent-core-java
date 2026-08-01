@@ -1,4 +1,7 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
@@ -6,10 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessBashToolCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -24,7 +24,8 @@ class HarnessBashToolCompatibilityTest {
         assertThat(echo.isSuccess()).isTrue();
         assertThat(String.valueOf(((java.util.Map<?, ?>) echo.getData()).get("stdout"))).contains("hello");
         assertThat(grep.isSuccess()).isTrue();
-        assertThat(((java.util.Map<?, ?>) grep.getData()).get("return_code_interpretation")).isEqualTo("No matches found");
+        assertThat(((java.util.Map<?, ?>) grep.getData()).get("return_code_interpretation"))
+                .isEqualTo("No matches found");
     }
 
     @Test

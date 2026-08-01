@@ -10,6 +10,9 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,17 +23,14 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Core sandbox management mixin class using composition pattern.
  * Holds endpoint, config, client, sandbox_id, and provides all
  * sandbox lifecycle management including shared caching, auto-recreate,
  * lifecycle hooks, and idle timeout deduplication.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public class JiuwenBoxProviderMixin {
     private static final Logger logger = LoggerFactory.getLogger(JiuwenBoxProviderMixin.class);
@@ -54,9 +54,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Construct the mixin with endpoint and config.
-     *
+     * 
      * @param endpoint the sandbox endpoint providing base URL and sandbox ID
      * @param config the sandbox gateway configuration, may be null (defaults to empty config)
+     * @since 0.1.7
      */
     public JiuwenBoxProviderMixin(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         this.endpoint = endpoint;
@@ -66,29 +67,31 @@ public class JiuwenBoxProviderMixin {
         if (envId != null && !envId.isBlank()) {
             this.sandboxId = envId;
         }
-        this.timeoutSeconds = config != null && config.getTimeoutSeconds() > 0
-                ? config.getTimeoutSeconds() : 30;
+        this.timeoutSeconds = config != null && config.getTimeoutSeconds() > 0 ? config.getTimeoutSeconds() : 30;
     }
 
     /**
      * Functional interface for sandbox retry operations.
+     * 
+     * @since 0.1.7
      */
     @FunctionalInterface
     public interface SandboxRetryOperation<T> {
         /**
-         * Applies the operation on the given sandbox ID.
-         *
-         * @param sandboxId the sandbox ID to operate on
-         * @return the operation result
+         * apply.
+         * 
+         * @param sandboxId sandboxId
+         * @return the result
+         * @since 0.1.7
          */
         T apply(String sandboxId);
     }
 
     /**
      * Lazily create the JiuwenBox HTTP client from endpoint baseUrl.
-     *
+     * 
      * @return the initialized JiuwenBoxClient instance
-     * @throws IllegalArgumentException if endpoint.base_url is missing or blank
+     * @since 0.1.7
      */
     public JiuwenBoxClient getClient() {
         if (client == null) {
@@ -103,9 +106,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Get extra_params from config.launcherConfig; if create=true and null, initialize it.
-     *
+     * 
      * @param isCreate whether to initialize extra_params if it is currently null
      * @return the extra_params map, or an empty map if not available
+     * @since 0.1.7
      */
     public Map<String, Object> launcherExtraParams(boolean isCreate) {
         SandboxLauncherConfig launcherConfig = config != null ? config.getLauncherConfig() : null;
@@ -126,8 +130,9 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Extract policy/policy_mode from extra_params as sandbox create options.
-     *
+     * 
      * @return a map containing policy and/or policy_mode entries; empty map if none found
+     * @since 0.1.7
      */
     public Map<String, Object> sandboxCreateOptionsFromLauncherExtraParams() {
         Map<String, Object> extraParams = launcherExtraParams(false);
@@ -145,9 +150,9 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Build shared scope key: base_url + create_options_json.
-     *
+     * 
      * @return the shared scope key string used for cache lookups
-     * @throws IllegalArgumentException if endpoint.base_url is missing or blank
+     * @since 0.1.7
      */
     public String sharedScopeKey() {
         Optional<String> baseUrlOpt = endpointValue(endpoint, config, "base_url");
@@ -170,20 +175,21 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Extract sandbox_id from launcher extra_params.
-     *
+     * 
      * @return Optional containing the sandbox_id string, or empty if not found
+     * @since 0.1.7
      */
     public Optional<String> sandboxIdFromLauncherExtraParams() {
         Map<String, Object> extraParams = launcherExtraParams(false);
         Object value = extraParams.get("sandbox_id");
-        return value instanceof String && !((String) value).isEmpty()
-                ? Optional.of((String) value) : Optional.empty();
+        return value instanceof String && !((String) value).isEmpty() ? Optional.of((String) value) : Optional.empty();
     }
 
     /**
      * Extract lifecycle_hook from extra_params (if it is a LifecycleHook instance).
-     *
+     * 
      * @return Optional containing the LifecycleHook, or empty if not found
+     * @since 0.1.7
      */
     public Optional<LifecycleHook> lifecycleHook() {
         Object hook = launcherExtraParams(false).get("lifecycle_hook");
@@ -192,8 +198,9 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Return [idleTimeout, idleCheckInterval] from launcherConfig.idleTtlSeconds and extra_params.
-     *
+     * 
      * @return an int array where index 0 is idleTimeout (-1 if absent) and index 1 is idleCheckInterval (-1 if absent)
+     * @since 0.1.7
      */
     public int[] idleTimeoutFromLauncher() {
         SandboxLauncherConfig launcherConfig = config != null ? config.getLauncherConfig() : null;
@@ -208,14 +215,13 @@ public class JiuwenBoxProviderMixin {
         } else {
             logger.debug("[jiuwenbox] non-numeric idle_check_interval value ignored: {}", rawCheck);
         }
-        return new int[]{
-                idleTimeout != null ? idleTimeout : -1,
-                idleCheckInterval != null ? idleCheckInterval : -1
-        };
+        return new int[]{idleTimeout != null ? idleTimeout : -1, idleCheckInterval != null ? idleCheckInterval : -1};
     }
 
     /**
      * Configure idle timeout on jiuwenbox server; dedupe PUT /api/v1/timeout calls.
+     * 
+     * @since 0.1.7
      */
     public void configureServerIdleTimeout() {
         int[] timeouts = idleTimeoutFromLauncher();
@@ -226,10 +232,8 @@ public class JiuwenBoxProviderMixin {
         }
         String baseUrl = endpointValue(endpoint, config, "base_url").orElse(null);
         String cacheKey = baseUrl != null ? baseUrl.replaceAll("/+$", "") : "";
-        int[] target = new int[]{
-                idleTimeout != null ? idleTimeout : -1,
-                idleCheckInterval != null ? idleCheckInterval : -1
-        };
+        int[] target =
+            new int[]{idleTimeout != null ? idleTimeout : -1, idleCheckInterval != null ? idleCheckInterval : -1};
         IDLE_TIMEOUT_CACHE_LOCK.lock();
         try {
             int[] cached = IDLE_TIMEOUT_CACHE.get(cacheKey);
@@ -241,11 +245,11 @@ public class JiuwenBoxProviderMixin {
         }
         try {
             getClient().setIdleTimeout(idleTimeout, idleCheckInterval);
-            logger.info("[jiuwenbox] PUT /api/v1/timeout: idle_timeout={} idle_check_interval={}",
-                    idleTimeout, idleCheckInterval);
+            logger.info("[jiuwenbox] PUT /api/v1/timeout: idle_timeout={} idle_check_interval={}", idleTimeout,
+                    idleCheckInterval);
         } catch (SandboxOperationException exc) {
-            logger.warn("[jiuwenbox] PUT /api/v1/timeout failed (idle_timeout={}, "
-                    + "idle_check_interval={})", idleTimeout, idleCheckInterval, exc);
+            logger.warn("[jiuwenbox] PUT /api/v1/timeout failed (idle_timeout={}, idle_check_interval={})", idleTimeout,
+                    idleCheckInterval, exc);
             return;
         }
         IDLE_TIMEOUT_CACHE_LOCK.lock();
@@ -258,9 +262,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Register sandbox_id in the cross-instance shared cache under sharedKey.
-     *
+     * 
      * @param sharedKey the shared scope key (base_url + create_options)
      * @param sandboxId the sandbox ID to register
+     * @since 0.1.7
      */
     public static void registerSharedSandboxId(String sharedKey, String sandboxId) {
         SHARED_LOCK.lock();
@@ -273,9 +278,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Cache the lifecycle hook for baseUrl so teardown can reuse it.
-     *
+     * 
      * @param baseUrl the jiuwenBox server base URL to associate with the hook
      * @param hook the LifecycleHook instance to cache, may be null (no-op)
+     * @since 0.1.7
      */
     public static void registerLifecycleHook(String baseUrl, LifecycleHook hook) {
         if (hook == null) {
@@ -291,9 +297,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Pop the cached lifecycle hook for baseUrl.
-     *
+     * 
      * @param baseUrl the jiuwenBox server base URL whose hook should be removed
      * @return the previously cached LifecycleHook, or null if none was cached
+     * @since 0.1.7
      */
     public static LifecycleHook popLifecycleHook(String baseUrl) {
         SHARED_LOCK.lock();
@@ -306,8 +313,9 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Return base_urls that currently hold cached sandbox IDs.
-     *
+     * 
      * @return the list of distinct base URL strings from the shared cache
+     * @since 0.1.7
      */
     public static List<String> cachedBaseUrls() {
         SHARED_LOCK.lock();
@@ -327,9 +335,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Remove all cached sandbox IDs for baseUrl and return removed sandbox_ids.
-     *
+     * 
      * @param baseUrl the base URL whose cached sandbox IDs should be removed
      * @return the list of distinct sandbox IDs that were removed
+     * @since 0.1.7
      */
     public static List<String> clearSharedSandbox(String baseUrl) {
         String sharedKey = baseUrl.replaceAll("/+$", "");
@@ -357,17 +366,16 @@ public class JiuwenBoxProviderMixin {
     /**
      * THE CORE METHOD. Resolve sandbox ID from multiple sources with priority chain:
      * env var → launcher extra_params → endpoint → SHARED_SANDBOX_IDS cache → create new sandbox.
-     *
+     * 
      * @return the resolved sandbox ID string
+     * @since 0.1.7
      */
     public String getSandboxId() {
         String envSandboxId = System.getenv("JIUWENBOX_SANDBOX_ID");
         if (envSandboxId != null && !envSandboxId.isBlank() && !envSandboxId.equals(sandboxId)) {
             sandboxId = envSandboxId;
         }
-        sandboxIdFromLauncherExtraParams()
-                .filter(id -> !id.equals(sandboxId))
-                .ifPresent(id -> sandboxId = id);
+        sandboxIdFromLauncherExtraParams().filter(id -> !id.equals(sandboxId)).ifPresent(id -> sandboxId = id);
         if (sandboxId == null) {
             String endpointSandboxId = endpoint != null ? endpoint.getSandboxId() : null;
             if (endpointSandboxId != null && !endpointSandboxId.isEmpty()) {
@@ -382,6 +390,12 @@ public class JiuwenBoxProviderMixin {
         return sandboxId;
     }
 
+    /**
+     * createNewSandbox.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String createNewSandbox() {
         LifecycleHook lifecycleHook = lifecycleHook().orElse(null);
         String sharedKey = sharedScopeKey();
@@ -391,8 +405,7 @@ public class JiuwenBoxProviderMixin {
         try {
             sandboxId = SHARED_SANDBOX_IDS.get(sharedKey);
             if (sandboxId == null) {
-                invokeLifecycleHook(lifecycleHook, "before_create",
-                        Map.of("reason", "initial"));
+                invokeLifecycleHook(lifecycleHook, "before_create", Map.of("reason", "initial"));
                 configureServerIdleTimeout();
                 Map<String, Object> createOptions = sandboxCreateOptionsFromLauncherExtraParams();
                 sandboxId = getClient().createSandbox(createOptions);
@@ -404,16 +417,18 @@ public class JiuwenBoxProviderMixin {
             SHARED_LOCK.unlock();
         }
         if (isNewlyCreated) {
-            PreserveFilesUpload.uploadPreserveFiles(
-                    getClient(),
-                    sandboxId,
+            PreserveFilesUpload.uploadPreserveFiles(getClient(), sandboxId,
                     launcherExtraParams(false).get("preserve_files_upload"));
-            invokeLifecycleHook(lifecycleHook, "after_create",
-                    Map.of("reason", "initial", "sandbox_id", sandboxId));
+            invokeLifecycleHook(lifecycleHook, "after_create", Map.of("reason", "initial", "sandbox_id", sandboxId));
         }
         return sandboxId;
     }
 
+    /**
+     * registerExistingSandboxId.
+     * 
+     * @since 0.1.7
+     */
     private void registerExistingSandboxId() {
         String sharedKey = sharedScopeKey();
         SHARED_LOCK.lock();
@@ -427,11 +442,10 @@ public class JiuwenBoxProviderMixin {
 
     /**
      * Run op with auto sandbox recreate on sandbox-not-found 404.
-     *
+     * 
      * @param op the sandbox retry operation to execute
-     * @param <T> the return type of the operation
      * @return the operation result
-     * @throws SandboxRecreateExhaustedException if all recreate retries are exhausted
+     * @since 0.1.7
      */
     public <T> T executeWithSandboxRetry(SandboxRetryOperation<T> op) {
         int maxRetries = resolveRecreateRetries();
@@ -448,13 +462,12 @@ public class JiuwenBoxProviderMixin {
                     logger.warn("[jiuwenbox] sandbox retry loop interrupted", ie);
                     break;
                 }
-                logger.info("[jiuwenbox] sandbox-not-found auto-recreate attempt {}/{} (stale={})",
-                        attempt, maxRetries, staleSandboxId);
+                logger.info("[jiuwenbox] sandbox-not-found auto-recreate attempt {}/{} (stale={})", attempt, maxRetries,
+                        staleSandboxId);
                 try {
                     currentSandboxId = recreateSandboxAfterLoss(staleSandboxId);
                 } catch (SandboxOperationException exc) {
-                    logger.warn("[jiuwenbox] sandbox recreate failed (attempt {}/{})",
-                            attempt, maxRetries, exc);
+                    logger.warn("[jiuwenbox] sandbox recreate failed (attempt {}/{})", attempt, maxRetries, exc);
                     continue;
                 }
             }
@@ -463,30 +476,28 @@ public class JiuwenBoxProviderMixin {
             } catch (SandboxNotFoundException e) {
                 lastExc = e;
                 staleSandboxId = currentSandboxId;
-                logger.warn("[jiuwenbox] sandbox {} not found (attempt {}/{})",
-                        currentSandboxId, attempt, maxRetries);
+                logger.warn("[jiuwenbox] sandbox {} not found (attempt {}/{})", currentSandboxId, attempt, maxRetries);
             } catch (SandboxOperationException e) {
                 if (isSandboxNotFoundError(e)) {
                     lastExc = e;
                     staleSandboxId = currentSandboxId;
-                    logger.warn("[jiuwenbox] sandbox {} not found (attempt {}/{})",
-                            currentSandboxId, attempt, maxRetries);
+                    logger.warn("[jiuwenbox] sandbox {} not found (attempt {}/{})", currentSandboxId, attempt,
+                            maxRetries);
                 } else {
                     throw e;
                 }
             }
         }
-        throw new SandboxRecreateExhaustedException(
-                "Sandbox recreate exhausted after " + maxRetries + " retries", maxRetries, staleSandboxId);
+        throw new SandboxRecreateExhaustedException("Sandbox recreate exhausted after " + maxRetries + " retries",
+                maxRetries, staleSandboxId);
     }
 
     /**
      * Recreate sandbox under lock; double-check launcher/cache before creating.
-     *
+     * 
      * @param staleSandboxId the sandbox ID that was lost or stale
      * @return the new or existing sandbox ID after recreation
-     * @throws SandboxOperationException if sandbox creation fails
-     * @throws IllegalArgumentException if endpoint.base_url is missing or blank
+     * @since 0.1.7
      */
     public String recreateSandboxAfterLoss(String staleSandboxId) {
         Optional<String> baseUrlOpt = endpointValue(endpoint, config, "base_url");
@@ -496,9 +507,7 @@ public class JiuwenBoxProviderMixin {
         String baseUrl = baseUrlOpt.get();
         Map<String, Object> createOptions = sandboxCreateOptionsFromLauncherExtraParams();
         Map<String, Object> extraParams = launcherExtraParams(false);
-        Object preserveFilesUpload = extraParams instanceof Map
-                ? extraParams.get("preserve_files_upload") : null;
-
+        Object preserveFilesUpload = extraParams instanceof Map ? extraParams.get("preserve_files_upload") : null;
         RECREATE_LOCK.lock();
         try {
             String current = sandboxIdFromLauncherExtraParams().orElse(null);
@@ -520,47 +529,49 @@ public class JiuwenBoxProviderMixin {
             invokeLifecycleHook(lifecycleHook, "before_recreate",
                     Map.of("reason", "sandbox_lost", "stale_sandbox_id", staleSandboxId));
 
-            String policyMode = createOptions.get("policy_mode") instanceof String
-                    ? (String) createOptions.get("policy_mode") : null;
+            String policyMode =
+                createOptions.get("policy_mode") instanceof String ? (String) createOptions.get("policy_mode") : null;
             @SuppressWarnings("unchecked")
-            Map<String, Object> policy = createOptions.get("policy") instanceof Map
-                    ? (Map<String, Object>) createOptions.get("policy") : null;
-
-            String newId = SandboxLifecycleHelper.forceRecreateJiuwenBoxSandbox(
-                    baseUrl,
-                    policy,
-                    policyMode,
-                    timeoutSeconds,
-                    preserveFilesUpload,
-                    List.of(staleSandboxId),
-                    lifecycleHook,
-                    "sandbox_lost");
+            Map<String, Object> policy =
+                createOptions.get("policy") instanceof Map ? (Map<String, Object>) createOptions.get("policy") : null;
+            String newId = SandboxLifecycleHelper.forceRecreateJiuwenBoxSandbox(baseUrl, policy, policyMode,
+                    timeoutSeconds, preserveFilesUpload, List.of(staleSandboxId), lifecycleHook, "sandbox_lost");
 
             sandboxId = newId;
             launcherExtraParams(true).put("sandbox_id", newId);
-
             invokeLifecycleHook(lifecycleHook, "after_recreate",
-                    Map.of("reason", "sandbox_lost", "sandbox_id", newId,
-                            "stale_sandbox_id", staleSandboxId));
+                    Map.of("reason", "sandbox_lost", "sandbox_id", newId, "stale_sandbox_id", staleSandboxId));
             return newId;
         } finally {
             RECREATE_LOCK.unlock();
         }
     }
 
-    private static void invokeLifecycleHook(LifecycleHook hook, String eventName,
-            Map<String, Object> context) {
+    /**
+     * invokeLifecycleHook.
+     * 
+     * @param hook hook
+     * @param eventName eventName
+     * @param context context
+     * @since 0.1.7
+     */
+    private static void invokeLifecycleHook(LifecycleHook hook, String eventName, Map<String, Object> context) {
         if (hook == null) {
             return;
         }
         try {
             hook.onEvent(eventName, new HashMap<>(context));
         } catch (RuntimeException exc) {
-            logger.warn("[jiuwenbox] lifecycle_hook invocation failed for event {}",
-                    eventName, exc);
+            logger.warn("[jiuwenbox] lifecycle_hook invocation failed for event {}", eventName, exc);
         }
     }
 
+    /**
+     * resolveRecreateRetries.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static int resolveRecreateRetries() {
         String raw = System.getenv("JIUWENBOX_SANDBOX_RECREATE_RETRIES");
         if (raw == null || raw.trim().isEmpty()) {
@@ -570,12 +581,19 @@ public class JiuwenBoxProviderMixin {
             int value = Integer.parseInt(raw);
             return Math.max(value, 0);
         } catch (NumberFormatException exc) {
-            logger.warn("[jiuwenbox] JIUWENBOX_SANDBOX_RECREATE_RETRIES={} invalid, "
-                    + "falling back to default {}", raw, DEFAULT_SANDBOX_RECREATE_RETRIES);
+            logger.warn("[jiuwenbox] JIUWENBOX_SANDBOX_RECREATE_RETRIES={} invalid, falling back to default {}", raw,
+                    DEFAULT_SANDBOX_RECREATE_RETRIES);
             return DEFAULT_SANDBOX_RECREATE_RETRIES;
         }
     }
 
+    /**
+     * isSandboxNotFoundError.
+     * 
+     * @param exc exc
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isSandboxNotFoundError(Exception exc) {
         if (exc instanceof SandboxNotFoundException) {
             return true;
@@ -583,15 +601,22 @@ public class JiuwenBoxProviderMixin {
         return false;
     }
 
-    private static Optional<String> endpointValue(SandboxEndpoint endpoint,
-            SandboxGatewayConfig config, String field) {
+    /**
+     * endpointValue.
+     * 
+     * @param endpoint endpoint
+     * @param config config
+     * @param field field
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Optional<String> endpointValue(SandboxEndpoint endpoint, SandboxGatewayConfig config, String field) {
         if ("base_url".equals(field)) {
             String value = endpoint != null ? endpoint.getBaseUrl() : null;
             if (value != null) {
                 return Optional.of(value);
             }
-            SandboxLauncherConfig launcherConfig = config != null
-                    ? config.getLauncherConfig() : null;
+            SandboxLauncherConfig launcherConfig = config != null ? config.getLauncherConfig() : null;
             return Optional.ofNullable(launcherConfig != null ? launcherConfig.getBaseUrl() : null);
         }
         if ("sandbox_id".equals(field)) {
@@ -599,8 +624,7 @@ public class JiuwenBoxProviderMixin {
             if (value != null) {
                 return Optional.of(value);
             }
-            SandboxLauncherConfig launcherConfig = config != null
-                    ? config.getLauncherConfig() : null;
+            SandboxLauncherConfig launcherConfig = config != null ? config.getLauncherConfig() : null;
             if (launcherConfig != null) {
                 Object ep = launcherConfig.getExtraParams();
                 if (ep instanceof Map) {

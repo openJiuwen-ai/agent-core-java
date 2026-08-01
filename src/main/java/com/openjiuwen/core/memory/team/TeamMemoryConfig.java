@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.team;
 
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +13,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Team memory configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -35,7 +38,11 @@ public class TeamMemoryConfig {
     private String teamMemoryDir;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveEmbeddingConfig.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static EmbeddingConfig resolveEmbeddingConfig(TeamMemoryConfig config) {
         if (config != null && config.getEmbeddingConfig() != null) {
@@ -44,9 +51,8 @@ public class TeamMemoryConfig {
         String modelName = System.getenv("EMBEDDING_MODEL_NAME");
         String baseUrl = System.getenv("EMBEDDING_BASE_URL");
         String apiKey = System.getenv("EMBEDDING_API_KEY");
-        if (modelName != null && !modelName.isBlank()
-                && baseUrl != null && !baseUrl.isBlank()
-                && apiKey != null && !apiKey.isBlank()) {
+        if (modelName != null && !modelName.isBlank() && baseUrl != null && !baseUrl.isBlank() && apiKey != null
+                && !apiKey.isBlank()) {
             return new EmbeddingConfig(modelName, baseUrl, apiKey);
         }
         return null;

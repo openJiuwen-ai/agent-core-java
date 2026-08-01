@@ -11,14 +11,24 @@ import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 /**
  * Factory for pairing a vector store with its index manager implementation.
+ * 
+ * @since 0.1.7
  */
 public final class IndexerFactory {
-
+    /**
+     * IndexerFactory.
+     * 
+     * @since 0.1.7
+     */
     private IndexerFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createIndexer.
+     * 
+     * @param vectorStore vectorStore
+     * @return the result
+     * @since 0.1.7
      */
     public static Indexer createIndexer(VectorStore vectorStore) {
         if (vectorStore == null) {

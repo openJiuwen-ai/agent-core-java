@@ -12,17 +12,21 @@ import java.util.Map;
 
 /**
  * Legacy agent session factory.
- *
- * <p>Mirrors Python's {@code AgentSession} in {@code single_agent/legacy/react_agent.py}.</p>
- *
+ * <p>
+ * Mirrors Python's {@code AgentSession} in {@code single_agent/legacy/react_agent.py}.
+ * </p>
+ * 
  * @deprecated Use {@link AgentSessionApi} directly instead.
+ * @since 0.1.7
  */
+@Deprecated
 public class AgentSession {
-
     private final Checkpointer checkpointer;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentSession.
+     * 
+     * @since 0.1.7
      */
     public AgentSession() {
         this.checkpointer = CheckpointerFactory.getCheckpointer();
@@ -30,10 +34,11 @@ public class AgentSession {
 
     /**
      * Create and prepare a session for execution.
-     *
+     * 
      * @param sessionId the session ID
-     * @param inputs    input data for pre-run
+     * @param inputs input data for pre-run
      * @return a prepared AgentSessionApi
+     * @since 0.1.7
      */
     public AgentSessionApi preRun(String sessionId, Map<String, Object> inputs) {
         if (sessionId == null || sessionId.isEmpty()) {
@@ -47,8 +52,9 @@ public class AgentSession {
 
     /**
      * Release session resources.
-     *
+     * 
      * @param sessionId the session ID to release
+     * @since 0.1.7
      */
     public void release(String sessionId) {
         if (checkpointer != null) {

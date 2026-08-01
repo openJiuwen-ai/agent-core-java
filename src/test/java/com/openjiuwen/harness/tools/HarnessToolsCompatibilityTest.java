@@ -1,4 +1,7 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.cli.CLIOptions;
 import com.openjiuwen.harness.cli.HarnessCli;
@@ -7,6 +10,7 @@ import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.ResearchAgentFactory;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,10 +18,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessToolsCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -59,11 +60,8 @@ class HarnessToolsCompatibilityTest {
 
     @Test
     void taskToolShouldDelegateToSubagent() {
-        var agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath(tempDir.toString())
-                .language("en")
-                .subagents(List.of(ResearchAgentFactory.buildResearchAgentConfig("en")))
-                .build());
+        var agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath(tempDir.toString())
+                .language("en").subagents(List.of(ResearchAgentFactory.buildResearchAgentConfig("en"))).build());
         TaskTool tool = new TaskTool(agent);
 
         ToolOutput output = tool.delegate("research_agent", "summarize repo", "session-main");
@@ -92,18 +90,13 @@ class HarnessToolsCompatibilityTest {
 
     @Test
     void switchModeToolShouldToggleDeepAgentMode() {
-        var agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath(tempDir.toString())
-                .build());
+        var agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath(tempDir.toString()).build());
         SwitchModeTool tool = new SwitchModeTool(agent);
 
         ToolOutput switched = tool.switchMode("plan");
 
         assertThat(switched.isSuccess()).isTrue();
         assertThat(agent.getCurrentMode()).isEqualTo(AgentMode.PLAN);
-        assertThat(switched.getData()).isEqualTo(Map.of(
-                "previous_mode", "normal",
-                "current_mode", "plan"
-        ));
+        assertThat(switched.getData()).isEqualTo(Map.of("previous_mode", "normal", "current_mode", "plan"));
     }
 }

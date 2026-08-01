@@ -14,21 +14,36 @@ import java.util.Map;
 
 /**
  * Helpers for building retrieval-related exceptions with concise call sites.
+ * 
+ * @since 0.1.7
  */
 public final class RetrievalExceptions {
-
+    /**
+     * RetrievalExceptions.
+     * 
+     * @since 0.1.7
+     */
     private RetrievalExceptions() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * error.
+     * 
+     * @param status status
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     public static BaseError error(StatusCode status, String message) {
         return ErrorHelper.buildError(status, message, null, null, Map.of("error_msg", message));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validation.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     public static ValidationError validation(String message) {
         Map<String, Object> params = new LinkedHashMap<>();

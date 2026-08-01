@@ -8,29 +8,42 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.ExecutionSpec.
+ * 
+ * @since 0.1.7
  */
 public class ExecutionSpec {
-
     private String caseId;
     private String executionId;
     private Integer seed;
     private Map<String, Object> tags;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecutionSpec.
+     * 
+     * @since 0.1.7
      */
     public ExecutionSpec() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecutionSpec.
+     * 
+     * @param caseId caseId
+     * @param executionId executionId
+     * @since 0.1.7
      */
     public ExecutionSpec(String caseId, String executionId) {
         this(caseId, executionId, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecutionSpec.
+     * 
+     * @param caseId caseId
+     * @param executionId executionId
+     * @param seed seed
+     * @param tags tags
+     * @since 0.1.7
      */
     public ExecutionSpec(String caseId, String executionId, Integer seed, Map<String, Object> tags) {
         this.caseId = caseId;
@@ -40,70 +53,99 @@ public class ExecutionSpec {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCaseId() {
         return caseId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCaseId.
+     * 
+     * @param caseId caseId
+     * @since 0.1.7
      */
     public void setCaseId(String caseId) {
         this.caseId = caseId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExecutionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getExecutionId() {
         return executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExecutionId.
+     * 
+     * @param executionId executionId
+     * @since 0.1.7
      */
     public void setExecutionId(String executionId) {
         this.executionId = executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSeed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getSeed() {
         return seed;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSeed.
+     * 
+     * @param seed seed
+     * @since 0.1.7
      */
     public void setSeed(Integer seed) {
         this.seed = seed;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTags.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getTags() {
         return tags;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTags.
+     * 
+     * @param tags tags
+     * @since 0.1.7
      */
     public void setTags(Map<String, Object> tags) {
         this.tags = tags;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private String caseId;
@@ -111,11 +153,20 @@ public class ExecutionSpec {
         private Integer seed;
         private Map<String, Object> tags;
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * caseId.
+         * 
+         * @param caseId caseId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder caseId(String caseId) {
             this.caseId = caseId;
@@ -123,7 +174,11 @@ public class ExecutionSpec {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * executionId.
+         * 
+         * @param executionId executionId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder executionId(String executionId) {
             this.executionId = executionId;
@@ -131,7 +186,11 @@ public class ExecutionSpec {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * seed.
+         * 
+         * @param seed seed
+         * @return the result
+         * @since 0.1.7
          */
         public Builder seed(Integer seed) {
             this.seed = seed;
@@ -139,7 +198,11 @@ public class ExecutionSpec {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * tags.
+         * 
+         * @param tags tags
+         * @return the result
+         * @since 0.1.7
          */
         public Builder tags(Map<String, Object> tags) {
             this.tags = tags;
@@ -147,7 +210,10 @@ public class ExecutionSpec {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public ExecutionSpec build() {
             return new ExecutionSpec(caseId, executionId, seed, tags);

@@ -14,8 +14,8 @@ import java.util.Map;
  * HTTP request body configuration.
  * <p>
  * Mirrors Python's {@code HttpRequestBodyConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

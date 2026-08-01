@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.schema;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -12,20 +15,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for MergeUtils.
  * Tests the merge utilities used for streaming message chunk aggregation.
  */
 class MergeUtilsTest {
-
     // ============================== mergeParserContent tests ==============================
-
     @Nested
     @DisplayName("mergeParserContent tests")
     class MergeParserContentTests {
-
         @Test
         @DisplayName("Merge null right returns left")
         void testMergeNullRight() {
@@ -106,7 +104,6 @@ class MergeUtilsTest {
     @Nested
     @DisplayName("mergeMaps tests")
     class MergeMapsTests {
-
         @Test
         @DisplayName("Merge non-overlapping maps")
         void testMergeNonOverlapping() {
@@ -197,14 +194,10 @@ class MergeUtilsTest {
         @SuppressWarnings("unchecked")
         void testDeepRecursiveMerge() {
             Map<String, Object> left = new LinkedHashMap<>();
-            left.put("level1", new LinkedHashMap<>(Map.of(
-                    "level2", new LinkedHashMap<>(Map.of("content", "hello "))
-            )));
+            left.put("level1", new LinkedHashMap<>(Map.of("level2", new LinkedHashMap<>(Map.of("content", "hello ")))));
 
             Map<String, Object> right = new LinkedHashMap<>();
-            right.put("level1", new LinkedHashMap<>(Map.of(
-                    "level2", new LinkedHashMap<>(Map.of("content", "world"))
-            )));
+            right.put("level1", new LinkedHashMap<>(Map.of("level2", new LinkedHashMap<>(Map.of("content", "world")))));
 
             Map<String, Object> result = MergeUtils.mergeMaps(left, right);
             Map<String, Object> level1 = (Map<String, Object>) result.get("level1");

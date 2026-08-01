@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.OperationMode;
@@ -9,20 +12,18 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
+
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Assumptions;
 
 import java.io.File;
 import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-import org.junit.jupiter.api.Assumptions;
 
 /**
  * Tests for LocalCodeOperation.
  * Mirrors Python's test_code_operation.py test cases.
  */
 class LocalCodeOperationTest {
-
     private SysOperation sysOp;
 
     @BeforeEach
@@ -167,7 +168,7 @@ class LocalCodeOperationTest {
         for (String lang : unsupported) {
             ExecuteCodeResult result = code().executeCode(code, lang, 300, null, null);
             assertEquals(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode(), result.getCode());
-            assertTrue(result.getMessage().contains(lang + " is not supported"), 
+            assertTrue(result.getMessage().contains(lang + " is not supported"),
                     "Message should contain '" + lang + " is not supported'");
             assertEquals(code, result.getData().getCodeContent());
             assertEquals(lang, result.getData().getLanguage());
@@ -301,15 +302,15 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: empty code returns error")
     void testStreamEmptyCode() {
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream("", "python", 300, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream("", "python", 300, null, null));
         assertEquals(1, results.size());
         assertEquals(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode(), results.get(0).getCode());
         assertTrue(results.get(0).getMessage().contains("code can not be empty"));
 
         // blank code
-        List<ExecuteCodeStreamResult> blankResults = collectStreamResults(
-                code().executeCodeStream("   \n\t", "python", 300, null, null));
+        List<ExecuteCodeStreamResult> blankResults =
+            collectStreamResults(code().executeCodeStream("   \n\t", "python", 300, null, null));
         assertEquals(1, blankResults.size());
         assertTrue(blankResults.get(0).getMessage().contains("code can not be empty"));
     }
@@ -317,8 +318,8 @@ class LocalCodeOperationTest {
     @Test
     @DisplayName("Stream: unsupported language returns error")
     void testStreamUnsupportedLanguage() {
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream("print(1)", "java", 300, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream("print(1)", "java", 300, null, null));
         assertEquals(1, results.size());
         assertEquals(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode(), results.get(0).getCode());
         assertTrue(results.get(0).getMessage().contains("java is not supported"));
@@ -330,17 +331,17 @@ class LocalCodeOperationTest {
     void testStreamPythonNormal() {
         Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('hello python')\nprint('stream test for python')";
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "python", 10, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "python", 10, null, null));
 
         assertTrue(results.size() >= 2, "Should have at least stdout + exit event");
 
-        boolean hasHello = results.stream().anyMatch(r ->
-                "stdout".equals(r.getData().getType()) && r.getData().getText().contains("hello python"));
+        boolean hasHello = results.stream().anyMatch(
+                r -> "stdout".equals(r.getData().getType()) && r.getData().getText().contains("hello python"));
         assertTrue(hasHello, "Should contain 'hello python' in stdout");
 
-        boolean hasStream = results.stream().anyMatch(r ->
-                "stdout".equals(r.getData().getType()) && r.getData().getText().contains("stream test for python"));
+        boolean hasStream = results.stream().anyMatch(r -> "stdout".equals(r.getData().getType())
+                && r.getData().getText().contains("stream test for python"));
         assertTrue(hasStream, "Should contain 'stream test for python' in stdout");
 
         ExecuteCodeStreamResult lastResult = results.get(results.size() - 1);
@@ -353,12 +354,12 @@ class LocalCodeOperationTest {
     void testStreamPythonStderr() {
         Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print(undefined_variable)";
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "python", 10, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "python", 10, null, null));
 
         assertTrue(results.size() >= 1);
-        boolean hasStderr = results.stream().anyMatch(r ->
-                "stderr".equals(r.getData().getType()) && r.getData().getText().contains("NameError"));
+        boolean hasStderr = results.stream()
+                .anyMatch(r -> "stderr".equals(r.getData().getType()) && r.getData().getText().contains("NameError"));
         assertTrue(hasStderr, "Should contain NameError in stderr");
 
         ExecuteCodeStreamResult lastResult = results.get(results.size() - 1);
@@ -374,12 +375,12 @@ class LocalCodeOperationTest {
             return;
         }
         String code = "console.log('hello javascript');\nconsole.log('stream test for js');";
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "javascript", 10, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "javascript", 10, null, null));
 
         assertTrue(results.size() >= 2);
-        boolean hasHello = results.stream().anyMatch(r ->
-                "stdout".equals(r.getData().getType()) && r.getData().getText().contains("hello javascript"));
+        boolean hasHello = results.stream().anyMatch(
+                r -> "stdout".equals(r.getData().getType()) && r.getData().getText().contains("hello javascript"));
         assertTrue(hasHello);
 
         ExecuteCodeStreamResult lastResult = results.get(results.size() - 1);
@@ -394,12 +395,10 @@ class LocalCodeOperationTest {
         String code = "import os\nprint(os.getenv('TEST_ENV_KEY'))\nprint(os.getenv('TEST_ENV_VALUE'))";
         Map<String, String> env = Map.of("TEST_ENV_KEY", "python_test", "TEST_ENV_VALUE", "123456");
 
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "python", 10, env, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "python", 10, env, null));
 
-        String stdoutText = results.stream()
-                .filter(r -> r.getData().getText() != null)
-                .map(r -> r.getData().getText())
+        String stdoutText = results.stream().filter(r -> r.getData().getText() != null).map(r -> r.getData().getText())
                 .reduce("", String::concat);
         assertTrue(stdoutText.contains("python_test"));
         assertTrue(stdoutText.contains("123456"));
@@ -410,13 +409,12 @@ class LocalCodeOperationTest {
     void testStreamTimeout() {
         Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "while True: pass";
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "python", 2, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "python", 2, null, null));
 
         assertTrue(results.size() >= 1);
-        boolean hasTimeout = results.stream().anyMatch(r ->
-                r.getMessage().toLowerCase().contains("timeout") ||
-                r.getMessage().contains("execution receive error"));
+        boolean hasTimeout = results.stream().anyMatch(r -> r.getMessage().toLowerCase().contains("timeout")
+                || r.getMessage().contains("execution receive error"));
         assertTrue(hasTimeout, "Should contain timeout error");
     }
 
@@ -425,13 +423,11 @@ class LocalCodeOperationTest {
     void testStreamDefaultParams() {
         Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
         String code = "print('default parameter test success')";
-        List<ExecuteCodeStreamResult> results = collectStreamResults(
-                code().executeCodeStream(code, "python", 300, null, null));
+        List<ExecuteCodeStreamResult> results =
+            collectStreamResults(code().executeCodeStream(code, "python", 300, null, null));
 
         assertTrue(results.size() >= 2);
-        String stdoutText = results.stream()
-                .filter(r -> r.getData().getText() != null)
-                .map(r -> r.getData().getText())
+        String stdoutText = results.stream().filter(r -> r.getData().getText() != null).map(r -> r.getData().getText())
                 .reduce("", String::concat);
         assertTrue(stdoutText.contains("default parameter test success"));
 

@@ -10,7 +10,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Auto-generated for codecheck compliance.
+ * DeepLoopEvent.
+ * 
+ * @since 0.1.7
  */
 public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
     private final int priority;
@@ -22,6 +24,12 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
     private final String taskId;
     private final Map<String, Object> metadata;
 
+    /**
+     * DeepLoopEvent.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private DeepLoopEvent(Builder builder) {
         this.priority = builder.priority != null ? builder.priority : defaultPriority(builder.eventType);
         this.sequence = builder.sequence;
@@ -34,14 +42,24 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @param sequence sequence
+     * @param eventType eventType
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder(long sequence, DeepLoopEventType eventType, String content) {
         return new Builder(sequence, eventType, content);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultPriority.
+     * 
+     * @param eventType eventType
+     * @return the result
+     * @since 0.1.7
      */
     public static int defaultPriority(DeepLoopEventType eventType) {
         if (eventType == DeepLoopEventType.ABORT) {
@@ -54,12 +72,13 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * compareTo.
+     * 
+     * @param other other
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int compareTo(DeepLoopEvent other) {
         int priorityCompare = Integer.compare(priority, other.priority);
         if (priorityCompare != 0) {
@@ -69,63 +88,89 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getPriority() {
         return priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSequence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public long getSequence() {
         return sequence;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCreatedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getEventId() {
         return eventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DeepLoopEventType getEventType() {
         return eventType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTaskId() {
         return taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private Integer priority;
@@ -135,8 +180,22 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         private DeepLoopEventType eventType;
         private String content;
         private String taskId;
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> metadata = new LinkedHashMap<>();
 
+        /**
+         * Builder.
+         * 
+         * @param sequence sequence
+         * @param eventType eventType
+         * @param content content
+         * @since 0.1.7
+         */
         private Builder(long sequence, DeepLoopEventType eventType, String content) {
             this.sequence = sequence;
             this.eventType = eventType;
@@ -144,7 +203,11 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * priority.
+         * 
+         * @param priority priority
+         * @return the result
+         * @since 0.1.7
          */
         public Builder priority(int priority) {
             this.priority = priority;
@@ -152,7 +215,11 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * taskId.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder taskId(String taskId) {
             this.taskId = taskId;
@@ -160,7 +227,11 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * metadata.
+         * 
+         * @param metadata metadata
+         * @return the result
+         * @since 0.1.7
          */
         public Builder metadata(Map<String, Object> metadata) {
             this.metadata = new LinkedHashMap<>(metadata == null ? Map.of() : metadata);
@@ -168,7 +239,11 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * eventId.
+         * 
+         * @param eventId eventId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder eventId(String eventId) {
             this.eventId = eventId;
@@ -176,7 +251,11 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * createdAt.
+         * 
+         * @param createdAt createdAt
+         * @return the result
+         * @since 0.1.7
          */
         public Builder createdAt(Instant createdAt) {
             this.createdAt = createdAt;
@@ -184,7 +263,10 @@ public final class DeepLoopEvent implements Comparable<DeepLoopEvent> {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public DeepLoopEvent build() {
             return new DeepLoopEvent(this);

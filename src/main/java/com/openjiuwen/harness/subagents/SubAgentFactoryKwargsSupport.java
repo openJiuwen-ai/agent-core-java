@@ -14,7 +14,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * SubAgentFactoryKwargsSupport
+ *
+ * @since 0.1.7
+ */
 final class SubAgentFactoryKwargsSupport {
+    /**
+     * SubAgentFactoryKwargsSupport.
+     * 
+     * @since 0.1.7
+     */
     private SubAgentFactoryKwargsSupport() {
     }
 
@@ -22,9 +32,7 @@ final class SubAgentFactoryKwargsSupport {
         return factoryKwargs != null ? new LinkedHashMap<>(factoryKwargs) : new LinkedHashMap<>();
     }
 
-    static AgentCard resolveAgentCard(Map<String, Object> kwargs,
-                                      String defaultName,
-                                      String defaultDescription) {
+    static AgentCard resolveAgentCard(Map<String, Object> kwargs, String defaultName, String defaultDescription) {
         Object card = first(kwargs, List.of("card", "agent_card"));
         if (card instanceof AgentCard agentCard) {
             return agentCard;
@@ -42,9 +50,7 @@ final class SubAgentFactoryKwargsSupport {
         if (id == null) {
             id = stringValue(cardMap.get("id"));
         }
-        return AgentCard.builder()
-                .id(id)
-                .name(name != null ? name : defaultName)
+        return AgentCard.builder().id(id).name(name != null ? name : defaultName)
                 .description(description != null ? description : defaultDescription)
                 .inputParams(firstNonNull(new Object[]{first(kwargs, List.of("input_params", "inputParams")),
                         cardMap.get("input_params"), cardMap.get("inputParams")}))
@@ -78,7 +84,8 @@ final class SubAgentFactoryKwargsSupport {
         if (isTaskLoopEnabled != null) {
             config.setEnableTaskLoop(isTaskLoopEnabled);
         }
-        Boolean isWorkDirRestricted = toBooleanValue(first(kwargs, List.of("restrict_to_work_dir", "restrictToWorkDir", "isRestrictToWorkDir")));
+        Boolean isWorkDirRestricted =
+            toBooleanValue(first(kwargs, List.of("restrict_to_work_dir", "restrictToWorkDir", "isRestrictToWorkDir")));
         if (isWorkDirRestricted != null) {
             config.setRestrictToWorkDir(isWorkDirRestricted);
         }
@@ -112,21 +119,28 @@ final class SubAgentFactoryKwargsSupport {
         if (skills != null) {
             config.setSkills(skills);
         }
-        List<String> skillDirectories = stringList(first(
-                kwargs,
-                List.of("skill_directories", "skillDirectories", "skills_dir", "skill_dirs")));
+        List<String> skillDirectories =
+            stringList(first(kwargs, List.of("skill_directories", "skillDirectories", "skills_dir", "skill_dirs")));
         if (skillDirectories != null) {
             config.setSkillDirectories(skillDirectories);
         }
         Map<String, Object> metadata = mapValue(first(kwargs, List.of("metadata")));
         if (metadata != null) {
-            Map<String, Object> merged = new LinkedHashMap<>(
-                    config.getMetadata() != null ? config.getMetadata() : Map.of());
+            Map<String, Object> merged =
+                new LinkedHashMap<>(config.getMetadata() != null ? config.getMetadata() : Map.of());
             merged.putAll(metadata);
             config.setMetadata(merged);
         }
     }
 
+    /**
+     * first.
+     * 
+     * @param values values
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object first(Map<String, Object> values, List<String> keys) {
         if (values == null || values.isEmpty()) {
             return null;
@@ -139,6 +153,13 @@ final class SubAgentFactoryKwargsSupport {
         return null;
     }
 
+    /**
+     * firstNonNull.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstNonNull(Object[] values) {
         for (Object value : values) {
             if (value != null) {
@@ -148,14 +169,35 @@ final class SubAgentFactoryKwargsSupport {
         return null;
     }
 
+    /**
+     * optionalString.
+     * 
+     * @param value value
+     * @return Optional<String>
+     * @since 0.1.7
+     */
     private static java.util.Optional<String> optionalString(Object value) {
         return java.util.Optional.ofNullable(value instanceof String text && !text.isBlank() ? text : null);
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value instanceof String text && !text.isBlank() ? text : null;
     }
 
+    /**
+     * integer.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -170,6 +212,13 @@ final class SubAgentFactoryKwargsSupport {
         return null;
     }
 
+    /**
+     * toBooleanValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Boolean toBooleanValue(Object value) {
         if (value instanceof Boolean boolValue) {
             return boolValue;
@@ -180,35 +229,53 @@ final class SubAgentFactoryKwargsSupport {
         return null;
     }
 
+    /**
+     * objectList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> objectList(Object value) {
         if (value == null) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         if (value instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(Object.class::cast)
-                    .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+            return collection.stream().map(Object.class::cast).collect(ArrayList::new, ArrayList::add,
+                    ArrayList::addAll);
         }
         return new ArrayList<>(List.of(value));
     }
 
+    /**
+     * stringList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> stringList(Object value) {
         if (value == null) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         if (value instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(SubAgentFactoryKwargsSupport::stringValue)
-                    .filter(item -> item != null)
+            return collection.stream().map(SubAgentFactoryKwargsSupport::stringValue).filter(item -> item != null)
                     .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
         }
         String single = stringValue(value);
         return single != null ? new ArrayList<>(List.of(single)) : new ArrayList<>();
     }
 
+    /**
+     * mcpList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<McpServerConfig> mcpList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         List<McpServerConfig> result = new ArrayList<>();
         for (Object item : collection) {
@@ -219,6 +286,13 @@ final class SubAgentFactoryKwargsSupport {
         return result;
     }
 
+    /**
+     * mapValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> mapValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             return normalizeMap(map);
@@ -226,6 +300,13 @@ final class SubAgentFactoryKwargsSupport {
         return null;
     }
 
+    /**
+     * normalizeMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> normalizeMap(Map<?, ?> map) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {

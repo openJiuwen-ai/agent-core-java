@@ -1,11 +1,11 @@
-package com.openjiuwen.core.graph.store;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.graph.store;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class GraphMemoryExampleSupportTest {
+import org.junit.jupiter.api.Test;
 
+class GraphMemoryExampleSupportTest {
     @Test
     void shouldSeedSaveLoadAndSummarizeCheckpoint() {
         InMemoryStore store = new InMemoryStore();
@@ -16,9 +16,7 @@ class GraphMemoryExampleSupportTest {
 
         assertThat(loaded).isPresent();
         assertThat(loaded.get().getStep()).isEqualTo(2);
-        assertThat(GraphMemoryExampleSupport.summarize(loaded.get()))
-                .contains("ns=memory_ns")
-                .contains("step=2")
+        assertThat(GraphMemoryExampleSupport.summarize(loaded.get())).contains("ns=memory_ns").contains("step=2")
                 .contains("pending=1");
     }
 }

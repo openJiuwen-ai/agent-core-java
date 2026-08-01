@@ -17,65 +17,73 @@ import java.util.Map;
  * Base shell operation — abstract class for shell command execution.
  * <p>
  * Mirrors Python's {@code BaseShellOperation} in {@code sys_operation/shell.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseShellOperation extends BaseOperation {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseShellOperation.
+     * 
+     * @param name name
+     * @param mode mode
+     * @param description description
+     * @param runConfig runConfig
+     * @since 0.1.7
      */
     protected BaseShellOperation(String name, OperationMode mode, String description, Object runConfig) {
         super(name, mode.toNewMode(), description, runConfig);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<ToolCard> listTools() {
         return generateToolCards(List.of("executeCmd", "executeCmdStream", "executeCmdBackground"));
     }
 
     /**
      * Execute a shell command.
-     *
-     * @param command     command to execute
-     * @param cwd         working directory (default: current directory)
-     * @param timeout     command execution timeout in seconds (default 300)
+     * 
+     * @param command command to execute
+     * @param cwd working directory (default: current directory)
+     * @param timeout command execution timeout in seconds (default 300)
      * @param environment custom environment variables
-     * @param options     additional execution configuration
+     * @param options additional execution configuration
      * @return execution result
+     * @since 0.1.7
      */
-    public abstract ExecuteCmdResult executeCmd(
-            String command,
-            String cwd,
-            int timeout,
-            Map<String, String> environment,
-            Map<String, Object> options);
+    public abstract ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
+            Map<String, String> environment, Map<String, Object> options);
 
     /**
      * Execute a shell command with streaming output.
-     *
-     * @param command     command to execute
-     * @param cwd         working directory (default: current directory)
-     * @param timeout     command execution timeout in seconds (default 300)
+     * 
+     * @param command command to execute
+     * @param cwd working directory (default: current directory)
+     * @param timeout command execution timeout in seconds (default 300)
      * @param environment custom environment variables
-     * @param options     additional execution configuration
+     * @param options additional execution configuration
      * @return iterator of streaming results
+     * @since 0.1.7
      */
-    public abstract Iterator<ExecuteCmdStreamResult> executeCmdStream(
-            String command,
-            String cwd,
-            int timeout,
-            Map<String, String> environment,
-            Map<String, Object> options);
+    public abstract Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
+            Map<String, String> environment, Map<String, Object> options);
 
     /**
      * Execute a shell command in the background and return its PID.
+     * 
+     * @param command command
+     * @param cwd cwd
+     * @param environment environment
+     * @param grace grace
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public abstract ExecuteCmdBackgroundResult executeCmdBackground(
-            String command,
-            String cwd,
-            Map<String, String> environment,
-            double grace,
-            Map<String, Object> options);
+    public abstract ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd,
+            Map<String, String> environment, double grace, Map<String, Object> options);
 }

@@ -8,6 +8,8 @@ import java.util.Locale;
 
 /**
  * Shell selection enum aligned with Python's shell.py.
+ * 
+ * @since 0.1.7
  */
 public enum ShellType {
     AUTO("auto"),
@@ -23,14 +25,21 @@ public enum ShellType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static ShellType fromString(String value) {
         if (value == null || value.isBlank()) {

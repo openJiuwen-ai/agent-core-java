@@ -10,20 +10,18 @@ import java.lang.reflect.Method;
 
 /**
  * Utility class for safe model serialization.
+ * 
+ * @since 0.1.7
  */
 public class SafeModelDump {
-    
     /**
-     * Safely serialize an object to dictionary.
-     * Handles objects with toDict(), toMap(), or model_dump() methods.
-     *
-     * @param obj object to serialize
-     * @return dictionary representation
+     * safeModelDump.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Map<String, Object> safeModelDump(Object obj) {
         if (obj == null) {
             return new HashMap<>();
@@ -57,14 +55,19 @@ public class SafeModelDump {
             return dumped;
         }
 
-        
-        throw new IllegalArgumentException(
-            "Object of type " + obj.getClass().getName() + 
-            " has no serialization method (model_dump, to_dict, dict, toDict, or toMap)"
-        );
+        throw new IllegalArgumentException("Object of type " + obj.getClass().getName()
+                + " has no serialization method (model_dump, to_dict, dict, toDict, or toMap)");
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * invokeMapMethod.
+     * 
+     * @param obj obj
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> invokeMapMethod(Object obj, String methodName) {
         Method method = findMethod(obj.getClass(), methodName);
         if (method == null) {
@@ -83,6 +86,14 @@ public class SafeModelDump {
         return null;
     }
 
+    /**
+     * findMethod.
+     * 
+     * @param type type
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Method findMethod(Class<?> type, String methodName) {
         try {
             return type.getMethod(methodName);

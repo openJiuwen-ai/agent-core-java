@@ -1,7 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.sandbox;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
@@ -9,6 +15,7 @@ import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -20,31 +27,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Tests for sandbox fallback operations.
  */
 @Tag("system-test")
 class SandboxOperationTest {
-
     @TempDir
     Path tempDir;
 
     private SandboxGatewayConfig sandboxConfig() {
         return SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://local-provider:9999")
-                        .sandboxType("local")
-                        .build())
-                .params(Map.of(
-                        "root_path", tempDir.toString(),
-                        "shell_allowlist", List.of("pwd", "echo", "python3", "python", "sleep")
-                ))
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                        .baseUrl("http://local-provider:9999").sandboxType("local").build())
+                .params(Map.of("root_path", tempDir.toString(), "shell_allowlist",
+                        List.of("pwd", "echo", "python3", "python", "sleep")))
                 .build();
     }
 
@@ -155,7 +151,8 @@ class SandboxOperationTest {
         SandboxTestLocalProviders.ensureRegistered();
         SandboxFsOperation op = new SandboxFsOperation(sandboxConfig());
         Files.writeString(tempDir.resolve("search.txt"), "sandbox search");
-        Iterator<ReadFileStreamResult> stream = op.readFileStream("search.txt", "text", null, null, null, "utf-8", 4, null);
+        Iterator<ReadFileStreamResult> stream =
+            op.readFileStream("search.txt", "text", null, null, null, "utf-8", 4, null);
         var search = op.searchFiles(".", "search*", null);
 
         assertTrue(stream.hasNext());

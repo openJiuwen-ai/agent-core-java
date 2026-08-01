@@ -17,21 +17,43 @@ import java.util.Map;
  * Registry for response parsers and decompressors (singleton).
  * <p>
  * Mirrors Python's {@code ParserRegistry} (Singleton metaclass).
+ * 
+ * @since 0.1.7
  */
 public final class ParserRegistry {
-
     private static final Logger LOG = LoggerFactory.getLogger(ParserRegistry.class);
 
     private static volatile ParserRegistry instance;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<BaseResponseParser> parsers = new ArrayList<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, BaseResponseDecompressor> decompressors = new LinkedHashMap<>();
 
+    /**
+     * ParserRegistry.
+     * 
+     * @since 0.1.7
+     */
     private ParserRegistry() {
         registerDefaultComponents();
     }
 
-    /** Get the singleton instance. */
+    /**
+     * Get the singleton instance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static ParserRegistry getInstance() {
         if (instance == null) {
             synchronized (ParserRegistry.class) {
@@ -43,6 +65,11 @@ public final class ParserRegistry {
         return instance;
     }
 
+    /**
+     * registerDefaultComponents.
+     * 
+     * @since 0.1.7
+     */
     private void registerDefaultComponents() {
         // Register parsers (order matters — first matching parser wins)
         register(new JsonResponseParser());
@@ -53,24 +80,35 @@ public final class ParserRegistry {
         registerDecompressor("deflate", new DeflateDecompressor());
     }
 
-    /** Register a response parser. */
+    /**
+     * Register a response parser.
+     * 
+     * @param parser parser
+     * @since 0.1.7
+     */
     public void register(BaseResponseParser parser) {
         parsers.add(parser);
     }
 
-    /** Register a decompressor for the given encoding. */
+    /**
+     * Register a decompressor for the given encoding.
+     * 
+     * @param encoding encoding
+     * @param decompressor decompressor
+     * @since 0.1.7
+     */
     public void registerDecompressor(String encoding, BaseResponseDecompressor decompressor) {
         decompressors.put(encoding.toLowerCase(Locale.ROOT), decompressor);
     }
 
     /**
      * Parse the HTTP response by decompressing (if needed) and then delegating to a matching parser.
-     *
+     * 
      * @param responseHeaders response headers
-     * @param responseData    raw response bytes
-     * @param statusCode      HTTP status code
+     * @param responseData raw response bytes
+     * @param statusCode HTTP status code
      * @return parsed result
-     * @throws IllegalArgumentException if no parser can handle the content type
+     * @since 0.1.7
      */
     public Object parse(Map<String, String> responseHeaders, byte[] responseData, int statusCode) {
         // Normalize headers to lower-case keys
@@ -97,6 +135,14 @@ public final class ParserRegistry {
         throw new IllegalArgumentException("No response parser found for content-type: " + contentType);
     }
 
+    /**
+     * applyDecompression.
+     * 
+     * @param data data
+     * @param contentEncoding contentEncoding
+     * @return the result
+     * @since 0.1.7
+     */
     private byte[] applyDecompression(byte[] data, String contentEncoding) {
         String[] encodings = contentEncoding.split(",");
         for (String encoding : encodings) {

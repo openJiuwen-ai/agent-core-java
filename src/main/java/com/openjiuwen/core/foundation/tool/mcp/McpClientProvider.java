@@ -12,24 +12,26 @@ package com.openjiuwen.core.foundation.tool.mcp;
  * Each provider declares which transport {@code typeName()} it supports.
  * Service adapters can also register providers programmatically via
  * {@link McpClientFactory#register(String, McpClientProvider)}.
- *
- * @since 0.1.12
+ * 
  * @see McpClientFactory
  * @see McpClient
+ * @since 0.1.7
  */
 public interface McpClientProvider {
     /**
-     * The transport type name this provider handles (e.g., "sse", "stdio").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create an MCP client for the given server configuration.
-     *
+     * 
      * @param config the MCP server configuration
      * @return a new McpClient instance
+     * @since 0.1.7
      */
     McpClient create(McpServerConfig config);
 }

@@ -9,17 +9,26 @@ import java.util.Map;
 
 /**
  * Default configurations for tool optimizer.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.default_configs}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.default_configs}.
+ * 
+ * @since 0.1.7
  */
 public final class DefaultConfigs {
-
+    /**
+     * DefaultConfigs.
+     * 
+     * @since 0.1.7
+     */
     private DefaultConfigs() {
         // Utility class
     }
 
     /**
      * Default configuration for example generation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> defaultConfigEg() {
         Map<String, Object> config = new HashMap<>();
@@ -40,6 +49,9 @@ public final class DefaultConfigs {
 
     /**
      * Default configuration for description optimization.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> defaultConfigDesc() {
         Map<String, Object> config = new HashMap<>();
@@ -60,9 +72,10 @@ public final class DefaultConfigs {
 
     /**
      * Merge user config with defaults for example generation.
-     *
+     * 
      * @param userConfig User-provided configuration
      * @return Merged configuration
+     * @since 0.1.7
      */
     public static Map<String, Object> mergeWithDefaultEg(Map<String, Object> userConfig) {
         Map<String, Object> result = defaultConfigEg();
@@ -74,9 +87,10 @@ public final class DefaultConfigs {
 
     /**
      * Merge user config with defaults for description optimization.
-     *
+     * 
      * @param userConfig User-provided configuration
      * @return Merged configuration
+     * @since 0.1.7
      */
     public static Map<String, Object> mergeWithDefaultDesc(Map<String, Object> userConfig) {
         Map<String, Object> result = defaultConfigDesc();

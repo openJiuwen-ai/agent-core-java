@@ -8,22 +8,29 @@ import java.util.function.Predicate;
 
 /**
  * Public class CustomPredicateEvaluator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class CustomPredicateEvaluator implements StopConditionEvaluator {
     private final String name;
     private final Predicate<StopEvaluationContext> predicate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CustomPredicateEvaluator.
+     * 
+     * @param predicate predicate
+     * @since 0.1.7
      */
     public CustomPredicateEvaluator(Predicate<StopEvaluationContext> predicate) {
         this("CustomPredicate", predicate);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CustomPredicateEvaluator.
+     * 
+     * @param name name
+     * @param predicate predicate
+     * @since 0.1.7
      */
     public CustomPredicateEvaluator(String name, Predicate<StopEvaluationContext> predicate) {
         this.name = name == null || name.isBlank() ? "CustomPredicate" : name;
@@ -31,23 +38,24 @@ public class CustomPredicateEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shouldStop(StopEvaluationContext context) {
         return predicate != null && predicate.test(context);
     }

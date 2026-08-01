@@ -14,21 +14,26 @@ import java.util.Map;
  * <p>
  * Delegates to {@link VectorStoreFactory} for SPI-based vector store creation.
  * Maintained for backward compatibility.
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 public final class StoreFactory {
-    private StoreFactory() {}
+    /**
+     * StoreFactory.
+     * 
+     * @since 0.1.7
+     */
+    private StoreFactory() {
+    }
 
     /**
      * Create a vector store by type name with empty configuration.
      * <p>
      * Equivalent to {@code createVectorStore(storeType, Map.of())}.
-     *
+     * 
      * @param storeType the store type name (e.g. "memory", "pgvector")
      * @return a new {@link BaseVectorStore} instance
-     * @throws IllegalArgumentException     if storeType is null
-     * @throws UnsupportedOperationException if no provider is registered for the given type
+     * @since 0.1.7
      */
     public static BaseVectorStore createVectorStore(String storeType) {
         return createVectorStore(storeType, Map.of());
@@ -39,12 +44,11 @@ public final class StoreFactory {
      * <p>
      * Delegates to {@link VectorStoreFactory#create(String, Map)}. If {@code options}
      * is {@code null}, an empty configuration map is used instead.
-     *
+     * 
      * @param storeType the store type name (e.g. "memory", "pgvector")
-     * @param options   the configuration map, may be {@code null}
+     * @param options the configuration map, may be {@code null}
      * @return a new {@link BaseVectorStore} instance
-     * @throws IllegalArgumentException     if storeType is null
-     * @throws UnsupportedOperationException if no provider is registered for the given type
+     * @since 0.1.7
      */
     public static BaseVectorStore createVectorStore(String storeType, Map<String, Object> options) {
         if (storeType == null) {

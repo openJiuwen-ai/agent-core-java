@@ -1,28 +1,26 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
 
-import com.openjiuwen.core.sysop.BaseOperation;
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.sysop.OperationMode;
-import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.registry.OperationDef;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
+
 import org.junit.jupiter.api.*;
 
 import java.util.List;
 import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for custom operation extension and registry.
  * Mirrors Python's test_custom_operation_extension.py.
  */
 class CustomOperationExtensionTest {
-
     // ==================== Multi-mode coexistence ====================
-
     @Test
     @DisplayName("Built-in FS for LOCAL and SANDBOX modes coexist in registry")
     void testMultiModeFsCoexistence() {
@@ -58,8 +56,7 @@ class CustomOperationExtensionTest {
         for (String name : names) {
             Optional<OperationDef> def = OperationRegistry.getOperationInfo(name, OperationMode.LOCAL);
             assertTrue(def.isPresent(), name + " should be registered for LOCAL");
-            assertEquals(OperationMode.LOCAL, def.get().getMode(),
-                    name + " should be LOCAL mode");
+            assertEquals(OperationMode.LOCAL, def.get().getMode(), name + " should be LOCAL mode");
         }
     }
 
@@ -70,8 +67,7 @@ class CustomOperationExtensionTest {
         for (String name : names) {
             Optional<OperationDef> def = OperationRegistry.getOperationInfo(name, OperationMode.SANDBOX);
             assertTrue(def.isPresent(), name + " should be registered for SANDBOX");
-            assertEquals(OperationMode.SANDBOX, def.get().getMode(),
-                    name + " should be SANDBOX mode");
+            assertEquals(OperationMode.SANDBOX, def.get().getMode(), name + " should be SANDBOX mode");
         }
     }
 
@@ -86,8 +82,8 @@ class CustomOperationExtensionTest {
     @DisplayName("Register and retrieve custom operation")
     void testRegisterCustomOperation() {
         // Register a custom operation using LocalCodeOperation as a placeholder class
-        OperationRegistry.register(LocalCodeOperation.class, "custom_test_op",
-                OperationMode.LOCAL, "Custom test operation");
+        OperationRegistry.register(LocalCodeOperation.class, "custom_test_op", OperationMode.LOCAL,
+                "Custom test operation");
 
         Optional<OperationDef> retrieved = OperationRegistry.getOperationInfo("custom_test_op", OperationMode.LOCAL);
         assertTrue(retrieved.isPresent());

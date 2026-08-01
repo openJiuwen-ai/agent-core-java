@@ -5,6 +5,7 @@
 package com.openjiuwen.agentevolving.agent_rl.config.onlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -15,6 +16,8 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.onlineconfig.VLLMServiceConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -28,26 +31,30 @@ public class VLLMServiceConfig {
     private int tp = 2;
     private String existingUrl;
     private double healthTimeout = 300.0;
-    private Map<String, String> env = new LinkedHashMap<>(Map.of(
-            "VLLM_ALLOW_RUNTIME_LORA_UPDATING", "1"
-    ));
-    private List<String> extraArgs = new ArrayList<>(List.of(
-            "--enable-lora",
-            "--max-loras",
-            "4",
-            "--max-lora-rank",
-            "32",
-            "--enable-auto-tool-choice",
-            "--tool-call-parser",
-            "hermes",
-            "--max-model-len",
-            "32768",
-            "--gpu-memory-utilization",
-            "0.85"
-    ));
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LinkedHashMap<>.
+     * 
+     * @param "1" "1"
+     * @since 0.1.7
+     */
+    private Map<String, String> env = new LinkedHashMap<>(Map.of("VLLM_ALLOW_RUNTIME_LORA_UPDATING", "1"));
+
+    /**
+     * ArrayList<>.
+     * 
+     * @param "0.85" "0.85"
+     * @since 0.1.7
+     */
+    private List<String> extraArgs = new ArrayList<>(
+            List.of("--enable-lora", "--max-loras", "4", "--max-lora-rank", "32", "--enable-auto-tool-choice",
+                    "--tool-call-parser", "hermes", "--max-model-len", "32768", "--gpu-memory-utilization", "0.85"));
+
+    /**
+     * validate.
+     * 
+     * @param fieldPrefix fieldPrefix
+     * @since 0.1.7
      */
     public void validate(String fieldPrefix) {
         validateOptionalPort(port, fieldPrefix + ".port");
@@ -56,7 +63,11 @@ public class VLLMServiceConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateOptionalPort.
+     * 
+     * @param value value
+     * @param fieldName fieldName
+     * @since 0.1.7
      */
     protected static void validateOptionalPort(Integer value, String fieldName) {
         if (value != null && (value < 1 || value > 65535)) {
@@ -65,7 +76,12 @@ public class VLLMServiceConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateAtLeast.
+     * 
+     * @param value value
+     * @param minimum minimum
+     * @param fieldName fieldName
+     * @since 0.1.7
      */
     protected static void validateAtLeast(int value, int minimum, String fieldName) {
         if (value < minimum) {
@@ -74,7 +90,11 @@ public class VLLMServiceConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateGreaterThanZero.
+     * 
+     * @param value value
+     * @param fieldName fieldName
+     * @since 0.1.7
      */
     protected static void validateGreaterThanZero(double value, String fieldName) {
         if (value <= 0) {
@@ -83,51 +103,122 @@ public class VLLMServiceConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel_path.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getModel_path() { return getModelPath(); }
+    public String getModel_path() {
+        return getModelPath();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setModel_path.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setModel_path(String value) { setModelPath(value); }
+    public void setModel_path(String value) {
+        setModelPath(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel_name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getModel_name() { return getModelName(); }
+    public String getModel_name() {
+        return getModelName();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setModel_name.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setModel_name(String value) { setModelName(value); }
+    public void setModel_name(String value) {
+        setModelName(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getGpu_ids.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getGpu_ids() { return getGpuIds(); }
+    public String getGpu_ids() {
+        return getGpuIds();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setGpu_ids.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setGpu_ids(String value) { setGpuIds(value); }
+    public void setGpu_ids(String value) {
+        setGpuIds(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getExisting_url.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getExisting_url() { return getExistingUrl(); }
+    public String getExisting_url() {
+        return getExistingUrl();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setExisting_url.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setExisting_url(String value) { setExistingUrl(value); }
+    public void setExisting_url(String value) {
+        setExistingUrl(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getHealth_timeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getHealth_timeout() { return getHealthTimeout(); }
+    public double getHealth_timeout() {
+        return getHealthTimeout();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setHealth_timeout.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setHealth_timeout(double value) { setHealthTimeout(value); }
+    public void setHealth_timeout(double value) {
+        setHealthTimeout(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtra_args.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public List<String> getExtra_args() { return getExtraArgs(); }
+    public List<String> getExtra_args() {
+        return getExtraArgs();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtra_args.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setExtra_args(List<String> value) { setExtraArgs(value); }
+    public void setExtra_args(List<String> value) {
+        setExtraArgs(value);
+    }
 }

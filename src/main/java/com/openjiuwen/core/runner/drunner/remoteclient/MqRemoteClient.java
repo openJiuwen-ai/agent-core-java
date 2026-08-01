@@ -26,11 +26,10 @@ import java.util.concurrent.CancellationException;
  * Implements the {@link RemoteClient} interface using message queue transport
  * for distributed agent communication. Supports both synchronous invocation
  * and streaming response modes.
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 public class MqRemoteClient implements RemoteClient {
-
     private static final Logger logger = LoggerFactory.getLogger(MqRemoteClient.class);
 
     private final RemoteClientConfig config;
@@ -40,8 +39,9 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Constructs an MqRemoteClient with the given configuration.
-     *
+     * 
      * @param config the remote client configuration
+     * @since 0.1.7
      */
     public MqRemoteClient(RemoteClientConfig config) {
         this.config = config;
@@ -49,6 +49,8 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Starts the MQ remote client by initializing the message queue connection.
+     * 
+     * @since 0.1.7
      */
     @Override
     public void start() {
@@ -63,6 +65,8 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Stops the MQ remote client.
+     * 
+     * @since 0.1.7
      */
     @Override
     public void stop() {
@@ -71,8 +75,9 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Checks whether the MQ remote client has been started.
-     *
+     * 
      * @return {@code true} if the client is started, {@code false} otherwise
+     * @since 0.1.7
      */
     @Override
     public boolean isStarted() {
@@ -81,19 +86,22 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Invokes the remote agent synchronously via message queue.
-     *
-     * @param inputs         the input map to send to the remote agent
+     * 
+     * @param inputs the input map to send to the remote agent
      * @param timeoutSeconds optional timeout in seconds for the invocation
      * @return the result of the remote invocation
      * @throws Exception if the invocation fails, is cancelled, or times out
+     * @since 0.1.7
      */
     @Override
     public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         String messageId = buildMessageId(inputs);
-        double effectiveTimeout = timeoutSeconds != null ? timeoutSeconds
+        double effectiveTimeout = timeoutSeconds != null
+                ? timeoutSeconds
                 : RunnerConfig.getRunnerConfig().getDistributedConfig().getRequestTimeout();
-        ResponseCollector collector = replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
+        ResponseCollector collector =
+            replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
         try {
             mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, false, effectiveTimeout));
             return collector.result(effectiveTimeout);
@@ -108,19 +116,22 @@ public class MqRemoteClient implements RemoteClient {
 
     /**
      * Streams responses from the remote agent via message queue.
-     *
-     * @param inputs         the input map to send to the remote agent
+     * 
+     * @param inputs the input map to send to the remote agent
      * @param timeoutSeconds optional timeout in seconds for the streaming operation
      * @return an iterator over the streamed response objects
      * @throws Exception if the streaming operation fails or is cancelled
+     * @since 0.1.7
      */
     @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         String messageId = buildMessageId(inputs);
-        double effectiveTimeout = timeoutSeconds != null ? timeoutSeconds
+        double effectiveTimeout = timeoutSeconds != null
+                ? timeoutSeconds
                 : RunnerConfig.getRunnerConfig().getDistributedConfig().getRequestTimeout();
-        ResponseCollector collector = replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
+        ResponseCollector collector =
+            replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
         try {
             mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, true, effectiveTimeout));
             return collector.stream(effectiveTimeout).join().iterator();
@@ -135,6 +146,9 @@ public class MqRemoteClient implements RemoteClient {
      * Send a STOP message to cancel an in-flight request.
      * Messages contain an expiration time, so STOP is only needed when isClosed early
      * (not on timeout).
+     * 
+     * @param messageId messageId
+     * @since 0.1.7
      */
     private void sendStopMessage(String messageId) {
         try {
@@ -153,12 +167,24 @@ public class MqRemoteClient implements RemoteClient {
         }
     }
 
+    /**
+     * ensureStarted.
+     * 
+     * @since 0.1.7
+     */
     private void ensureStarted() {
         if (!started) {
             start();
         }
     }
 
+    /**
+     * buildMessageId.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildMessageId(Map<String, Object> inputs) {
         String sessionId = inputs != null && inputs.get("conversation_id") != null
                 ? String.valueOf(inputs.get("conversation_id"))
@@ -166,10 +192,18 @@ public class MqRemoteClient implements RemoteClient {
         return sessionId + "_" + UUID.randomUUID();
     }
 
-    private DmqRequestMessage buildRequest(String messageId,
-                                           Map<String, Object> inputs,
-                                           boolean enableStream,
-                                           double timeoutSeconds) {
+    /**
+     * buildRequest.
+     * 
+     * @param messageId messageId
+     * @param inputs inputs
+     * @param enableStream enableStream
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
+     */
+    private DmqRequestMessage buildRequest(String messageId, Map<String, Object> inputs, boolean enableStream,
+            double timeoutSeconds) {
         DmqRequestMessage request = new DmqRequestMessage();
         request.setType(DMessageType.INPUT);
         request.setMessageId(messageId);

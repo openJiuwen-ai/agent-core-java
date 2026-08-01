@@ -1,9 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,13 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class TextFileParserTest {
-
     @TempDir
     Path tempDir;
 
@@ -41,8 +42,7 @@ class TextFileParserTest {
     @Test
     void parseMissingFileThrows() {
         TextFileParser parser = new TextFileParser();
-        assertThrows(Exception.class,
-                () -> parser.parse("/nonexistent/file.txt", "doc-1", null, Map.of()));
+        assertThrows(Exception.class, () -> parser.parse("/nonexistent/file.txt", "doc-1", null, Map.of()));
     }
 
     @Test

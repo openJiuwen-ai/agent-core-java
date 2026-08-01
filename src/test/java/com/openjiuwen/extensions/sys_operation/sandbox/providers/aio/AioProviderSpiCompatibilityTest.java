@@ -4,8 +4,12 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.aio;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -13,11 +17,7 @@ import org.mockito.Mockito;
 import java.lang.reflect.Method;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class AioProviderSpiCompatibilityTest {
-
     private SandboxEndpoint endpoint;
     private SandboxGatewayConfig config;
     private AioFSProvider fsProvider;
@@ -39,22 +39,19 @@ class AioProviderSpiCompatibilityTest {
     @Test
     void testAioFSProviderThrowsUnsupported() {
         assertThatThrownBy(() -> fsProvider.readFile("/path", "r", null, null, null, "utf-8", 1024, Map.of()))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("readFile");
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("readFile");
     }
 
     @Test
     void testAioShellProviderThrowsUnsupported() {
         assertThatThrownBy(() -> shellProvider.executeCmd("ls", "/", 10, Map.of(), Map.of()))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("executeCmd");
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("executeCmd");
     }
 
     @Test
     void testAioCodeProviderThrowsUnsupported() {
         assertThatThrownBy(() -> codeProvider.executeCode("print(1)", "python", 10, Map.of(), Map.of()))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("executeCode");
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("executeCode");
     }
 
     @Test

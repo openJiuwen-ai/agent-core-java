@@ -18,28 +18,29 @@ import java.util.Map;
 /**
  * Tool that delegates work to a child agent and emits the child's result as a
  * streaming {@code message} chunk to the team session.
- *
- * <p>Injected by {@link HierarchicalToolsTeam} into the parent agent's
+ * <p>
+ * Injected by {@link HierarchicalToolsTeam} into the parent agent's
  * {@code AbilityManager} (mirroring Python's
  * {@code HierarchicalTeam._setup_hierarchy} which adds the child
  * {@link AgentCard} to the parent's {@code ability_manager}). The tool name
  * exposed to the LLM is the child agent id (e.g. {@code literature_researcher});
  * invoking it dispatches the message to the child agent via
  * {@link TeamRuntime#send} and then writes a {@code message} chunk to the
- * team session stream so streaming callers see each child agent's output.</p>
- *
- * <p>Unlike {@code HierarchicalMsgBusTeam}'s {@code DelegateTool} which only
+ * team session stream so streaming callers see each child agent's output.
+ * </p>
+ * <p>
+ * Unlike {@code HierarchicalMsgBusTeam}'s {@code DelegateTool} which only
  * returns the child's result, this tool also calls
  * {@link AgentGroupSessionApi#writeStream(Object)} with a
  * {@code {"message": <child result text>}} payload. The session's
  * {@code enrichWithTeamMetadata} then adds {@code source_agent_id} (this tool
  * sets {@code currentAgentId = targetId} before writeStream, because
- * {@code TeamRuntime.send}'s finally clears it) and {@code source_team_id}.</p>
- *
- * @since 1.0
+ * {@code TeamRuntime.send}'s finally clears it) and {@code source_team_id}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class HierarchicalDelegateTool extends Tool {
-
     private final String targetId;
     private final TeamRuntime runtime;
     private final String senderId;
@@ -47,16 +48,17 @@ public class HierarchicalDelegateTool extends Tool {
 
     /**
      * Create a delegate tool targeting {@code targetId}.
-     *
-     * @param targetId          ID of the child agent to delegate to.
-     * @param targetCard        Child agent card (used for tool description and
-     *                          input params schema shown to the LLM).
-     * @param runtime           the team runtime for message dispatch.
-     * @param senderId          the ID of the parent agent that owns this tool.
-     * @param teamId            the team ID for session metadata.
+     * 
+     * @param targetId ID of the child agent to delegate to.
+     * @param targetCard Child agent card (used for tool description and
+     * @param runtime the team runtime for message dispatch.
+     * @param senderId the ID of the parent agent that owns this tool.
+     * @param teamId the team ID for session metadata.
+     *            input params schema shown to the LLM).
+     * @since 0.1.7
      */
-    public HierarchicalDelegateTool(String targetId, AgentCard targetCard,
-                                    TeamRuntime runtime, String senderId, String teamId) {
+    public HierarchicalDelegateTool(String targetId, AgentCard targetCard, TeamRuntime runtime, String senderId,
+            String teamId) {
         super(buildCard(targetId, targetCard));
         this.targetId = targetId;
         this.runtime = runtime;
@@ -67,13 +69,20 @@ public class HierarchicalDelegateTool extends Tool {
     /**
      * Dispatch the message to the child agent via the team runtime, then emit
      * the child's result as a {@code message} chunk to the team session stream.
-     *
-     * <p>The {@code session} is extracted from {@code kwargs} (set by
+     * <p>
+     * The {@code session} is extracted from {@code kwargs} (set by
      * {@code AbilityManager.invokeTool}) so that nested dispatch preserves the
      * team session's streamWriter. Before {@code writeStream} this tool sets
      * {@code session.currentAgentId = targetId} so the chunk is enriched with
      * the correct {@code source_agent_id} (TeamRuntime.send's finally would
-     * otherwise clear it back to null before we get here).</p>
+     * otherwise clear it back to null before we get here).
+     * </p>
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
@@ -105,6 +114,12 @@ public class HierarchicalDelegateTool extends Tool {
 
     /**
      * Streaming variant — yields the single {@link #invoke} result.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
@@ -112,6 +127,14 @@ public class HierarchicalDelegateTool extends Tool {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * buildCard.
+     * 
+     * @param targetId targetId
+     * @param targetCard targetCard
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCard buildCard(String targetId, AgentCard targetCard) {
         String toolName = targetId;
         String description = "Delegate a task to " + targetId + " for processing.";
@@ -128,14 +151,15 @@ public class HierarchicalDelegateTool extends Tool {
         } else {
             inputParams = defaultInputParams();
         }
-        return ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description(description)
-                .inputParams(inputParams)
-                .build();
+        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
     }
 
+    /**
+     * defaultInputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> defaultInputParams() {
         Map<String, Object> messageProp = new LinkedHashMap<>();
         messageProp.put("type", "string");

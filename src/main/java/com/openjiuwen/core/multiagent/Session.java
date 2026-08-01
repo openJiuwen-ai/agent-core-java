@@ -14,32 +14,47 @@ import java.util.Map;
  * Mirrors Python's {@code openjiuwen.core.multi_agent.Session} export so
  * callers can stay within the {@code multiagent} package when working with
  * group sessions.
+ * 
+ * @since 0.1.7
  */
 public class Session extends AgentGroupSessionApi {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * Session.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @since 0.1.7
      */
     public Session(String sessionId, Map<String, Object> envs) {
         super(sessionId, envs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Session.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public Session(String sessionId) {
         super(sessionId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Session.
+     * 
+     * @since 0.1.7
      */
     public Session() {
         super();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * create.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @return the result
+     * @since 0.1.7
      */
     public static Session create(String sessionId, Map<String, Object> envs) {
         return new Session(sessionId, envs);

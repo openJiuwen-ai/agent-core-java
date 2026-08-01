@@ -26,21 +26,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>
  * Mirrors Python's {@code AsyncProcessHandler} in {@code local/utils.py}.
  * Uses Java's {@link Process} and blocking threads instead of Python's asyncio.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
- *   Process process = new ProcessBuilder("ls", "-la").start();
- *   ProcessHandler handler = new ProcessHandler(process, 1024, StandardCharsets.UTF_8, 300);
- *
- *   // One-shot invocation
- *   InvokeData result = handler.invoke();
- *
- *   // OR streaming (mutually exclusive with invoke)
- *   Iterator&lt;StreamEvent&gt; events = handler.stream();
+ * Process process = new ProcessBuilder("ls", "-la").start();
+ * ProcessHandler handler = new ProcessHandler(process, 1024, StandardCharsets.UTF_8, 300);
+ * // One-shot invocation
+ * InvokeData result = handler.invoke();
+ * // OR streaming (mutually exclusive with invoke)
+ * Iterator&lt;StreamEvent&gt; events = handler.stream();
  * </pre>
+ * 
+ * @since 0.1.7
  */
 public class ProcessHandler {
-
     private final Process process;
     private final int chunkSize;
     private final Charset encoding;
@@ -49,7 +49,13 @@ public class ProcessHandler {
     private final AtomicBoolean isExecuted;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ProcessHandler.
+     * 
+     * @param process process
+     * @param chunkSize chunkSize
+     * @param encoding encoding
+     * @param overallTimeoutSeconds overallTimeoutSeconds
+     * @since 0.1.7
      */
     public ProcessHandler(Process process, int chunkSize, Charset encoding, int overallTimeoutSeconds) {
         this.process = process;
@@ -61,7 +67,10 @@ public class ProcessHandler {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ProcessHandler.
+     * 
+     * @param process process
+     * @since 0.1.7
      */
     public ProcessHandler(Process process) {
         this(process, 1024, StandardCharsets.UTF_8, 300);
@@ -69,9 +78,9 @@ public class ProcessHandler {
 
     /**
      * One-time execution to get structured subprocess result.
-     *
+     * 
      * @return InvokeData containing stdout, stderr, exit code
-     * @throws IllegalStateException if invoke() or stream() has already been called
+     * @since 0.1.7
      */
     public InvokeData invoke() {
         if (!isExecuted.compareAndSet(false, true)) {
@@ -92,6 +101,8 @@ public class ProcessHandler {
                 Loggers.SYS_OPERATION.error("Failed to read stdout", e);
             }
         }, "invoke-stdout-reader");
+        stdoutThread.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stdoutThread.start();
         Thread stderrThread = new Thread(() -> {
             try {
@@ -100,14 +111,15 @@ public class ProcessHandler {
                 Loggers.SYS_OPERATION.error("Failed to read stderr", e);
             }
         }, "invoke-stderr-reader");
+        stderrThread.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stderrThread.start();
 
         try {
             boolean finished = process.waitFor(overallTimeoutSeconds, TimeUnit.SECONDS);
 
             if (!finished) {
-                Loggers.SYS_OPERATION.error("Get process result time out",
-                        LogEventType.SYS_OP_ERROR.getValue());
+                Loggers.SYS_OPERATION.error("Get process result time out", LogEventType.SYS_OP_ERROR.getValue());
                 process.destroyForcibly();
                 try {
                     boolean killedOk = process.waitFor(30, TimeUnit.SECONDS);
@@ -115,27 +127,20 @@ public class ProcessHandler {
                     stdoutThread.join(5000);
                     stderrThread.join(5000);
                     if (!killedOk) {
-                        return InvokeData.builder()
-                                .stdout(stdoutBuf.toString())
-                                .stderr("Process did not terminate after kill")
-                                .exitCode(-1)
-                                .exception(new InterruptedException("Process timeout after " + overallTimeoutSeconds + "s"))
+                        return InvokeData.builder().stdout(stdoutBuf.toString())
+                                .stderr("Process did not terminate after kill").exitCode(-1)
+                                .exception(new InterruptedException(
+                                        "Process timeout after " + overallTimeoutSeconds + "s"))
                                 .build();
                     }
-                    return InvokeData.builder()
-                            .stdout(stdoutBuf.toString())
-                            .stderr(stderrBuf.toString())
+                    return InvokeData.builder().stdout(stdoutBuf.toString()).stderr(stderrBuf.toString())
                             .exitCode(process.exitValue())
                             .exception(new InterruptedException("Process timeout after " + overallTimeoutSeconds + "s"))
                             .build();
-                } catch (Exception ex) {
-                    Loggers.SYS_OPERATION.error("Kill process error",
-                            LogEventType.SYS_OP_ERROR.getValue());
-                    return InvokeData.builder()
-                            .stdout(stdoutBuf.toString())
-                            .stderr("kill process failed, error: " + ex.getMessage())
-                            .exitCode(-1)
-                            .exception(ex)
+                } catch (InterruptedException ex) {
+                    Loggers.SYS_OPERATION.error("Kill process error", LogEventType.SYS_OP_ERROR.getValue());
+                    return InvokeData.builder().stdout(stdoutBuf.toString())
+                            .stderr("kill process failed, error: " + ex.getMessage()).exitCode(-1).exception(ex)
                             .build();
                 }
             }
@@ -144,28 +149,20 @@ public class ProcessHandler {
             stdoutThread.join(5000);
             stderrThread.join(5000);
 
-            return InvokeData.builder()
-                    .stdout(stdoutBuf.toString())
-                    .stderr(stderrBuf.toString())
-                    .exitCode(process.exitValue())
-                    .build();
-
+            return InvokeData.builder().stdout(stdoutBuf.toString()).stderr(stderrBuf.toString())
+                    .exitCode(process.exitValue()).build();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return InvokeData.builder()
-                    .stdout(stdoutBuf.toString())
-                    .stderr("Interrupted: " + e.getMessage())
-                    .exitCode(-1)
-                    .exception(e)
-                    .build();
+            return InvokeData.builder().stdout(stdoutBuf.toString()).stderr("Interrupted: " + e.getMessage())
+                    .exitCode(-1).exception(e).build();
         }
     }
 
     /**
      * Create an iterator for streaming process output events.
-     *
+     * 
      * @return Iterator of StreamEvent objects (STDOUT/STDERR/ERROR/EXIT)
-     * @throws IllegalStateException if invoke() or stream() has already been called
+     * @since 0.1.7
      */
     public Iterator<StreamEvent> stream() {
         if (!isExecuted.compareAndSet(false, true)) {
@@ -174,9 +171,15 @@ public class ProcessHandler {
         }
 
         // Start reader threads for stdout and stderr
-        Thread stdoutReader = new Thread(() -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader");
+        Thread stdoutReader =
+            new Thread(() -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader");
+        stdoutReader.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stdoutReader.start();
-        Thread stderrReader = new Thread(() -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader");
+        Thread stderrReader =
+            new Thread(() -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader");
+        stderrReader.setUncaughtExceptionHandler(
+                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
         stderrReader.start();
 
         return new StreamEventIterator(stdoutReader, stderrReader);
@@ -184,6 +187,10 @@ public class ProcessHandler {
 
     /**
      * Background stream reader thread for stdout/stderr.
+     * 
+     * @param inputStream inputStream
+     * @param streamType streamType
+     * @since 0.1.7
      */
     private void readerTask(InputStream inputStream, StreamEventType streamType) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, encoding))) {
@@ -193,26 +200,20 @@ public class ProcessHandler {
 
             while ((bytesRead = reader.read(buffer)) != -1) {
                 String data = new String(buffer, 0, bytesRead);
-                StreamEvent event = StreamEvent.builder()
-                        .type(streamType)
-                        .data(data)
-                        .build();
+                StreamEvent event = StreamEvent.builder().type(streamType).data(data).build();
                 queue.put(event);
                 totalChunks++;
                 Loggers.SYS_OPERATION.debug("Success to put stream queue item, total_num={}, queue_size={}",
                         totalChunks, queue.size());
             }
 
-            Loggers.SYS_OPERATION.info("Receive stream eof, total_num={}, queue_size={}",
-                    totalChunks, queue.size());
+            Loggers.SYS_OPERATION.info("Receive stream eof, total_num={}, queue_size={}", totalChunks, queue.size());
         } catch (Exception e) {
             Loggers.SYS_OPERATION.error("Stream read error: stream_type={}, chunk_size={}, encoding={}",
                     streamType.getValue(), chunkSize, encoding.name(), e);
             try {
-                queue.put(StreamEvent.builder()
-                        .type(StreamEventType.ERROR)
-                        .data(streamType.getValue() + " reader error: " + e.getMessage())
-                        .build());
+                queue.put(StreamEvent.builder().type(StreamEventType.ERROR)
+                        .data(streamType.getValue() + " reader error: " + e.getMessage()).build());
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
@@ -221,6 +222,10 @@ public class ProcessHandler {
 
     /**
      * Read all content from an InputStream.
+     * 
+     * @param inputStream inputStream
+     * @return the result
+     * @since 0.1.7
      */
     private String readStream(InputStream inputStream) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, encoding))) {
@@ -241,7 +246,6 @@ public class ProcessHandler {
      * Iterator implementation that consumes events from the blocking queue.
      */
     private class StreamEventIterator implements Iterator<StreamEvent> {
-
         private final Thread stdoutReader;
         private final Thread stderrReader;
         private StreamEvent next;
@@ -254,10 +258,13 @@ public class ProcessHandler {
             this.startTimeMs = System.currentTimeMillis();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean hasNext() {
             if (exitEmitted) {
                 return false;
@@ -269,10 +276,13 @@ public class ProcessHandler {
             return next != null;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public StreamEvent next() {
             if (!hasNext()) {
                 throw new NoSuchElementException();
@@ -285,19 +295,22 @@ public class ProcessHandler {
             return result;
         }
 
+        /**
+         * fetchNext.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         private StreamEvent fetchNext() {
             while (true) {
                 // Check overall timeout
                 if (overallTimeoutSeconds > 0) {
                     long elapsedMs = System.currentTimeMillis() - startTimeMs;
                     if (elapsedMs >= (long) overallTimeoutSeconds * 1000) {
-                        Loggers.SYS_OPERATION.error("Stream execution time out, timeout={}s",
-                                overallTimeoutSeconds);
+                        Loggers.SYS_OPERATION.error("Stream execution time out, timeout={}s", overallTimeoutSeconds);
                         process.destroyForcibly();
-                        return StreamEvent.builder()
-                                .type(StreamEventType.ERROR)
-                                .data("execution timeout after " + overallTimeoutSeconds + " seconds")
-                                .build();
+                        return StreamEvent.builder().type(StreamEventType.ERROR)
+                                .data("execution timeout after " + overallTimeoutSeconds + " seconds").build();
                     }
                 }
 
@@ -308,10 +321,8 @@ public class ProcessHandler {
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return StreamEvent.builder()
-                            .type(StreamEventType.ERROR)
-                            .data("stream interrupted: " + e.getMessage())
-                            .build();
+                    return StreamEvent.builder().type(StreamEventType.ERROR)
+                            .data("stream interrupted: " + e.getMessage()).build();
                 }
 
                 // Check if all readers are done and queue is empty
@@ -324,10 +335,7 @@ public class ProcessHandler {
                         Thread.currentThread().interrupt();
                     }
                     int exitCode = process.isAlive() ? -1 : process.exitValue();
-                    return StreamEvent.builder()
-                            .type(StreamEventType.EXIT)
-                            .data(exitCode)
-                            .build();
+                    return StreamEvent.builder().type(StreamEventType.EXIT).data(exitCode).build();
                 }
             }
         }

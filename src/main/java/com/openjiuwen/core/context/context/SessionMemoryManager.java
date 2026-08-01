@@ -22,48 +22,65 @@ import java.util.Map;
  * Session-memory related helpers used by context compression flows.
  * <p>
  * Ports Python's session memory runtime, completed-round truncation, and threshold scheduling semantics.
+ * 
+ * @since 0.1.7
  */
 public final class SessionMemoryManager {
     /**
-     * Auto-generated for codecheck compliance.
+     * SESSION_MEMORY_STATE_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String SESSION_MEMORY_STATE_KEY = "__session_memory__";
 
     private final SessionMemoryConfig config;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionMemoryManager.
+     * 
+     * @since 0.1.7
      */
     public SessionMemoryManager() {
         this(new SessionMemoryConfig());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionMemoryManager.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public SessionMemoryManager(SessionMemoryConfig config) {
         this.config = config == null ? new SessionMemoryConfig() : config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SessionMemoryConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSessionMemoryRuntime.
+     * 
+     * @param memoryPath memoryPath
+     * @param pendingMemoryPath pendingMemoryPath
+     * @param isRuntimeInitialized isRuntimeInitialized
+     * @param tokensAtLastUpdate tokensAtLastUpdate
+     * @param toolCallsAtLastUpdate toolCallsAtLastUpdate
+     * @param lastSummarizedMessageCount lastSummarizedMessageCount
+     * @param notesUptoMessageId notesUptoMessageId
+     * @param isExtracting isExtracting
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, Object> buildSessionMemoryRuntime(
-            String memoryPath,
-            String pendingMemoryPath,
-            boolean isRuntimeInitialized,
-            int tokensAtLastUpdate,
-            int toolCallsAtLastUpdate,
-            int lastSummarizedMessageCount,
-            String notesUptoMessageId,
-            boolean isExtracting) {
+    public static Map<String, Object> buildSessionMemoryRuntime(String memoryPath, String pendingMemoryPath,
+            boolean isRuntimeInitialized, int tokensAtLastUpdate, int toolCallsAtLastUpdate,
+            int lastSummarizedMessageCount, String notesUptoMessageId, boolean isExtracting) {
         Map<String, Object> runtime = new HashMap<>();
         runtime.put("memory_path", memoryPath != null ? memoryPath : "");
         runtime.put("pending_memory_path", pendingMemoryPath != null ? pendingMemoryPath : "");
@@ -77,12 +94,13 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionMemoryRuntime.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Map<String, Object> getSessionMemoryRuntime(Session session) {
         if (session == null) {
             return buildSessionMemoryRuntime("", "", false, 0, 0, 0, null, false);
@@ -95,7 +113,11 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateSessionMemoryRuntime.
+     * 
+     * @param session session
+     * @param state state
+     * @since 0.1.7
      */
     public static void updateSessionMemoryRuntime(Session session, Map<String, Object> state) {
         if (session == null || state == null) {
@@ -107,7 +129,10 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invalidateSessionMemoryAnchor.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public static void invalidateSessionMemoryAnchor(Session session) {
         if (session == null) {
@@ -121,12 +146,13 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextMessageId.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String getContextMessageId(BaseMessage message) {
         if (message == null) {
             return null;
@@ -142,7 +168,12 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * findMessageIndexByContextMessageId.
+     * 
+     * @param messages messages
+     * @param messageId messageId
+     * @return the result
+     * @since 0.1.7
      */
     public static int findMessageIndexByContextMessageId(List<BaseMessage> messages, String messageId) {
         if (messageId == null || messageId.isBlank() || messages == null) {
@@ -157,7 +188,11 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * findLastCompletedApiRoundEnd.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public static int findLastCompletedApiRoundEnd(List<BaseMessage> messages) {
         List<int[]> completedRounds = groupCompletedApiRounds(messages);
@@ -168,16 +203,19 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * truncateContextWindowToCompletedApiRound.
+     * 
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
      */
     public static ContextWindow truncateContextWindowToCompletedApiRound(ContextWindow contextWindow) {
         List<BaseMessage> contextMessages = contextWindow != null && contextWindow.getContextMessages() != null
                 ? contextWindow.getContextMessages()
                 : List.of();
         int completedEnd = findLastCompletedApiRoundEnd(contextMessages);
-        List<BaseMessage> completedMessages = completedEnd <= 0
-                ? List.of()
-                : new ArrayList<>(contextMessages.subList(0, completedEnd));
+        List<BaseMessage> completedMessages =
+            completedEnd <= 0 ? List.of() : new ArrayList<>(contextMessages.subList(0, completedEnd));
         return ContextWindow.builder()
                 .systemMessages(contextWindow != null && contextWindow.getSystemMessages() != null
                         ? new ArrayList<>(contextWindow.getSystemMessages())
@@ -190,25 +228,29 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * collectContextWindow.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public static ContextWindow collectContextWindow(ModelContext context) {
         if (context == null) {
-            return ContextWindow.builder()
-                    .systemMessages(List.of())
-                    .contextMessages(List.of())
-                    .tools(List.of())
+            return ContextWindow.builder().systemMessages(List.of()).contextMessages(List.of()).tools(List.of())
                     .build();
         }
-        return ContextWindow.builder()
-                .systemMessages(List.of())
-                .contextMessages(new ArrayList<>(context.getMessages()))
-                .tools(List.of())
-                .build();
+        return ContextWindow.builder().systemMessages(List.of()).contextMessages(new ArrayList<>(context.getMessages()))
+                .tools(List.of()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldUpdate.
+     * 
+     * @param session session
+     * @param context context
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
      */
     public boolean shouldUpdate(Session session, ModelContext context, ContextWindow contextWindow) {
         List<BaseMessage> messages = contextWindow != null && contextWindow.getContextMessages() != null
@@ -255,7 +297,13 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * maybeScheduleUpdate.
+     * 
+     * @param session session
+     * @param context context
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public boolean maybeScheduleUpdate(Session session, ModelContext context, Object workspace) {
         if (workspace == null || session == null) {
@@ -265,11 +313,8 @@ public final class SessionMemoryManager {
         String sessionId = session.getSessionId();
         String memoryPath = sessionMemoryPath(workspace, sessionId);
         String pendingPath = pendingSessionMemoryPath(memoryPath);
-        updateSessionMemoryRuntime(session, Map.of(
-                "session_id", sessionId,
-                "memory_path", memoryPath,
-                "pending_memory_path", pendingPath
-        ));
+        updateSessionMemoryRuntime(session,
+                Map.of("session_id", sessionId, "memory_path", memoryPath, "pending_memory_path", pendingPath));
         if (!shouldUpdate(session, context, contextWindow)) {
             return false;
         }
@@ -280,7 +325,11 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * groupCompletedApiRounds.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public static List<int[]> groupCompletedApiRounds(List<BaseMessage> messages) {
         List<int[]> rounds = new ArrayList<>();
@@ -301,9 +350,8 @@ public final class SessionMemoryManager {
             }
 
             if (message instanceof AssistantMessage assistantMessage) {
-                List<ToolCall> toolCalls = assistantMessage.getToolCalls() != null
-                        ? assistantMessage.getToolCalls()
-                        : List.of();
+                List<ToolCall> toolCalls =
+                    assistantMessage.getToolCalls() != null ? assistantMessage.getToolCalls() : List.of();
                 if (!toolCalls.isEmpty()) {
                     pendingToolCallIds = new java.util.HashSet<>();
                     for (ToolCall toolCall : toolCalls) {
@@ -340,7 +388,11 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * countToolCalls.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public static int countToolCalls(List<BaseMessage> messages) {
         int total = 0;
@@ -356,7 +408,12 @@ public final class SessionMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * countTokens.
+     * 
+     * @param context context
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
      */
     public static int countTokens(ModelContext context, ContextWindow contextWindow) {
         List<BaseMessage> messages = new ArrayList<>();
@@ -382,20 +439,29 @@ public final class SessionMemoryManager {
         return total;
     }
 
+    /**
+     * normalizedRuntime.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> normalizedRuntime(Session session) {
         Map<String, Object> state = getSessionMemoryRuntime(session);
-        return buildSessionMemoryRuntime(
-                stringValue(state.get("memory_path")),
-                stringValue(state.get("pending_memory_path")),
-                Boolean.TRUE.equals(state.get("initialized")),
-                intValue(state.get("tokens_at_last_update")),
-                intValue(state.get("tool_calls_at_last_update")),
-                intValue(state.get("last_summarized_message_count")),
-                stringValue(state.get("notes_upto_message_id")),
-                Boolean.TRUE.equals(state.get("is_extracting"))
-        );
+        return buildSessionMemoryRuntime(stringValue(state.get("memory_path")),
+                stringValue(state.get("pending_memory_path")), Boolean.TRUE.equals(state.get("initialized")),
+                intValue(state.get("tokens_at_last_update")), intValue(state.get("tool_calls_at_last_update")),
+                intValue(state.get("last_summarized_message_count")), stringValue(state.get("notes_upto_message_id")),
+                Boolean.TRUE.equals(state.get("is_extracting")));
     }
 
+    /**
+     * intValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -410,30 +476,54 @@ public final class SessionMemoryManager {
         return 0;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * sessionMemoryPath.
+     * 
+     * @param workspace workspace
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private static String sessionMemoryPath(Object workspace, String sessionId) {
         String root = workspaceRoot(workspace);
-        return java.nio.file.Path.of(root)
-                .resolve("context")
-                .resolve(sessionId + "_context")
-                .resolve("session_memory")
-                .resolve("session_context.md")
-                .toString();
+        return java.nio.file.Path.of(root).resolve("context").resolve(sessionId + "_context").resolve("session_memory")
+                .resolve("session_context.md").toString();
     }
 
+    /**
+     * pendingSessionMemoryPath.
+     * 
+     * @param memoryPath memoryPath
+     * @return the result
+     * @since 0.1.7
+     */
     private static String pendingSessionMemoryPath(String memoryPath) {
         java.nio.file.Path path = java.nio.file.Path.of(memoryPath);
         String fileName = path.getFileName().toString();
         int dot = fileName.lastIndexOf('.');
-        String pendingName = dot >= 0
-                ? fileName.substring(0, dot) + ".pending" + fileName.substring(dot)
-                : fileName + ".pending";
+        String pendingName =
+            dot >= 0 ? fileName.substring(0, dot) + ".pending" + fileName.substring(dot) : fileName + ".pending";
         return path.getParent().resolve(pendingName).toString();
     }
 
+    /**
+     * workspaceRoot.
+     * 
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
+     */
     private static String workspaceRoot(Object workspace) {
         try {
             Object value = workspace.getClass().getMethod("getRootPath").invoke(workspace);

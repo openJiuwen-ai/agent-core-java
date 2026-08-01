@@ -16,13 +16,18 @@ import java.util.zip.InflaterInputStream;
  * GZIP decompressor.
  * <p>
  * Mirrors Python's {@code GzipDecompressor}.
+ * 
+ * @since 0.1.7
  */
 public class GzipDecompressor extends BaseResponseDecompressor {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * canDecompress.
+     * 
+     * @param encoding encoding
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean canDecompress(String encoding) {
         if (encoding == null) {
             return false;
@@ -31,10 +36,15 @@ public class GzipDecompressor extends BaseResponseDecompressor {
         return "gzip".equals(lower) || "x-gzip".equals(lower);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * decompress.
+     * 
+     * @param responseData responseData
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
+    @Override
     public byte[] decompress(byte[] responseData) throws IOException {
         try {
             return decompressGzip(responseData);
@@ -48,20 +58,36 @@ public class GzipDecompressor extends BaseResponseDecompressor {
         }
     }
 
+    /**
+     * decompressGzip.
+     * 
+     * @param data data
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private byte[] decompressGzip(byte[] data) throws IOException {
         try (var bais = new ByteArrayInputStream(data);
-             var gis = new GZIPInputStream(bais);
-             var baos = new ByteArrayOutputStream()) {
+                var gis = new GZIPInputStream(bais);
+                var baos = new ByteArrayOutputStream()) {
             gis.transferTo(baos);
             return baos.toByteArray();
         }
     }
 
+    /**
+     * decompressRawDeflate.
+     * 
+     * @param data data
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private byte[] decompressRawDeflate(byte[] data) throws IOException {
         Inflater inflater = new Inflater(true); // nowrap = true
         try (var bais = new ByteArrayInputStream(data);
-             var iis = new InflaterInputStream(bais, inflater);
-             var baos = new ByteArrayOutputStream()) {
+                var iis = new InflaterInputStream(bais, inflater);
+                var baos = new ByteArrayOutputStream()) {
             iis.transferTo(baos);
             return baos.toByteArray();
         } finally {

@@ -1,7 +1,14 @@
+
 package com.openjiuwen.agentevolving.trajectory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.TraceWorkflowSpan;
+
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -11,13 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class TracerTrajectoryExtractorTest {
-
     private final TracerTrajectoryExtractor extractor = new TracerTrajectoryExtractor();
 
     @Test
@@ -34,7 +35,8 @@ class TracerTrajectoryExtractorTest {
     @Test
     void extractMapsAgentSpanKindsAndFallbackFields() {
         TraceAgentSpan llmSpan = agentSpan("inv_1", "llm");
-        llmSpan.setMetaData(new LinkedHashMap<>(Map.of("node_id", "node_1", "agent_id", "agent_1", "role", "assistant")));
+        llmSpan.setMetaData(
+                new LinkedHashMap<>(Map.of("node_id", "node_1", "agent_id", "agent_1", "role", "assistant")));
         llmSpan.setInputs(Map.of("inputs", Map.of("query", "hello")));
         llmSpan.setOutputs(Map.of("outputs", Map.of("response", "world")));
         llmSpan.setStartTime(LocalDateTime.of(2024, 1, 1, 12, 0, 0));
@@ -49,10 +51,8 @@ class TracerTrajectoryExtractorTest {
         manager.add(llmSpan);
         manager.add(toolSpan);
 
-        Trajectory result = extractor.extract(
-                new FakeSession(new FakeTracer("trace_1", manager, Map.of())),
-                execution("case_1", "exec_1")
-        );
+        Trajectory result = extractor.extract(new FakeSession(new FakeTracer("trace_1", manager, Map.of())),
+                execution("case_1", "exec_1"));
 
         assertEquals("trace_1", result.getTraceId());
         assertEquals(2, result.getSteps().size());
@@ -95,10 +95,8 @@ class TracerTrajectoryExtractorTest {
         manager.add(parent);
         manager.add(child);
 
-        Trajectory result = extractor.extract(
-                new FakeSession(new FakeTracer("trace_2", manager, Map.of())),
-                execution("case_2", "exec_2")
-        );
+        Trajectory result = extractor.extract(new FakeSession(new FakeTracer("trace_2", manager, Map.of())),
+                execution("case_2", "exec_2"));
 
         TrajectoryStep parentStep = result.getSteps().get(0);
         TrajectoryStep childStep = result.getSteps().get(1);
@@ -133,8 +131,7 @@ class TracerTrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(
                 new FakeSession(new FakeTracer("trace_3", new FakeSpanManager(), Map.of("wf", workflowManager))),
-                execution("case_3", "exec_3")
-        );
+                execution("case_3", "exec_3"));
 
         assertEquals(1, result.getSteps().size());
         TrajectoryStep workflowStep = result.getSteps().get(0);
@@ -164,10 +161,8 @@ class TracerTrajectoryExtractorTest {
         FakeSpanManager manager = new FakeSpanManager();
         manager.add(span);
 
-        Trajectory result = extractor.extract(
-                new FakeSession(new FakeTracer("trace_4", manager, Map.of())),
-                execution("case_4", "exec_4")
-        );
+        Trajectory result = extractor.extract(new FakeSession(new FakeTracer("trace_4", manager, Map.of())),
+                execution("case_4", "exec_4"));
 
         assertEquals(1, result.getSteps().size());
         assertEquals("llm_call_1", result.getSteps().get(0).getOperatorId());
@@ -185,12 +180,8 @@ class TracerTrajectoryExtractorTest {
         span.outputs = Map.of("outputs", Map.of("answer", "java"));
         span.start_time = LocalDateTime.of(2024, 1, 1, 8, 0, 0);
         span.end_time = LocalDateTime.of(2024, 1, 1, 8, 0, 2);
-        span.meta_data = new LinkedHashMap<>(Map.of(
-                "agent_id", "agent_py",
-                "role", "assistant",
-                "node_id", "node_py",
-                "nested", new LinkedHashMap<>(Map.of("list", new ArrayList<>(List.of("a", "b"))))
-        ));
+        span.meta_data = new LinkedHashMap<>(Map.of("agent_id", "agent_py", "role", "assistant", "node_id", "node_py",
+                "nested", new LinkedHashMap<>(Map.of("list", new ArrayList<>(List.of("a", "b"))))));
 
         PythonStyleSpanManager manager = new PythonStyleSpanManager(List.of(span));
         PythonStyleTracer tracer = new PythonStyleTracer("trace_py", manager);
@@ -251,7 +242,8 @@ class TracerTrajectoryExtractorTest {
         private final Object tracerAgentSpanManager;
         private final Map<String, Object> tracerWorkflowSpanManagerDict;
 
-        private FakeTracer(String traceId, Object tracerAgentSpanManager, Map<String, Object> tracerWorkflowSpanManagerDict) {
+        private FakeTracer(String traceId, Object tracerAgentSpanManager,
+                Map<String, Object> tracerWorkflowSpanManagerDict) {
             this.traceId = traceId;
             this.tracerAgentSpanManager = tracerAgentSpanManager;
             this.tracerWorkflowSpanManagerDict = tracerWorkflowSpanManagerDict;

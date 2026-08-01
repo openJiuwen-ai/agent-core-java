@@ -14,8 +14,8 @@ import java.util.Map;
  * HTTP advanced options configuration.
  * <p>
  * Mirrors Python's {@code HttpAdvancedOptionsConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

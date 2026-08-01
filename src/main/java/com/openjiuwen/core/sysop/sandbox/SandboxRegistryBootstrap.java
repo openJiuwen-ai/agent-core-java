@@ -13,15 +13,24 @@ import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.Jiuwe
 
 /**
  * Registers built-in launchers and operation providers once per JVM.
+ * 
+ * @since 0.1.7
  */
 public final class SandboxRegistryBootstrap {
     private static volatile boolean isInitialized;
 
+    /**
+     * SandboxRegistryBootstrap.
+     * 
+     * @since 0.1.7
+     */
     private SandboxRegistryBootstrap() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureInitialized.
+     * 
+     * @since 0.1.7
      */
     public static void ensureInitialized() {
         if (isInitialized) {

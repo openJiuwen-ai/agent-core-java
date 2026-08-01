@@ -21,16 +21,26 @@ import java.util.Optional;
 
 /**
  * Factory that turns {@link ToolDefinition}-annotated methods into {@link LocalFunction}s.
+ * 
+ * @since 0.1.7
  */
 public final class AnnotatedToolFactory {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * AnnotatedToolFactory.
+     * 
+     * @since 0.1.7
+     */
     private AnnotatedToolFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * scan.
+     * 
+     * @param target target
+     * @return the result
+     * @since 0.1.7
      */
     public static List<LocalFunction> scan(Object target) {
         Class<?> targetClass = target instanceof Class<?> clazz ? clazz : target.getClass();
@@ -44,7 +54,12 @@ public final class AnnotatedToolFactory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMethod.
+     * 
+     * @param target target
+     * @param method method
+     * @return the result
+     * @since 0.1.7
      */
     public static LocalFunction fromMethod(Object target, Method method) {
         ToolDefinition definition = method.getAnnotation(ToolDefinition.class);
@@ -64,17 +79,21 @@ public final class AnnotatedToolFactory {
                 ? CallableSchemaExtractor.generateSchema(method)
                 : Map.of("type", "object", "properties", Map.of());
 
-        ToolCard card = ToolCard.builder()
-                .id(name)
-                .name(name)
-                .description(description)
-                .inputParams(inputParams)
-                .properties(new LinkedHashMap<>())
-                .build();
+        ToolCard card = ToolCard.builder().id(name).name(name).description(description).inputParams(inputParams)
+                .properties(new LinkedHashMap<>()).build();
 
         return new LocalFunction(card, inputs -> invokeMethod(target, method, inputs));
     }
 
+    /**
+     * invokeMethod.
+     * 
+     * @param target target
+     * @param method method
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object invokeMethod(Object target, Method method, Map<String, Object> inputs) {
         Object[] args = new Object[method.getParameterCount()];
         Type[] genericTypes = method.getGenericParameterTypes();
@@ -94,6 +113,15 @@ public final class AnnotatedToolFactory {
         }
     }
 
+    /**
+     * convertValue.
+     * 
+     * @param rawValue rawValue
+     * @param parameterType parameterType
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object convertValue(Object rawValue, Class<?> parameterType, Type genericType) {
         if (rawValue == null) {
             if (parameterType == Optional.class) {
@@ -104,7 +132,8 @@ public final class AnnotatedToolFactory {
 
         if (parameterType == Optional.class && genericType instanceof ParameterizedType pt) {
             Type nestedType = pt.getActualTypeArguments()[0];
-            return Optional.ofNullable(MAPPER.convertValue(rawValue, MAPPER.getTypeFactory().constructType(nestedType)));
+            return Optional
+                    .ofNullable(MAPPER.convertValue(rawValue, MAPPER.getTypeFactory().constructType(nestedType)));
         }
 
         return MAPPER.convertValue(rawValue, MAPPER.getTypeFactory().constructType(genericType));

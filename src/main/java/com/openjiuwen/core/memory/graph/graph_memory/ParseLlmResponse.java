@@ -15,25 +15,33 @@ import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Parsing LLM responses into graph entities, relations, and timestamps.
+ * 
+ * @since 0.1.7
  */
 public final class ParseLlmResponse {
-    private static final Pattern MATCH_ISO_DATETIME = Pattern.compile(
-            "([0-9]{1,4})-([0-9]{1,2})-([0-9]{1,2})T"
-                    + "([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2})"
-                    + "(?:Z|\\+([0-9]{1,2}):([0-9]{1,2}))?");
+    private static final Pattern MATCH_ISO_DATETIME = Pattern.compile("([0-9]{1,4})-([0-9]{1,2})-([0-9]{1,2})T"
+            + "([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2})" + "(?:Z|\\+([0-9]{1,2}):([0-9]{1,2}))?");
 
+    /**
+     * ParseLlmResponse.
+     * 
+     * @since 0.1.7
+     */
     private ParseLlmResponse() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseIso.
+     * 
+     * @param timeStr timeStr
+     * @return the result
+     * @since 0.1.7
      */
     public static int[] parseIso(String timeStr) {
         if (timeStr != null) {
@@ -45,14 +53,8 @@ public final class ParseLlmResponse {
                 int h = Integer.parseInt(match.group(4));
                 int m = Integer.parseInt(match.group(5));
                 int s = Integer.parseInt(match.group(6));
-                StringBuilder iso = new StringBuilder(String.format(
-                        "%04d-%02d-%02dT%02d:%02d:%02d",
-                        yyyy,
-                        mm,
-                        dd,
-                        h,
-                        m,
-                        s));
+                StringBuilder iso =
+                    new StringBuilder(String.format("%04d-%02d-%02dT%02d:%02d:%02d", yyyy, mm, dd, h, m, s));
                 String offsetH = match.group(7);
                 String offsetM = match.group(8);
                 if (offsetH != null) {
@@ -68,15 +70,16 @@ public final class ParseLlmResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dict2relation.
+     * 
+     * @param response response
+     * @param entities entities
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static Relation dict2relation(
-            Map<String, Object> response,
-            List<Entity> entities,
+    public static Relation dict2relation(Map<String, Object> response, List<Entity> entities,
             Map<String, Object> kwargs) {
         Map<String, Object> relationResponse = response;
         if (response.size() == 1) {
@@ -86,10 +89,10 @@ public final class ParseLlmResponse {
             }
         }
         try {
-            int sourceId = Integer.parseInt(String.valueOf(
-                    firstPresent(relationResponse, List.of("source_id", "sourceId")))) - 1;
-            int targetId = Integer.parseInt(String.valueOf(
-                    firstPresent(relationResponse, List.of("target_id", "targetId")))) - 1;
+            int sourceId =
+                Integer.parseInt(String.valueOf(firstPresent(relationResponse, List.of("source_id", "sourceId")))) - 1;
+            int targetId =
+                Integer.parseInt(String.valueOf(firstPresent(relationResponse, List.of("target_id", "targetId")))) - 1;
             if (sourceId < 0 || targetId < 0) {
                 throw new IllegalArgumentException(
                         "relation source_id and target_id must be valid 1-based entity indices");
@@ -124,12 +127,17 @@ public final class ParseLlmResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseAllRelations.
+     * 
+     * @param relations relations
+     * @param entities entities
+     * @param entityTypes entityTypes
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     public static Map.Entry<List<Relation>, List<Entity>> parseAllRelations(List<Map<String, Object>> relations,
-                                                                            List<Object> entities,
-                                                                            List<EntityDef> entityTypes,
-                                                                            Map<String, Object> kwargs) {
+            List<Object> entities, List<EntityDef> entityTypes, Map<String, Object> kwargs) {
         List<Entity> declared = declareEntities(entities, entityTypes, kwargs);
         Set<String> existingContents = new HashSet<>();
         for (Map<String, Object> relation : relations) {
@@ -159,11 +167,15 @@ public final class ParseLlmResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * declareEntities.
+     * 
+     * @param entities entities
+     * @param entityTypes entityTypes
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Entity> declareEntities(
-            List<Object> entities,
-            List<EntityDef> entityTypes,
+    public static List<Entity> declareEntities(List<Object> entities, List<EntityDef> entityTypes,
             Map<String, Object> kwargs) {
         List<Entity> result = new ArrayList<>();
         int typeIdMax = entityTypes.size() - 1;
@@ -184,17 +196,24 @@ public final class ParseLlmResponse {
                 result.add(newEntity);
             } else if (entity instanceof Entity graphEntity) {
                 result.add(graphEntity);
+            } else {
+                // no-op
             }
         }
         return result;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveEntities.
+     * 
+     * @param candidates candidates
+     * @param existing existing
+     * @param duplication duplication
+     * @return the result
+     * @since 0.1.7
      */
-    public static ResolveEntitiesResult resolveEntities(List<EntityDeclaration> candidates,
-                                                        List<Entity> existing,
-                                                        List<Map<String, Object>> duplication) {
+    public static ResolveEntitiesResult resolveEntities(List<EntityDeclaration> candidates, List<Entity> existing,
+            List<Map<String, Object>> duplication) {
         List<Object> result = new ArrayList<>(candidates);
         Map<String, Entity> nameLookup = new LinkedHashMap<>();
         Map<String, Entity> uuidLookup = new LinkedHashMap<>();
@@ -238,19 +257,20 @@ public final class ParseLlmResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseRelationMerging.
+     * 
+     * @param response response
+     * @param relation relation
+     * @param existingRelations existingRelations
+     * @return the result
+     * @since 0.1.7
      */
-    public static Set<String> parseRelationMerging(
-            Map<String, Object> response,
-            Relation relation,
+    public static Set<String> parseRelationMerging(Map<String, Object> response, Relation relation,
             List<Map<String, Object>> existingRelations) {
         Set<String> toRemove = new HashSet<>();
         int numExisting = existingRelations.size();
-        boolean isMergeNeeded = asBoolean(response, List.of(
-                "need_merging",
-                "needMerging",
-                "isNeedMerging",
-                "is_need_merging"));
+        boolean isMergeNeeded =
+            asBoolean(response, List.of("need_merging", "needMerging", "isNeedMerging", "is_need_merging"));
         String content = stringValue(response, List.of("combined_content", "combinedContent")).trim();
         Object dupIds = firstPresent(response, List.of("duplicate_ids", "duplicateIds"));
         if (isMergeNeeded && !content.isBlank()) {
@@ -277,6 +297,8 @@ public final class ParseLlmResponse {
                     }
                 } else if (!raw.isBlank()) {
                     duplicateIdList = List.of(raw);
+                } else {
+                    // no-op
                 }
             }
             if (duplicateIdList != null) {
@@ -291,6 +313,14 @@ public final class ParseLlmResponse {
         return toRemove;
     }
 
+    /**
+     * firstPresent.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstPresent(Map<String, Object> source, List<String> keys) {
         for (String key : keys) {
             if (source.containsKey(key)) {
@@ -300,12 +330,26 @@ public final class ParseLlmResponse {
         return null;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Map<String, Object> source, List<String> keys) {
-        return java.util.Optional.ofNullable(firstPresent(source, keys))
-                .map(String::valueOf)
-                .orElse("");
+        return java.util.Optional.ofNullable(firstPresent(source, keys)).map(String::valueOf).orElse("");
     }
 
+    /**
+     * asBoolean.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean asBoolean(Map<String, Object> source, List<String> keys) {
         Object value = firstPresent(source, keys);
         if (value instanceof Boolean boolValue) {
@@ -314,9 +358,17 @@ public final class ParseLlmResponse {
         return value != null && Boolean.parseBoolean(String.valueOf(value));
     }
 
-    private static Map<String, List<Entity>> resolveMergeDict(Map<String, List<Entity>> mergeDict,
-                                                              List<Object> result,
-                                                              Map<String, Entity> uuidLookup) {
+    /**
+     * resolveMergeDict.
+     * 
+     * @param mergeDict mergeDict
+     * @param result result
+     * @param uuidLookup uuidLookup
+     * @return the result
+     * @since 0.1.7
+     */
+    private static Map<String, List<Entity>> resolveMergeDict(Map<String, List<Entity>> mergeDict, List<Object> result,
+            Map<String, Entity> uuidLookup) {
         Map<String, List<Entity>> sorted = new LinkedHashMap<>();
         for (Map.Entry<String, List<Entity>> entry : mergeDict.entrySet()) {
             String targetUuid = entry.getKey();
@@ -340,10 +392,8 @@ public final class ParseLlmResponse {
                     result.set(idx, target);
                 }
             } else {
-                String newTargetUuid = replaceCount.entrySet().stream()
-                        .max(Map.Entry.comparingByValue())
-                        .map(Map.Entry::getKey)
-                        .orElse(targetUuid);
+                String newTargetUuid = replaceCount.entrySet().stream().max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey).orElse(targetUuid);
                 Entity newTarget = uuidLookup.get(newTargetUuid);
                 List<Entity> sources = new ArrayList<>(entry.getValue());
                 sources.add(target);
@@ -358,14 +408,22 @@ public final class ParseLlmResponse {
     }
 
     @SuppressWarnings("unchecked")
-    private static void parseEntityMerging(Map<String, Object> dup,
-                                           Map<String, Set<String>> mergeMap,
-                                           Map<String, String> isTarget,
-                                           List<Object> result,
-                                           List<Entity> existing,
-                                           Entity targetEntity,
-                                           int numEntities,
-                                           int numExisting) {
+    /**
+     * parseEntityMerging.
+     * 
+     * @param dup dup
+     * @param mergeMap mergeMap
+     * @param isTarget isTarget
+     * @param result result
+     * @param existing existing
+     * @param targetEntity targetEntity
+     * @param numEntities numEntities
+     * @param numExisting numExisting
+     * @since 0.1.7
+     */
+    private static void parseEntityMerging(Map<String, Object> dup, Map<String, Set<String>> mergeMap,
+            Map<String, String> isTarget, List<Object> result, List<Entity> existing, Entity targetEntity,
+            int numEntities, int numExisting) {
         Object duplicateIdsObj = firstPresent(dup, List.of("duplicate_ids", "duplicateIds"));
         if (!(duplicateIdsObj instanceof List<?> duplicateIds)) {
             return;
@@ -395,6 +453,13 @@ public final class ParseLlmResponse {
         }
     }
 
+    /**
+     * findToRemove.
+     * 
+     * @param mergeDict mergeDict
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> findToRemove(Map<String, List<Entity>> mergeDict) {
         Set<String> toRemove = new HashSet<>();
         for (List<Entity> entities : mergeDict.values()) {
@@ -407,12 +472,11 @@ public final class ParseLlmResponse {
     }
 
     /**
- * Public record ResolveEntitiesResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record ResolveEntitiesResult(List<Object> resolvedEntities,
-                                        List<Map.Entry<Entity, List<Entity>>> mergingArgs,
-                                        Set<String> entityUuidsToRemove) {
+     * Public record ResolveEntitiesResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record ResolveEntitiesResult(List<Object> resolvedEntities,
+            List<Map.Entry<Entity, List<Entity>>> mergingArgs, Set<String> entityUuidsToRemove) {
     }
 }

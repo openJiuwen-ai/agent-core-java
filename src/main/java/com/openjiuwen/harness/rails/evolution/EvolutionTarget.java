@@ -6,8 +6,8 @@ package com.openjiuwen.harness.rails.evolution;
 
 /**
  * Public enum EvolutionTarget used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum EvolutionTarget {
     DESCRIPTION("description"),
@@ -21,14 +21,21 @@ public enum EvolutionTarget {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static EvolutionTarget fromValue(String raw) {
         if (raw != null) {

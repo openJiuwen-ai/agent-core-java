@@ -10,26 +10,35 @@ import java.util.Map;
 
 /**
  * Foundation-store Elasticsearch adapter.
- *
- * <p>Delegates to the retrieval ElasticsearchVectorStore REST backend.</p>
+ * <p>
+ * Delegates to the retrieval ElasticsearchVectorStore REST backend.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class ElasticsearchVectorStore extends AbstractRetrievalVectorStoreAdapter {
     /**
-     * Auto-generated for codecheck compliance.
+     * ElasticsearchVectorStore.
+     * 
+     * @param options options
+     * @since 0.1.7
      */
     public ElasticsearchVectorStore(Map<String, Object> options) {
-        super(new com.openjiuwen.core.retrieval.vector_store.ElasticsearchVectorStore(
-                config(options),
-                InMemoryVectorStore.indexType(options)
-        ));
+        super(new com.openjiuwen.core.retrieval.vector_store.ElasticsearchVectorStore(config(options),
+                InMemoryVectorStore.indexType(options)));
     }
 
+    /**
+     * config.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private static VectorStoreConfig config(Map<String, Object> options) {
-        return new VectorStoreConfig(
-                "elasticsearch",
+        return new VectorStoreConfig("elasticsearch",
                 InMemoryVectorStore.stringOption(options, "database_name", "databaseName", ""),
                 InMemoryVectorStore.stringOption(options, "collection_name", "collectionName", "default_collection"),
-                InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")
-        );
+                InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine"));
     }
 }

@@ -5,14 +5,18 @@
 package com.openjiuwen.core.memory.graph.extraction;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Representing datetime (unused).
+ * 
+ * @since 0.1.7
  */
 @Data
+@EqualsAndHashCode(callSuper = false)
 public class DatetimeModel extends MultilingualBaseModel {
     @SchemaDescription("{{[year]}}")
     private int year;

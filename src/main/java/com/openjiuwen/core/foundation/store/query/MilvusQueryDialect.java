@@ -25,26 +25,32 @@ import java.util.stream.Collectors;
  * Query expression support for Milvus.
  * <p>
  * Returns Milvus filter expression strings.
+ * 
+ * @since 0.1.7
  */
 public final class MilvusQueryDialect {
-
+    /**
+     * MilvusQueryDialect.
+     * 
+     * @since 0.1.7
+     */
     private MilvusQueryDialect() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * definition.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static QueryLanguageDefinition definition() {
         return QueryLanguageDefinition.builder()
-                .comparison(expr -> comparisonFilter((ComparisonExpr) expr))
-                .range(expr -> rangeFilter((RangeExpr) expr))
-                .arithmetic(expr -> arithmeticFilter((ArithmeticExpr) expr))
-                .nullCheck(expr -> nullFilter((NullExpr) expr))
-                .jsonFilter(expr -> jsonFilter((JSONExpr) expr))
-                .array(expr -> arrayFilter((ArrayExpr) expr))
-                .logical(expr -> logicalFilter((LogicalExpr) expr))
-                .textMatch(expr -> textMatchFilter((MatchExpr) expr))
-                .build();
+                .comparison(expr -> comparisonFilter((expr instanceof ComparisonExpr __cast41 ? __cast41 : null)))
+                .range(expr -> rangeFilter((expr instanceof RangeExpr __cast42 ? __cast42 : null)))
+                .arithmetic(expr -> arithmeticFilter((expr instanceof ArithmeticExpr __cast43 ? __cast43 : null)))
+                .nullCheck(expr -> nullFilter((NullExpr) expr)).jsonFilter(expr -> jsonFilter((JSONExpr) expr))
+                .array(expr -> arrayFilter((ArrayExpr) expr)).logical(expr -> logicalFilter((LogicalExpr) expr))
+                .textMatch(expr -> textMatchFilter((MatchExpr) expr)).build();
     }
 
     static String comparisonFilter(ComparisonExpr self) {
@@ -64,13 +70,9 @@ public final class MilvusQueryDialect {
                     boolean allStrings = coll.stream().allMatch(v -> v instanceof String);
                     String valuesStr;
                     if (allStrings) {
-                        valuesStr = coll.stream()
-                                .map(v -> sanitize(v))
-                                .collect(Collectors.joining(","));
+                        valuesStr = coll.stream().map(v -> sanitize(v)).collect(Collectors.joining(","));
                     } else {
-                        valuesStr = coll.stream()
-                                .map(String::valueOf)
-                                .collect(Collectors.joining(","));
+                        valuesStr = coll.stream().map(String::valueOf).collect(Collectors.joining(","));
                     }
                     return self.getField() + " in [" + valuesStr + "]";
                 }
@@ -109,21 +111,19 @@ public final class MilvusQueryDialect {
 
     static String jsonFilter(JSONExpr self) {
         if (self.getValue() instanceof String) {
-            return self.getField() + "[" + sanitize(self.getKey()) + "] "
-                    + self.getOperator() + " " + sanitize(self.getValue());
+            return self.getField() + "[" + sanitize(self.getKey()) + "] " + self.getOperator() + " "
+                    + sanitize(self.getValue());
         }
-        return self.getField() + "[" + sanitize(self.getKey()) + "] "
-                + self.getOperator() + " " + self.getValue();
+        return self.getField() + "[" + sanitize(self.getKey()) + "] " + self.getOperator() + " " + self.getValue();
     }
 
     static String arrayFilter(ArrayExpr self) {
         if (self.getIndex() != null) {
             if (self.getValue() instanceof String) {
-                return self.getField() + "[" + self.getIndex() + "] "
-                        + self.getOperator() + " " + sanitize(self.getValue());
+                return self.getField() + "[" + self.getIndex() + "] " + self.getOperator() + " "
+                        + sanitize(self.getValue());
             } else {
-                return self.getField() + "[" + self.getIndex() + "] "
-                        + self.getOperator() + " " + self.getValue();
+                return self.getField() + "[" + self.getIndex() + "] " + self.getOperator() + " " + self.getValue();
             }
         } else {
             if (self.getValue() instanceof String) {
@@ -147,8 +147,8 @@ public final class MilvusQueryDialect {
                 if (self.getRight() == null) {
                     raiseQueryError(op + " operator requires both left and right operands");
                 }
-                return "(" + self.getLeft().toExpr("milvus") + ") " + op
-                        + " (" + self.getRight().toExpr("milvus") + ")";
+                return "(" + self.getLeft().toExpr("milvus") + ") " + op + " (" + self.getRight().toExpr("milvus")
+                        + ")";
             default:
                 raiseQueryError("Unsupported logical operator: " + self.getOperator());
         }
@@ -176,12 +176,24 @@ public final class MilvusQueryDialect {
         return self.getField() + " like " + sanitize(pattern);
     }
 
+    /**
+     * sanitize.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String sanitize(Object value) {
         return com.openjiuwen.spi.store.query.QueryExpr.sanitizeStr(value);
     }
 
+    /**
+     * raiseQueryError.
+     * 
+     * @param reason reason
+     * @since 0.1.7
+     */
     private static void raiseQueryError(String reason) {
-        throw ErrorHelper.buildError(StatusCode.RETRIEVAL_VECTOR_STORE_QUERY_INVALID,
-                "reason", reason);
+        throw ErrorHelper.buildError(StatusCode.RETRIEVAL_VECTOR_STORE_QUERY_INVALID, "reason", reason);
     }
 }

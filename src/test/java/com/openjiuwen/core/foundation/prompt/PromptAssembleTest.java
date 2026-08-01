@@ -1,9 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.prompt;
 
-import com.openjiuwen.core.common.exception.BaseError;
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
@@ -27,25 +29,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for PromptTemplate, PromptAssembler, TextableVariable, DictableVariable, Variable.
  * Ported from Python: tests/unit_tests/core/foundation/prompt/test_template_assemble.py
  */
 class PromptAssembleTest {
-
     // ============================== TextableVariable tests ==============================
-
     @Nested
     @DisplayName("TextableVariable tests")
     class TextableVariableTests {
-
         @Test
         @DisplayName("Empty placeholder throws exception")
         void testEmptyPlaceholderThrows() {
-            assertThrows(Throwable.class, () ->
-                    new TextableVariable("{{}}", "default", "{{", "}}"));
+            assertThrows(Throwable.class, () -> new TextableVariable("{{}}", "default", "{{", "}}"));
         }
 
         @Test
@@ -86,28 +82,25 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Empty placeholder with custom prefix throws")
         void testEmptyPlaceholderCustomPrefix() {
-            assertThrows(Throwable.class, () ->
-                    new TextableVariable("Hello, <<>>!", "default", "<<", ">>"));
+            assertThrows(Throwable.class, () -> new TextableVariable("Hello, <<>>!", "default", "<<", ">>"));
         }
 
         @Test
         @DisplayName("Update replaces placeholders correctly")
         void testUpdate() {
             // Normal replacement
-            TextableVariable var = new TextableVariable(
-                    "You're an expert in the domain of {{domain}}.", "default", "{{", "}}");
+            TextableVariable var =
+                new TextableVariable("You're an expert in the domain of {{domain}}.", "default", "{{", "}}");
             var.update(Map.of("domain", "science"));
             assertEquals("You're an expert in the domain of science.", var.getValue());
 
             // Numeric type replacement
-            TextableVariable varNum = new TextableVariable(
-                    "This value is {{value}}.", "default", "{{", "}}");
+            TextableVariable varNum = new TextableVariable("This value is {{value}}.", "default", "{{", "}}");
             varNum.update(Map.of("value", 42));
             assertEquals("This value is 42.", varNum.getValue());
 
             // Nested placeholder replacement
-            TextableVariable varNested = new TextableVariable(
-                    "Hello, {{user.name}}!", "default", "{{", "}}");
+            TextableVariable varNested = new TextableVariable("Hello, {{user.name}}!", "default", "{{", "}}");
             varNested.update(Map.of("user", Map.of("name", "Alice")));
             assertEquals("Hello, Alice!", varNested.getValue());
         }
@@ -116,25 +109,20 @@ class PromptAssembleTest {
         @DisplayName("Eval returns formatted text without modifying original")
         void testEval() {
             // Normal eval
-            TextableVariable var = new TextableVariable(
-                    "You're an expert in the domain of {{domain}}.", "default", "{{", "}}");
+            TextableVariable var =
+                new TextableVariable("You're an expert in the domain of {{domain}}.", "default", "{{", "}}");
             Object result = var.eval(Map.of("domain", "science"));
             assertEquals("You're an expert in the domain of science.", result);
 
             // Nested eval
-            TextableVariable varNested = new TextableVariable(
-                    "Hello, {{user.name}}!", "default", "{{", "}}");
+            TextableVariable varNested = new TextableVariable("Hello, {{user.name}}!", "default", "{{", "}}");
             Object resultNested = varNested.eval(Map.of("user", Map.of("name", "Alice")));
             assertEquals("Hello, Alice!", resultNested);
 
             // Multiple placeholders eval
             TextableVariable varMulti = new TextableVariable(
-                    "{{greeting}}, {{user.name}}! You have {{count}} messages.",
-                    "default", "{{", "}}");
-            Object resultMulti = varMulti.eval(Map.of(
-                    "greeting", "Hi",
-                    "user", Map.of("name", "Bob"),
-                    "count", 3));
+                    "{{greeting}}, {{user.name}}! You have {{count}} messages.", "default", "{{", "}}");
+            Object resultMulti = varMulti.eval(Map.of("greeting", "Hi", "user", Map.of("name", "Bob"), "count", 3));
             assertEquals("Hi, Bob! You have 3 messages.", resultMulti);
         }
     }
@@ -144,7 +132,6 @@ class PromptAssembleTest {
     @Nested
     @DisplayName("Variable base class tests")
     class VariableBaseTests {
-
         @Test
         @DisplayName("Variable initialization with name and inputKeys")
         void testVariableInitialization() {
@@ -240,7 +227,6 @@ class PromptAssembleTest {
     @Nested
     @DisplayName("DictableVariable tests")
     class DictableVariableTests {
-
         @Test
         @DisplayName("Initialization scans placeholders from Map data")
         void testInitializationMapData() {
@@ -255,9 +241,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Initialization scans placeholders from List data with nested dot notation")
         void testInitializationListData() {
-            List<Map<String, Object>> data = List.of(
-                    Map.of("type", "text", "content", "{{user.profile.name}}")
-            );
+            List<Map<String, Object>> data = List.of(Map.of("type", "text", "content", "{{user.profile.name}}"));
 
             DictableVariable var = new DictableVariable(data, "default", "{{", "}}");
             assertEquals(List.of("user"), var.getInputKeys());
@@ -267,8 +251,7 @@ class PromptAssembleTest {
         @DisplayName("Empty placeholder in dict throws exception")
         void testEmptyPlaceholderThrows() {
             Map<String, Object> data = Map.of("key", "{{}}");
-            assertThrows(Throwable.class, () ->
-                    new DictableVariable(data, "default", "{{", "}}"));
+            assertThrows(Throwable.class, () -> new DictableVariable(data, "default", "{{", "}}"));
         }
 
         @Test
@@ -301,16 +284,15 @@ class PromptAssembleTest {
         void testUpdateListOfMaps() {
             List<Map<String, Object>> data = new ArrayList<>();
             data.add(new LinkedHashMap<>(Map.of("type", "text", "text", "{{query}}")));
-            data.add(new LinkedHashMap<>(Map.of("type", "image_url", "image_url",
-                    new LinkedHashMap<>(Map.of("url", "{{url}}")))));
+            data.add(new LinkedHashMap<>(
+                    Map.of("type", "image_url", "image_url", new LinkedHashMap<>(Map.of("url", "{{url}}")))));
 
             DictableVariable var = new DictableVariable(data, "default", "{{", "}}");
             var.update(Map.of("query", "What is this?", "url", "http://example.com/1.jpg"));
 
             List<Map<String, Object>> expected = new ArrayList<>();
             expected.add(Map.of("type", "text", "text", "What is this?"));
-            expected.add(Map.of("type", "image_url", "image_url",
-                    Map.of("url", "http://example.com/1.jpg")));
+            expected.add(Map.of("type", "image_url", "image_url", Map.of("url", "http://example.com/1.jpg")));
 
             assertEquals(expected, var.getValue());
         }
@@ -347,13 +329,10 @@ class PromptAssembleTest {
     @Nested
     @DisplayName("PromptAssembler tests")
     class PromptAssemblerTests {
-
         @Test
         @DisplayName("Assemble string template with custom prefix/suffix")
         void testAssembleStringTemplateCustomDelimiters() {
-            PromptAssembler asm = new PromptAssembler(
-                    "`#system#`{role}`#user#`{memory}",
-                    "{", "}");
+            PromptAssembler asm = new PromptAssembler("`#system#`{role}`#user#`{memory}", "{", "}");
 
             assertEquals(Set.of("role", "memory"), new HashSet<>(asm.getInputKeys()));
 
@@ -362,9 +341,7 @@ class PromptAssembleTest {
             kwargs.put("memory", "用户消息");
 
             Object result = asm.promptAssemble(kwargs);
-            assertEquals(
-                    "`#system#`你是一个精通天文领域的问答助手。`#user#`用户消息",
-                    result);
+            assertEquals("`#system#`你是一个精通天文领域的问答助手。`#user#`用户消息", result);
         }
 
         @Test
@@ -373,12 +350,8 @@ class PromptAssembleTest {
         void testAssembleBaseMessageList() {
             List<BaseMessage> content = new ArrayList<>();
             content.add(UserMessage.builder().content("Hi, {{user_inputs}}").role("user").build());
-            content.add(AssistantMessage.builder()
-                    .content("")
-                    .role("assistant")
-                    .toolCalls(List.of(
-                            ToolCall.builder().type("test").name("func").arguments("x").id("test").build()
-                    ))
+            content.add(AssistantMessage.builder().content("").role("assistant")
+                    .toolCalls(List.of(ToolCall.builder().type("test").name("func").arguments("x").id("test").build()))
                     .build());
             content.add(ToolMessage.builder().toolCallId("test").content(List.of()).role("tool").build());
 
@@ -399,13 +372,11 @@ class PromptAssembleTest {
     @Nested
     @DisplayName("PromptTemplate tests")
     class PromptTemplateTests {
-
         @Test
         @DisplayName("Format string template with all variables")
         void testFormatStringTemplateComplete() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}")
-                    .build();
+            PromptTemplate template =
+                PromptTemplate.builder().content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}").build();
 
             Map<String, Object> keywords = new LinkedHashMap<>();
             keywords.put("memory", List.of(Map.of("role", "user", "content", "你是谁")).toString());
@@ -420,9 +391,8 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Format string template with partial variables preserves unfilled placeholders")
         void testFormatStringTemplatePartial() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}")
-                    .build();
+            PromptTemplate template =
+                PromptTemplate.builder().content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}").build();
 
             Map<String, Object> keywords = new LinkedHashMap<>();
             keywords.put("memory", "用户消息内容");
@@ -432,16 +402,14 @@ class PromptAssembleTest {
             String content = (String) partial.getContent();
             assertTrue(content.contains("{{domain}}"),
                     "Expected {{domain}} placeholder to be preserved, got: " + content);
-            assertTrue(content.contains("用户消息内容"),
-                    "Expected memory replacement, got: " + content);
+            assertTrue(content.contains("用户消息内容"), "Expected memory replacement, got: " + content);
         }
 
         @Test
         @DisplayName("Format remaining variables completes all replacements")
         void testFormatRemainingVariables() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}")
-                    .build();
+            PromptTemplate template =
+                PromptTemplate.builder().content("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`{{memory}}").build();
 
             // First pass: fill memory
             Map<String, Object> kw1 = new LinkedHashMap<>();
@@ -451,8 +419,7 @@ class PromptAssembleTest {
             // Second pass: fill domain
             PromptTemplate completed = partial.format(Map.of("domain", "数学"));
             String content = (String) completed.getContent();
-            assertFalse(content.contains("{{"),
-                    "Expected no remaining placeholders, got: " + content);
+            assertFalse(content.contains("{{"), "Expected no remaining placeholders, got: " + content);
             assertTrue(content.contains("数学"));
         }
 
@@ -461,13 +428,10 @@ class PromptAssembleTest {
         void testFormatBaseMessageList() {
             List<BaseMessage> contentList = new ArrayList<>();
             contentList.add(UserMessage.builder().content("Hello {{name}}!").role("user").build());
-            contentList.add(AssistantMessage.builder()
-                    .content("I'm your assistant for {{domain}}.")
-                    .role("assistant").build());
+            contentList.add(
+                    AssistantMessage.builder().content("I'm your assistant for {{domain}}.").role("assistant").build());
 
-            PromptTemplate template = PromptTemplate.builder()
-                    .content(contentList)
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content(contentList).build();
 
             PromptTemplate formatted = template.format(Map.of("name", "Alice", "domain", "AI"));
             List<BaseMessage> messages = formatted.toMessages();
@@ -480,9 +444,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Format with null keywords returns deep copy")
         void testFormatNullKeywords() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("Hello {{name}}")
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content("Hello {{name}}").build();
 
             PromptTemplate copy = template.format(null);
             assertEquals(template.getContent(), copy.getContent());
@@ -491,9 +453,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Format with empty keywords returns deep copy")
         void testFormatEmptyKeywords() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("Hello {{name}}")
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content("Hello {{name}}").build();
 
             PromptTemplate copy = template.format(Map.of());
             assertEquals(template.getContent(), copy.getContent());
@@ -502,9 +462,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("Format with redundant keywords ignores extra keys")
         void testFormatRedundantKeywords() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("Hi {{name}}")
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content("Hi {{name}}").build();
 
             Map<String, Object> keywords = new LinkedHashMap<>();
             keywords.put("name", "Bob");
@@ -517,9 +475,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("toMessages wraps string as single UserMessage")
         void testToMessagesString() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("Hello world")
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content("Hello world").build();
 
             List<BaseMessage> messages = template.toMessages();
             assertEquals(1, messages.size());
@@ -530,9 +486,7 @@ class PromptAssembleTest {
         @Test
         @DisplayName("toMessages returns empty list for empty content")
         void testToMessagesEmpty() {
-            PromptTemplate template = PromptTemplate.builder()
-                    .content("")
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content("").build();
 
             List<BaseMessage> messages = template.toMessages();
             assertTrue(messages.isEmpty());
@@ -543,29 +497,25 @@ class PromptAssembleTest {
         void testDictTemplateIntegration() {
             List<Object> userContent = new ArrayList<>();
             userContent.add(new LinkedHashMap<>(Map.of("type", "text", "text", "Describe this: {{query}}")));
-            userContent.add(new LinkedHashMap<>(Map.of("type", "image_url", "image_url",
-                    new LinkedHashMap<>(Map.of("url", "{{image_url}}")))));
+            userContent.add(new LinkedHashMap<>(
+                    Map.of("type", "image_url", "image_url", new LinkedHashMap<>(Map.of("url", "{{image_url}}")))));
 
             List<BaseMessage> templateContent = new ArrayList<>();
             templateContent.add(SystemMessage.builder().content("You are a helper.").role("system").build());
             templateContent.add(UserMessage.builder().content(userContent).role("user").build());
 
-            PromptTemplate template = PromptTemplate.builder()
-                    .content(templateContent)
-                    .build();
+            PromptTemplate template = PromptTemplate.builder().content(templateContent).build();
 
-            PromptTemplate formatted = template.format(Map.of(
-                    "query", "a cute cat",
-                    "image_url", "https://picsum.photos/200"
-            ));
+            PromptTemplate formatted =
+                template.format(Map.of("query", "a cute cat", "image_url", "https://picsum.photos/200"));
 
             List<BaseMessage> messages = formatted.toMessages();
             assertEquals(2, messages.size());
             assertEquals("You are a helper.", messages.get(0).getContentAsString());
 
             @SuppressWarnings("unchecked")
-            List<Map<String, Object>> userContentResult = messages.get(1).getContentAsList()
-                    .stream().map(o -> (Map<String, Object>) o).toList();
+            List<Map<String, Object>> userContentResult =
+                messages.get(1).getContentAsList().stream().map(o -> (Map<String, Object>) o).toList();
             assertEquals("text", userContentResult.get(0).get("type"));
             assertEquals("Describe this: a cute cat", userContentResult.get(0).get("text"));
             assertEquals("image_url", userContentResult.get(1).get("type"));

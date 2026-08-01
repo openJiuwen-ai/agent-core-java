@@ -16,18 +16,19 @@ import java.util.Map;
 
 /**
  * Tool that delegates work to a sub-agent via {@link TeamRuntime#send}.
- *
- * <p>Injected by {@link HierarchicalMsgBusTeam} into the supervisor agent's
+ * <p>
+ * Injected by {@link HierarchicalMsgBusTeam} into the supervisor agent's
  * {@code AbilityManager}. The tool name exposed to the LLM is
  * {@code delegate_to_{target_id}}; invoking it dispatches the message to
- * the target agent and returns the result.</p>
- *
- * <p>Mirrors Python's {@code P2PAbilityManager} sub-agent dispatch.</p>
- *
- * @since 1.0
+ * the target agent and returns the result.
+ * </p>
+ * <p>
+ * Mirrors Python's {@code P2PAbilityManager} sub-agent dispatch.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DelegateTool extends Tool {
-
     private final String targetId;
     private final TeamRuntime runtime;
     private final String senderId;
@@ -35,16 +36,17 @@ public class DelegateTool extends Tool {
 
     /**
      * Create a delegate tool targeting {@code targetId}.
-     *
-     * @param targetId          ID of the agent to delegate to.
+     * 
+     * @param targetId ID of the agent to delegate to.
      * @param targetDescription Optional description of the target agent appended
-     *                          to the tool description shown to the LLM.
-     * @param runtime           the team runtime for message dispatch.
-     * @param senderId          the ID of the agent that owns this tool.
-     * @param teamId            the team ID for session metadata.
+     * @param runtime the team runtime for message dispatch.
+     * @param senderId the ID of the agent that owns this tool.
+     * @param teamId the team ID for session metadata.
+     *            to the tool description shown to the LLM.
+     * @since 0.1.7
      */
-    public DelegateTool(String targetId, String targetDescription,
-                        TeamRuntime runtime, String senderId, String teamId) {
+    public DelegateTool(String targetId, String targetDescription, TeamRuntime runtime, String senderId,
+            String teamId) {
         super(buildCard(targetId, targetDescription));
         this.targetId = targetId;
         this.runtime = runtime;
@@ -54,6 +56,9 @@ public class DelegateTool extends Tool {
 
     /**
      * Get the target agent ID.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTargetId() {
         return targetId;
@@ -62,10 +67,17 @@ public class DelegateTool extends Tool {
     /**
      * Dispatch the message to the target agent via the team runtime and
      * return the result.
-     *
-     * <p>The {@code session} is extracted from {@code kwargs} (set by
+     * <p>
+     * The {@code session} is extracted from {@code kwargs} (set by
      * {@code AbilityManager.invokeTool}) so that nested dispatch preserves
-     * the call-depth tracking in {@code TeamRuntime}.</p>
+     * the call-depth tracking in {@code TeamRuntime}.
+     * </p>
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
@@ -91,12 +103,26 @@ public class DelegateTool extends Tool {
 
     /**
      * Streaming variant — yields the single {@link #invoke} result.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         return List.of(invoke(inputs, kwargs)).iterator();
     }
 
+    /**
+     * buildCard.
+     * 
+     * @param targetId targetId
+     * @param targetDescription targetDescription
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCard buildCard(String targetId, String targetDescription) {
         String toolName = targetId;
         String description = "Delegate a task to " + targetId + " for processing.";
@@ -112,11 +138,6 @@ public class DelegateTool extends Tool {
         inputParams.put("type", "object");
         inputParams.put("properties", properties);
         inputParams.put("required", List.of("message"));
-        return ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description(description)
-                .inputParams(inputParams)
-                .build();
+        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
     }
 }

@@ -15,38 +15,57 @@ import java.util.Map;
 
 /**
  * Shared helper for Java LSP examples.
+ * 
+ * @since 0.1.7
  */
 public final class LspExampleSupport {
+    /**
+     * LspExampleSupport.
+     * 
+     * @since 0.1.7
+     */
     private LspExampleSupport() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildToolSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> buildToolSchema() {
         return LspToolSupport.buildLspTool();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * supportedOperations.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> supportedOperations() {
         return java.util.Arrays.stream(LspOperation.values()).map(LspOperation::value).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runDefinitionDemo.
+     * 
+     * @param workspace workspace
+     * @param relativePath relativePath
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> runDefinitionDemo(Path workspace, String relativePath) {
         LspTool tool = new LspTool(workspace.toString());
-        return cast(tool.invoke(Map.of(
-                "operation", "goToDefinition",
-                "file_path", relativePath
-        )).getData());
+        return cast(tool.invoke(Map.of("operation", "goToDefinition", "file_path", relativePath)).getData());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * newManager.
+     * 
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static LSPServerManager newManager(Path workspace) {
         LSPServerManager manager = new LSPServerManager();
@@ -61,6 +80,13 @@ public final class LspExampleSupport {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * cast.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> cast(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }

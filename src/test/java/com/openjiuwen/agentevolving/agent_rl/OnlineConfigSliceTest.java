@@ -1,19 +1,5 @@
+
 package com.openjiuwen.agentevolving.agent_rl;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.GatewayServiceConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.JiuwenConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.JudgeConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.OnlineConfigDefaults;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.OnlineRLConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.TrajectoryConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.TrainingConfig;
-import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.VLLMServiceConfig;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,8 +8,23 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class OnlineConfigSliceTest {
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.GatewayServiceConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.JiuwenConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.JudgeConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.OnlineConfigDefaults;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.OnlineRLConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.TrainingConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.TrajectoryConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.onlineconfig.VLLMServiceConfig;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+class OnlineConfigSliceTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
@@ -38,34 +39,18 @@ class OnlineConfigSliceTest {
         assertNull(inference.getExisting_url());
         assertEquals(300.0, inference.getHealth_timeout());
         assertEquals(Map.of("VLLM_ALLOW_RUNTIME_LORA_UPDATING", "1"), inference.getEnv());
-        assertEquals(List.of(
-                "--enable-lora",
-                "--max-loras",
-                "4",
-                "--max-lora-rank",
-                "32",
-                "--enable-auto-tool-choice",
-                "--tool-call-parser",
-                "hermes",
-                "--max-model-len",
-                "32768",
-                "--gpu-memory-utilization",
-                "0.85"
-        ), inference.getExtra_args());
+        assertEquals(
+                List.of("--enable-lora", "--max-loras", "4", "--max-lora-rank", "32", "--enable-auto-tool-choice",
+                        "--tool-call-parser", "hermes", "--max-model-len", "32768", "--gpu-memory-utilization", "0.85"),
+                inference.getExtra_args());
 
         JudgeConfig judge = new JudgeConfig();
         assertEquals("2,3", judge.getGpu_ids());
         assertEquals(600.0, judge.getHealth_timeout());
         assertTrue(judge.isReuse_inference_if_same_model());
         assertTrue(judge.getEnv().isEmpty());
-        assertEquals(List.of(
-                "--max-model-len",
-                "8192",
-                "--gpu-memory-utilization",
-                "0.85",
-                "--max-num-seqs",
-                "16"
-        ), judge.getExtra_args());
+        assertEquals(List.of("--max-model-len", "8192", "--gpu-memory-utilization", "0.85", "--max-num-seqs", "16"),
+                judge.getExtra_args());
 
         GatewayServiceConfig gateway = new GatewayServiceConfig();
         assertEquals("127.0.0.1", gateway.getHost());
@@ -161,43 +146,30 @@ class OnlineConfigSliceTest {
         config.getInference().setPort(18000);
         config.getJudge().setPort(18001);
 
-        IllegalArgumentException gatewayPortError = assertThrows(
-                IllegalArgumentException.class,
-                config::syncAndValidateLaunch
-        );
+        IllegalArgumentException gatewayPortError =
+            assertThrows(IllegalArgumentException.class, config::syncAndValidateLaunch);
         assertEquals("gateway.port is required (--gateway-port or YAML).", gatewayPortError.getMessage());
 
         config.getGateway().setPort(18080);
-        IllegalArgumentException redisError = assertThrows(
-                IllegalArgumentException.class,
-                config::syncAndValidateLaunch
-        );
+        IllegalArgumentException redisError =
+            assertThrows(IllegalArgumentException.class, config::syncAndValidateLaunch);
         assertEquals("gateway.redis_url is required (--redis-url or YAML).", redisError.getMessage());
 
         config.getGateway().setRedis_url("redis://127.0.0.1:6379/0");
-        IllegalArgumentException jiuwenError = assertThrows(
-                IllegalArgumentException.class,
-                config::syncAndValidateLaunch
-        );
-        assertEquals(
-                "jiuwen.agent_server_port is required when jiuwen.enabled is true.",
-                jiuwenError.getMessage()
-        );
+        IllegalArgumentException jiuwenError =
+            assertThrows(IllegalArgumentException.class, config::syncAndValidateLaunch);
+        assertEquals("jiuwen.agent_server_port is required when jiuwen.enabled is true.", jiuwenError.getMessage());
 
         config.getJiuwen().setEnabled(false);
         config.getInference().setPort(70000);
-        IllegalArgumentException portRangeError = assertThrows(
-                IllegalArgumentException.class,
-                config::syncAndValidateLaunch
-        );
+        IllegalArgumentException portRangeError =
+            assertThrows(IllegalArgumentException.class, config::syncAndValidateLaunch);
         assertEquals("inference.port must be between 1 and 65535", portRangeError.getMessage());
 
         config.getInference().setPort(18000);
         config.getTrajectory().setBatch_size(0);
-        IllegalArgumentException batchSizeError = assertThrows(
-                IllegalArgumentException.class,
-                config::syncAndValidateLaunch
-        );
+        IllegalArgumentException batchSizeError =
+            assertThrows(IllegalArgumentException.class, config::syncAndValidateLaunch);
         assertEquals("trajectory.batch_size must be >= 1", batchSizeError.getMessage());
     }
 
@@ -213,11 +185,9 @@ class OnlineConfigSliceTest {
         config.getJiuwen().setWeb_port(5173);
         config.syncAndValidateLaunch();
 
-        Map<String, Object> encoded = OBJECT_MAPPER.readValue(
-                OBJECT_MAPPER.writeValueAsBytes(config),
-                new TypeReference<>() {
-                }
-        );
+        Map<String, Object> encoded =
+            OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsBytes(config), new TypeReference<>() {
+            });
 
         @SuppressWarnings("unchecked")
         Map<String, Object> inference = (Map<String, Object>) encoded.get("inference");
@@ -246,11 +216,14 @@ class OnlineConfigSliceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("data");
         @SuppressWarnings("unchecked")
-        Map<String, Object> actorRolloutRef = (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("actor_rollout_ref");
+        Map<String, Object> actorRolloutRef =
+            (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("actor_rollout_ref");
         @SuppressWarnings("unchecked")
-        Map<String, Object> trainer = (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("trainer");
+        Map<String, Object> trainer =
+            (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("trainer");
         @SuppressWarnings("unchecked")
-        Map<String, Object> jiuwenRl = (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("JiuwenRL");
+        Map<String, Object> jiuwenRl =
+            (Map<String, Object>) OnlineConfigDefaults.ONLINE_PPO_VERL_HYDRA_OVERLAY.get("JiuwenRL");
 
         assertEquals("/dev/null", data.get("train_files"));
         assertEquals(8, data.get("train_batch_size"));

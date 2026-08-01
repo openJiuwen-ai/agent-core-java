@@ -6,8 +6,8 @@ package com.openjiuwen.harness.tools;
 
 /**
  * Public enum TodoStatus used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum TodoStatus {
     PENDING,

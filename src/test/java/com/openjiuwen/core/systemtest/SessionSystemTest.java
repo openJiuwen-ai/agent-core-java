@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.openjiuwen.core.session.WorkflowSessionApi;
 
@@ -12,9 +16,6 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-
 /**
  * Integration tests for the Session module.
  * Tests Session creation, state management, and lifecycle.
@@ -22,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 @Tag("system-test")
 class SessionSystemTest {
-
     @Test
     @DisplayName("WorkflowSessionApi creation with session ID")
     void testWorkflowSessionCreation() {
@@ -63,16 +63,13 @@ class SessionSystemTest {
         // IDs should be different (UUID-based)
         assertEquals(false, s1.getSessionId().equals(s2.getSessionId()),
                 "Different sessions should have different IDs");
-        System.out.println("[Session Multi] s1=" + s1.getSessionId()
-                + ", s2=" + s2.getSessionId());
+        System.out.println("[Session Multi] s1=" + s1.getSessionId() + ", s2=" + s2.getSessionId());
     }
 
     @Test
     @DisplayName("WorkflowSessionApi with environment variables")
     void testWorkflowSessionWithEnvs() {
-        Map<String, Object> envs = Map.of(
-                "DEBUG", "true",
-                "MAX_RETRIES", 3);
+        Map<String, Object> envs = Map.of("DEBUG", "true", "MAX_RETRIES", 3);
         WorkflowSessionApi session = new WorkflowSessionApi(null, "env-session", envs);
 
         assertEquals("env-session", session.getSessionId());

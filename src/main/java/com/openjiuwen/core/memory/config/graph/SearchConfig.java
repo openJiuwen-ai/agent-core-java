@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.config.graph;
 
 import com.openjiuwen.spi.store.query.QueryExpr;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,6 +13,8 @@ import java.util.List;
 
 /**
  * Config for searching memory.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

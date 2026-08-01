@@ -9,31 +9,50 @@ import java.util.Map;
 
 /**
  * Public class SearchToolsTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SearchToolsTool {
     private final SearchHandler handler;
 
     /**
- * Public interface SearchHandler used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface SearchHandler used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface SearchHandler {
+    public interface SearchHandler {
+        /**
+         * search.
+         * 
+         * @param query query
+         * @param limit limit
+         * @param detailLevel detailLevel
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         List<Map<String, Object>> search(String query, int limit, int detailLevel) throws Exception;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SearchToolsTool.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
     public SearchToolsTool(SearchHandler handler) {
         this.handler = handler;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param query query
+     * @param limit limit
+     * @param detailLevel detailLevel
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(String query, Integer limit, Integer detailLevel) {
         if (query == null || query.isBlank()) {
@@ -43,14 +62,8 @@ public interface SearchHandler {
             int normalizedLimit = Math.max(1, Math.min(limit != null ? limit : 10, 20));
             int normalizedDetail = detailLevel != null ? detailLevel : 1;
             List<Map<String, Object>> matches = handler.search(query, normalizedLimit, normalizedDetail);
-            return ToolOutput.builder()
-                    .success(true)
-                    .data(Map.of(
-                            "query", query,
-                            "matches", matches,
-                            "count", matches.size()
-                    ))
-                    .build();
+            return ToolOutput.builder().success(true)
+                    .data(Map.of("query", query, "matches", matches, "count", matches.size())).build();
         } catch (Exception ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }

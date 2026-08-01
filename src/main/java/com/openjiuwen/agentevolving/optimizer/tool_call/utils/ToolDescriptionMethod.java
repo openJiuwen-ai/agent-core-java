@@ -4,10 +4,12 @@
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,19 +21,29 @@ import java.util.function.Function;
 
 /**
  * Public class ToolDescriptionMethod used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ToolDescriptionMethod extends BaseMethod {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() { };
+
+    /**
+     * TypeReference<>.
+     * 
+     * @since 0.1.7
+     */
+    private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() {
+    };
     private static final double PERFORMANCE_THRESHOLD = 60.0d;
 
     private final Object evalFn;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolDescriptionMethod.
+     * 
+     * @param config config
+     * @param evalFn evalFn
+     * @since 0.1.7
      */
     public ToolDescriptionMethod(Map<String, Object> config, Object evalFn) {
         super(config);
@@ -39,7 +51,14 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * step.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @param it it
+     * @return the result
+     * @since 0.1.7
      */
     public StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs, int it) {
         Map<String, Object> output;
@@ -58,46 +77,53 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generate.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @param it it
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generate(
-            Map<String, Object> tool,
-            Map<String, Object> examples,
-            List<Object> prevOutputs,
-            int it
-    ) {
+    public Map<String, Object> generate(Map<String, Object> tool, Map<String, Object> examples,
+            List<Object> prevOutputs, int it) {
         Map<String, Object> output = generateDescriptionFromDocumentation(tool, examples, prevOutputs);
         output.put("iteration", it);
         return output;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateDescriptionFromDocumentation.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @param it it
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generateDescriptionFromDocumentation(
-            Map<String, Object> tool,
-            Map<String, Object> examples,
-            List<Object> prevOutputs,
-            int it
-    ) {
+    public Map<String, Object> generateDescriptionFromDocumentation(Map<String, Object> tool,
+            Map<String, Object> examples, List<Object> prevOutputs, int it) {
         return generate(tool, examples, prevOutputs, it);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateDescriptionFromDocumentation.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generateDescriptionFromDocumentation(
-            Map<String, Object> tool,
-            Map<String, Object> examples,
-            List<Object> prevOutputs
-    ) {
+    public Map<String, Object> generateDescriptionFromDocumentation(Map<String, Object> tool,
+            Map<String, Object> examples, List<Object> prevOutputs) {
         List<Object> pos = asList(examples != null ? examples.get("examples") : null);
         List<Object> neg = asList(examples != null ? examples.get("neg_examples") : null);
         Map<String, Object> descAnalysis = critiqueDescriptions(tool, pos, prevOutputs);
-        Map<String, Object> contrastAnalysis = critiqueAllDescriptions(
-                tool,
-                Map.of("examples", pos, "neg_examples", neg),
-                prevOutputs);
+        Map<String, Object> contrastAnalysis =
+            critiqueAllDescriptions(tool, Map.of("examples", pos, "neg_examples", neg), prevOutputs);
 
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
@@ -115,8 +141,7 @@ public class ToolDescriptionMethod extends BaseMethod {
                         .append(output.getOrDefault("score_std", 0)).append("%.\n");
             }
             prompt.append("Analysis: ").append(String.valueOf(descAnalysis.getOrDefault("analysis", ""))).append("\n");
-            prompt.append("Contrast: ")
-                    .append(String.valueOf(contrastAnalysis.getOrDefault("analysis", "")))
+            prompt.append("Contrast: ").append(String.valueOf(contrastAnalysis.getOrDefault("analysis", "")))
                     .append("\n");
         }
         prompt.append("Return JSON only in the form {\"description\": ...}. Keep the schema structure, ")
@@ -134,18 +159,22 @@ public class ToolDescriptionMethod extends BaseMethod {
             result.put("description", stringify(result.get("description")));
             return result;
         };
-        return ensureMap(invokeRitsResponse(
-                String.valueOf(config.getOrDefault("gen_model_id", "")),
+        return ensureMap(invokeRitsResponse(String.valueOf(config.getOrDefault("gen_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                verify,
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        ));
+                String.valueOf(config.getOrDefault("llm_api_key", "")), verify,
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * evalLoop.
+     * 
+     * @param tool tool
+     * @param description description
+     * @param examples examples
+     * @param runs runs
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> evalLoop(Map<String, Object> tool, String description, List<Object> examples, int runs) {
         if (evalFn == null) {
@@ -161,13 +190,16 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * critiqueDescriptions.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> critiqueDescriptions(
-            Map<String, Object> tool,
-            List<Object> examples,
-            List<Object> prevOutputs
-    ) {
+    public Map<String, Object> critiqueDescriptions(Map<String, Object> tool, List<Object> examples,
+            List<Object> prevOutputs) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
         List<Map<String, Object>> positives = new ArrayList<>();
@@ -186,7 +218,12 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * critiqueNegativeExamples.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> critiqueNegativeExamples(Map<String, Object> tool, List<Object> examples) {
         StringBuilder prompt = new StringBuilder();
@@ -197,13 +234,16 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * critiqueAllDescriptions.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> critiqueAllDescriptions(
-            Map<String, Object> tool,
-            Map<String, Object> examples,
-            List<Object> prevOutputs
-    ) {
+    public Map<String, Object> critiqueAllDescriptions(Map<String, Object> tool, Map<String, Object> examples,
+            List<Object> prevOutputs) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
         prompt.append("Positive examples:\n");
@@ -215,7 +255,13 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadExamples.
+     * 
+     * @param examplesDir examplesDir
+     * @param functionName functionName
+     * @param maxNumExamples maxNumExamples
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> loadExamples(String examplesDir, String functionName, int maxNumExamples) {
         try {
@@ -235,12 +281,8 @@ public class ToolDescriptionMethod extends BaseMethod {
                     String inst = lastString(map.get("instructions"));
                     String ans = lastString(map.get("answers"));
                     if (score != null && score >= 3.0d && inst != null && ans != null) {
-                        selected.add(new Object[]{
-                                inst.trim(),
-                                map.get("fn_call"),
-                                map.get("tool_results"),
-                                ans.trim()
-                        });
+                        selected.add(
+                                new Object[]{inst.trim(), map.get("fn_call"), map.get("tool_results"), ans.trim()});
                         break;
                     }
                 }
@@ -249,14 +291,18 @@ public class ToolDescriptionMethod extends BaseMethod {
                 }
             }
             return selected;
-        } catch (Exception e) {
+        } catch (IOException e) {
             Loggers.AGENT.warn("Failed to load examples: {}", e.getMessage());
             return new ArrayList<>();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNegativeExamples.
+     * 
+     * @param functionName functionName
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getNegativeExamples(String functionName) {
         try {
@@ -279,8 +325,8 @@ public class ToolDescriptionMethod extends BaseMethod {
             for (Object nodeHistory : allOutputs) {
                 for (Object step : reverse(asList(nodeHistory))) {
                     Map<String, Object> map = asMap(step);
-                    boolean hasRequiredKeys = map != null && map.keySet().containsAll(
-                            List.of("instructions", "fn_call", "tool_results", "answers"));
+                    boolean hasRequiredKeys = map != null
+                            && map.keySet().containsAll(List.of("instructions", "fn_call", "tool_results", "answers"));
                     if (!hasRequiredKeys) {
                         continue;
                     }
@@ -291,12 +337,8 @@ public class ToolDescriptionMethod extends BaseMethod {
                     }
                     Double score = lastNumber(map.get("scores"));
                     if (score == null || (score >= 1.0d && score < 3.0d)) {
-                        selected.add(new Object[]{
-                                inst.trim(),
-                                map.get("fn_call"),
-                                map.get("tool_results"),
-                                ans.trim()
-                        });
+                        selected.add(
+                                new Object[]{inst.trim(), map.get("fn_call"), map.get("tool_results"), ans.trim()});
                         if (selected.size() >= getInt("num_examples_for_desc", 4)) {
                             return selected;
                         }
@@ -304,14 +346,18 @@ public class ToolDescriptionMethod extends BaseMethod {
                 }
             }
             return selected;
-        } catch (Exception e) {
+        } catch (IOException e) {
             Loggers.AGENT.warn("Failed to load negative examples: {}", e.getMessage());
             return new ArrayList<>();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOriginalDescription.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
      */
     public String getOriginalDescription(Map<String, Object> tool) {
         String description = String.valueOf(tool.getOrDefault("description", ""));
@@ -323,40 +369,57 @@ public class ToolDescriptionMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExamples.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getExamples(Map<String, Object> tool) {
         String examplesDir = getString("examples_dir");
         if (examplesDir == null) {
-            return null;
+            return java.util.Collections.emptyList();
         }
-        List<Object> examples = loadExamples(
-                examplesDir,
-                String.valueOf(tool.get("name")),
-                getInt("num_examples_for_desc", 4));
+        List<Object> examples =
+            loadExamples(examplesDir, String.valueOf(tool.get("name")), getInt("num_examples_for_desc", 4));
         Loggers.AGENT.info("{} Examples loaded for tool: {}: {}", examples.size(), tool.get("name"), examples);
         return examples;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StepResult.
+     * 
+     * @since 0.1.7
      */
     public static class StepResult {
         /**
-         * Auto-generated for codecheck compliance.
+         * data.
+         * 
+         * @since 0.1.7
          */
         public final Object data;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * score.
+         * 
+         * @since 0.1.7
          */
         public final double score;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * results.
+         * 
+         * @since 0.1.7
          */
         public final Object results;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * StepResult.
+         * 
+         * @param data data
+         * @param score score
+         * @param results results
+         * @since 0.1.7
          */
         public StepResult(Object data, double score, Object results) {
             this.data = data;
@@ -365,49 +428,61 @@ public class ToolDescriptionMethod extends BaseMethod {
         }
     }
 
+    /**
+     * invokeAnalysis.
+     * 
+     * @param prompt prompt
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> invokeAnalysis(String prompt) {
-        return ensureMap(invokeRitsResponse(
-                String.valueOf(config.getOrDefault("eval_model_id", "")),
-                FormatUtils.formatPromptLlama("", prompt),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
+        return ensureMap(invokeRitsResponse(String.valueOf(config.getOrDefault("eval_model_id", "")),
+                FormatUtils.formatPromptLlama("", prompt), String.valueOf(config.getOrDefault("llm_api_key", "")),
                 out -> Map.of("analysis", out == null ? "" : out.trim()),
-                Map.of("max_attempts", 15, "include_stop_sequence", false)
-        ));
+                Map.of("max_attempts", 15, "include_stop_sequence", false)));
     }
 
-    private void appendDescriptionSection(
-            StringBuilder prompt,
-            String label,
-            List<Map<String, Object>> outputs,
-            List<Object> examples
-    ) {
+    /**
+     * appendDescriptionSection.
+     * 
+     * @param prompt prompt
+     * @param label label
+     * @param outputs outputs
+     * @param examples examples
+     * @since 0.1.7
+     */
+    private void appendDescriptionSection(StringBuilder prompt, String label, List<Map<String, Object>> outputs,
+            List<Object> examples) {
         if (outputs.isEmpty()) {
             return;
         }
         prompt.append(label).append(" descriptions:\n");
         for (Map<String, Object> output : outputs) {
             prompt.append("description=").append(output.getOrDefault("description", "")).append("\n");
-            prompt.append("score=")
-                    .append(output.getOrDefault("score_avg", 0))
-                    .append(", stdev=")
-                    .append(output.getOrDefault("score_std", 0))
-                    .append("\n");
+            prompt.append("score=").append(output.getOrDefault("score_avg", 0)).append(", stdev=")
+                    .append(output.getOrDefault("score_std", 0)).append("\n");
             List<Object> results = asList(output.get("results"));
             int limit = Math.min(results.size(), examples != null ? examples.size() : 0);
             for (int i = 0; i < limit; i++) {
                 Object[] tuple = tuple(examples.get(i));
                 Map<String, Object> result = asMap(results.get(i));
                 prompt.append(i + 1).append(". instruction=\"").append(tuple.length > 0 ? tuple[0] : "").append("\"")
-                        .append(", answer=\"")
-                        .append(result != null ? result.getOrDefault("answer", "") : "")
-                        .append("\"")
-                        .append(", errors=")
+                        .append(", answer=\"").append(result != null ? result.getOrDefault("answer", "") : "")
+                        .append("\"").append(", errors=")
                         .append(formatErrors(result != null ? asList(result.get("errors")) : List.of()))
                         .append(", truth=").append(toJson(tuple.length > 1 ? tuple[1] : Map.of())).append("\n");
             }
         }
     }
 
+    /**
+     * appendExamplePairs.
+     * 
+     * @param prompt prompt
+     * @param examples examples
+     * @param positive positive
+     * @since 0.1.7
+     */
     private void appendExamplePairs(StringBuilder prompt, List<Object> examples, boolean positive) {
         for (int i = 0; i < examples.size(); i++) {
             Object[] tuple = tuple(examples.get(i));
@@ -421,6 +496,16 @@ public class ToolDescriptionMethod extends BaseMethod {
         }
     }
 
+    /**
+     * invokeCallable.
+     * 
+     * @param target target
+     * @param names names
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Object invokeCallable(Object target, List<String> names, Object[] args) throws Exception {
         for (String name : names) {
             for (java.lang.reflect.Method method : target.getClass().getMethods()) {
@@ -432,6 +517,12 @@ public class ToolDescriptionMethod extends BaseMethod {
         throw new NoSuchMethodException("Unsupported callable type: " + target.getClass().getName());
     }
 
+    /**
+     * defaultEval.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> defaultEval() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("score_avg", 0.0d);
@@ -440,6 +531,13 @@ public class ToolDescriptionMethod extends BaseMethod {
         return result;
     }
 
+    /**
+     * formatErrors.
+     * 
+     * @param errors errors
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatErrors(List<Object> errors) {
         if (errors.isEmpty()) {
             return "None";
@@ -458,21 +556,50 @@ public class ToolDescriptionMethod extends BaseMethod {
         return text.toString();
     }
 
+    /**
+     * reverse.
+     * 
+     * @param list list
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> reverse(List<Object> list) {
         List<Object> copy = new ArrayList<>(list);
         java.util.Collections.reverse(copy);
         return copy;
     }
 
+    /**
+     * tail.
+     * 
+     * @param list list
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> tail(List<Map<String, Object>> list, int limit) {
         int from = Math.max(0, list.size() - Math.max(limit, 0));
         return new ArrayList<>(list.subList(from, list.size()));
     }
 
+    /**
+     * asList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> asList(Object value) {
         return value instanceof List<?> list ? new ArrayList<>(list) : new ArrayList<>();
     }
 
+    /**
+     * asMapList.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> asMapList(List<Object> values) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (values == null) {
@@ -487,14 +614,35 @@ public class ToolDescriptionMethod extends BaseMethod {
         return result;
     }
 
+    /**
+     * ensureMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> ensureMap(Object value) {
         return value instanceof Map<?, ?> raw ? toMap(raw) : new LinkedHashMap<>();
     }
 
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> raw ? toMap(raw) : null;
     }
 
+    /**
+     * toMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> toMap(Map<?, ?> raw) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
@@ -505,6 +653,13 @@ public class ToolDescriptionMethod extends BaseMethod {
         return result;
     }
 
+    /**
+     * tuple.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] tuple(Object value) {
         if (value instanceof Object[] array) {
             return array;
@@ -512,11 +667,25 @@ public class ToolDescriptionMethod extends BaseMethod {
         return value instanceof List<?> list ? list.toArray() : new Object[]{value};
     }
 
+    /**
+     * lastString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String lastString(Object value) {
         Object last = lastValue(value);
         return last instanceof String text ? text : null;
     }
 
+    /**
+     * lastNumber.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Double lastNumber(Object value) {
         Object last = lastValue(value);
         if (last instanceof Number number) {
@@ -532,34 +701,70 @@ public class ToolDescriptionMethod extends BaseMethod {
         return null;
     }
 
+    /**
+     * lastValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Object lastValue(Object value) {
         return value instanceof List<?> list && !list.isEmpty() ? list.get(list.size() - 1) : value;
     }
 
+    /**
+     * stringify.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String stringify(Object value) {
         if (value instanceof String text) {
             return text.trim();
         }
         try {
             return OBJECT_MAPPER.writeValueAsString(value);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return String.valueOf(value).trim();
         }
     }
 
+    /**
+     * toJson.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String toJson(Object value) {
         try {
             return OBJECT_MAPPER.writeValueAsString(value);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
     }
 
+    /**
+     * getString.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private String getString(String key) {
         Object value = config.get(key);
         return value instanceof String text && !text.isBlank() ? text : null;
     }
 
+    /**
+     * getInt.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private int getInt(String key, int defaultValue) {
         Object value = config.get(key);
         if (value instanceof Number number) {
@@ -572,6 +777,15 @@ public class ToolDescriptionMethod extends BaseMethod {
         }
     }
 
+    /**
+     * getDouble.
+     * 
+     * @param map map
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double getDouble(Map<String, Object> map, String key, double defaultValue) {
         Object value = map.get(key);
         if (value instanceof Number number) {

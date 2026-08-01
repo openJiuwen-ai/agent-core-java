@@ -1,14 +1,14 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessPowerShellToolCompatibilityTest {
-
     @Test
     void invokeShouldForcePowerShellShellType() {
         AtomicReference<String> shellType = new AtomicReference<>();
@@ -26,7 +26,8 @@ class HarnessPowerShellToolCompatibilityTest {
 
     @Test
     void readOnlyShouldBlockWriteCommands() {
-        PowerShellTool tool = new PowerShellTool("read_only", (command, shellType) -> new PowerShellTool.ShellResult("", "", 0));
+        PowerShellTool tool =
+            new PowerShellTool("read_only", (command, shellType) -> new PowerShellTool.ShellResult("", "", 0));
 
         ToolOutput result = tool.invoke("Set-Content test.txt hi");
 
@@ -36,7 +37,8 @@ class HarnessPowerShellToolCompatibilityTest {
 
     @Test
     void injectionPatternShouldBeBlocked() {
-        PowerShellTool tool = new PowerShellTool("auto", (command, shellType) -> new PowerShellTool.ShellResult("", "", 0));
+        PowerShellTool tool =
+            new PowerShellTool("auto", (command, shellType) -> new PowerShellTool.ShellResult("", "", 0));
 
         ToolOutput result = tool.invoke("Invoke-Expression \"Get-ChildItem\"");
 

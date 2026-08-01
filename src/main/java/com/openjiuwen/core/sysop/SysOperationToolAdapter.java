@@ -23,24 +23,33 @@ import java.util.Map;
  * Adapter for converting SysOperation to LocalFunction tools.
  * <p>
  * Mirrors Python's {@code SysOperationToolAdapter} in {@code sys_operation/tool_adapter.py}.
+ * 
+ * @since 0.1.7
  */
 public final class SysOperationToolAdapter {
-
+    /**
+     * SysOperationToolAdapter.
+     * 
+     * @since 0.1.7
+     */
     private SysOperationToolAdapter() {
     }
 
     /**
      * A tuple of (toolId, LocalFunction).
+     * 
+     * @since 0.1.7
      */
     public record ToolEntry(String toolId, LocalFunction localFunction) {
     }
 
     /**
      * Extract all tools from SysOperation and wrap them as LocalFunction instances.
-     *
-     * @param card     SysOperationCard containing operation metadata
+     * 
+     * @param card SysOperationCard containing operation metadata
      * @param instance SysOperation instance to extract tools from
      * @return list of (toolId, LocalFunction) entries ready for registration
+     * @since 0.1.7
      */
     public static List<ToolEntry> extractTools(SysOperationCard card, SysOperation instance) {
         List<ToolEntry> tools = new ArrayList<>();
@@ -64,12 +73,8 @@ public final class SysOperationToolAdapter {
                 }
 
                 String toolId = SysOperationCard.generateToolId(card.getId(), opType, toolCard.getName());
-                ToolCard newCard = ToolCard.builder()
-                        .id(toolId)
-                        .name(toolCard.getName())
-                        .description(toolCard.getDescription())
-                        .inputParams(toolCard.getInputParams())
-                        .build();
+                ToolCard newCard = ToolCard.builder().id(toolId).name(toolCard.getName())
+                        .description(toolCard.getDescription()).inputParams(toolCard.getInputParams()).build();
 
                 LocalFunction localFunc = new LocalFunction(newCard,
                         inputs -> invokeToolMethod(subOp, method, inputs != null ? inputs : Map.of()));
@@ -82,9 +87,10 @@ public final class SysOperationToolAdapter {
 
     /**
      * Get tool ID prefix for a sys operation.
-     *
+     * 
      * @param sysOperationId the sys operation card ID
      * @return prefix string ending with "."
+     * @since 0.1.7
      */
     public static String getToolIdPrefix(String sysOperationId) {
         return sysOperationId + ".";
@@ -94,16 +100,23 @@ public final class SysOperationToolAdapter {
      * Get tool ID prefixes for multiple sys operations.
      * <p>
      * Mirrors Python's {@code get_tool_id_prefix(sys_operation_id: List[str])} overload.
-     *
+     * 
      * @param sysOperationIds list of sys operation card IDs
      * @return list of prefix strings, each ending with "."
+     * @since 0.1.7
      */
     public static List<String> getToolIdPrefix(List<String> sysOperationIds) {
-        return sysOperationIds.stream()
-                .map(id -> id + ".")
-                .toList();
+        return sysOperationIds.stream().map(id -> id + ".").toList();
     }
 
+    /**
+     * findToolMethod.
+     * 
+     * @param operationClass operationClass
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Method findToolMethod(Class<?> operationClass, String methodName) {
         for (Method method : operationClass.getMethods()) {
             if (method.getName().equals(methodName)) {
@@ -113,6 +126,15 @@ public final class SysOperationToolAdapter {
         return null;
     }
 
+    /**
+     * invokeToolMethod.
+     * 
+     * @param operation operation
+     * @param method method
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object invokeToolMethod(BaseOperation operation, Method method, Map<String, Object> inputs) {
         Object[] args = buildArguments(method, inputs);
         try {
@@ -131,20 +153,35 @@ public final class SysOperationToolAdapter {
         }
     }
 
+    /**
+     * buildArguments.
+     * 
+     * @param method method
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object[] buildArguments(Method method, Map<String, Object> inputs) {
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
         for (int i = 0; i < parameters.length; i++) {
             Parameter parameter = parameters[i];
-            args[i] = convertValue(
-                    inputs.get(parameter.getName()),
-                    parameter.getType(),
-                    parameter.getParameterizedType());
+            args[i] =
+                convertValue(inputs.get(parameter.getName()), parameter.getType(), parameter.getParameterizedType());
         }
         return args;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * convertValue.
+     * 
+     * @param rawValue rawValue
+     * @param targetType targetType
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object convertValue(Object rawValue, Class<?> targetType, Type genericType) {
         if (rawValue == null) {
             return defaultValue(targetType);
@@ -181,9 +218,8 @@ public final class SysOperationToolAdapter {
                 int[] result = new int[list.size()];
                 for (int i = 0; i < list.size(); i++) {
                     Object item = list.get(i);
-                    result[i] = item instanceof Number
-                            ? ((Number) item).intValue()
-                            : Integer.parseInt(String.valueOf(item));
+                    result[i] =
+                        item instanceof Number ? ((Number) item).intValue() : Integer.parseInt(String.valueOf(item));
                 }
                 return result;
             }
@@ -206,6 +242,13 @@ public final class SysOperationToolAdapter {
         return rawValue;
     }
 
+    /**
+     * defaultValue.
+     * 
+     * @param targetType targetType
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object defaultValue(Class<?> targetType) {
         if (!targetType.isPrimitive()) {
             return null;
@@ -237,13 +280,20 @@ public final class SysOperationToolAdapter {
         return null;
     }
 
+    /**
+     * convertMap.
+     * 
+     * @param rawMap rawMap
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<?, ?> convertMap(Map<?, ?> rawMap, Type genericType) {
         Type valueType = getGenericArgument(genericType, 1);
         if (valueType == String.class) {
             Map<String, String> converted = new LinkedHashMap<>();
-            rawMap.forEach((key, value) -> converted.put(
-                    String.valueOf(key),
-                    value == null ? null : String.valueOf(value)));
+            rawMap.forEach(
+                    (key, value) -> converted.put(String.valueOf(key), value == null ? null : String.valueOf(value)));
             return converted;
         }
         Map<String, Object> converted = new LinkedHashMap<>();
@@ -251,6 +301,14 @@ public final class SysOperationToolAdapter {
         return converted;
     }
 
+    /**
+     * convertList.
+     * 
+     * @param rawList rawList
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<?> convertList(List<?> rawList, Type genericType) {
         Type itemType = getGenericArgument(genericType, 0);
         if (itemType == String.class) {
@@ -259,6 +317,14 @@ public final class SysOperationToolAdapter {
         return rawList;
     }
 
+    /**
+     * getGenericArgument.
+     * 
+     * @param genericType genericType
+     * @param index index
+     * @return the result
+     * @since 0.1.7
+     */
     private static Type getGenericArgument(Type genericType, int index) {
         if (genericType instanceof ParameterizedType parameterizedType) {
             Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();

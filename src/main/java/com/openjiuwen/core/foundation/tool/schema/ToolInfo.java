@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.tool.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +20,8 @@ import java.util.Map;
  * Mirrors Python's {@code ToolInfo} in
  * {@code openjiuwen/core/foundation/tool/schema.py}.
  * Follows the OpenAI function calling format.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -26,8 +29,6 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolInfo {
-
-    /** Tool type, defaults to "function". */
     @Builder.Default
     private String type = "function";
 
@@ -43,6 +44,8 @@ public class ToolInfo {
      * Parameter schema — follows JSON Schema format.
      * <p>
      * Example: {@code {"type": "object", "properties": {"query": {"type": "string"}}}}
+     * 
+     * @since 0.1.7
      */
     @Builder.Default
     private Map<String, Object> parameters = Map.of();

@@ -1,22 +1,21 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.spi.store.vector;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for VectorStoreFactory SPI registration and ServiceLoader discovery.
  */
 class VectorStoreFactorySpiTest {
-
     // ========== ServiceLoader auto-discovery ==========
-
     @Test
     @DisplayName("ServiceLoader discovers built-in in_memory provider")
     void discoversInMemoryProvider() {
@@ -79,16 +78,16 @@ class VectorStoreFactorySpiTest {
     @Test
     @DisplayName("create() with null type throws IllegalArgumentException")
     void createWithNullType() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> VectorStoreFactory.create(null));
+        IllegalArgumentException ex =
+            assertThrows(IllegalArgumentException.class, () -> VectorStoreFactory.create(null));
         assertTrue(ex.getMessage().contains("storeType"));
     }
 
     @Test
     @DisplayName("create() with unknown type throws UnsupportedOperationException")
     void createUnknownTypeThrows() {
-        UnsupportedOperationException ex = assertThrows(UnsupportedOperationException.class,
-                () -> VectorStoreFactory.create("weaviate", Map.of()));
+        UnsupportedOperationException ex =
+            assertThrows(UnsupportedOperationException.class, () -> VectorStoreFactory.create("weaviate", Map.of()));
         assertTrue(ex.getMessage().contains("weaviate"));
     }
 
@@ -106,7 +105,10 @@ class VectorStoreFactorySpiTest {
     void registerCustomProvider() {
         VectorStoreFactory.register("mock_weaviate", new VectorStoreProvider() {
             @Override
-            public String typeName() { return "mock_weaviate"; }
+            public String typeName() {
+                return "mock_weaviate";
+            }
+
             @Override
             public BaseVectorStore create(Map<String, Object> conf) {
                 return new com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore(Map.of());
@@ -175,7 +177,10 @@ class VectorStoreFactorySpiTest {
     void registerProviderThatReadsConf() {
         VectorStoreFactory.register("conf_aware_vs", new VectorStoreProvider() {
             @Override
-            public String typeName() { return "conf_aware_vs"; }
+            public String typeName() {
+                return "conf_aware_vs";
+            }
+
             @Override
             public BaseVectorStore create(Map<String, Object> conf) {
                 assertNotNull(conf);
@@ -192,7 +197,10 @@ class VectorStoreFactorySpiTest {
     void registerOverridesExisting() {
         VectorStoreFactory.register("test_vs_override", new VectorStoreProvider() {
             @Override
-            public String typeName() { return "test_vs_override"; }
+            public String typeName() {
+                return "test_vs_override";
+            }
+
             @Override
             public BaseVectorStore create(Map<String, Object> conf) {
                 return new com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore(Map.of());
@@ -201,7 +209,10 @@ class VectorStoreFactorySpiTest {
         // Override with new provider
         VectorStoreFactory.register("test_vs_override", new VectorStoreProvider() {
             @Override
-            public String typeName() { return "test_vs_override"; }
+            public String typeName() {
+                return "test_vs_override";
+            }
+
             @Override
             public BaseVectorStore create(Map<String, Object> conf) {
                 return new com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore(Map.of("overridden", true));
@@ -215,7 +226,6 @@ class VectorStoreFactorySpiTest {
     @Test
     @DisplayName("create() with empty string type throws UnsupportedOperationException")
     void createWithEmptyTypeThrows() {
-        assertThrows(UnsupportedOperationException.class,
-                () -> VectorStoreFactory.create(""));
+        assertThrows(UnsupportedOperationException.class, () -> VectorStoreFactory.create(""));
     }
 }

@@ -14,14 +14,16 @@ import java.util.List;
  * Replaces the {@code hasattr(context, "offload_messages")} duck-typing pattern
  * in Python, allowing any ModelContext subclass to participate in the offload flow
  * without being tied to {@code SessionModelContext}.
+ * 
+ * @since 0.1.7
  */
 public interface OffloadCapableContext {
-
     /**
-     * Offload messages to the in-memory buffer.
-     *
-     * @param offloadHandle unique identifier for the offloaded messages
-     * @param messages      the messages to offload
+     * offloadMessages.
+     * 
+     * @param offloadHandle offloadHandle
+     * @param messages messages
+     * @since 0.1.7
      */
     void offloadMessages(String offloadHandle, List<BaseMessage> messages);
 }

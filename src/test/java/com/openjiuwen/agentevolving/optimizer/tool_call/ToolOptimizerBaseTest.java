@@ -1,18 +1,19 @@
+
 package com.openjiuwen.agentevolving.optimizer.tool_call;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.agentevolving.trajectory.Updates;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ToolOptimizerBaseTest {
-
     @Test
     void inheritedDomainAndDefaultTargetsMatchPython() {
         TestToolOptimizer optimizer = new TestToolOptimizer();
@@ -25,21 +26,14 @@ class ToolOptimizerBaseTest {
     void bindUsesDefaultToolDescriptionTarget() {
         TestToolOptimizer optimizer = new TestToolOptimizer();
 
-        int count = optimizer.bind(
-                Map.of(
-                        "tool", new FakeOperator(Map.of("tool_description", "desc")),
-                        "other", new FakeOperator(Map.of("system_prompt", "prompt"))
-                ),
-                null,
-                Map.of()
-        );
+        int count = optimizer.bind(Map.of("tool", new FakeOperator(Map.of("tool_description", "desc")), "other",
+                new FakeOperator(Map.of("system_prompt", "prompt"))), null, Map.of());
 
         assertEquals(1, count);
         assertTrue(optimizer.getOperators().containsKey("tool"));
     }
 
     private static final class TestToolOptimizer extends ToolOptimizerBase {
-
         @Override
         protected Updates doStep() {
             return new Updates();

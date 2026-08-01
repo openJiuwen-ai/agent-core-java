@@ -11,21 +11,31 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for database-native ranker implementations.
+ * 
+ * @since 0.1.7
  */
 public final class ResultRankRegistry {
-
     private static final Map<String, Map<String, Class<?>>> RANKER_CLASSES = new ConcurrentHashMap<>();
 
+    /**
+     * ResultRankRegistry.
+     * 
+     * @since 0.1.7
+     */
     private ResultRankRegistry() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerResultRankerClass.
+     * 
+     * @param database database
+     * @param weightedClass weightedClass
+     * @param rrfClass rrfClass
+     * @param extras extras
+     * @since 0.1.7
      */
-    public static void registerResultRankerClass(String database,
-                                                 Class<?> weightedClass,
-                                                 Class<?> rrfClass,
-                                                 Map<String, Class<?>> extras) {
+    public static void registerResultRankerClass(String database, Class<?> weightedClass, Class<?> rrfClass,
+            Map<String, Class<?>> extras) {
         RetrievalValidation.requireNonBlank(database, "database");
         Map<String, Class<?>> entry = new LinkedHashMap<>();
         if (weightedClass != null) {
@@ -41,7 +51,12 @@ public final class ResultRankRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRankerClass.
+     * 
+     * @param database database
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public static Class<?> getRankerClass(String database, String name) {
         if (database == null || name == null) {
@@ -51,7 +66,11 @@ public final class ResultRankRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRankerClasses.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Class<?>> getRankerClasses(String database) {
         if (database == null) {

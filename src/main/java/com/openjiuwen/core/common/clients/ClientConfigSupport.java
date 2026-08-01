@@ -7,7 +7,17 @@ package com.openjiuwen.core.common.clients;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * ClientConfigSupport
+ *
+ * @since 0.1.7
+ */
 final class ClientConfigSupport {
+    /**
+     * ClientConfigSupport.
+     * 
+     * @since 0.1.7
+     */
     private ClientConfigSupport() {
     }
 

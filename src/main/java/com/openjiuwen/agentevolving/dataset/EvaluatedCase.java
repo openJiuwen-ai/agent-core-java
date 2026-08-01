@@ -11,9 +11,10 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.dataset.case.EvaluatedCase.
+ * 
+ * @since 0.1.7
  */
 public class EvaluatedCase {
-
     private Case caseData;
     private Map<String, Object> answer;
     private double score;
@@ -21,37 +22,50 @@ public class EvaluatedCase {
     private Map<String, Double> perMetric;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @since 0.1.7
      */
     public EvaluatedCase() {
         this(null, null, 0.0d, "", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @since 0.1.7
      */
     public EvaluatedCase(Case caseData, Map<String, Object> answer) {
         this(caseData, answer, 0.0d, "", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @param score score
+     * @param reason reason
+     * @since 0.1.7
      */
-    public EvaluatedCase(Case caseData,
-                         Map<String, Object> answer,
-                         double score,
-                         String reason) {
+    public EvaluatedCase(Case caseData, Map<String, Object> answer, double score, String reason) {
         this(caseData, answer, score, reason, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @param score score
+     * @param reason reason
+     * @param perMetric perMetric
+     * @since 0.1.7
      */
-    public EvaluatedCase(Case caseData,
-                         Map<String, Object> answer,
-                         double score,
-                         String reason,
-                         Map<String, Double> perMetric) {
+    public EvaluatedCase(Case caseData, Map<String, Object> answer, double score, String reason,
+            Map<String, Double> perMetric) {
         this.caseData = caseData;
         this.answer = answer;
         this.score = clampScore(score);
@@ -60,130 +74,190 @@ public class EvaluatedCase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCase.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Case getCase() {
         return caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCase.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
      */
     public void setCase(Case caseData) {
         this.caseData = caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Case getCaseData() {
         return caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCaseData.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
      */
     public void setCaseData(Case caseData) {
         this.caseData = caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAnswer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getAnswer() {
         return answer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAnswer.
+     * 
+     * @param answer answer
+     * @since 0.1.7
      */
     public void setAnswer(Map<String, Object> answer) {
         this.answer = answer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getScore() {
         return score;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setScore.
+     * 
+     * @param score score
+     * @since 0.1.7
      */
     public void setScore(double score) {
         this.score = clampScore(score);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReason() {
         return reason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReason.
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public void setReason(String reason) {
         this.reason = reason != null ? reason : "";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPerMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Double> getPerMetric() {
         return perMetric;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPerMetric.
+     * 
+     * @param perMetric perMetric
+     * @since 0.1.7
      */
     public void setPerMetric(Map<String, Double> perMetric) {
         this.perMetric = perMetric;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputs() {
         return caseData != null ? caseData.getInputs() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLabel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLabel() {
         return caseData != null ? caseData.getLabel() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ToolInfo> getTools() {
         return caseData != null ? caseData.getTools() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCaseId() {
         return caseData != null ? caseData.getCaseId() : null;
     }
 
+    /**
+     * clampScore.
+     * 
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
     private static double clampScore(double score) {
         return Math.max(0.0d, Math.min(1.0d, score));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private Case caseData;
@@ -192,11 +266,20 @@ public class EvaluatedCase {
         private String reason = "";
         private Map<String, Double> perMetric;
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * caseData.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
          */
         public Builder caseData(Case caseData) {
             this.caseData = caseData;
@@ -204,7 +287,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * case_.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
          */
         public Builder case_(Case caseData) {
             this.caseData = caseData;
@@ -212,7 +299,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * answer.
+         * 
+         * @param answer answer
+         * @return the result
+         * @since 0.1.7
          */
         public Builder answer(Map<String, Object> answer) {
             this.answer = answer;
@@ -220,7 +311,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * score.
+         * 
+         * @param score score
+         * @return the result
+         * @since 0.1.7
          */
         public Builder score(double score) {
             this.score = score;
@@ -228,7 +323,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reason.
+         * 
+         * @param reason reason
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reason(String reason) {
             this.reason = reason;
@@ -236,7 +335,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * perMetric.
+         * 
+         * @param perMetric perMetric
+         * @return the result
+         * @since 0.1.7
          */
         public Builder perMetric(Map<String, Double> perMetric) {
             this.perMetric = perMetric;
@@ -244,7 +347,10 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public EvaluatedCase build() {
             return new EvaluatedCase(caseData, answer, score, reason, perMetric);

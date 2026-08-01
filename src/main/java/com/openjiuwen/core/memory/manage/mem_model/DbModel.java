@@ -10,39 +10,67 @@ import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.memory.migration.MigrationPlan;
 import com.openjiuwen.spi.store.BaseDbStore;
 
-import javax.sql.DataSource;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
+import javax.sql.DataSource;
+
 /**
  * Database model: table definitions and creation logic.
  * Translates Python's SQLAlchemy declarative models to JDBC DDL.
+ * 
+ * @since 0.1.7
  */
 public final class DbModel {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
+    /**
+     * USER_MESSAGE_TABLE.
+     * 
+     * @since 0.1.7
+     */
     public static final String USER_MESSAGE_TABLE = "user_message";
+
+    /**
+     * SCOPE_USER_MAPPING_TABLE.
+     * 
+     * @since 0.1.7
+     */
     public static final String SCOPE_USER_MAPPING_TABLE = "scope_user_mapping";
+
+    /**
+     * MEMORY_META_TABLE.
+     * 
+     * @since 0.1.7
+     */
     public static final String MEMORY_META_TABLE = "memory_meta";
 
     /**
      * Table configs for migration tracking.
      */
-    public static final String[][] MEMORY_TABLES_CONFIG = {
-            {USER_MESSAGE_TABLE, "user_messages"},
-            {SCOPE_USER_MAPPING_TABLE, "scope_user_mapping"},
-    };
+    public static final String[][] MEMORY_TABLES_CONFIG =
+        {{USER_MESSAGE_TABLE, "user_messages"}, {SCOPE_USER_MAPPING_TABLE, "scope_user_mapping"}};
 
+    /**
+     * DbModel.
+     * 
+     * @since 0.1.7
+     */
     private DbModel() {
     }
 
     /**
      * Create memory tables if they don't exist.
-     *
+     * 
      * @param dbStore the database store instance to use for table creation
+     * @since 0.1.7
      */
     public static void createTables(BaseDbStore<?> dbStore) {
         Object engine = dbStore.getEngine();
@@ -94,42 +122,62 @@ public final class DbModel {
         }
     }
 
+    /**
+     * createUserMessageTable.
+     * 
+     * @param conn conn
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static void createUserMessageTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS " + USER_MESSAGE_TABLE + " ("
-                + "message_id VARCHAR(64) PRIMARY KEY,"
-                + "user_id VARCHAR(256) NOT NULL,"
-                + "scope_id VARCHAR(128) NOT NULL,"
-                + "content VARCHAR(4096) NOT NULL,"
-                + "session_id VARCHAR(2048),"
-                + "role VARCHAR(32),"
-                + "timestamp VARCHAR(64)"
-                + ")";
+        String sql = "CREATE TABLE IF NOT EXISTS " + USER_MESSAGE_TABLE + " (" + "message_id VARCHAR(64) PRIMARY KEY,"
+                + "user_id VARCHAR(256) NOT NULL," + "scope_id VARCHAR(128) NOT NULL,"
+                + "content VARCHAR(4096) NOT NULL," + "session_id VARCHAR(2048)," + "role VARCHAR(32),"
+                + "timestamp VARCHAR(64)" + ")";
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         }
     }
 
+    /**
+     * createScopeUserMappingTable.
+     * 
+     * @param conn conn
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static void createScopeUserMappingTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS " + SCOPE_USER_MAPPING_TABLE + " ("
-                + "user_id VARCHAR(64) NOT NULL,"
-                + "scope_id VARCHAR(64) NOT NULL,"
-                + "PRIMARY KEY (user_id, scope_id)"
-                + ")";
+        String sql = "CREATE TABLE IF NOT EXISTS " + SCOPE_USER_MAPPING_TABLE + " (" + "user_id VARCHAR(64) NOT NULL,"
+                + "scope_id VARCHAR(64) NOT NULL," + "PRIMARY KEY (user_id, scope_id)" + ")";
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         }
     }
 
+    /**
+     * createMemoryMetaTable.
+     * 
+     * @param conn conn
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static void createMemoryMetaTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS " + MEMORY_META_TABLE + " ("
-                + "table_name VARCHAR(64) PRIMARY KEY,"
-                + "schema_version VARCHAR(64) NOT NULL"
-                + ")";
+        String sql = "CREATE TABLE IF NOT EXISTS " + MEMORY_META_TABLE + " (" + "table_name VARCHAR(64) PRIMARY KEY,"
+                + "schema_version VARCHAR(64) NOT NULL" + ")";
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         }
     }
 
+    /**
+     * insertMemoryMeta.
+     * 
+     * @param conn conn
+     * @param tableName tableName
+     * @param schemaVersion schemaVersion
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static void insertMemoryMeta(Connection conn, String tableName, String schemaVersion) throws SQLException {
         // Check if already exists
         String checkSql = "SELECT 1 FROM " + MEMORY_META_TABLE + " WHERE table_name = ?";
@@ -149,6 +197,15 @@ public final class DbModel {
         }
     }
 
+    /**
+     * tableExists.
+     * 
+     * @param conn conn
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String candidate : tableNameCandidates(tableName)) {
@@ -161,6 +218,16 @@ public final class DbModel {
         return false;
     }
 
+    /**
+     * columnExists.
+     * 
+     * @param conn conn
+     * @param tableName tableName
+     * @param columnName columnName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static boolean columnExists(Connection conn, String tableName, String columnName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String tableCandidate : tableNameCandidates(tableName)) {
@@ -175,10 +242,25 @@ public final class DbModel {
         return false;
     }
 
+    /**
+     * tableNameCandidates.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static String[] tableNameCandidates(String name) {
-        return new String[] {name, name.toUpperCase(Locale.ROOT), name.toLowerCase(Locale.ROOT)};
+        return new String[]{name, name.toUpperCase(Locale.ROOT), name.toLowerCase(Locale.ROOT)};
     }
 
+    /**
+     * getConnectionFrom.
+     * 
+     * @param engine engine
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private static Connection getConnectionFrom(Object engine) throws SQLException {
         if (engine instanceof DataSource) {
             return ((DataSource) engine).getConnection();

@@ -13,8 +13,8 @@ import java.util.Map;
 
 /**
  * Public class RelationExtraction used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = false)

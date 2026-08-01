@@ -14,21 +14,23 @@ import java.util.Map;
  * Mirrors Python's {@code PersistenceCheckpointerProvider}.
  * <p>
  * Configuration format:
+ * 
  * <pre>
  * {
- *   "kv_store": BaseKVStore instance  // Optional if db_type/db_path provided
- *   "db_type": "sqlite" | "shelve",    // Optional, creates default KVStore
- *   "db_path": "checkpointer.db"       // Optional, database file path
+ * "kv_store": BaseKVStore instance  // Optional if db_type/db_path provided
+ * "db_type": "sqlite" | "shelve",    // Optional, creates default KVStore
+ * "db_path": "checkpointer.db"       // Optional, database file path
  * }
  * </pre>
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 public class PersistenceCheckpointerProvider implements CheckpointerProvider {
     /**
-     * Returns the persistence checkpointer type name.
-     *
-     * @return the type name "persistence"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String typeName() {
         return "persistence";
@@ -39,9 +41,10 @@ public class PersistenceCheckpointerProvider implements CheckpointerProvider {
      * <p>
      * If a {@code kv_store} instance is provided in the configuration, it will be used
      * directly. Otherwise, falls back to an in-memory checkpointer.
-     *
+     * 
      * @param conf the configuration map, may contain "kv_store" (BaseKVStore), "db_type", and "db_path"
      * @return a Checkpointer instance backed by the provided KV store or an in-memory fallback
+     * @since 0.1.7
      */
     @Override
     public Checkpointer create(Map<String, Object> conf) {
@@ -50,7 +53,7 @@ public class PersistenceCheckpointerProvider implements CheckpointerProvider {
         if (kvStoreObj instanceof BaseKVStore kvStore) {
             return new PersistenceCheckpointer(kvStore);
         }
-        
+
         // Fall back to in-memory checkpointer if no proper kv_store is configured
         // This allows tests to run without requiring specific KVStore implementations
         return new InMemoryCheckpointer();

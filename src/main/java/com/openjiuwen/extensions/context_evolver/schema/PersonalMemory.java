@@ -4,121 +4,164 @@
 
 package com.openjiuwen.extensions.context_evolver.schema;
 
+import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
-
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.memory.PersonalMemory}.
- * 
  * Personal memory about user preferences and context.
+ * 
+ * @since 0.1.7
  */
 public class PersonalMemory {
     private String content;
     private String workspaceId = "default";
     private String target;
     private String reflectionSubject;
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * PersonalMemory.
+     * 
+     * @since 0.1.7
      */
-    public PersonalMemory() {}
-    
+    public PersonalMemory() {
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * PersonalMemory.
+     * 
+     * @param content content
+     * @param target target
+     * @since 0.1.7
      */
     public PersonalMemory(String content, String target) {
         this.content = content;
         this.target = target;
     }
-    
+
     // Getters and setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(String content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspaceId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkspaceId() {
         return workspaceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspaceId.
+     * 
+     * @param workspaceId workspaceId
+     * @since 0.1.7
      */
     public void setWorkspaceId(String workspaceId) {
         this.workspaceId = workspaceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTarget.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTarget() {
         return target;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTarget.
+     * 
+     * @param target target
+     * @since 0.1.7
      */
     public void setTarget(String target) {
         this.target = target;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReflectionSubject.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReflectionSubject() {
         return reflectionSubject;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReflectionSubject.
+     * 
+     * @param reflectionSubject reflectionSubject
+     * @since 0.1.7
      */
     public void setReflectionSubject(String reflectionSubject) {
         this.reflectionSubject = reflectionSubject;
     }
-    
+
     /**
      * Convert to vector node for storage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorNode toVectorNode() {
         String normalizedContent = content != null ? content : "";
         String contentHash = SchemaUtils.md5Hex(normalizedContent);
         String nodeId = "personal_" + workspaceId + "_" + contentHash;
-        
+
         String embeddingContent = "About: " + target + "\n\nContent: " + normalizedContent;
-        
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("type", "personal_memory");
         metadata.put("target", target);
         metadata.put("content", normalizedContent);
         metadata.put("workspace_id", workspaceId);
         metadata.put("reflection_subject", reflectionSubject);
-        
+
         return new VectorNode(nodeId, embeddingContent, null, metadata);
     }
-    
+
     /**
      * Convert from vector node.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
      */
     public static PersonalMemory fromVectorNode(VectorNode node) {
         return fromMap(node.getMetadata());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static PersonalMemory fromMap(Map<String, Object> data) {
         PersonalMemory memory = new PersonalMemory();
@@ -130,7 +173,10 @@ public class PersonalMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -141,14 +187,15 @@ public class PersonalMemory {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
-        String preview = content != null && content.length() > 50
-            ? content.substring(0, 50) + "..."
-            : content;
+        String preview = content != null && content.length() > 50 ? content.substring(0, 50) + "..." : content;
         return "PersonalMemory(target='" + target + "', content='" + preview + "')";
     }
 }

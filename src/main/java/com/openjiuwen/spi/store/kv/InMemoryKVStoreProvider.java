@@ -18,16 +18,17 @@ import java.util.Map;
  * <p>
  * Creates in-memory KV store instances backed by a ConcurrentHashMap.
  * Suitable for testing and single-process scenarios where persistence is not required.
- *
- * @since 0.1.12
+ * 
  * @see KVStoreProvider
  * @see com.openjiuwen.core.foundation.store.kv.InMemoryKVStore
+ * @since 0.1.7
  */
 public final class InMemoryKVStoreProvider implements KVStoreProvider {
     /**
-     * Returns the in-memory KV store type name.
-     *
-     * @return the type name "in_memory"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -36,9 +37,10 @@ public final class InMemoryKVStoreProvider implements KVStoreProvider {
 
     /**
      * Creates a new in-memory KV store instance.
-     *
+     * 
      * @param conf the configuration map (ignored for in-memory implementation)
      * @return a new InMemoryKVStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseKVStore create(Map<String, Object> conf) {

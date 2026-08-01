@@ -13,31 +13,51 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.LLMCallDetail.
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class LLMCallDetail {
     private String model;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> messages = new ArrayList<>();
     private Object response;
     private List<Object> tools;
     private Map<String, Object> usage;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> meta = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMCallDetail.
+     * 
+     * @since 0.1.7
      */
     public LLMCallDetail() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMCallDetail.
+     * 
+     * @param model model
+     * @param messages messages
+     * @param response response
+     * @param tools tools
+     * @param usage usage
+     * @param meta meta
+     * @since 0.1.7
      */
-    public LLMCallDetail(String model,
-                         List<Object> messages,
-                         Object response,
-                         List<Object> tools,
-                         Map<String, Object> usage,
-                         Map<String, Object> meta) {
+    public LLMCallDetail(String model, List<Object> messages, Object response, List<Object> tools,
+            Map<String, Object> usage, Map<String, Object> meta) {
         this.model = model;
         this.messages = messages != null ? new ArrayList<>(messages) : new ArrayList<>();
         this.response = response;
@@ -47,84 +67,120 @@ public class LLMCallDetail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModel() {
         return model;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModel.
+     * 
+     * @param model model
+     * @since 0.1.7
      */
     public void setModel(String model) {
         this.model = model;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getMessages() {
         return messages;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMessages.
+     * 
+     * @param messages messages
+     * @since 0.1.7
      */
     public void setMessages(List<Object> messages) {
         this.messages = messages != null ? new ArrayList<>(messages) : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResponse.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getResponse() {
         return response;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setResponse.
+     * 
+     * @param response response
+     * @since 0.1.7
      */
     public void setResponse(Object response) {
         this.response = response;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getTools() {
         return tools;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTools.
+     * 
+     * @param tools tools
+     * @since 0.1.7
      */
     public void setTools(List<Object> tools) {
         this.tools = tools != null ? new ArrayList<>(tools) : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUsage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getUsage() {
         return usage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUsage.
+     * 
+     * @param usage usage
+     * @since 0.1.7
      */
     public void setUsage(Map<String, Object> usage) {
         this.usage = usage != null ? new LinkedHashMap<>(usage) : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMeta.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMeta() {
         return meta;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMeta.
+     * 
+     * @param meta meta
+     * @since 0.1.7
      */
     public void setMeta(Map<String, Object> meta) {
         this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();

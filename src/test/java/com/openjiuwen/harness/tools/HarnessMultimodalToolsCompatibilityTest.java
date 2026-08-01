@@ -1,33 +1,28 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.schema.config.AudioModelConfig;
 import com.openjiuwen.harness.schema.config.VisionModelConfig;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessMultimodalToolsCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void visionToolsShouldEncodeImageAndUseOcrContext() throws Exception {
         Path image = tempDir.resolve("sample.png");
-        Files.write(image, new byte[]{
-                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
-        });
-        VisionModelConfig config = VisionModelConfig.builder()
-                .apiKey("test-key")
-                .baseUrl("https://example.com/v1")
-                .model("mock-model")
-                .build();
+        Files.write(image, new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+        VisionModelConfig config = VisionModelConfig.builder().apiKey("test-key").baseUrl("https://example.com/v1")
+                .model("mock-model").build();
 
         ImageOCRTool ocrTool = new ImageOCRTool(config, (cfg, prompt, imageContent) -> {
             assertThat(String.valueOf(((Map<?, ?>) imageContent.get("image_url")).get("url"))).startsWith("data:image");
@@ -42,10 +37,8 @@ class HarnessMultimodalToolsCompatibilityTest {
         });
 
         ToolOutput ocr = ocrTool.invoke(Map.of("image_path_or_url", image.toString()));
-        ToolOutput vqa = vqaTool.invoke(Map.of(
-                "image_path_or_url", "https://example.com/image.png",
-                "question", "What does the sign say?"
-        ));
+        ToolOutput vqa = vqaTool.invoke(
+                Map.of("image_path_or_url", "https://example.com/image.png", "question", "What does the sign say?"));
 
         assertThat(ocr.isSuccess()).isTrue();
         assertThat(((Map<?, ?>) ocr.getData()).get("text")).isEqualTo("detected text");
@@ -58,16 +51,12 @@ class HarnessMultimodalToolsCompatibilityTest {
     void audioToolsShouldTranscribeAnswerAndReadMetadata() throws Exception {
         Path audio = tempDir.resolve("sample.wav");
         writeTestWav(audio, 1);
-        AudioModelConfig config = AudioModelConfig.builder()
-                .apiKey("audio-key")
-                .baseUrl("https://audio.example.com/v1")
-                .transcriptionModel("mock-transcribe")
-                .questionAnsweringModel("mock-audio-qa")
-                .build();
+        AudioModelConfig config = AudioModelConfig.builder().apiKey("audio-key").baseUrl("https://audio.example.com/v1")
+                .transcriptionModel("mock-transcribe").questionAnsweringModel("mock-audio-qa").build();
 
         AudioTranscriptionTool transcription = new AudioTranscriptionTool(config, (cfg, path) -> "hello from audio");
-        AudioQuestionAnsweringTool qa = new AudioQuestionAnsweringTool(config, (cfg, path, question) ->
-                new AudioQuestionAnsweringTool.QaResult("A person says hello.", 1.0));
+        AudioQuestionAnsweringTool qa = new AudioQuestionAnsweringTool(config,
+                (cfg, path, question) -> new AudioQuestionAnsweringTool.QaResult("A person says hello.", 1.0));
         AudioMetadataTool metadata = new AudioMetadataTool(config);
 
         ToolOutput tr = transcription.invoke(Map.of("audio_path_or_url", audio.toString()));
@@ -95,11 +84,8 @@ class HarnessMultimodalToolsCompatibilityTest {
         javax.sound.sampled.AudioFormat format = new javax.sound.sampled.AudioFormat(16000, 16, 1, true, false);
         int frames = 16000 * durationSeconds;
         byte[] data = new byte[frames * 2];
-        try (var stream = new javax.sound.sampled.AudioInputStream(
-                new java.io.ByteArrayInputStream(data),
-                format,
-                frames
-        )) {
+        try (var stream =
+            new javax.sound.sampled.AudioInputStream(new java.io.ByteArrayInputStream(data), format, frames)) {
             javax.sound.sampled.AudioSystem.write(stream, javax.sound.sampled.AudioFileFormat.Type.WAVE, path.toFile());
         }
     }

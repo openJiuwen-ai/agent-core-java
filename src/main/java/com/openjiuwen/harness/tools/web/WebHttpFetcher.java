@@ -6,10 +6,19 @@ package com.openjiuwen.harness.tools.web;
 
 /**
  * Public interface WebHttpFetcher used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface WebHttpFetcher {
+    /**
+     * fetch.
+     * 
+     * @param method method
+     * @param url url
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     WebHttpResponse fetch(String method, String url) throws Exception;
 }

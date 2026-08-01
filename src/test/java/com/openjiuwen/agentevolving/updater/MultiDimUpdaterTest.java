@@ -1,32 +1,29 @@
+
 package com.openjiuwen.agentevolving.updater;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class MultiDimUpdaterTest {
-
     @Test
     void requiresForwardDataChecksOptimizerInstances() {
-        TestMultiDimUpdater updater = new TestMultiDimUpdater(Map.of(
-                "llm", new ForwardAwareOptimizer(true),
-                "tool", new ForwardAwareOptimizer(false)
-        ));
+        TestMultiDimUpdater updater = new TestMultiDimUpdater(
+                Map.of("llm", new ForwardAwareOptimizer(true), "tool", new ForwardAwareOptimizer(false)));
 
         assertTrue(updater.requiresForwardData());
     }
 
     @Test
     void requiresForwardDataReturnsFalseWhenNoOptimizerNeedsIt() {
-        TestMultiDimUpdater updater = new TestMultiDimUpdater(Map.of(
-                "llm", new ForwardAwareOptimizer(false),
-                "tool", new ForwardAwareOptimizer(false)
-        ));
+        TestMultiDimUpdater updater = new TestMultiDimUpdater(
+                Map.of("llm", new ForwardAwareOptimizer(false), "tool", new ForwardAwareOptimizer(false)));
 
         assertFalse(updater.requiresForwardData());
     }
@@ -44,7 +41,6 @@ class MultiDimUpdaterTest {
     }
 
     private static final class TestMultiDimUpdater extends MultiDimUpdater {
-
         private TestMultiDimUpdater(Map<String, Object> domainOptimizers) {
             super(domainOptimizers);
         }

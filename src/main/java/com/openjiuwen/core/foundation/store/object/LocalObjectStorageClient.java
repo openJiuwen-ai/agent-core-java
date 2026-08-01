@@ -18,22 +18,33 @@ import java.util.stream.Stream;
 
 /**
  * Local-filesystem implementation of the object storage contract.
+ * 
+ * @since 0.1.7
  */
 public class LocalObjectStorageClient extends BaseObjectStorageClient {
-
     private final Path rootDirectory;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LocalObjectStorageClient.
+     * 
+     * @param rootDirectory rootDirectory
+     * @since 0.1.7
      */
     public LocalObjectStorageClient(Path rootDirectory) {
         this.rootDirectory = rootDirectory;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * uploadFile.
+     * 
+     * @param bucketName bucketName
+     * @param objectName objectName
+     * @param filePath filePath
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean uploadFile(String bucketName, String objectName, Path filePath) throws Exception {
         Path target = resolveObjectPath(bucketName, objectName);
         Files.createDirectories(target.getParent());
@@ -41,10 +52,17 @@ public class LocalObjectStorageClient extends BaseObjectStorageClient {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * downloadFile.
+     * 
+     * @param bucketName bucketName
+     * @param objectName objectName
+     * @param filePath filePath
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean downloadFile(String bucketName, String objectName, Path filePath) throws Exception {
         Path source = resolveObjectPath(bucketName, objectName);
         Files.createDirectories(filePath.getParent());
@@ -52,50 +70,74 @@ public class LocalObjectStorageClient extends BaseObjectStorageClient {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteObject.
+     * 
+     * @param bucketName bucketName
+     * @param objectName objectName
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteObject(String bucketName, String objectName) throws Exception {
         return Files.deleteIfExists(resolveObjectPath(bucketName, objectName));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * createBucket.
+     * 
+     * @param bucketName bucketName
+     * @param location location
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean createBucket(String bucketName, String location) throws Exception {
         Files.createDirectories(resolveBucketPath(bucketName));
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteBucket.
+     * 
+     * @param bucketName bucketName
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteBucket(String bucketName) throws Exception {
         Path bucketPath = resolveBucketPath(bucketName);
         if (!Files.exists(bucketPath)) {
             return true;
         }
         try (Stream<Path> stream = Files.walk(bucketPath)) {
-            stream.sorted((left, right) -> right.getNameCount() - left.getNameCount())
-                    .forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+            stream.sorted((left, right) -> right.getNameCount() - left.getNameCount()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listObjects.
+     * 
+     * @param bucketName bucketName
+     * @param objectPrefix objectPrefix
+     * @param maxObjects maxObjects
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public List<Map<String, Object>> listObjects(String bucketName, String objectPrefix, int maxObjects) throws Exception {
+    @Override
+    public List<Map<String, Object>> listObjects(String bucketName, String objectPrefix, int maxObjects)
+            throws Exception {
         Path bucketPath = resolveBucketPath(bucketName);
         if (!Files.exists(bucketPath)) {
             return List.of();
@@ -123,10 +165,25 @@ public class LocalObjectStorageClient extends BaseObjectStorageClient {
         return result;
     }
 
+    /**
+     * resolveBucketPath.
+     * 
+     * @param bucketName bucketName
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolveBucketPath(String bucketName) {
         return rootDirectory.resolve(bucketName);
     }
 
+    /**
+     * resolveObjectPath.
+     * 
+     * @param bucketName bucketName
+     * @param objectName objectName
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolveObjectPath(String bucketName, String objectName) {
         return resolveBucketPath(bucketName).resolve(objectName);
     }

@@ -12,24 +12,26 @@ package com.openjiuwen.core.runner.drunner.remoteclient;
  * Each provider declares which {@code typeName()} (protocol) it supports.
  * Service adapters can also register providers programmatically via
  * {@link RemoteClientFactory#register(String, RemoteClientProvider)}.
- *
- * @since 0.1.12
+ * 
  * @see RemoteClientFactory
  * @see RemoteClient
+ * @since 0.1.7
  */
 public interface RemoteClientProvider {
     /**
-     * The protocol type name this provider handles (e.g., "MQ", "A2A").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create a remote client for the given configuration.
-     *
+     * 
      * @param config the remote client configuration
      * @return a new RemoteClient instance
+     * @since 0.1.7
      */
     RemoteClient create(RemoteClientConfig config);
 }
