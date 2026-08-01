@@ -89,14 +89,23 @@ public final class ApiConfigLoader {
     }
 
     /**
-     * Redis connection URL for B-group system tests that verify KV-store
-     * tenant isolation against a real Redis instance. Returns {@code null}
-     * when Redis is not configured, in which case B-group tests are skipped.
+     * Redis host for B-group system tests that verify KV-store tenant isolation
+     * against a real Redis instance. Returns {@code null} when Redis is not
+     * configured, in which case B-group tests are skipped.
      *
-     * @return Redis URL such as {@code redis://127.0.0.1:6379}, or {@code null}
+     * @return Redis host such as {@code 127.0.0.1}, or {@code null}
      */
-    public static String getRedisUrl() {
-        return load().get("REDIS_URL");
+    public static String getRedisHost() {
+        return load().get("REDIS_HOST");
+    }
+
+    /**
+     * Redis port (as a string). Returns {@code null} when not configured.
+     *
+     * @return Redis port such as {@code 6379}, or {@code null}
+     */
+    public static String getRedisPort() {
+        return load().get("REDIS_PORT");
     }
 
     /**

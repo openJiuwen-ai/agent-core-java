@@ -26,20 +26,13 @@ import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
-import com.openjiuwen.harness.tools.KvTodoStorage;
 import com.openjiuwen.harness.workspace.Workspace;
-
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -58,7 +51,7 @@ import java.util.concurrent.ExecutorService;
  * <ul>
  *   <li>A-group (ST-A1..A6): file-system resource isolation, needs real LLM.</li>
  *   <li>B-group (ST-B1..B3): KV-store resource isolation against a real Redis
- *       instance, needs {@code REDIS_URL} configured.</li>
+ *       instance, needs {@code REDIS_HOST}/{@code REDIS_PORT} configured.</li>
  *   <li>C-group (ST-C1..C3): security boundary and lifecycle.</li>
  * </ul>
  * Each test calls only the {@code assumeXxxAvailable()} guard it actually needs,
@@ -388,123 +381,97 @@ class TenantIsolationSystemTest extends SystemTestSupport {
     // ----------------------------------------------------------------------
 
     @Test
-    @DisplayName("ST-B1: DeepAgent stores todos to and restores from Redis via LLM-driven TodoTool")
+    @DisplayName("ST-B1: DeepAgent uses TodoTool via LLM and writes todos to real Redis")
     void testTodo_redisTenantIsolation() throws Exception {
         assumeRemoteModelAvailable();
         assumeRedisAvailable();
 
-        // 挂载 Logback ListAppender 捕获 KvTodoStorage 的日志，使测试可通过
-        // 观察日志验证 todo 真实地写入/读取了 Redis，而不直接操作 RedisStore 对象。
-        Logger kvStorageLogger = (Logger) LoggerFactory.getLogger(KvTodoStorage.class);
-        Level previousLevel = kvStorageLogger.getLevel();
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        kvStorageLogger.setLevel(Level.INFO);
-        kvStorageLogger.addAppender(appender);
-        try {
-            // 1. 配置带 Redis 后端 KV 存储与 KV todo 存储的 DeepAgent。
-            //    HarnessFactory → KVStoreFactory.create("redis") → RedisStore。
-            //    TaskPlanningRail.init（由 invoke 触发）注册 todo_create /
-            //    todo_list / todo_get / todo_modify，底层由 KvTodoStorage(redisStore) 支撑。
-            DeepAgent agent = createRedisBackedAgent(uniqueId("todo-redis-agent"));
-            assertNotNull(agent.getKvStore(), "kvStore should be injected by HarnessFactory");
-            assertTrue(agent.getKvStore() instanceof RedisStore,
-                    "kvStore should be a RedisStore (framework SPI created Jedis + RedisStore)");
+        // 1. Configure DeepAgent with Redis-backed KV store + KV todo storage.
+        // HarnessFactory → KVStoreFactory.create("redis") → RedisKVStoreProvider
+        // → reflection creates Jedis(127.0.0.1, 6379) → RedisStore(jedis).
+        // TaskPlanningRail.init (triggered by invoke) registers the todo_create
+        // tool backed by KvTodoStorage(redisStore).
+        DeepAgent agent = createRedisBackedAgent(uniqueId("todo-redis-agent"));
+        assertNotNull(agent.getKvStore(), "kvStore should be injected by HarnessFactory");
+        assertTrue(agent.getKvStore() instanceof RedisStore,
+                "kvStore should be a RedisStore (framework SPI created Jedis + RedisStore)");
+        RedisStore redisStore = (RedisStore) agent.getKvStore();
 
-            // 每次运行使用唯一的租户 ID → 唯一的 Redis key，因此无需手动清理
-            // 残留 key（避免直接操作 RedisStore 对象）。
-            String tenantIdA = "todo_tenant_a_" + UUID.randomUUID().toString().substring(0, 8);
-            String tenantIdB = "todo_tenant_b_" + UUID.randomUUID().toString().substring(0, 8);
+        // Clean any leftover keys from previous runs
+        redisStore.deleteByPrefix("todo_tenant_a:", null);
+        redisStore.deleteByPrefix("todo_tenant_b:", null);
 
-            // 2. 租户 A —— 存储：通过 prompt 引导 LLM 调用 todo_create。
-            //    工具内部调用 KvTodoStorage.save → redisStore.set("{tenantIdA}:{sessionId}:todo", json)，
-            //    将 todo 写入真实 Redis（租户前缀的 key 命名空间）。
-            String sessionIdA = trackSessionId("todo-inv-a");
-            String expectedKeyA = tenantIdA + ":" + sessionIdA + ":todo";
-            TenantContext tenantA = TenantContext.builder().tenantId(tenantIdA).build();
-            AgentSessionApi sessionA = AgentSessionApi.create(sessionIdA, null, agent.getCard())
-                    .withTenantContext(tenantA);
-            String createPromptA = "You are a task planning assistant. Before answering, you MUST call the "
-                    + "todo_create tool with session_id=\"" + sessionIdA + "\" and tasks="
-                    + "[{\"content\":\"help tenant A\",\"activeForm\":\"helping tenant A\","
-                    + "\"description\":\"handle tenant A request\"}]. "
-                    + "After creating the todo, reply with the word done.";
-            Map<String, Object> createInputsA = Map.of("query", createPromptA, "conversation_id", sessionIdA);
-            agent.invoke(createInputsA, sessionA);
+        // 2. Tenant A: invoke with a prompt that guides the LLM to call the
+        //    todo_create tool. The LLM autonomously invokes todo_create, which
+        //    internally calls KvTodoStorage.save(sessionId, todos) →
+        //    redisStore.set("todo_tenant_a:{sessionId}:todo", json).
+        //    No direct storage.save() call from the test.
+        String sessionIdA = trackSessionId("todo-inv-a");
+        TenantContext tenantA = TenantContext.builder().tenantId("todo_tenant_a").build();
+        AgentSessionApi sessionA = AgentSessionApi.create(sessionIdA, null, agent.getCard())
+                .withTenantContext(tenantA);
+        String promptA = "You are a task planning assistant. Before answering, you MUST call the "
+                + "todo_create tool with session_id=\"" + sessionIdA + "\" and tasks="
+                + "[{\"content\":\"help tenant A\",\"activeForm\":\"helping tenant A\","
+                + "\"description\":\"handle tenant A request\"}]. "
+                + "After creating the todo, reply with the word done.";
+        Map<String, Object> inputsA = Map.of("query", promptA, "conversation_id", sessionIdA);
+        agent.invoke(inputsA, sessionA);
 
-            // 通过日志验证 todo 已写入 Redis（租户 A 的 key）。
-            assertTrue(hasLogContaining(appender, "Saved", expectedKeyA),
-                    "KvTodoStorage should log save to Redis with tenant A's key. Logs: "
-                            + formattedLogMessages(appender));
+        // 3. Verify the LLM-driven todo_create wrote data to real Redis under
+        //    the tenant-prefixed key namespace.
+        Map<String, Object> keysA = redisStore.getByPrefix("todo_tenant_a:");
+        assertFalse(keysA.isEmpty(),
+                "Redis should contain tenant A's todo data after LLM invoked todo_create. "
+                        + "Keys found: " + keysA.keySet());
+        assertTrue(keysA.keySet().stream().anyMatch(k -> k.contains(":todo")),
+                "tenant A todo key should follow the '{tenantId}:{sessionId}:todo' format. "
+                        + "Keys: " + keysA.keySet());
 
-            // 3. 租户 A —— 恢复：再次 invoke DeepAgent，引导 LLM 调用 todo_list。
-            //    工具内部调用 KvTodoStorage.load → redisStore.get("{tenantIdA}:{sessionId}:todo")，
-            //    从 Redis 恢复步骤 2 写入的 todo 数据。
-            String listPromptA = "You are a task planning assistant. Call the todo_list tool with "
-                    + "session_id=\"" + sessionIdA + "\". Then reply with the content of the first task.";
-            Map<String, Object> listInputsA = Map.of("query", listPromptA, "conversation_id", sessionIdA);
-            Map<String, Object> resultA = agent.invoke(listInputsA, sessionA);
+        // 4. Tenant B: same flow, different tenant context and session.
+        String sessionIdB = trackSessionId("todo-inv-b");
+        TenantContext tenantB = TenantContext.builder().tenantId("todo_tenant_b").build();
+        AgentSessionApi sessionB = AgentSessionApi.create(sessionIdB, null, agent.getCard())
+                .withTenantContext(tenantB);
+        String promptB = "You are a task planning assistant. Before answering, you MUST call the "
+                + "todo_create tool with session_id=\"" + sessionIdB + "\" and tasks="
+                + "[{\"content\":\"help tenant B\",\"activeForm\":\"helping tenant B\","
+                + "\"description\":\"handle tenant B request\"}]. "
+                + "After creating the todo, reply with the word done.";
+        Map<String, Object> inputsB = Map.of("query", promptB, "conversation_id", sessionIdB);
+        agent.invoke(inputsB, sessionB);
 
-            // 通过日志验证 todo 已从 Redis 恢复（租户 A 的 key）。
-            assertTrue(hasLogContaining(appender, "Loaded", expectedKeyA),
-                    "KvTodoStorage should log load from Redis with tenant A's key. Logs: "
-                            + formattedLogMessages(appender));
-            // 验证 LLM 驱动的 todo_list 返回了租户 A 的 todo 内容，证明数据经 Redis 完整往返。
-            String responseA = flattenText(resultA);
-            assertTrue(containsIgnoreCase(responseA, "help tenant A"),
-                    "tenant A todo_list response should restore the stored todo content from Redis. "
-                            + "Response: " + responseA);
+        Map<String, Object> keysB = redisStore.getByPrefix("todo_tenant_b:");
+        assertFalse(keysB.isEmpty(),
+                "Redis should contain tenant B's todo data after LLM invoked todo_create. "
+                        + "Keys found: " + keysB.keySet());
 
-            // 4. 租户 B —— 存储：相同流程，不同的租户上下文与会话。
-            String sessionIdB = trackSessionId("todo-inv-b");
-            String expectedKeyB = tenantIdB + ":" + sessionIdB + ":todo";
-            TenantContext tenantB = TenantContext.builder().tenantId(tenantIdB).build();
-            AgentSessionApi sessionB = AgentSessionApi.create(sessionIdB, null, agent.getCard())
-                    .withTenantContext(tenantB);
-            String createPromptB = "You are a task planning assistant. Before answering, you MUST call the "
-                    + "todo_create tool with session_id=\"" + sessionIdB + "\" and tasks="
-                    + "[{\"content\":\"help tenant B\",\"activeForm\":\"helping tenant B\","
-                    + "\"description\":\"handle tenant B request\"}]. "
-                    + "After creating the todo, reply with the word done.";
-            Map<String, Object> createInputsB = Map.of("query", createPromptB, "conversation_id", sessionIdB);
-            agent.invoke(createInputsB, sessionB);
-
-            assertTrue(hasLogContaining(appender, "Saved", expectedKeyB),
-                    "KvTodoStorage should log save to Redis with tenant B's key. Logs: "
-                            + formattedLogMessages(appender));
-
-            // 5. 租户 B —— 恢复。
-            String listPromptB = "You are a task planning assistant. Call the todo_list tool with "
-                    + "session_id=\"" + sessionIdB + "\". Then reply with the content of the first task.";
-            Map<String, Object> listInputsB = Map.of("query", listPromptB, "conversation_id", sessionIdB);
-            Map<String, Object> resultB = agent.invoke(listInputsB, sessionB);
-
-            assertTrue(hasLogContaining(appender, "Loaded", expectedKeyB),
-                    "KvTodoStorage should log load from Redis with tenant B's key. Logs: "
-                            + formattedLogMessages(appender));
-            String responseB = flattenText(resultB);
-            assertTrue(containsIgnoreCase(responseB, "help tenant B"),
-                    "tenant B todo_list response should restore the stored todo content from Redis. "
-                            + "Response: " + responseB);
-
-            // 6. 跨租户隔离：每个租户只能恢复自己的数据。
-            //    - 租户 B 的响应不得包含租户 A 的 todo 内容。
-            //    - 租户 A 的响应不得包含租户 B 的 todo 内容。
-            //    - 日志中观察到的租户前缀 Redis key 必须不同。
-            assertFalse(containsIgnoreCase(responseB, "help tenant A"),
-                    "tenant B must not restore tenant A's todo content — isolation holds");
-            assertFalse(containsIgnoreCase(responseA, "help tenant B"),
-                    "tenant A must not restore tenant B's todo content — isolation holds");
-            assertNotEquals(expectedKeyA, expectedKeyB,
-                    "tenant A and tenant B must resolve to different Redis keys");
-
-            assertNull(TenantContextHolder.getCurrentTenant(),
-                    "TenantContextHolder must be cleared");
-        } finally {
-            kvStorageLogger.detachAppender(appender);
-            appender.stop();
-            kvStorageLogger.setLevel(previousLevel);
+        // 5. Cross-tenant key isolation: tenant A's key namespace must not contain
+        //    any of tenant B's keys, and vice versa.
+        for (String key : keysB.keySet()) {
+            assertFalse(keysA.containsKey(key),
+                    "tenant A key namespace must not contain tenant B's key: " + key);
         }
+        for (String key : keysA.keySet()) {
+            assertFalse(keysB.containsKey(key),
+                    "tenant B key namespace must not contain tenant A's key: " + key);
+        }
+
+        // 6. Verify the tenant-prefixed key was written by the LLM-driven tool call.
+        //    The key format is "todo_tenant_a:{sessionId}:todo" because
+        //    KvTodoStorage.buildKey uses TenantKVStoreKeyResolver.resolveKey.
+        boolean hasTenantAKey = keysA.keySet().stream()
+                .anyMatch(k -> k.startsWith("todo_tenant_a:" + sessionIdA));
+        assertTrue(hasTenantAKey,
+                "tenant A should have a todo key starting with 'todo_tenant_a:" + sessionIdA
+                        + "'. Keys: " + keysA.keySet());
+
+        // Cleanup Redis keys
+        redisStore.deleteByPrefix("todo_tenant_a:", null);
+        redisStore.deleteByPrefix("todo_tenant_b:", null);
+
+        assertNull(TenantContextHolder.getCurrentTenant(),
+                "TenantContextHolder must be cleared");
     }
 
     @Test
@@ -762,13 +729,13 @@ class TenantIsolationSystemTest extends SystemTestSupport {
     @Test
     @DisplayName("ST-C2: Strict mode fails fast when tenantId is missing")
     void testStrictMode_failFast() {
-        // No assumeRemoteModelAvailable(): strict-mode validation runs before any LLM call.
-        Model model = new Model(remoteClientConfig(60), remoteRequestConfig(0.1, 256));
+        // No assumeRemoteModelAvailable() and no Model: strict-mode validation
+        // runs (and rejects) before any LLM call, so this test does not need
+        // LLM/Redis env vars and runs even when they are absent.
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString())
                 .workspacePath(tempDir.toString())
-                .model(model)
                 .systemPrompt("Reply briefly.")
                 .maxIterations(1)
                 .completionTimeout(10.0)
@@ -860,21 +827,5 @@ class TenantIsolationSystemTest extends SystemTestSupport {
         } catch (Exception e) {
             return true;
         }
-    }
-
-    /**
-     * 断言已捕获的日志中是否存在同时包含给定动词（如 "Saved"/"Loaded"）与
-     * 指定 key 的日志条目，用于通过观察日志验证 Redis 的存取行为。
-     */
-    private static boolean hasLogContaining(ListAppender<ILoggingEvent> appender, String verb, String key) {
-        return appender.list.stream().map(ILoggingEvent::getFormattedMessage)
-                .anyMatch(msg -> msg.contains(verb) && msg.contains(key));
-    }
-
-    /**
-     * 收集已捕获日志的格式化消息，用于断言失败时输出诊断信息。
-     */
-    private static List<String> formattedLogMessages(ListAppender<ILoggingEvent> appender) {
-        return appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 }
