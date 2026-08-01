@@ -428,19 +428,49 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Invoke DeepAgent with inputs only.
+     *
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
+        return invoke(inputs, null);
+    }
+
+    /**
+     * 执行 DeepAgent，传入外部 session 以支持中断恢复。
+     * <p>
+     * 外部 session 的状态（如中断信息）会被传播到内部 session，
+     * 执行完毕后内部 session 的状态也会反向传播回外部 session。
+     *
+     * @param inputs  输入参数（必须包含 query 和 conversation_id）
+     * @param session 外部 session，可为 null（此时自动创建新 session）
+     * @return 执行结果
+     * @since 0.1.13
+     */
+    public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
-            AgentSessionApi session = new DeepAgentSession(
-                    String.valueOf(normalized.get("conversation_id")),
-                    null,
-                    card);
-            return runTaskLoop(normalized, session);
+            DeepAgentSession effectiveSession = session != null && session instanceof DeepAgentSession ds
+                    ? ds
+                    : new DeepAgentSession(
+                            String.valueOf(normalized.get("conversation_id")),
+                            null,
+                            card);
+            // 将外部 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
+            if (session != null) {
+                copySessionState(session, effectiveSession);
+            }
+            Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+            // 将 effectiveSession 的状态反向传播到外部 session（关键：中断状态保存依赖此步骤）
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
+            return result;
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("agent_name", card.getName());

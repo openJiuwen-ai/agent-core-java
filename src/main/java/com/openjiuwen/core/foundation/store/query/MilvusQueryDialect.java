@@ -45,9 +45,9 @@ public final class MilvusQueryDialect {
      */
     public static QueryLanguageDefinition definition() {
         return QueryLanguageDefinition.builder()
-                .comparison(expr -> comparisonFilter((expr instanceof ComparisonExpr __cast41 ? __cast41 : null)))
-                .range(expr -> rangeFilter((expr instanceof RangeExpr __cast42 ? __cast42 : null)))
-                .arithmetic(expr -> arithmeticFilter((expr instanceof ArithmeticExpr __cast43 ? __cast43 : null)))
+                .comparison(expr -> comparisonFilter((ComparisonExpr) expr))
+                .range(expr -> rangeFilter((RangeExpr) expr))
+                .arithmetic(expr -> arithmeticFilter((ArithmeticExpr) expr))
                 .nullCheck(expr -> nullFilter((NullExpr) expr)).jsonFilter(expr -> jsonFilter((JSONExpr) expr))
                 .array(expr -> arrayFilter((ArrayExpr) expr)).logical(expr -> logicalFilter((LogicalExpr) expr))
                 .textMatch(expr -> textMatchFilter((MatchExpr) expr)).build();
