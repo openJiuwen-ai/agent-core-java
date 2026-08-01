@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
@@ -158,7 +159,16 @@ public class ResourceMgr {
             validateTag(tag);
         }
         List<Result<AgentCard>> results = new ArrayList<>();
-        for (AgentEntry entry : agents) {
+        List<?> rawAgents = agents;
+        for (int i = 0; i < rawAgents.size(); i++) {
+            Object element = rawAgents.get(i);
+            if (!(element instanceof AgentEntry entry)) {
+                String gotType = pythonTypeName(element);
+                String length = element instanceof List<?> l ? String.valueOf(l.size()) : "N/A";
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", "agent",
+                        "reason", "invalid provider format at idx " + i + ": expected tuple[AgentCard, Callable],"
+                                + " got " + gotType + " (length=" + length + ")");
+            }
             results.add(innerAddResource(entry.card().getId(), entry.provider(), entry.card(), tag, "agent"));
         }
         return results;
@@ -239,7 +249,16 @@ public class ResourceMgr {
             validateTag(tag);
         }
         List<Result<WorkflowCard>> results = new ArrayList<>();
-        for (WorkflowEntry entry : workflows) {
+        List<?> rawWorkflows = workflows;
+        for (int i = 0; i < rawWorkflows.size(); i++) {
+            Object element = rawWorkflows.get(i);
+            if (!(element instanceof WorkflowEntry entry)) {
+                String gotType = pythonTypeName(element);
+                String length = element instanceof List<?> l ? String.valueOf(l.size()) : "N/A";
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", "workflow",
+                        "reason", "invalid provider format at idx " + i + ": expected tuple[WorkflowCard, Callable],"
+                                + " got " + gotType + " (length=" + length + ")");
+            }
             results.add(innerAddResource(entry.card().getId(), entry.provider(), entry.card(), tag, "workflow"));
         }
         return results;
@@ -353,8 +372,18 @@ public class ResourceMgr {
         if (tag != null) {
             validateTag(tag);
         }
+        List<?> rawTools = tools;
+        for (int i = 0; i < rawTools.size(); i++) {
+            Object element = rawTools.get(i);
+            if (!(element instanceof Tool)) {
+                String gotType = pythonTypeName(element);
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID, "resource_type", "tool", "reason",
+                        "invalid tool type at index " + i + ": expected Tool, got " + gotType);
+            }
+        }
         List<Result<ToolCard>> results = new ArrayList<>();
-        for (Tool tool : tools) {
+        for (int i = 0; i < rawTools.size(); i++) {
+            Tool tool = (Tool) rawTools.get(i);
             if (refresh) {
                 refreshExistingResourceIfNeeded(tool.getCard().getId(), tag);
             }
@@ -373,6 +402,10 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public Object getTool(String toolId, Object tag, TagMatchStrategy tagMatchStrategy) {
+        if (toolId != null && (toolId.isEmpty() || toolId.isBlank())) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_ID_VALUE_INVALID, "resource_type", "tool", "reason",
+                    "id list cannot be empty or None");
+        }
         return innerGetResources(toolId, tag, tagMatchStrategy, "tool");
     }
 
@@ -384,6 +417,10 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public Object getTool(String toolId) {
+        if (toolId == null || toolId.isEmpty() || toolId.isBlank()) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_ID_VALUE_INVALID, "resource_type", "tool", "reason",
+                    "id list cannot be empty or None");
+        }
         return innerGetResources(toolId, null, TagMatchStrategy.ALL, "tool");
     }
 
@@ -1039,7 +1076,10 @@ public class ResourceMgr {
         }
         List<BaseCard> cards = new ArrayList<>();
         for (String resourceId : resourceIds) {
-            cards.add(idToCard.get(resourceId));
+            BaseCard card = idToCard.get(resourceId);
+            if (card != null) {
+                cards.add(card);
+            }
         }
         return cards;
     }
@@ -1228,8 +1268,10 @@ public class ResourceMgr {
             String resourceType) {
         try {
             if (tagMgr.hasResource(resourceId)) {
-                innerRemoveResources(resourceId, null, TagMatchStrategy.ALL, true, resourceType);
-                logger.info("replaced existing resource, id={}, type={}", resourceId, resourceType);
+                logger.info("resource already exist, id={}, type={}", resourceId, resourceType);
+                BaseError existError = ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR,
+                        "card", resourceId, "reason", "resource already exist");
+                return new Error<>(existError);
             }
             switch (resourceType) {
                 case "workflow" -> resourceRegistry.workflow().addWorkflow(resourceId, (Supplier<Workflow>) resource);
@@ -1271,6 +1313,10 @@ public class ResourceMgr {
         List<String> idsToRemove;
         boolean isRemoveByTag = false;
         if (resourceId != null) {
+            if (resourceId instanceof String s && (s.isEmpty() || s.isBlank())) {
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_ID_VALUE_INVALID, "resource_type", resourceType,
+                        "reason", resourceType + " id list cannot be empty or None");
+            }
             idsToRemove = normalizeIds(resourceId);
         } else {
             validateTag(tag);
@@ -1622,6 +1668,40 @@ public class ResourceMgr {
             case "ToolCard" -> "function";
             default -> null;
         };
+    }
+
+    /**
+     * Map a Java object's type to the Python type name equivalent, so that error
+     * messages mirror the Python SDK output (e.g. {@code String -> "str"}).
+     *
+     * @param element the element whose Python type name is required
+     * @return the Python type name string
+     * @since 0.1.7
+     */
+    private static String pythonTypeName(Object element) {
+        if (element == null) {
+            return "NoneType";
+        }
+        if (element instanceof String) {
+            return "str";
+        }
+        if (element instanceof Integer || element instanceof Long || element instanceof Short
+                || element instanceof Byte) {
+            return "int";
+        }
+        if (element instanceof Float || element instanceof Double) {
+            return "float";
+        }
+        if (element instanceof Boolean) {
+            return "bool";
+        }
+        if (element instanceof List) {
+            return "list";
+        }
+        if (element instanceof Map) {
+            return "dict";
+        }
+        return element.getClass().getSimpleName();
     }
 
     @SuppressWarnings("unchecked")

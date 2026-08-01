@@ -125,6 +125,7 @@ public class DelegateTool extends Tool {
      */
     private static ToolCard buildCard(String targetId, String targetDescription) {
         String toolName = targetId;
+        String toolId = targetId + "_delegate_tool";
         String description = "Delegate a task to " + targetId + " for processing.";
         if (targetDescription != null && !targetDescription.isBlank()) {
             description += " " + targetDescription;
@@ -138,6 +139,9 @@ public class DelegateTool extends Tool {
         inputParams.put("type", "object");
         inputParams.put("properties", properties);
         inputParams.put("required", List.of("message"));
-        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
+        // Use a distinct tool ID (suffixed with "_delegate_tool") to avoid
+        // ResourceMgr tagMgr collisions with the agent registered under the
+        // same ID. The tool name visible to the LLM remains the child agent ID.
+        return ToolCard.builder().id(toolId).name(toolName).description(description).inputParams(inputParams).build();
     }
 }

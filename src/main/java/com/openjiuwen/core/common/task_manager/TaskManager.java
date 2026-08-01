@@ -205,8 +205,17 @@ public class TaskManager {
      */
     public int cancelGroup(String group) {
         int count = 0;
-        for (Task task : registry.getByGroup(group)) {
-            if (task.cancel(false, "manual_cancel", null)) {
+        List<Task> groupTasks = registry.getByGroup(group);
+        for (Task task : groupTasks) {
+            // Skip tasks whose parent is also in the same group — they will be
+            // cancelled by the cascade originating from the root task.
+            boolean hasParentInGroup = task.getParentTaskId() != null
+                    && registry.get(task.getParentTaskId()) != null
+                    && group.equals(registry.get(task.getParentTaskId()).getGroup());
+            if (hasParentInGroup) {
+                continue;
+            }
+            if (task.cancel(true, "manual_cancel", null)) {
                 count++;
             }
         }

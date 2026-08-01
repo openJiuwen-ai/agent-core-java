@@ -11,7 +11,6 @@ import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.AgentProvider;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -208,9 +207,6 @@ public class HierarchicalToolsTeam extends BaseTeam {
             if (parent == null) {
                 continue;
             }
-            if (parent.getAbilityManager().get(childId) != null) {
-                continue;
-            }
             AgentCard childCard = getRuntime().getAgentCard(childId);
             if (childCard == null) {
                 Loggers.MULTI_AGENT.warning("[HierarchicalToolsTeam:" + teamId + "] skip tool injection for '" + childId
@@ -220,10 +216,12 @@ public class HierarchicalToolsTeam extends BaseTeam {
             HierarchicalDelegateTool tool =
                 new HierarchicalDelegateTool(childId, childCard, getRuntime(), parentId, teamId);
             parent.getAbilityManager().add(tool.getCard());
-            Object existing = Runner.resourceMgr().getTool(tool.getCard().getId(), parentId, TagMatchStrategy.ALL);
-            if (existing == null) {
-                Runner.resourceMgr().addTool(tool, parentId);
-            }
+            // Always register with refresh=true so stale tool instances from
+            // prior test runs are replaced. Without refresh, addTool silently
+            // skips when the toolId already exists, leaving the old (possibly
+            // GC'd or wrong-scoped) instance — causing "Tool instance not found"
+            // errors at execution time.
+            Runner.resourceMgr().addTool(tool, parentId, true);
             Loggers.MULTI_AGENT.info("[HierarchicalToolsTeam:" + teamId + "] registered " + childId + " -> " + parentId
                     + ".ability_manager");
         }

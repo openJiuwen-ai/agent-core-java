@@ -137,6 +137,7 @@ public class HierarchicalDelegateTool extends Tool {
      */
     private static ToolCard buildCard(String targetId, AgentCard targetCard) {
         String toolName = targetId;
+        String toolId = targetId + "_delegate_tool";
         String description = "Delegate a task to " + targetId + " for processing.";
         if (targetCard != null && targetCard.getDescription() != null && !targetCard.getDescription().isBlank()) {
             description = targetCard.getDescription();
@@ -151,7 +152,10 @@ public class HierarchicalDelegateTool extends Tool {
         } else {
             inputParams = defaultInputParams();
         }
-        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
+        // Use a distinct tool ID (suffixed with "_delegate_tool") to avoid
+        // ResourceMgr tagMgr collisions with the agent registered under the
+        // same ID. The tool name visible to the LLM remains the child agent ID.
+        return ToolCard.builder().id(toolId).name(toolName).description(description).inputParams(inputParams).build();
     }
 
     /**

@@ -913,7 +913,8 @@ public class Workflow {
                             formatTimeoutSeconds(receiveTimeoutMs), "reason", "");
                 }
 
-                if (configuredTimeoutMs > 0 && (executeTimeoutMs <= 0 || executeTimeoutMs > configuredTimeoutMs)) {
+                if (configuredTimeoutMs > 0 && (executeTimeoutMs <= 0 || executeTimeoutMs > configuredTimeoutMs)
+                        && !deadlineReached) {
                     return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
                             formatTimeoutSeconds(configuredTimeoutMs), "reason", "");
                 }

@@ -96,6 +96,18 @@ public class CallbackChain {
     }
 
     /**
+     * Get the error handler registered for a specific callback, if any.
+     *
+     * @param callback the callback function
+     * @return the error handler, or {@code null} if none registered
+     * @since 0.1.7
+     */
+    public Function<ExceptionContext, Object> getErrorHandler(
+            Function<Map<String, Object>, Object> callback) {
+        return errorHandlers.get(callback);
+    }
+
+    /**
      * Add callback to the chain.
      * 
      * @param callbackInfo Callback metadata and configuration

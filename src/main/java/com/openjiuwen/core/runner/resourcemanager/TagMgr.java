@@ -156,7 +156,7 @@ public class TagMgr {
         lock.lock();
         try {
             Set<String> tags = resourceTags.get(resourceId);
-            return tags != null ? new ArrayList<>(tags) : null;
+            return tags != null ? new ArrayList<>(tags) : Collections.emptyList();
         } finally {
             lock.unlock();
         }
@@ -222,6 +222,16 @@ public class TagMgr {
             if (!resourceTags.containsKey(resourceId)) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
                         resourceId, "tags", String.valueOf(tags), "reason", "Resource does not exist");
+            }
+            Set<String> currentTags = resourceTags.get(resourceId);
+            if (!skipIfNotExists) {
+                List<String> nonExistent = tagsToRemove.stream()
+                        .filter(t -> !currentTags.contains(t))
+                        .toList();
+                if (!nonExistent.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
+                            resourceId, "tags", String.valueOf(nonExistent), "reason", "Tag does not exist");
+                }
             }
             return doRemoveResourceTags(resourceId, tagsToRemove);
         } finally {
@@ -472,7 +482,13 @@ public class TagMgr {
             Set<String> res = tagToResource.get(tag);
             if (res != null) {
                 res.remove(resourceId);
+                if (res.isEmpty() && !Tag.GLOBAL.equals(tag)) {
+                    tagToResource.remove(tag);
+                }
             }
+        }
+        if (currentTags.isEmpty()) {
+            resourceTags.remove(resourceId);
         }
         return new ArrayList<>(currentTags);
     }
@@ -492,6 +508,9 @@ public class TagMgr {
                 Set<String> tags = resourceTags.get(resourceId);
                 if (tags != null) {
                     tags.remove(tag);
+                    if (tags.isEmpty()) {
+                        resourceTags.remove(resourceId);
+                    }
                 }
                 affected.add(resourceId);
             }

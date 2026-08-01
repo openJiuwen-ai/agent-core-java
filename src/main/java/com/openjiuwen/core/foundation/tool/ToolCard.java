@@ -31,6 +31,17 @@ public class ToolCard extends BaseCard {
     private Map<String, Object> inputParams = new HashMap<>();
 
     /**
+     * Raw inputParams object — can be a Map or a model Class.
+     * <p>
+     * Mirrors Python's {@code input_params: Dict[str, Any] | Type[BaseModel]}.
+     * When set to a non-Map value (e.g., a Class), {@link #getInputParams()} returns
+     * the default empty Map, while {@link #getInputParamsRaw()} returns the original object.
+     *
+     * @since 0.1.14
+     */
+    private Object inputParamsRaw;
+
+    /**
      * Custom properties map.
      * 
      * @since 0.1.7
@@ -68,6 +79,35 @@ public class ToolCard extends BaseCard {
      */
     public void setInputParams(Map<String, Object> inputParams) {
         this.inputParams = inputParams;
+        this.inputParamsRaw = inputParams;
+    }
+
+    /**
+     * getInputParamsRaw.
+     * <p>
+     * Returns the raw inputParams object, which may be a Map or a model Class.
+     *
+     * @return the raw inputParams object, or null if not set
+     * @since 0.1.14
+     */
+    public Object getInputParamsRaw() {
+        return inputParamsRaw;
+    }
+
+    /**
+     * setInputParamsRaw.
+     * <p>
+     * Sets the raw inputParams object. When the value is a Map, it also updates
+     * the typed {@code inputParams} field for backward compatibility.
+     *
+     * @param inputParamsRaw the raw inputParams object (Map or model Class)
+     * @since 0.1.14
+     */
+    public void setInputParamsRaw(Object inputParamsRaw) {
+        this.inputParamsRaw = inputParamsRaw;
+        if (inputParamsRaw instanceof Map) {
+            this.inputParams = (Map<String, Object>) inputParamsRaw;
+        }
     }
 
     /**
@@ -112,6 +152,13 @@ public class ToolCard extends BaseCard {
          * @since 0.1.7
          */
         protected Map<String, Object> inputParams = new HashMap<>();
+
+        /**
+         * Raw inputParams for model class support.
+         *
+         * @since 0.1.14
+         */
+        protected Object inputParamsRaw;
 
         /**
          * properties.
@@ -168,6 +215,26 @@ public class ToolCard extends BaseCard {
          */
         public Builder inputParams(Map<String, Object> inputParams) {
             this.inputParams = inputParams;
+            this.inputParamsRaw = inputParams;
+            return this;
+        }
+
+        /**
+         * inputParams accepting any Object (Map or model Class).
+         * <p>
+         * Mirrors Python's {@code input_params: Dict[str, Any] | Type[BaseModel]}.
+         * When a non-Map value is passed, it is stored in {@code inputParamsRaw}
+         * for retrieval via {@link ToolCard#getInputParamsRaw()}.
+         *
+         * @param inputParams the input parameters (Map or model Class)
+         * @return this builder
+         * @since 0.1.14
+         */
+        public Builder inputParams(Object inputParams) {
+            this.inputParamsRaw = inputParams;
+            if (inputParams instanceof Map) {
+                this.inputParams = (Map<String, Object>) inputParams;
+            }
             return this;
         }
 
@@ -198,6 +265,9 @@ public class ToolCard extends BaseCard {
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);
+            if (inputParamsRaw != null) {
+                card.setInputParamsRaw(inputParamsRaw);
+            }
             card.setProperties(properties);
             return card;
         }
