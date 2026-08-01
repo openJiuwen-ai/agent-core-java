@@ -2,6 +2,8 @@
 
 这个目录演示如何真实调用 `DeepAgent`，并让其内部的 **Todo**（任务规划存储）与 **Checkpointer**（会话状态检查点）共用同一份 Redis 连接，把两份数据都写入 Redis。
 
+> 版本说明：本示例依赖的能力（`DeepAgentConfig.kvStoreConfig`、`todoStorageType("kv")`、`redis_client` 复用、`DeepAgent.ensureInitialized()` 提前触发等）自 **agent-core-java 0.1.14** 起支持。请确认 `pom.xml` 中 `<version>0.1.14</version>`（或更高版本）后再运行。
+
 ## 文件说明
 
 - `DeepAgentRedisExample.java`: 示例入口。创建共享 `JedisPooled`、注册 `RedisCheckpointer`、构建 `DeepAgent`（通过 `kvStoreConfig.conf.redis_client` 复用同一连接）、发起一次真实 `invoke`，并验证 Checkpoint 与 Todo 都落盘 Redis。
