@@ -58,7 +58,7 @@ class RedisStoreTest {
         assertTrue(store.exclusiveSet("lock", "first", 1).join());
         assertFalse(store.exclusiveSet("lock", "second", 1).join());
 
-        Thread.sleep(1200L);
+        Thread.sleep(1050L);
 
         assertTrue(store.exclusiveSet("lock", "second", 1).join());
         store.set("k1", "v1").join();
@@ -85,9 +85,9 @@ class RedisStoreTest {
         assertEquals("value", results.get(2));
         assertEquals(Boolean.TRUE, results.get(3));
 
-        Thread.sleep(600L);
+        Thread.sleep(480L);
         store.refreshTtl(List.of("pipe:ttl"), 2);
-        Thread.sleep(700L);
+        Thread.sleep(600L);
         assertTrue(store.exists("pipe:ttl").join());
 
         Thread.sleep(1600L);

@@ -224,9 +224,20 @@ class TaskManagerTest {
         assertThat(TaskContext.getTaskGroup()).isNull();
     }
 
+    /**
+     * Blocks until interrupted/cancelled. Uses a latch that is never counted down, so the thread
+     * parks indefinitely unless interrupted by cancellation. This replaces a previous
+     * {@code Thread.sleep(30s)} that would waste 30s if cancellation failed to interrupt.
+     *
+     * @param started latch counted down once the task has started running
+     * @return a placeholder string (only returned if the thread is interrupted without cancellation)
+     * @throws InterruptedException if the thread is interrupted (expected on cancellation)
+     */
     private static Object awaitCancellation(CountDownLatch started) throws InterruptedException {
         started.countDown();
-        Thread.sleep(TimeUnit.SECONDS.toMillis(30));
+        // Park until interrupted by cascadeCancel. The latch is never counted down, so the only
+        // way out is an InterruptedException (thrown when the task is cancelled/interrupted).
+        new CountDownLatch(1).await();
         return "finished";
     }
 }

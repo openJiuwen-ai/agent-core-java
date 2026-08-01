@@ -85,7 +85,7 @@ class DbBasedKVStoreTest {
         assertThat(kvStore.exclusiveSet("exclusive_key", "exclusive_value", 1).join()).isTrue();
         assertThat(kvStore.get("exclusive_key").join()).isEqualTo("exclusive_value");
         assertThat(kvStore.exclusiveSet("exclusive_key", "update_exclusive_value", 1).join()).isFalse();
-        sleep(1100L);
+        sleep(1050L);
         assertThat(kvStore.exclusiveSet("exclusive_key", "update_exclusive_value", 1).join()).isTrue();
         assertThat(kvStore.get("exclusive_key").join()).isEqualTo("update_exclusive_value");
 

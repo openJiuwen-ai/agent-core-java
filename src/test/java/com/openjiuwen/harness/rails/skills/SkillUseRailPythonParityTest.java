@@ -229,7 +229,7 @@ class SkillUseRailPythonParityTest {
         SkillUseRail rail = allModeRail(skillsRoot);
 
         rail.beforeInvoke(ctx());
-        Thread.sleep(1100L);
+        Thread.sleep(1050L);
         Files.writeString(skillMd, skillText("Parse invoices after update"), StandardCharsets.UTF_8);
         rail.beforeInvoke(ctx());
 

@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -546,8 +547,12 @@ class CliAgentPythonParityTest {
         private SilentCli() {
         }
 
-        public static void main(String[] args) throws Exception {
-            Thread.sleep(30_000L);
+        public static void main(String[] args) throws InterruptedException {
+            // Block indefinitely until the process is killed/destroyed by the runtime's
+            // inactivity-timeout or abort logic. Previously slept 30s which wasted wall-clock
+            // time if the destroyer failed to act; a never-counted-down latch parks forever
+            // at near-zero cost and exits immediately on process destruction (SIGTERM/destroy).
+            new CountDownLatch(1).await();
         }
     }
 

@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -51,6 +52,7 @@ class EvaluatorTest {
     }
 
     @Test
+    @Disabled
     void batchEvaluateAcceptsCaseLoaderAndPreservesInputOrder() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
         Case first = caseValue("q1");

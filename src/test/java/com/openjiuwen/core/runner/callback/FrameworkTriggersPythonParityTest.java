@@ -263,7 +263,7 @@ class FrameworkTriggersPythonParityTest {
         long start = System.nanoTime();
         register(framework, "event", "callback", kwargs -> {
             try {
-                Thread.sleep(1_050L);
+                Thread.sleep(250L);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(interrupted);
@@ -276,7 +276,7 @@ class FrameworkTriggersPythonParityTest {
         long totalElapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
         assertEquals(List.of("done"), results);
-        assertTrue(totalElapsedMillis >= 1_095L);
+        assertTrue(totalElapsedMillis >= 245L);
     }
 
     private void triggerChainBasic() {
@@ -422,7 +422,7 @@ class FrameworkTriggersPythonParityTest {
     private void triggerWithTimeoutExceeds() {
         AsyncCallbackFramework framework = framework();
         register(framework, "event", "slow_callback", kwargs -> {
-            sleepQuietly(1000L);
+            sleepQuietly(200L);
             return "done";
         });
 
@@ -511,7 +511,7 @@ class FrameworkTriggersPythonParityTest {
         AsyncCallbackFramework framework = framework();
         register(framework, "event", "slow_callback", 0, false, 0.05, kwargs ->
                 CompletableFuture.supplyAsync(() -> {
-                    sleepQuietly(1000L);
+                    sleepQuietly(200L);
                     return "too slow";
                 }));
         register(framework, "event", "fast_callback", kwargs -> "fast");
@@ -652,7 +652,7 @@ class FrameworkTriggersPythonParityTest {
         Logger log = mock(Logger.class);
         AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "slow_callback", kwargs -> {
-            sleepQuietly(1000L);
+            sleepQuietly(200L);
             return "done";
         });
 

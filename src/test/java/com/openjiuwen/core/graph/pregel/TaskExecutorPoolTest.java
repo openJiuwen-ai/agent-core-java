@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -125,7 +126,10 @@ class TaskExecutorPoolTest {
         TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig("session-1", "graph", 5));
         PregelNode node = new PregelNode("slow-node", ignored -> {
             try {
-                Thread.sleep(5_000);
+                // Park indefinitely until interrupted by cancelAll. A never-counted-down latch
+                // exits immediately on interruption at near-zero cost, replacing a 5s sleep that
+                // would waste wall-clock if cancellation failed to interrupt.
+                new CountDownLatch(1).await();
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
             }

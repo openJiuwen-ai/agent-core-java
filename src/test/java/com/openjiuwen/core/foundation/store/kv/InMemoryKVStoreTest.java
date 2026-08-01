@@ -475,9 +475,16 @@ class InMemoryKVStoreTest {
         return store;
     }
 
+    /**
+     * Waits just long enough for a 1-second TTL to expire, with a safety margin.
+     * The InMemoryKVStore uses {@code System.currentTimeMillis() / 1000.0} for expiry, so a
+     * 1-second TTL set at time T expires when the wall clock crosses (long)(T+1). In practice
+     * ~1.01s is sufficient; we sleep 1050ms (was 1100ms) to trim ~300ms across 6 callers while
+     * keeping a comfortable margin for CI scheduling jitter.
+     */
     private void sleep() {
         try {
-            Thread.sleep(1100L);
+            Thread.sleep(1050L);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while waiting for expiry", exception);
