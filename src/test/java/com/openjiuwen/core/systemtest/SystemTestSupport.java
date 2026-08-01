@@ -36,7 +36,6 @@ import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.AfterEach;
 
 import java.lang.reflect.Array;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -52,40 +51,121 @@ abstract class SystemTestSupport {
     private final Set<String> agentIds = new LinkedHashSet<>();
     private final Set<String> groupIds = new LinkedHashSet<>();
 
+    // ------------------------------------------------------------------
+    // Configuration resolution: environment variables take precedence; when
+    // absent, values fall back to the classpath resource APIKEY/apiconfig.json
+    // (via ApiConfigLoader). LLM settings come from API_BASE/API_KEY/
+    // MODEL_PROVIDER/MODEL_NAME/LLM_SSL_VERIFY/LLM_SSL_CERT; Redis settings
+    // come from REDIS_HOST/REDIS_PORT.
+    // ------------------------------------------------------------------
+
+    protected static String env(String name) {
+        return System.getenv(name);
+    }
+
+    protected static boolean isEnvPresent(String name) {
+        String value = System.getenv(name);
+        return value != null && !value.isBlank();
+    }
+
+    protected static boolean envFlag(String name, boolean defaultValue) {
+        String value = System.getenv(name);
+        return (value == null || value.isBlank()) ? defaultValue : Boolean.parseBoolean(value);
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static String resolveEnvOrConfig(String envName, String configValue) {
+        String envValue = System.getenv(envName);
+        return isNotBlank(envValue) ? envValue : configValue;
+    }
+
+    private String resolveApiBase() {
+        return resolveEnvOrConfig("API_BASE", ApiConfigLoader.getApiBase());
+    }
+
+    private String resolveApiKey() {
+        return resolveEnvOrConfig("API_KEY", ApiConfigLoader.getApiKey());
+    }
+
+    private String resolveModelProvider() {
+        return resolveEnvOrConfig("MODEL_PROVIDER", ApiConfigLoader.getModelProvider());
+    }
+
+    private String resolveModelName() {
+        return resolveEnvOrConfig("MODEL_NAME", ApiConfigLoader.getModelName());
+    }
+
+    private boolean resolveSslVerify() {
+        return isEnvPresent("LLM_SSL_VERIFY") ? envFlag("LLM_SSL_VERIFY", true)
+                : ApiConfigLoader.getSslVerify();
+    }
+
+    private String resolveSslCert() {
+        return resolveEnvOrConfig("LLM_SSL_CERT", ApiConfigLoader.getSslCert());
+    }
+
     protected void assumeRemoteModelAvailable() {
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiBase()), "API_BASE is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getApiKey()), "API_KEY is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelProvider()), "MODEL_PROVIDER is required");
-        assumeTrue(isNotBlank(ApiConfigLoader.getModelName()), "MODEL_NAME is required");
+        assumeTrue(isNotBlank(resolveApiBase()), "API_BASE is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveApiKey()), "API_KEY is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveModelProvider()),
+                "MODEL_PROVIDER is required (env or apiconfig.json)");
+        assumeTrue(isNotBlank(resolveModelName()), "MODEL_NAME is required (env or apiconfig.json)");
     }
 
     /**
-     * Skips the test when Redis is not configured via {@code REDIS_URL} in
-     * {@code apiconfig.json}. B-group system tests rely on a real Redis
-     * instance to verify KV-store tenant key isolation end-to-end.
+     * Skips the test when Redis is not configured. Redis may be provided via
+     * the {@code REDIS_HOST}/{@code REDIS_PORT} environment variables or, as a
+     * fallback, via {@code REDIS_HOST}/{@code REDIS_PORT} in the classpath
+     * apiconfig.json.
      */
     protected void assumeRedisAvailable() {
-        assumeTrue(isNotBlank(ApiConfigLoader.getRedisUrl()), "REDIS_URL is required for Redis-backed tests");
+        assumeTrue(redisConfigured(), "Redis config (REDIS_HOST/REDIS_PORT env or apiconfig.json) is required");
+    }
+
+    private boolean redisConfigured() {
+        return (isEnvPresent("REDIS_HOST") && isEnvPresent("REDIS_PORT"))
+                || isNotBlank(ApiConfigLoader.getRedisHost());
     }
 
     /**
-     * Parses the host from {@code REDIS_URL} (e.g. {@code redis://127.0.0.1:6379}).
-     *
-     * @return Redis host, defaults to {@code 127.0.0.1} if absent
+     * @return Redis host from {@code REDIS_HOST} env var, falling back to
+     *         {@code REDIS_HOST} in apiconfig.json, then {@code 127.0.0.1}
      */
     protected String redisHost() {
-        String host = URI.create(ApiConfigLoader.getRedisUrl()).getHost();
-        return host != null ? host : "127.0.0.1";
+        if (isEnvPresent("REDIS_HOST")) {
+            return env("REDIS_HOST");
+        }
+        String configHost = ApiConfigLoader.getRedisHost();
+        if (isNotBlank(configHost)) {
+            return configHost;
+        }
+        return "127.0.0.1";
     }
 
     /**
-     * Parses the port from {@code REDIS_URL}.
-     *
-     * @return Redis port, defaults to {@code 6379} if absent
+     * @return Redis port from {@code REDIS_PORT} env var, falling back to
+     *         {@code REDIS_PORT} in apiconfig.json, then {@code 6379}
      */
     protected int redisPort() {
-        int port = URI.create(ApiConfigLoader.getRedisUrl()).getPort();
-        return port > 0 ? port : 6379;
+        if (isEnvPresent("REDIS_PORT")) {
+            try {
+                return Integer.parseInt(env("REDIS_PORT").trim());
+            } catch (NumberFormatException e) {
+                return 6379;
+            }
+        }
+        String configPort = ApiConfigLoader.getRedisPort();
+        if (isNotBlank(configPort)) {
+            try {
+                return Integer.parseInt(configPort.trim());
+            } catch (NumberFormatException e) {
+                return 6379;
+            }
+        }
+        return 6379;
     }
 
     protected String trackSessionId(String prefix) {
@@ -115,22 +195,22 @@ abstract class SystemTestSupport {
     }
 
     protected ModelClientConfig remoteClientConfig(double timeoutSeconds) {
-        return ModelClientConfig.builder().clientProvider(ApiConfigLoader.getModelProvider())
-                .apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase()).timeout(timeoutSeconds)
-                .maxRetries(2).verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
+        return ModelClientConfig.builder().clientProvider(resolveModelProvider())
+                .apiKey(resolveApiKey()).apiBase(resolveApiBase()).timeout(timeoutSeconds)
+                .maxRetries(2).verifySsl(resolveSslVerify()).sslCert(resolveSslCert()).build();
     }
 
     protected ModelRequestConfig remoteRequestConfig(double temperature, int maxTokens) {
-        return ModelRequestConfig.builder().modelName(ApiConfigLoader.getModelName()).temperature(temperature).topP(0.9)
+        return ModelRequestConfig.builder().modelName(resolveModelName()).temperature(temperature).topP(0.9)
                 .maxTokens(maxTokens).build();
     }
 
     protected ModelConfig remoteApplicationModelConfig(double temperature) {
         BaseModelInfo modelInfo =
-            BaseModelInfo.builder().apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase())
-                    .modelName(ApiConfigLoader.getModelName()).temperature(temperature).topP(0.9).timeout(60)
-                    .verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
-        return new ModelConfig(ApiConfigLoader.getModelProvider(), modelInfo);
+            BaseModelInfo.builder().apiKey(resolveApiKey()).apiBase(resolveApiBase())
+                    .modelName(resolveModelName()).temperature(temperature).topP(0.9).timeout(60)
+                    .verifySsl(resolveSslVerify()).sslCert(resolveSslCert()).build();
+        return new ModelConfig(resolveModelProvider(), modelInfo);
     }
 
     protected LlmAgent newRemoteLlmAgent(String agentId, String systemPrompt) {
@@ -146,9 +226,9 @@ abstract class SystemTestSupport {
 
         ReActAgentConfig config =
             ReActAgentConfig.builder().promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
-                    .maxIterations(3).build().configureModelClient(ApiConfigLoader.getModelProvider(),
-                            ApiConfigLoader.getApiKey(), ApiConfigLoader.getApiBase(), ApiConfigLoader.getModelName(),
-                            ApiConfigLoader.getSslVerify(), ApiConfigLoader.getSslCert(), null);
+                    .maxIterations(3).build().configureModelClient(resolveModelProvider(),
+                            resolveApiKey(), resolveApiBase(), resolveModelName(),
+                            resolveSslVerify(), resolveSslCert(), null);
 
         config.getModelConfigObj().setTemperature(0.1);
         config.getModelConfigObj().setTopP(0.9);
@@ -269,10 +349,6 @@ abstract class SystemTestSupport {
             return;
         }
         builder.append(value).append(' ');
-    }
-
-    private boolean isNotBlank(String value) {
-        return value != null && !value.isBlank();
     }
 
     @AfterEach

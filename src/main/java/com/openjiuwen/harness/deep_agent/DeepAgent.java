@@ -2061,6 +2061,9 @@ public class DeepAgent implements AutoCloseable {
     }
 
     private void bindTenantWorkspace(TenantContext ctx) {
+        if (!config.isEnableTenantIsolation()) {
+            return;
+        }
         if (ctx != null && ctx.isTenantAware()) {
             if (tieredWorkspaceManager != null) {
                 tieredWorkspaceManager.initializeTenantSpace(ctx);

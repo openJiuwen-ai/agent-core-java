@@ -51,7 +51,7 @@ import java.util.concurrent.ExecutorService;
  * <ul>
  *   <li>A-group (ST-A1..A6): file-system resource isolation, needs real LLM.</li>
  *   <li>B-group (ST-B1..B3): KV-store resource isolation against a real Redis
- *       instance, needs {@code REDIS_URL} configured.</li>
+ *       instance, needs {@code REDIS_HOST}/{@code REDIS_PORT} configured.</li>
  *   <li>C-group (ST-C1..C3): security boundary and lifecycle.</li>
  * </ul>
  * Each test calls only the {@code assumeXxxAvailable()} guard it actually needs,
@@ -729,13 +729,13 @@ class TenantIsolationSystemTest extends SystemTestSupport {
     @Test
     @DisplayName("ST-C2: Strict mode fails fast when tenantId is missing")
     void testStrictMode_failFast() {
-        // No assumeRemoteModelAvailable(): strict-mode validation runs before any LLM call.
-        Model model = new Model(remoteClientConfig(60), remoteRequestConfig(0.1, 256));
+        // No assumeRemoteModelAvailable() and no Model: strict-mode validation
+        // runs (and rejects) before any LLM call, so this test does not need
+        // LLM/Redis env vars and runs even when they are absent.
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .enableTenantIsolation(true)
                 .tenantDataRoot(tempDir.toString())
                 .workspacePath(tempDir.toString())
-                .model(model)
                 .systemPrompt("Reply briefly.")
                 .maxIterations(1)
                 .completionTimeout(10.0)
