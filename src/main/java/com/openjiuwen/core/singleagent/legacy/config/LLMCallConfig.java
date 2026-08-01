@@ -21,7 +21,7 @@ import java.util.Map;
  * {@code openjiuwen/core/single_agent/legacy/config.py}.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class LlmCallConfig {
+public class LLMCallConfig {
     private ModelRequestConfig model;
 
     @JsonProperty("model_client")

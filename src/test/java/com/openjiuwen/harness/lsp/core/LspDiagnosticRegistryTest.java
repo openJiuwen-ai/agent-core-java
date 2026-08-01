@@ -52,7 +52,7 @@ class LspDiagnosticRegistryTest {
     @AfterEach
     void tearDown() {
         LspDiagnosticRegistry.reset();
-        LspServerManager.shutdown();
+        LSPServerManager.shutdown();
         restoreServerDefinitions();
     }
 
@@ -148,7 +148,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void ensureDiagnosticHandlerRegistersPublishDiagnosticsHandler() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance server = fakeServer("pyright");
 
         manager.ensureDiagnosticHandler(server);
@@ -159,7 +159,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void ensureDiagnosticHandlerStoresHandlerInstanceAfterRegistration() throws Exception {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance server = fakeServer("pyright");
 
         manager.ensureDiagnosticHandler(server);
@@ -169,7 +169,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void ensureDiagnosticHandlerIsIdempotentForSameServer() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance server = fakeServer("pyright");
 
         manager.ensureDiagnosticHandler(server);
@@ -180,7 +180,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void ensureDiagnosticHandlerRegistersDifferentServerInstancesSeparately() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance pyright = fakeServer("pyright");
         FakeLspServerInstance ruff = fakeServer("ruff");
 
@@ -193,7 +193,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void ensureDiagnosticHandlerUsesServerIdAsServerName() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance server = fakeServer("my-lsp");
         manager.ensureDiagnosticHandler(server);
 
@@ -207,7 +207,7 @@ class LspDiagnosticRegistryTest {
     void openFileRegistersDiagnosticHandler() throws Exception {
         Path file = writeFile("a.py", "# content");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.openFile(file.toString(), "python");
 
@@ -218,7 +218,7 @@ class LspDiagnosticRegistryTest {
     void openFileSendsDidOpenNotification() throws Exception {
         Path file = writeFile("a.py", "x = 1");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.openFile(file.toString(), "python");
 
@@ -230,7 +230,7 @@ class LspDiagnosticRegistryTest {
     void openFileSetsVersionZero() throws Exception {
         Path file = writeFile("a.py", "");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.openFile(file.toString(), "python");
 
@@ -240,7 +240,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void openFileNoServerReturnsGracefully() throws Exception {
-        LspServerManager manager = managerWithoutServers();
+        LSPServerManager manager = managerWithoutServers();
 
         assertDoesNotThrow(() -> manager.openFile(tempDir.resolve("unknown.xyz").toString(), "text"));
     }
@@ -250,7 +250,7 @@ class LspDiagnosticRegistryTest {
         Path first = writeFile("a.py", "");
         Path second = writeFile("b.py", "");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.openFile(first.toString(), "python");
         manager.openFile(second.toString(), "python");
@@ -262,7 +262,7 @@ class LspDiagnosticRegistryTest {
     void changeFileRegistersDiagnosticHandler() throws Exception {
         Path file = writeFile("a.py", "new content");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
 
@@ -273,7 +273,7 @@ class LspDiagnosticRegistryTest {
     void changeFileSendsDidChangeNotification() throws Exception {
         Path file = writeFile("a.py", "updated");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
 
@@ -285,7 +285,7 @@ class LspDiagnosticRegistryTest {
     void changeFileIncrementsVersionFromZero() throws Exception {
         Path file = writeFile("a.py", "v1");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
 
@@ -297,7 +297,7 @@ class LspDiagnosticRegistryTest {
     void changeFileVersionIncrementsOnEachCall() throws Exception {
         Path file = writeFile("a.py", "text");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
         manager.changeFile(file.toString(), "python", null);
@@ -311,7 +311,7 @@ class LspDiagnosticRegistryTest {
     void changeFileUsesExplicitContent() throws Exception {
         Path file = writeFile("a.py", "from disk");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", "explicit text");
 
@@ -322,7 +322,7 @@ class LspDiagnosticRegistryTest {
     void changeFileReadsDiskWhenContentIsNull() throws Exception {
         Path file = writeFile("a.py", "from disk");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
 
@@ -333,7 +333,7 @@ class LspDiagnosticRegistryTest {
     void changeFileSendsFullContentChangeWithoutRange() throws Exception {
         Path file = writeFile("a.py", "full");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(file.toString(), "python", null);
 
@@ -345,7 +345,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void changeFileNoServerReturnsGracefully() throws Exception {
-        LspServerManager manager = managerWithoutServers();
+        LSPServerManager manager = managerWithoutServers();
 
         assertDoesNotThrow(() -> manager.changeFile(tempDir.resolve("unknown.xyz").toString(), "text", null));
     }
@@ -355,7 +355,7 @@ class LspDiagnosticRegistryTest {
         Path first = writeFile("a.py", "");
         Path second = writeFile("b.py", "");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
 
         manager.changeFile(first.toString(), "python", null);
         manager.changeFile(second.toString(), "python", null);
@@ -365,7 +365,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void getPendingDiagnosticsReturnsEmptyWhenNothingPending() {
-        assertTrue(LspServerManager.getPendingDiagnostics(10, 30).isEmpty());
+        assertTrue(LSPServerManager.getPendingDiagnostics(10, 30).isEmpty());
     }
 
     @Test
@@ -376,7 +376,7 @@ class LspDiagnosticRegistryTest {
                 List.of(diagnostic("err", 1, 0, 0))
         );
 
-        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> result = LSPServerManager.getPendingDiagnostics(10, 30);
 
         assertEquals(1, result.size());
         assertEquals("file:///workspace/a.py", result.get(0).getUri());
@@ -387,7 +387,7 @@ class LspDiagnosticRegistryTest {
         LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
         registry.register("pyright", "file:///workspace/a.py", List.of(diagnostic("err", 1, 0, 0)));
 
-        LspServerManager.getPendingDiagnostics(10, 30);
+        LSPServerManager.getPendingDiagnostics(10, 30);
 
         assertEquals(0, registry.getPendingCount());
     }
@@ -397,7 +397,7 @@ class LspDiagnosticRegistryTest {
         LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
         registry.register("pyright", "file:///workspace/a.py", diagnostics("e", 10));
 
-        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(3, 100);
+        List<LspDiagnosticFile> result = LSPServerManager.getPendingDiagnostics(3, 100);
 
         assertEquals(3, result.get(0).getDiagnostics().size());
     }
@@ -409,7 +409,7 @@ class LspDiagnosticRegistryTest {
             registry.register("pyright", "file:///workspace/f" + index + ".py", diagnostics("e" + index + "-", 5));
         }
 
-        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(5, 8);
+        List<LspDiagnosticFile> result = LSPServerManager.getPendingDiagnostics(5, 8);
 
         int total = result.stream().mapToInt(file -> file.getDiagnostics().size()).sum();
         assertTrue(total <= 8);
@@ -419,13 +419,13 @@ class LspDiagnosticRegistryTest {
     void openFileHandlerRoutesNotificationsToRegistry() throws Exception {
         Path file = writeFile("main.py", "print('open')");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
         manager.openFile(file.toString(), "python");
 
         server.publishDiagnostics(FileUriUtils.pathToFileUri(file.toString()),
                 List.of(diagnostic("Name 'x' undefined", 1, 5, 0)));
 
-        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> result = LSPServerManager.getPendingDiagnostics(10, 30);
         assertEquals(1, result.size());
         assertEquals(FileUriUtils.pathToFileUri(file.toString()), result.get(0).getUri());
         assertEquals(1, result.get(0).getDiagnostics().get(0).getSeverity());
@@ -435,13 +435,13 @@ class LspDiagnosticRegistryTest {
     void changeFileDiagnosticsRouteToRegistry() throws Exception {
         Path file = writeFile("b.py", "print('change')");
         FakeLspServerInstance server = fakeServer("ruff");
-        LspServerManager manager = managerWithFakeServer(tempDir, server);
+        LSPServerManager manager = managerWithFakeServer(tempDir, server);
         manager.changeFile(file.toString(), "python", "print('changed')");
 
         server.publishDiagnostics(FileUriUtils.pathToFileUri(file.toString()),
                 List.of(diagnostic("line too long", 2, 0, 0)));
 
-        List<LspDiagnosticFile> result = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> result = LSPServerManager.getPendingDiagnostics(10, 30);
         assertEquals(1, result.size());
         assertEquals("ruff", result.get(0).getServerName());
         assertEquals("line too long", result.get(0).getDiagnostics().get(0).getMessage());
@@ -449,7 +449,7 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void multipleServersContributeDiagnosticsToRegistry() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance pyright = fakeServer("pyright");
         FakeLspServerInstance ruff = fakeServer("ruff");
         manager.ensureDiagnosticHandler(pyright);
@@ -458,7 +458,7 @@ class LspDiagnosticRegistryTest {
         pyright.publishDiagnostics("file:///workspace/a.py", List.of(diagnostic("type error", 1, 0, 0)));
         ruff.publishDiagnostics("file:///workspace/b.py", List.of(diagnostic("style issue", 2, 5, 0)));
 
-        List<String> uris = LspServerManager.getPendingDiagnostics(10, 30).stream()
+        List<String> uris = LSPServerManager.getPendingDiagnostics(10, 30).stream()
                 .map(LspDiagnosticFile::getUri)
                 .toList();
         assertTrue(uris.contains("file:///workspace/a.py"));
@@ -467,15 +467,15 @@ class LspDiagnosticRegistryTest {
 
     @Test
     void crossRoundDedupSuppressesRepeatedDiagnosticsAfterOpenAndChange() {
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeLspServerInstance server = fakeServer("pyright");
         manager.ensureDiagnosticHandler(server);
         Map<String, Object> duplicate = diagnostic("same err", 1, 0, 0);
 
         server.publishDiagnostics("file:///workspace/a.py", List.of(duplicate));
-        List<LspDiagnosticFile> first = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> first = LSPServerManager.getPendingDiagnostics(10, 30);
         server.publishDiagnostics("file:///workspace/a.py", List.of(duplicate));
-        List<LspDiagnosticFile> second = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> second = LSPServerManager.getPendingDiagnostics(10, 30);
 
         assertEquals(1, first.size());
         assertTrue(second.isEmpty());
@@ -533,10 +533,10 @@ class LspDiagnosticRegistryTest {
         return new FakeLspServerInstance(config(serverId, tempDir));
     }
 
-    private LspServerManager managerWithFakeServer(Path root, FakeLspServerInstance server) throws Exception {
+    private LSPServerManager managerWithFakeServer(Path root, FakeLspServerInstance server) throws Exception {
         String normalizedRoot = root.toAbsolutePath().normalize().toString();
         ScopedLspServerConfig config = server.getConfig();
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         setField(manager, "workspaceRoot", normalizedRoot);
 
         Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
@@ -555,8 +555,8 @@ class LspDiagnosticRegistryTest {
         return manager;
     }
 
-    private LspServerManager managerWithoutServers() throws Exception {
-        LspServerManager manager = new LspServerManager();
+    private LSPServerManager managerWithoutServers() throws Exception {
+        LSPServerManager manager = new LSPServerManager();
         setField(manager, "workspaceRoot", tempDir.toAbsolutePath().normalize().toString());
         setField(manager, "configs", new LinkedHashMap<String, List<ScopedLspServerConfig>>());
         setField(manager, "extensionMap", Map.of(".py", List.of("missing-test-server")));
@@ -603,14 +603,14 @@ class LspDiagnosticRegistryTest {
     }
 
     private static void setField(Object target, String name, Object value) throws Exception {
-        Field field = LspServerManager.class.getDeclaredField(name);
+        Field field = LSPServerManager.class.getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
     }
 
     @SuppressWarnings("unchecked")
-    private static Set<LspServerInstance> diagnosticHandlerInstances(LspServerManager manager) throws Exception {
-        Field field = LspServerManager.class.getDeclaredField("diagnosticHandlerInstances");
+    private static Set<LspServerInstance> diagnosticHandlerInstances(LSPServerManager manager) throws Exception {
+        Field field = LSPServerManager.class.getDeclaredField("diagnosticHandlerInstances");
         field.setAccessible(true);
         return (Set<LspServerInstance>) field.get(manager);
     }

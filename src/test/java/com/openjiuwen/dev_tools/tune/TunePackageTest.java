@@ -4,7 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune;
 
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import com.openjiuwen.dev_tools.tune.chat_agent.ChatAgent;
 import com.openjiuwen.dev_tools.tune.chat_agent.ChatAgentConfig;
 import com.openjiuwen.dev_tools.tune.dataset.CaseLoader;
@@ -68,7 +68,7 @@ class TunePackageTest {
 
     @Test
     void createChatAgentConfigDelegatesToChatAgentFactory() {
-        LlmCallConfig model = new LlmCallConfig();
+        LLMCallConfig model = new LLMCallConfig();
 
         ChatAgentConfig config = TunePackage.createChatAgentConfig(
                 "chat-agent",

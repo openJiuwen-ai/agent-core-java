@@ -11,7 +11,6 @@ import com.openjiuwen.core.common.logging.Loggers;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -21,18 +20,18 @@ import java.util.Map;
  * Mirrors Python's {@code JSONFileConnector} in
  * {@code openjiuwen/extensions/context_evolver/core/file_connector/json_file_connector.py}.
  */
-public class JsonFileConnector {
+public class JSONFileConnector {
 
     private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
 
     private final ObjectMapper mapper;
 
-    public JsonFileConnector() {
+    public JSONFileConnector() {
         this(2, false);
     }
 
-    public JsonFileConnector(int indent, boolean ensureAscii) {
+    public JSONFileConnector(int indent, boolean ensureAscii) {
         this.mapper = new ObjectMapper();
         if (indent > 0) {
             this.mapper.writerWithDefaultPrettyPrinter();

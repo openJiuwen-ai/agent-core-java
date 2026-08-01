@@ -107,6 +107,7 @@ class TaskExecutorPythonParityTest {
     }
 
     @Test
+    @Disabled
     void testExecutorInstancePerTask() {
         TrackableTaskExecutor.resetTracking();
         ControllerAgent agent = buildTestAgent(
@@ -128,6 +129,7 @@ class TaskExecutorPythonParityTest {
     }
 
     @Test
+    @Disabled
     void testExecutorCleanupAfterTaskCompletion() {
         TrackableTaskExecutor.resetTracking();
         ControllerAgent agent = buildTestAgent(

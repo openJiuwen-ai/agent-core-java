@@ -29,7 +29,7 @@ class LspCorePackageTest {
         ), LspCorePackage.EXPORTED_SYMBOLS);
         assertEquals(LspServerState.class, LspCorePackage.EXPORTED_TYPES.get("LspServerState"));
         assertEquals(LspServerStatus.class, LspCorePackage.EXPORTED_TYPES.get("LspServerStatus"));
-        assertEquals(LspServerManager.class, LspCorePackage.EXPORTED_TYPES.get("LSPServerManager"));
+        assertEquals(LSPServerManager.class, LspCorePackage.EXPORTED_TYPES.get("LSPServerManager"));
         assertEquals(ScopedLspServerConfig.class, LspCorePackage.EXPORTED_TYPES.get("ScopedLspServerConfig"));
         assertEquals(ServerInstanceKey.class, LspCorePackage.EXPORTED_TYPES.get("ServerInstanceKey"));
         assertEquals(SpawnHandle.class, LspCorePackage.EXPORTED_TYPES.get("SpawnHandle"));

@@ -19,7 +19,7 @@ import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -44,7 +44,7 @@ class ChatAgentTest {
 
     @Test
     void factoryCreatesConfigWithPythonModelField() {
-        LlmCallConfig llmCallConfig = llmConfig("model-factory");
+        LLMCallConfig llmCallConfig = llmConfig("model-factory");
 
         ChatAgentConfig config = ChatAgent.createChatAgentConfig(
                 "agent-factory",
@@ -150,9 +150,9 @@ class ChatAgentTest {
         return ChatAgent.createChatAgentConfig(agentId, "1.0", "chat", llmConfig(modelName));
     }
 
-    private static LlmCallConfig llmConfig(String modelName) {
+    private static LLMCallConfig llmConfig(String modelName) {
         Model.registerClientFactory("openai", (clientConfig, modelConfig) -> new RecordingClient());
-        LlmCallConfig config = new LlmCallConfig();
+        LLMCallConfig config = new LLMCallConfig();
         config.setModel(ModelRequestConfig.builder().modelName(modelName).build());
         config.setModelClient(ModelClientConfig.builder().clientProvider("openai").apiKey("test").build());
         config.setSystemPrompt(List.of(Map.of("role", "system", "content", "system {{query}}")));

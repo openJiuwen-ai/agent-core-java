@@ -21,7 +21,7 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
@@ -50,7 +50,7 @@ public class ChatAgent extends LegacyBaseAgent {
     public ChatAgent(ChatAgentConfig agentConfig) {
         super(Objects.requireNonNull(agentConfig, "agentConfig"));
         this.agentConfig = agentConfig;
-        LlmCallConfig llmConfig = Objects.requireNonNull(agentConfig.getLlmCallConfig(), "agentConfig.model");
+        LLMCallConfig llmConfig = Objects.requireNonNull(agentConfig.getLlmCallConfig(), "agentConfig.model");
         ModelRequestConfig modelConfig = Objects.requireNonNull(llmConfig.getModel(), "agentConfig.model.model");
         this.llmCall = new LLMCall(
                 modelConfig.getModelName(),
@@ -67,7 +67,7 @@ public class ChatAgent extends LegacyBaseAgent {
     public static ChatAgentConfig createChatAgentConfig(String agentId,
                                                        String agentVersion,
                                                        String description,
-                                                       LlmCallConfig model) {
+                                                       LLMCallConfig model) {
         ChatAgentConfig config = new ChatAgentConfig();
         config.setId(agentId);
         config.setVersion(agentVersion);

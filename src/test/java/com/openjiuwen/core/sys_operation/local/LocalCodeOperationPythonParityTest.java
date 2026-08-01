@@ -10,6 +10,7 @@ import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeResult;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,6 +64,7 @@ class LocalCodeOperationPythonParityTest {
     @TempDir
     private Path tempDir;
 
+    @Disabled("remote env do not support node")
     @TestFactory
     Collection<DynamicTest> pythonLocalCodeOperationCases() {
         return PYTHON_TESTS.stream()

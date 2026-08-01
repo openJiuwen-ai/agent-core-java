@@ -26,7 +26,7 @@ class JsonFileConnectorTest {
 
     @Test
     void basicSaveLoadExistsAndDeleteMirrorPythonConnector() {
-        JsonFileConnector connector = new JsonFileConnector();
+        JSONFileConnector connector = new JSONFileConnector();
         Map<String, Object> testData = new LinkedHashMap<>();
         testData.put("key1", "value1");
         testData.put("key2", List.of(1, 2, 3));
@@ -43,7 +43,7 @@ class JsonFileConnectorTest {
 
     @Test
     void unicodeContentIsPreservedThroughRoundTrip() {
-        JsonFileConnector connector = new JsonFileConnector();
+        JSONFileConnector connector = new JSONFileConnector();
         Map<String, Object> testData = Map.of(
                 "chinese", "测试",
                 "emoji", "\uD83C\uDF80",
@@ -58,9 +58,9 @@ class JsonFileConnectorTest {
 
     @Test
     void safeModelDumpFallsBackAcrossPythonStyleSerializationMethods() {
-        assertEquals(Map.of("kind", "model"), JsonFileConnector.safeModelDump(new WithModelDump()));
-        assertEquals(Map.of("kind", "dict"), JsonFileConnector.safeModelDump(new WithToDict()));
-        assertEquals(Map.of("kind", "legacy"), JsonFileConnector.safeModelDump(new WithDict()));
+        assertEquals(Map.of("kind", "model"), JSONFileConnector.safeModelDump(new WithModelDump()));
+        assertEquals(Map.of("kind", "dict"), JSONFileConnector.safeModelDump(new WithToDict()));
+        assertEquals(Map.of("kind", "legacy"), JSONFileConnector.safeModelDump(new WithDict()));
     }
 
     private static final class WithModelDump {

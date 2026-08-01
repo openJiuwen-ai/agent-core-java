@@ -1,6 +1,6 @@
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.harness.cli.CliOptions;
+import com.openjiuwen.harness.cli.CLIOptions;
 import com.openjiuwen.harness.cli.HarnessCli;
 import com.openjiuwen.harness.cli.ui.CliRunner;
 import com.openjiuwen.harness.factory.HarnessFactory;
@@ -47,7 +47,7 @@ class HarnessToolsCompatibilityTest {
 
     @Test
     void harnessCliShouldRunChatAndRunOnce() {
-        CliOptions options = new CliOptions();
+        CLIOptions options = new CLIOptions();
         options.setModel("gpt-4");
         options.setWorkspace(tempDir.toString());
         Map<String, Object> configMap = HarnessCli.toConfigMap(options);

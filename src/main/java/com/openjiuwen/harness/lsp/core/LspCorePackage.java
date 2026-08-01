@@ -34,7 +34,7 @@ public final class LspCorePackage {
         Map<String, Class<?>> exports = new LinkedHashMap<>();
         exports.put("LspServerState", LspServerState.class);
         exports.put("LspServerStatus", LspServerStatus.class);
-        exports.put("LSPServerManager", LspServerManager.class);
+        exports.put("LSPServerManager", LSPServerManager.class);
         exports.put("ScopedLspServerConfig", ScopedLspServerConfig.class);
         exports.put("ServerInstanceKey", ServerInstanceKey.class);
         exports.put("SpawnHandle", SpawnHandle.class);

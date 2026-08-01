@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 
 /**
  * Chat agent configuration.
@@ -19,12 +19,12 @@ import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ChatAgentConfig extends AgentConfig {
-    private LlmCallConfig llmCallConfig;
+    private LLMCallConfig llmCallConfig;
 
     public ChatAgentConfig() {
     }
 
-    public ChatAgentConfig(LlmCallConfig llmCallConfig) {
+    public ChatAgentConfig(LLMCallConfig llmCallConfig) {
         this.llmCallConfig = llmCallConfig;
     }
 
@@ -45,12 +45,12 @@ public class ChatAgentConfig extends AgentConfig {
     }
 
     @JsonProperty("model")
-    public LlmCallConfig getLlmCallConfig() {
+    public LLMCallConfig getLlmCallConfig() {
         return llmCallConfig;
     }
 
     @JsonProperty("model")
-    public void setLlmCallConfig(LlmCallConfig llmCallConfig) {
+    public void setLlmCallConfig(LLMCallConfig llmCallConfig) {
         this.llmCallConfig = llmCallConfig;
     }
 }

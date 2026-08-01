@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -50,7 +49,7 @@ public final class HarnessCliMain {
         if (HarnessCli.COMMAND_RUN.equals(command)) {
             RunInvocation invocation = parseRunInvocation(rest);
             String prompt = HarnessCli.resolveRunPrompt(invocation.prompt(), stdinIsTty, stdinReader);
-            return HarnessCli.runOnce(new CliOptions(), prompt, invocation.outputFormat(), runner);
+            return HarnessCli.runOnce(new CLIOptions(), prompt, invocation.outputFormat(), runner);
         }
         if (HarnessCli.COMMAND_CHAT.equals(command)) {
             CliRepl repl = new CliRepl();
@@ -60,7 +59,7 @@ public final class HarnessCliMain {
         }
         if (!stdinIsTty && tokens.isEmpty()) {
             String prompt = HarnessCli.resolveRunPrompt(null, false, stdinReader);
-            return HarnessCli.runOnce(new CliOptions(), prompt, CliRunner.OUTPUT_TEXT, runner);
+            return HarnessCli.runOnce(new CLIOptions(), prompt, CliRunner.OUTPUT_TEXT, runner);
         }
         throw new IllegalArgumentException("Unknown command: " + command);
     }

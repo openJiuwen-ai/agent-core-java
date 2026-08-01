@@ -29,7 +29,7 @@ class LspServerManagerTest {
 
     @AfterEach
     void cleanup() {
-        LspServerManager.shutdown();
+        LSPServerManager.shutdown();
         LspDiagnosticRegistry.reset();
     }
 
@@ -47,8 +47,8 @@ class LspServerManagerTest {
     void pathBelongsToRootUsesResolvedPathContainment() {
         Path file = tempDir.resolve("src/Main.py");
 
-        assertThat(LspServerManager.pathBelongsToRoot(file.toString(), tempDir.toString())).isTrue();
-        assertThat(LspServerManager.pathBelongsToRoot(tempDir.resolveSibling("outside.py").toString(), tempDir.toString()))
+        assertThat(LSPServerManager.pathBelongsToRoot(file.toString(), tempDir.toString())).isTrue();
+        assertThat(LSPServerManager.pathBelongsToRoot(tempDir.resolveSibling("outside.py").toString(), tempDir.toString()))
                 .isFalse();
     }
 
@@ -56,7 +56,7 @@ class LspServerManagerTest {
     void getOrStartServerReturnsHealthyCachedInstance() throws Exception {
         Path file = tempDir.resolve("sample.py");
         Files.writeString(file, "print('ok')");
-        LspServerManager manager = managerWithFakePythonServer(tempDir, new FakeLspServerInstance(config(tempDir)));
+        LSPServerManager manager = managerWithFakePythonServer(tempDir, new FakeLspServerInstance(config(tempDir)));
 
         LspServerInstance instance = manager.getOrStartServer(file.toString());
 
@@ -69,7 +69,7 @@ class LspServerManagerTest {
         Path file = tempDir.resolve("sample.py");
         Files.writeString(file, "print('open')");
         FakeLspServerInstance server = new FakeLspServerInstance(config(tempDir));
-        LspServerManager manager = managerWithFakePythonServer(tempDir, server);
+        LSPServerManager manager = managerWithFakePythonServer(tempDir, server);
         String uri = FileUriUtils.pathToFileUri(file.toString());
 
         manager.openFile(file.toString(), "python");
@@ -89,7 +89,7 @@ class LspServerManagerTest {
         Path file = tempDir.resolve("sample.py");
         Files.writeString(file, "print('open')");
         FakeLspServerInstance server = new FakeLspServerInstance(config(tempDir));
-        LspServerManager manager = managerWithFakePythonServer(tempDir, server);
+        LSPServerManager manager = managerWithFakePythonServer(tempDir, server);
         String uri = FileUriUtils.pathToFileUri(file.toString());
 
         manager.openFile(file.toString(), "python");
@@ -99,17 +99,17 @@ class LspServerManagerTest {
                 "range", Map.of("start", Map.of("line", 0, "character", 0))
         )));
 
-        List<LspDiagnosticFile> diagnostics = LspServerManager.getPendingDiagnostics(10, 30);
+        List<LspDiagnosticFile> diagnostics = LSPServerManager.getPendingDiagnostics(10, 30);
         assertThat(diagnostics).hasSize(1);
         assertThat(diagnostics.get(0).getUri()).isEqualTo(uri);
         assertThat(diagnostics.get(0).getDiagnostics().get(0).getMessage()).isEqualTo("syntax error");
     }
 
-    private static LspServerManager managerWithFakePythonServer(Path root, FakeLspServerInstance server)
+    private static LSPServerManager managerWithFakePythonServer(Path root, FakeLspServerInstance server)
             throws Exception {
         String normalizedRoot = root.toAbsolutePath().normalize().toString();
         ScopedLspServerConfig config = server.getConfig();
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         setField(manager, "workspaceRoot", normalizedRoot);
 
         Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
@@ -149,7 +149,7 @@ class LspServerManagerTest {
     }
 
     private static void setField(Object target, String name, Object value) throws Exception {
-        Field field = LspServerManager.class.getDeclaredField(name);
+        Field field = LSPServerManager.class.getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
     }

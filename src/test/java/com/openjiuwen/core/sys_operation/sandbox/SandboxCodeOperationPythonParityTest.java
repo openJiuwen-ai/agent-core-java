@@ -14,6 +14,7 @@ import com.openjiuwen.core.sys_operation.local.StreamEventType;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeResult;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestFactory;
 
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ class SandboxCodeOperationPythonParityTest {
             "test_sandbox_discovery"
     );
 
+    @Disabled("remote env do not support node")
     @TestFactory
     Collection<DynamicTest> pythonSandboxCodeCases() {
         return PYTHON_TESTS.stream()

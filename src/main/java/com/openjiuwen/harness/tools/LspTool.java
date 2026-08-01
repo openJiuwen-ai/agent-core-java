@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.harness.lsp.core.LspServerManager;
+import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.tools.lsp.LspOperation;
 import com.openjiuwen.harness.tools.lsp.LspToolSupport;
 import java.nio.file.Files;
@@ -19,7 +19,7 @@ import java.util.Map;
  */
 public class LspTool {
   private final Path workspace;
-  private final LspServerManager manager;
+  private final LSPServerManager manager;
 
   /** Auto-generated for codecheck compliance. */
   public LspTool(String workspace) {
@@ -27,7 +27,7 @@ public class LspTool {
   }
 
   /** Auto-generated for codecheck compliance. */
-  public LspTool(String workspace, LspServerManager manager) {
+  public LspTool(String workspace, LSPServerManager manager) {
     this.workspace = workspace != null ? Path.of(workspace).toAbsolutePath().normalize() : null;
     this.manager = manager;
   }

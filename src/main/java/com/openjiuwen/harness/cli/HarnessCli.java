@@ -28,9 +28,9 @@ public final class HarnessCli {
         return stdinIsTty ? COMMAND_CHAT : COMMAND_RUN;
     }
 
-    public static CliOptions optionsFromMap(Map<String, Object> kwargs) {
+    public static CLIOptions optionsFromMap(Map<String, Object> kwargs) {
         Map<String, Object> safe = kwargs == null ? Map.of() : kwargs;
-        CliOptions opts = new CliOptions();
+        CLIOptions opts = new CLIOptions();
         opts.setModel(stringValue(firstPresent(safe, "model")));
         opts.setProvider(stringValue(firstPresent(safe, "provider")));
         opts.setApiKey(stringValue(firstPresent(safe, "api_key", "apiKey")));
@@ -58,7 +58,7 @@ public final class HarnessCli {
     }
 
     public static int runOnce(
-            CliOptions opts,
+            CLIOptions opts,
             String prompt,
             String outputFormat,
             CliRunner runner) {
@@ -67,20 +67,20 @@ public final class HarnessCli {
     }
 
     public static AutoHarnessCliSupport.PreparedRun prepareAutoHarnessRun(
-            CliOptions opts,
+            CLIOptions opts,
             AutoHarnessRunRequest request) throws IOException {
         return AutoHarnessCliSupport.prepareRun(opts, request, null);
     }
 
     public static AutoHarnessCliSupport.GapAnalyzeRequest prepareGapAnalyze(
-            CliOptions opts,
+            CLIOptions opts,
             String competitor) {
         String workspace = opts == null ? "" : opts.getWorkspace();
         return AutoHarnessCliSupport.prepareGapAnalyze(workspace, competitor);
     }
 
-    public static Map<String, Object> toConfigMap(CliOptions opts) {
-        CliOptions safe = opts == null ? new CliOptions() : opts;
+    public static Map<String, Object> toConfigMap(CLIOptions opts) {
+        CLIOptions safe = opts == null ? new CLIOptions() : opts;
         Map<String, Object> config = new LinkedHashMap<>();
         putIfPresent(config, "provider", safe.getProvider());
         putIfPresent(config, "model", safe.getModel());

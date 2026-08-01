@@ -4,7 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.chat_agent;
 
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +29,7 @@ class TuneChatAgentPackageTest {
 
     @Test
     void createChatAgentConfigDelegatesToTranslatedFactory() {
-        LlmCallConfig model = new LlmCallConfig();
+        LLMCallConfig model = new LLMCallConfig();
 
         ChatAgentConfig config = TuneChatAgentPackage.createChatAgentConfig(
                 "chat-agent",

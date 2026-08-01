@@ -30,9 +30,9 @@ import java.util.Set;
  * {@code openjiuwen/harness/lsp/core/manager.py}.
  * </p>
  */
-public class LspServerManager {
+public class LSPServerManager {
 
-    private static LspServerManager instance;
+    private static LSPServerManager instance;
 
     private String workspaceRoot = "";
     private Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
@@ -60,7 +60,7 @@ public class LspServerManager {
             return initializeResult(true, 0, 0.0d);
         }
 
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         manager.workspaceRoot = cwd;
         manager.configs = groupConfigs(builtConfigs);
         manager.extensionMap = buildExtensionMap(builtConfigs);
@@ -75,7 +75,7 @@ public class LspServerManager {
         }
     }
 
-    public static synchronized LspServerManager getInstance() {
+    public static synchronized LSPServerManager getInstance() {
         return instance;
     }
 
@@ -189,7 +189,7 @@ public class LspServerManager {
     }
 
     public static void logServerError(String serverId, Exception error) {
-        System.getLogger(LspServerManager.class.getName()).log(
+        System.getLogger(LSPServerManager.class.getName()).log(
                 System.Logger.Level.WARNING,
                 "[LSP] Server '" + serverId + "' failed: " + error
         );

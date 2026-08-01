@@ -1,17 +1,11 @@
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.harness.lsp.core.LspDiagnosticFile;
-import com.openjiuwen.harness.lsp.core.LspDiagnosticItem;
-import com.openjiuwen.harness.lsp.core.LspDiagnosticRegistry;
-import com.openjiuwen.harness.lsp.core.LspServerInstance;
-import com.openjiuwen.harness.lsp.core.LspServerManager;
-import com.openjiuwen.harness.lsp.core.LspServerState;
-import com.openjiuwen.harness.lsp.core.ScopedLspServerConfig;
+import com.openjiuwen.harness.lsp.core.*;
+import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +22,7 @@ class HarnessLspManagerCompatibilityTest {
     @Test
     void diagnosticHandlerShouldRegisterAndRoutePayload() {
         LspDiagnosticRegistry.reset();
-        LspServerManager manager = new LspServerManager();
+        LSPServerManager manager = new LSPServerManager();
         FakeServerInstance server = new FakeServerInstance("pyright");
 
         manager.ensureDiagnosticHandler(server);
@@ -63,7 +57,7 @@ class HarnessLspManagerCompatibilityTest {
                 Map.of("message", "e5")
         ));
 
-        List<LspDiagnosticFile> limited = LspServerManager.getPendingDiagnostics(2, 3);
+        List<LspDiagnosticFile> limited = LSPServerManager.getPendingDiagnostics(2, 3);
 
         assertThat(limited).hasSize(1);
         assertThat(limited.get(0).getDiagnostics().size()).isLessThanOrEqualTo(2);

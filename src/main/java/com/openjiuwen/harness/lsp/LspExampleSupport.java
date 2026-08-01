@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.lsp;
 
-import com.openjiuwen.harness.lsp.core.LspServerManager;
+import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.tools.LspTool;
 import com.openjiuwen.harness.tools.lsp.LspOperation;
 import com.openjiuwen.harness.tools.lsp.LspToolSupport;
@@ -48,10 +48,10 @@ public final class LspExampleSupport {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public static LspServerManager newManager(Path workspace) {
-        LspServerManager manager = new LspServerManager();
+    public static LSPServerManager newManager(Path workspace) {
+        LSPServerManager manager = new LSPServerManager();
         try {
-            java.lang.reflect.Field field = LspServerManager.class.getDeclaredField("workspaceRoot");
+            java.lang.reflect.Field field = LSPServerManager.class.getDeclaredField("workspaceRoot");
             field.setAccessible(true);
             field.set(manager, workspace.toAbsolutePath().normalize().toString());
         } catch (ReflectiveOperationException ignored) {

@@ -4,7 +4,6 @@
 
 package com.openjiuwen.harness.cli;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
@@ -79,13 +78,13 @@ public final class AutoHarnessCliSupport {
     }
 
     public static PreparedRun prepareRun(
-            CliOptions opts,
+            CLIOptions opts,
             AutoHarnessRunRequest request,
             Path currentDirectory) throws IOException {
         AutoHarnessRunRequest effectiveRequest = request == null ? new AutoHarnessRunRequest() : request;
         validateRunRequest(effectiveRequest);
 
-        CliOptions effectiveOpts = opts == null ? new CliOptions() : opts;
+        CLIOptions effectiveOpts = opts == null ? new CLIOptions() : opts;
         String workspace = valueOrEmpty(effectiveOpts.getWorkspace());
         String cliHome = workspace.isBlank()
                 ? Path.of(System.getProperty("user.home"), ".openjiuwen").toString()

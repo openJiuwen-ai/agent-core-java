@@ -10,7 +10,7 @@ package com.openjiuwen.harness.cli;
  * <p>Mirrors Python's {@code CLIOptions} in
  * {@code openjiuwen/harness/cli/cli.py}.</p>
  */
-public class CliOptions {
+public class CLIOptions {
     private String provider;
     private String model;
     private String apiKey;

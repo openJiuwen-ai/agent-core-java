@@ -7,7 +7,7 @@ package com.openjiuwen.extensions.context_evolver;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.extensions.context_evolver.core.file_connector.FileConnectorPackage;
-import com.openjiuwen.extensions.context_evolver.core.file_connector.JsonFileConnector;
+import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileConnector;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
 import com.openjiuwen.extensions.context_evolver.schema.ACEMemory;
 import com.openjiuwen.extensions.context_evolver.schema.ACERetrievedMemory;
@@ -92,7 +92,7 @@ public final class ContextEvolverPackage {
             Map.entry("ContextEvolvingReActAgent", ContextEvolvingReActAgent.class),
             Map.entry("MemoryAgentConfigInput", MemoryAgentConfigInput.class),
             Map.entry("SummarizeTrajectoriesInput", TrajectoryGenerator.SummarizeTrajectoriesInput.class),
-            Map.entry("JSONFileConnector", JsonFileConnector.class),
+            Map.entry("JSONFileConnector", JSONFileConnector.class),
             Map.entry("MemoryVectorStore", MemoryVectorStore.class),
             Map.entry("ACEMemory", ACEMemory.class),
             Map.entry("ACERetrievedMemory", ACERetrievedMemory.class),

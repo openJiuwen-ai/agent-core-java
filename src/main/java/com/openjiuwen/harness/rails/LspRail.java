@@ -12,7 +12,7 @@ import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.lsp.HarnessLspPackage;
 import com.openjiuwen.harness.lsp.InitializeOptions;
 import com.openjiuwen.harness.lsp.InitializeResult;
-import com.openjiuwen.harness.lsp.core.LspServerManager;
+import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
 import com.openjiuwen.harness.tools.lsp_tool.LspTool;
 
@@ -85,7 +85,7 @@ public class LspRail extends DeepAgentRail {
         super.init(deepAgent);
         InitializeOptions effectiveOptions = buildEffectiveOptions();
         try {
-            if (LspServerManager.getInstance() == null) {
+            if (LSPServerManager.getInstance() == null) {
                 asyncInitLsp(effectiveOptions).join();
             }
         } catch (RuntimeException ignored) {
@@ -159,7 +159,7 @@ public class LspRail extends DeepAgentRail {
         if (filePath.isBlank()) {
             return;
         }
-        LspServerManager manager = LspServerManager.getInstance();
+        LSPServerManager manager = LSPServerManager.getInstance();
         if (manager == null) {
             return;
         }

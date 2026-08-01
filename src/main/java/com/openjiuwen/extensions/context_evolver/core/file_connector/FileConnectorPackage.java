@@ -16,8 +16,8 @@ public final class FileConnectorPackage {
 
     public static final String PYTHON_MODULE = "openjiuwen/extensions/context_evolver/core/file_connector/__init__.py";
     public static final String DESCRIPTION = "File connector module for generic persistence operations.";
-    public static final Class<JsonFileConnector> JSON_FILE_CONNECTOR = JsonFileConnector.class;
-    public static final Class<JsonFileConnector> SAFE_MODEL_DUMP_OWNER = JsonFileConnector.class;
+    public static final Class<JSONFileConnector> JSON_FILE_CONNECTOR = JSONFileConnector.class;
+    public static final Class<JSONFileConnector> SAFE_MODEL_DUMP_OWNER = JSONFileConnector.class;
     public static final String SAFE_MODEL_DUMP_METHOD = "safeModelDump";
     public static final List<String> EXPORTED_SYMBOLS = List.of("JSONFileConnector", "safe_model_dump");
 
@@ -25,6 +25,6 @@ public final class FileConnectorPackage {
     }
 
     public static Map<String, Object> safeModelDump(Object value) {
-        return JsonFileConnector.safeModelDump(value);
+        return JSONFileConnector.safeModelDump(value);
     }
 }

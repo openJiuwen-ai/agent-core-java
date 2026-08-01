@@ -6,7 +6,7 @@ package com.openjiuwen.harness.lsp;
 
 import com.openjiuwen.harness.lsp.core.LspDiagnosticFile;
 import com.openjiuwen.harness.lsp.core.LspDiagnosticRegistry;
-import com.openjiuwen.harness.lsp.core.LspServerManager;
+import com.openjiuwen.harness.lsp.core.LSPServerManager;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -28,11 +28,11 @@ public final class HarnessLspPackage {
     }
 
     public static CompletableFuture<InitializeResult> initializeLsp(InitializeOptions options) {
-        return CompletableFuture.completedFuture(LspServerManager.initialize(options));
+        return CompletableFuture.completedFuture(LSPServerManager.initialize(options));
     }
 
     public static CompletableFuture<Void> shutdownLsp() {
-        LspServerManager.shutdown();
+        LSPServerManager.shutdown();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -41,6 +41,6 @@ public final class HarnessLspPackage {
     }
 
     public static LspStatus getLspStatus() {
-        return LspServerManager.getGlobalStatus();
+        return LSPServerManager.getGlobalStatus();
     }
 }

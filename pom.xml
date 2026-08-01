@@ -81,6 +81,7 @@
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>${logback.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -266,6 +267,12 @@
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+                    <!-- Single fork with reuse: classes run concurrently inside one JVM via
+                         JUnit 5 parallel execution (see junit-platform.properties). Forking per
+                         class would negate the in-JVM parallelism and add JVM startup overhead
+                         across 2000+ test classes. -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
                 </configuration>
             </plugin>
         </plugins>

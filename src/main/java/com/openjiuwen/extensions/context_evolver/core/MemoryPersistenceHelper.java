@@ -7,7 +7,7 @@ package com.openjiuwen.extensions.context_evolver.core;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.extensions.context_evolver.core.db_connector.MilvusConnector;
-import com.openjiuwen.extensions.context_evolver.core.file_connector.JsonFileConnector;
+import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileConnector;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,7 +28,7 @@ public class MemoryPersistenceHelper {
     private final String milvusHost;
     private final int milvusPort;
     private final String milvusCollection;
-    private final JsonFileConnector jsonConnector;
+    private final JSONFileConnector jsonConnector;
     private MilvusConnector milvusConnector;
     private String resolvedType;
 
@@ -46,7 +46,7 @@ public class MemoryPersistenceHelper {
         this.milvusHost = milvusHost == null ? "localhost" : milvusHost;
         this.milvusPort = milvusPort;
         this.milvusCollection = milvusCollection == null ? "vector_nodes" : milvusCollection;
-        this.jsonConnector = new JsonFileConnector();
+        this.jsonConnector = new JSONFileConnector();
     }
 
     public String getResolvedType() {

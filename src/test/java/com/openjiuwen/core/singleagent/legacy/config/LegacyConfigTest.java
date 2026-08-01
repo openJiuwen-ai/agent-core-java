@@ -38,7 +38,7 @@ class LegacyConfigTest {
 
     @Test
     void llmAndIntentDefaultsPreservePythonValues() {
-        LlmCallConfig llm = new LlmCallConfig();
+        LLMCallConfig llm = new LLMCallConfig();
         IntentDetectionConfig intent = new IntentDetectionConfig();
 
         assertTrue(llm.isFreezeUserPrompt());
@@ -78,7 +78,7 @@ class LegacyConfigTest {
 
     @Test
     void mutableCollectionsCopyInputsWithoutSharingOuterLists() {
-        LlmCallConfig llm = new LlmCallConfig();
+        LLMCallConfig llm = new LLMCallConfig();
         IntentDetectionConfig intent = new IntentDetectionConfig();
         MemoryConfig memory = new MemoryConfig();
 

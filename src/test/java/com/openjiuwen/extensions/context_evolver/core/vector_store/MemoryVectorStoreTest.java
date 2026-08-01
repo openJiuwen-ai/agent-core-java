@@ -7,7 +7,7 @@ package com.openjiuwen.extensions.context_evolver.core.vector_store;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.extensions.context_evolver.core.file_connector.JsonFileConnector;
+import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileConnector;
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.schema.ACEMemory;
 import com.openjiuwen.extensions.context_evolver.schema.ReMeMemory;
@@ -133,7 +133,7 @@ class MemoryVectorStoreTest {
                     .put(node.getId(), node.toDict());
         }
 
-        JsonFileConnector connector = new JsonFileConnector();
+        JSONFileConnector connector = new JSONFileConnector();
         MemoryVectorStore restoredStore = new MemoryVectorStore();
         for (Map.Entry<String, Map<String, Object>> workspace : workspaces.entrySet()) {
             Path filePath = tempDir.resolve(workspace.getKey() + "_memories.json");

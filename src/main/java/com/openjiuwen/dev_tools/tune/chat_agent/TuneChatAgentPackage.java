@@ -5,7 +5,7 @@
 package com.openjiuwen.dev_tools.tune.chat_agent;
 
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 
 import java.util.List;
 
@@ -46,7 +46,7 @@ public final class TuneChatAgentPackage {
     public static ChatAgentConfig createChatAgentConfig(String agentId,
                                                        String agentVersion,
                                                        String description,
-                                                       LlmCallConfig model) {
+                                                       LLMCallConfig model) {
         return ChatAgent.createChatAgentConfig(agentId, agentVersion, description, model);
     }
 }

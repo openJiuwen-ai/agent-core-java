@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.context_evolver;
 
 import com.openjiuwen.extensions.context_evolver.core.file_connector.FileConnectorPackage;
-import com.openjiuwen.extensions.context_evolver.core.file_connector.JsonFileConnector;
+import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileConnector;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
 import com.openjiuwen.extensions.context_evolver.schema.ACEMemory;
 import com.openjiuwen.extensions.context_evolver.schema.RetrieveResponse;
@@ -66,7 +66,7 @@ class ContextEvolverPackageTest {
         assertThat(ContextEvolverPackage.typeFor("MemoryAgentConfigInput")).isEqualTo(MemoryAgentConfigInput.class);
         assertThat(ContextEvolverPackage.typeFor("SummarizeTrajectoriesInput"))
                 .isEqualTo(TrajectoryGenerator.SummarizeTrajectoriesInput.class);
-        assertThat(ContextEvolverPackage.typeFor("JSONFileConnector")).isEqualTo(JsonFileConnector.class);
+        assertThat(ContextEvolverPackage.typeFor("JSONFileConnector")).isEqualTo(JSONFileConnector.class);
         assertThat(ContextEvolverPackage.typeFor("MemoryVectorStore")).isEqualTo(MemoryVectorStore.class);
         assertThat(ContextEvolverPackage.typeFor("ACEMemory")).isEqualTo(ACEMemory.class);
         assertThat(ContextEvolverPackage.typeFor("SummarizeResponse")).isEqualTo(SummarizeResponse.class);

@@ -7,7 +7,7 @@ package com.openjiuwen.dev_tools.tune.chat_agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -28,7 +28,7 @@ class ChatAgentConfigTest {
 
     @Test
     void chatAgentConfigExtendsLegacyAgentConfig() {
-        LlmCallConfig llmCallConfig = new LlmCallConfig();
+        LLMCallConfig llmCallConfig = new LLMCallConfig();
         ChatAgentConfig config = new ChatAgentConfig(llmCallConfig);
 
         assertInstanceOf(AgentConfig.class, config);
@@ -38,7 +38,7 @@ class ChatAgentConfigTest {
 
     @Test
     void jsonUsesPythonModelFieldForLlmCallConfig() throws Exception {
-        ChatAgentConfig config = new ChatAgentConfig(new LlmCallConfig());
+        ChatAgentConfig config = new ChatAgentConfig(new LLMCallConfig());
         config.setDescription("chat");
 
         Map<String, Object> payload = mapper.readValue(

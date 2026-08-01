@@ -5,7 +5,6 @@
 package com.openjiuwen.harness.cli;
 
 import com.openjiuwen.auto_harness.pipelines.AutoHarnessPipelineNames;
-import com.openjiuwen.auto_harness.schema.AutoHarnessSchema;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -14,7 +13,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +70,7 @@ class HarnessCliTest {
     @Test
     void prepareRunAppliesRequestAndDetectsLocalRepo(@TempDir Path workspace) throws Exception {
         Path repo = makeFakeRepo(workspace, "agent-core");
-        CliOptions opts = new CliOptions();
+        CLIOptions opts = new CLIOptions();
         opts.setWorkspace(workspace.toString());
 
         AutoHarnessRunRequest request = new AutoHarnessRunRequest();
@@ -105,7 +103,7 @@ class HarnessCliTest {
     @Test
     void pipelineOptionOverridesDefault(@TempDir Path workspace) throws Exception {
         makeFakeRepo(workspace, "agent-core");
-        CliOptions opts = new CliOptions();
+        CLIOptions opts = new CLIOptions();
         opts.setWorkspace(workspace.toString());
 
         AutoHarnessRunRequest request = new AutoHarnessRunRequest();

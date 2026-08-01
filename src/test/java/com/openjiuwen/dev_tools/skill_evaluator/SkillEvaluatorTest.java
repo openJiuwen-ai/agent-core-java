@@ -6,6 +6,7 @@ package com.openjiuwen.dev_tools.skill_evaluator;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/dev_tools/skill_evaluator/skill_evaluator.py}.
  */
 class SkillEvaluatorTest {
+    @Disabled("remote env do not support node")
     @Test
     void createAgentRegistersSystemToolsSubagentAndPrompt(@TempDir Path tempDir) throws IOException {
         Path skillsRoot = tempDir.resolve("skills");

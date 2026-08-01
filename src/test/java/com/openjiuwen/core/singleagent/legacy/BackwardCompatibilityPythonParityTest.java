@@ -9,8 +9,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.singleagent.legacy.agent.BaseAgent;
 import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
 import com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LLMCallConfig;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
-import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
 import com.openjiuwen.core.singleagent.legacy.react_agent.LegacyReActAgent;
 import com.openjiuwen.core.singleagent.legacy.react_agent.LegacyReActAgentFactory;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -33,7 +33,7 @@ class BackwardCompatibilityPythonParityTest {
     void oldImportsIssueWarnings() {
         assertThatCode(() -> {
             new AgentConfig();
-            new LlmCallConfig();
+            new LLMCallConfig();
             new ConstrainConfig();
         }).doesNotThrowAnyException();
 

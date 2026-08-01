@@ -24,6 +24,7 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -379,6 +380,7 @@ class ResourceMgrTest {
         assertSame(fresh, manager.getTool("list-fresh"));
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void getSingleSysOperationToolCard() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -398,6 +400,7 @@ class ResourceMgrTest {
         assertNull(card);
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void getMultipleSysOperationToolCardsFromSameOperation() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -411,6 +414,7 @@ class ResourceMgrTest {
         assertTrue(values.stream().map(ToolCard.class::cast).map(ToolCard::getName).toList().contains("write_file"));
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromSingleOperation() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -421,6 +425,7 @@ class ResourceMgrTest {
         assertFalse(((List<?>) cards).isEmpty());
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromMultipleOperations() {
         ResourceMgr manager = resourceMgrWithSysOperation();
@@ -431,6 +436,7 @@ class ResourceMgrTest {
         assertFalse(((List<?>) cards).isEmpty());
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void getAllSysOperationToolCardsFromAllOperations() {
         ResourceMgr manager = resourceMgrWithSysOperation();

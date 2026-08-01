@@ -42,6 +42,7 @@ class GraphExtractionTest {
         assertThat(ParseResponse.tryGetKey("extracted_entities", Map.of("extractedEntities", 1))).isEqualTo(1);
     }
 
+    @Disabled("remote env do not support node")
     @Test
     void multilingualSchemaShouldExposeDescriptions() {
         Map<String, Object> schema = new EntitySummary().multilingualModelJsonSchema("cn", true);
