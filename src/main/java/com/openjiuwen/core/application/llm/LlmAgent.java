@@ -87,6 +87,59 @@ public class LlmAgent extends ControllerAgent {
     }
 
     /**
+     * Add tools to this agent dynamically.
+     * <p>
+     * Registers each tool in the ability manager and resource manager.
+     * Mirrors Python's LLMAgent.add_tools.
+     *
+     * @param tools the tools to add
+     * @since 0.1.7
+     */
+    public void addTools(List<Tool> tools) {
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        for (Tool tool : tools) {
+            if (tool == null || tool.getCard() == null) {
+                continue;
+            }
+            registerPluginSchema(agentConfig, tool.getCard());
+            this.getAbilityManager().add(tool.getCard());
+            Runner.resourceMgr().addTool(tool, tag);
+        }
+    }
+
+    /**
+     * Add workflows to this agent dynamically.
+     * <p>
+     * Registers each workflow in the ability manager and resource manager.
+     * Mirrors Python's LLMAgent.add_workflows.
+     *
+     * @param workflows the workflows to add
+     * @since 0.1.7
+     */
+    public void addWorkflows(List<Workflow> workflows) {
+        if (workflows == null || workflows.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        for (Workflow workflow : workflows) {
+            if (workflow == null || workflow.getCard() == null) {
+                continue;
+            }
+            registerWorkflowSchema(agentConfig, workflow.getCard());
+            this.getAbilityManager().add(workflow.getCard());
+            WorkflowCard card = workflow.getCard();
+            String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            WorkflowCard resourceCard =
+                WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
+                        .description(card.getDescription()).inputParams(card.getInputParams()).build();
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
+        }
+    }
+
+    /**
      * invoke.
      * 
      * @param inputs inputs

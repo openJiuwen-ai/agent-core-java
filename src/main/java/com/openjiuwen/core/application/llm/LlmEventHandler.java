@@ -810,8 +810,10 @@ public class LlmEventHandler extends EventHandler {
         }
 
         var modelInfo = agentConfig.getModel().modelInfo();
+        String provider = agentConfig.getModel().modelProvider();
+        Loggers.CONTROLLER.info("getModel: provider='{}', apiBase='{}'", provider, modelInfo.getApiBase());
         ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientProvider(agentConfig.getModel().modelProvider()).apiKey(modelInfo.getApiKey())
+                .clientProvider(provider).apiKey(modelInfo.getApiKey())
                 .apiBase(modelInfo.getApiBase()).timeout(modelInfo.getTimeout()).verifySsl(modelInfo.isVerifySsl())
                 .sslCert(modelInfo.getSslCert()).headers(modelInfo.getHeaders()).build();
 

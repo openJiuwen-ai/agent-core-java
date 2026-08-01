@@ -96,7 +96,8 @@ public final class SchemaUtils {
 
             return dataWithDefaults;
         } catch (ValidationError e) {
-            throw e;
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, e,
+                    Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
         } catch (Exception e) {
             throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, e,
                     Map.of("reason", e.getMessage(), "data", String.valueOf(data)));

@@ -617,7 +617,7 @@ public class CallbackFramework {
 
                     if (filterResult.getAction() == FilterAction.STOP
                             || filterResult.getAction() == FilterAction.SKIP) {
-                        return java.util.Collections.emptyList();
+                        return null;
                     }
 
                     Object[] fa = filterResult.getModifiedArgs() != null ? filterResult.getModifiedArgs() : finalArgs;
@@ -651,7 +651,7 @@ public class CallbackFramework {
                         log.error("Callback {} failed in parallel execution: {}", callbackInfo.getCallbackDisplayName(),
                                 e.getMessage());
                     }
-                    return java.util.Collections.emptyList();
+                    return null;
                 }
             }));
         }

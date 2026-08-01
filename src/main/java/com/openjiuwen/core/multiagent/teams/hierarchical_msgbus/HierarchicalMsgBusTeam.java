@@ -10,7 +10,6 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -113,18 +112,14 @@ public class HierarchicalMsgBusTeam extends BaseTeam {
             }
             for (String childId : children) {
                 String toolName = childId;
-                if (supervisor.getAbilityManager().get(toolName) != null) {
-                    continue;
-                }
                 AgentCard childCard = getRuntime().getAgentCard(childId);
                 String childDescription = childCard != null ? childCard.getDescription() : "";
                 DelegateTool tool = new DelegateTool(childId, childDescription, getRuntime(), supervisorId, teamId);
                 supervisor.getAbilityManager().add(tool.getCard());
-                Object existing =
-                    Runner.resourceMgr().getTool(tool.getCard().getId(), supervisorId, TagMatchStrategy.ALL);
-                if (existing == null) {
-                    Runner.resourceMgr().addTool(tool, supervisorId);
-                }
+                // Always register with refresh=true so stale tool instances from
+                // prior test runs are replaced. Without refresh, addTool silently
+                // skips when the toolId already exists, leaving the old instance.
+                Runner.resourceMgr().addTool(tool, supervisorId, true);
                 Loggers.MULTI_AGENT.info("[HierarchicalMsgBusTeam:" + teamId + "] injected '" + toolName + "' -> '"
                         + supervisorId + "'");
             }

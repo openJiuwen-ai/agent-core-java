@@ -316,7 +316,11 @@ public class InferenceAffinityModelClient extends BaseModelClient {
      * @since 0.1.7
      */
     private String normalizedApiBase() {
-        return modelClientConfig.getApiBase().replaceAll("/+$", "");
+        String base = modelClientConfig.getApiBase().replaceAll("/+$", "");
+        if (base.endsWith("/v1/chat/completions")) {
+            base = base.substring(0, base.length() - "/v1/chat/completions".length());
+        }
+        return base;
     }
 
     /**

@@ -360,7 +360,11 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
      * @since 0.1.7
      */
     private String normalizedApiBase() {
-        return modelClientConfig.getApiBase().strip().replaceAll("/+$", "");
+        String base = modelClientConfig.getApiBase().strip().replaceAll("/+$", "");
+        if (base.endsWith("/chat/completions")) {
+            base = base.substring(0, base.length() - "/chat/completions".length());
+        }
+        return base;
     }
 
     /**

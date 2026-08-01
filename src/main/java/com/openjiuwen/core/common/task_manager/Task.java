@@ -322,7 +322,7 @@ public class Task {
                 markCancelled();
             }
             if (isCascade && owner != null) {
-                owner.cascadeCancel(taskId, "parent_cancelled");
+                owner.cascadeCancel(taskId, this.cancelReason);
             }
             if (timeoutHandle != null) {
                 timeoutHandle.cancel(false);
