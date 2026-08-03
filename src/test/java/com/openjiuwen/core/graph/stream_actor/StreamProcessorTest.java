@@ -16,8 +16,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests for {@link StreamProcessor}.
@@ -84,6 +86,52 @@ class StreamProcessorTest {
         processor.receive(new StreamPayload(Map.of("producer2", "END_STREAM"), ComponentAbility.STREAM));
         assertFalse(value2.hasNext());
         runner.get(5, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("interrupting a processor closes iterators waiting for unfinished sources")
+    void interruptClosesPendingSourceIterator() throws Exception {
+        StreamProcessor processor = new StreamProcessor("collector",
+                List.of(Set.of("producer1-STREAM"), Set.of("producer2-STREAM")), 0);
+        Map<String, Object> generated = processor.generator(
+                Map.of("value1", "${producer1.value}", "value2", "${producer2.value}"), null);
+        @SuppressWarnings("unchecked")
+        Iterator<Object> value1 = (Iterator<Object>) generated.get("value1");
+        @SuppressWarnings("unchecked")
+        Iterator<Object> value2 = (Iterator<Object>) generated.get("value2");
+
+        Thread processorThread = new Thread(() -> processor.run(ComponentAbility.TRANSFORM),
+                "stream-processor-interrupt-test");
+        CountDownLatch consumerStarted = new CountDownLatch(1);
+        AtomicBoolean pendingIteratorHasNext = new AtomicBoolean(true);
+        Thread consumerThread = new Thread(() -> {
+            consumerStarted.countDown();
+            pendingIteratorHasNext.set(value2.hasNext());
+        }, "stream-processor-consumer-test");
+
+        try {
+            processorThread.start();
+            processor.receive(
+                    new StreamPayload(Map.of("producer1", Map.of("value", "completed")), ComponentAbility.STREAM));
+            processor.receive(new StreamPayload(Map.of("producer1", "END_STREAM"), ComponentAbility.STREAM));
+            assertTrue(value1.hasNext());
+            assertEquals("completed", value1.next());
+
+            consumerThread.start();
+            assertTrue(consumerStarted.await(1, TimeUnit.SECONDS));
+            processorThread.interrupt();
+            processorThread.join(TimeUnit.SECONDS.toMillis(1));
+            consumerThread.join(TimeUnit.SECONDS.toMillis(1));
+
+            assertFalse(processorThread.isAlive());
+            assertFalse(consumerThread.isAlive(), "pending iterator should be closed when processor is interrupted");
+            assertFalse(pendingIteratorHasNext.get());
+        } finally {
+            processorThread.interrupt();
+            consumerThread.interrupt();
+            processorThread.join(TimeUnit.SECONDS.toMillis(1));
+            consumerThread.join(TimeUnit.SECONDS.toMillis(1));
+        }
     }
 
     @Test

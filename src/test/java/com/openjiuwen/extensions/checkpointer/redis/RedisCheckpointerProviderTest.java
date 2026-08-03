@@ -7,15 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 class RedisCheckpointerProviderTest {
@@ -33,18 +36,33 @@ class RedisCheckpointerProviderTest {
     }
 
     @Test
+    @Tag("integration")
     void providerBuildsStandaloneClientFromUrlAndPropagatesTtl() throws Exception {
+        String redisIp = System.getenv("REDIS_IP");
+        assumeTrue(redisIp != null && !redisIp.isBlank(), "Missing required env: REDIS_IP");
+
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        Map<String, Object> config = Map.of(
+                "connection", Map.of("url", "redis://" + redisIp + ":6379"),
+                "ttl", Map.of("default_ttl", 5, "refresh_on_read", true));
 
-        Checkpointer checkpointer = provider.create(Map.of("connection", Map.of("url", "redis://127.0.0.1:6379"), "ttl",
-                Map.of("default_ttl", 5, "refresh_on_read", true)));
+        RedisCheckpointer writer = assertInstanceOf(RedisCheckpointer.class, provider.create(config));
+        RedisCheckpointer reader = assertInstanceOf(RedisCheckpointer.class, provider.create(config));
+        String sessionId = "redis-provider-" + UUID.randomUUID();
+        String key = sessionId + ":workflow:key";
 
-        RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
-        assertFalse(redisCheckpointer.getRedisStore().isCluster());
-        redisCheckpointer.getRedisStore().set("session-2:workflow:key", "value");
-        assertTrue(redisCheckpointer.sessionExists("session-2"));
-        assertEquals(300, readField(redisCheckpointer.getAgentStorage(), "ttlSeconds"));
-        assertEquals(Boolean.TRUE, readField(redisCheckpointer.getAgentStorage(), "refreshOnRead"));
+        try {
+            assertFalse(writer.getRedisStore().isCluster());
+            writer.getRedisStore().set(key, "value");
+            assertEquals("value", reader.getRedisStore().get(key));
+            assertTrue(reader.sessionExists(sessionId));
+            assertEquals(300, readField(writer.getAgentStorage(), "ttlSeconds"));
+            assertEquals(Boolean.TRUE, readField(writer.getAgentStorage(), "refreshOnRead"));
+        } finally {
+            writer.getRedisStore().delete(key);
+            writer.close();
+            reader.close();
+        }
     }
 
     @Test

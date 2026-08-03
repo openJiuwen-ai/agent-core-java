@@ -45,6 +45,17 @@ class RedisStoreTest {
     }
 
     @Test
+    void batchDeleteHandlesSingleAndVarargsDeleteOverloads() {
+        RedisStore store = new RedisStore(new FakeRedisClient());
+        store.set("key-1", "value-1");
+        store.set("key-2", "value-2");
+
+        assertEquals(2, store.batchDelete(List.of("key-1", "key-2"), null));
+        assertFalse(store.exists("key-1"));
+        assertFalse(store.exists("key-2"));
+    }
+
+    @Test
     void exclusiveSetMgetAndBatchDeleteFollowRedisSemantics() throws InterruptedException {
         RedisStore store = new RedisStore(new FakeRedisClient());
 
@@ -65,7 +76,8 @@ class RedisStoreTest {
 
     @Test
     void pipelineAndRefreshTtlUseTheStoreContract() throws InterruptedException {
-        RedisStore store = new RedisStore(new FakeRedisClient());
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisStore store = new RedisStore(redisClient);
 
         KVStorePipeline pipeline = store.pipeline();
         pipeline.set("pipe:ttl", "value", 1);
@@ -80,6 +92,7 @@ class RedisStoreTest {
 
         Thread.sleep(600L);
         store.refreshTtl(List.of("pipe:ttl"), 2);
+        assertTrue(redisClient.lastPipeline.isClosed());
         Thread.sleep(700L);
         assertTrue(store.exists("pipe:ttl"));
 
@@ -110,6 +123,7 @@ class RedisStoreTest {
     static class FakeRedisClient {
         private final Map<String, Object> values = new ConcurrentHashMap<>();
         private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();
+        private FakeRedisPipeline lastPipeline;
 
         public void set(String key, Object value) {
             cleanup(key);
@@ -162,6 +176,10 @@ class RedisStoreTest {
             return deleted;
         }
 
+        public long delete(String key) {
+            return delete(new String[]{key});
+        }
+
         public List<Object> mget(String... keys) {
             List<Object> valueList = new ArrayList<>(keys.length);
             for (String key : keys) {
@@ -193,7 +211,8 @@ class RedisStoreTest {
         }
 
         public FakeRedisPipeline pipeline() {
-            return new FakeRedisPipeline(this);
+            lastPipeline = new FakeRedisPipeline(this);
+            return lastPipeline;
         }
 
         private void cleanup(String key) {
@@ -218,6 +237,7 @@ class RedisStoreTest {
     static class FakeRedisPipeline {
         protected final FakeRedisClient client;
         private final List<Runnable> operations = new ArrayList<>();
+        private boolean closed;
 
         FakeRedisPipeline(FakeRedisClient client) {
             this.client = client;
@@ -232,6 +252,14 @@ class RedisStoreTest {
             operations.forEach(Runnable::run);
             operations.clear();
             return List.of();
+        }
+
+        public void close() {
+            closed = true;
+        }
+
+        boolean isClosed() {
+            return closed;
         }
     }
 

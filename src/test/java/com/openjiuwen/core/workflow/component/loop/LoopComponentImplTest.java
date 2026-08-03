@@ -5,6 +5,7 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,14 +27,14 @@ import java.util.UUID;
 
 class LoopComponentImplTest {
     @Test
-    void completedLoopResetsExposedIndex() {
+    void completedLoopRemovesExposedIndex() {
         WorkflowOutput output = invokeFlow(3, baseInputs());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> endOutput = (Map<String, Object>) ((Map<String, Object>) output.getResult()).get("output");
         @SuppressWarnings("unchecked")
         Map<String, Object> loopOutput = (Map<String, Object>) endOutput.get("end_out");
-        assertEquals(0, loopOutput.get("index"));
+        assertFalse(loopOutput.containsKey("index"));
     }
 
     @Test
