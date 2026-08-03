@@ -22,7 +22,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * @since 0.1.14
  */
 public final class ModelCircuitBreaker {
-
     private static final String FAILURE_THRESHOLD_PROPERTY = "openjiuwen.llm.circuit.failure-threshold";
     private static final String OPEN_DURATION_MS_PROPERTY = "openjiuwen.llm.circuit.open-duration-millis";
 

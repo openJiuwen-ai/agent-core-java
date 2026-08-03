@@ -365,7 +365,6 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             chunk.setLastChunk(false);
             return chunk;
         }
-        Map<String, Object> metadata = Map.of("task_id", taskId, "stream_kind", "inner_agent");
         List<DataFrame> data;
         if (item instanceof DataFrame frame) {
             data = List.of(frame);
@@ -386,6 +385,8 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         } else {
             return null;
         }
+
+        Map<String, Object> metadata = Map.of("task_id", taskId, "stream_kind", "inner_agent");
         return new ControllerOutputChunk(index,
                 new ControllerOutputPayload(ControllerOutputPayload.TASK_PROCESSING, data, metadata), false);
     }
