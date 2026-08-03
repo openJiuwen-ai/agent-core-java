@@ -19,32 +19,36 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Dependency versions (aligned with tech-stack-mapping) -->
-        <jackson.version>2.17.0</jackson.version>
+        <!-- Dependency versions -->
+        <jackson.version>2.18.9</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
-        <logback.version>1.5.3</logback.version>
+        <logback.version>1.5.37</logback.version>
         <lombok.version>1.18.32</lombok.version>
-        <bouncy-castle.version>1.77</bouncy-castle.version>
-        <milvus.version>2.6.13</milvus.version>
+        <bouncy-castle.version>1.84</bouncy-castle.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <milvus.version>2.6.18</milvus.version>
         <pulsar.version>4.0.9</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
-        <postgresql.version>42.7.7</postgresql.version>
+        <postgresql.version>42.7.12</postgresql.version>
         <sqlite-jdbc.version>3.53.0.0</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
+        <jedis.version>5.1.5</jedis.version>
         <testcontainers.version>1.21.3</testcontainers.version>
         <pdfbox.version>2.0.31</pdfbox.version>
-        <poi.version>5.3.0</poi.version>
+        <poi.version>5.4.0</poi.version>
         <openai-java.version>4.32.0</openai-java.version>
         <reactor.version>3.6.2</reactor.version>
         <h2.version>2.2.224</h2.version>
-        <open-telemetry.version>1.38.0</open-telemetry.version>
+        <open-telemetry.version>1.62.0</open-telemetry.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
-        <mockito.version>5.2.0</mockito.version>
-        <assertj.version>3.25.3</assertj.version>
+        <!-- 5.2.0 pulls ByteBuddy 1.14.x (Java <=20 only); JDK21 CI needs 5.11+ -->
+        <mockito.version>5.14.2</mockito.version>
+        <byte-buddy.version>1.15.11</byte-buddy.version>
+        <assertj.version>3.27.7</assertj.version>
         <jacoco.version>0.8.11</jacoco.version>
         <surefire.groups></surefire.groups>
         <surefire.excludedGroups>system-test</surefire.excludedGroups>
@@ -54,17 +58,78 @@
         <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
     </properties>
 
+    <!--
+      Pin transitive versions so pulsar / milvus / openai cannot reintroduce
+      vulnerable or split versions of Jackson, BouncyCastle, OTel, commons-lang3.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${open-telemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcutil-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons-lang3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <!-- JSON Processing: Jackson -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <!-- HTTP Client: OkHttp -->
         <dependency>
@@ -95,7 +160,6 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
         </dependency>
 
         <!-- Lombok -->
@@ -106,11 +170,10 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Bouncy Castle (Encryption) -->
+        <!-- Bouncy Castle (Encryption); version pinned in dependencyManagement -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
-            <version>${bouncy-castle.version}</version>
         </dependency>
 
         <!-- Vector Database: Milvus -->
@@ -153,6 +216,13 @@
             <groupId>com.alibaba</groupId>
             <artifactId>dashscope-sdk-java</artifactId>
             <version>${dashscope.version}</version>
+            <exclusions>
+                <!-- Choose logback-classic; avoid dual SLF4J providers at runtime. -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-simple</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- Reactive Programming: Project Reactor -->
         <dependency>
@@ -167,11 +237,10 @@
             <scope>test</scope>
         </dependency>
 
-        
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
-            <version>5.1.5</version>
+            <version>${jedis.version}</version>
         </dependency>
         <!-- Test Dependencies -->
         <dependency>
@@ -183,12 +252,6 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-inline</artifactId>
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
@@ -221,44 +284,34 @@
             <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
-            <version>3.6.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>mockwebserver</artifactId>
-            <version>4.12.0</version>
-            <scope>test</scope>
-        </dependency>
 
-        <!-- OpenTelemetry -->
+        <!-- OpenTelemetry (versions from opentelemetry-bom) -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
-            <version>${open-telemetry.version}</version>
+            <!-- OTel 1.62+ pulls okhttp-jvm 5.x; keep classpath on okhttp 4.12 / okio 3.6 -->
+            <exclusions>
+                <exclusion>
+                    <groupId>com.squareup.okhttp3</groupId>
+                    <artifactId>okhttp-jvm</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-logging</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-testing</artifactId>
-            <version>${open-telemetry.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -284,10 +337,24 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
-                    <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                    <!-- JDK21: load Mockito as a Java agent (self-attach is restricted / deprecated) -->
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}
+                        -Xshare:off -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <!-- Prevent a single hung test from blocking the whole suite forever (e.g. MCP stdio). -->
