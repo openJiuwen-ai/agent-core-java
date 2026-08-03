@@ -7,7 +7,6 @@ package com.openjiuwen.core.sysop.local;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sysop.BaseCodeOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
@@ -35,8 +34,8 @@ class LocalCodeOperationTest {
         sysOp = new SysOperation(card);
     }
 
-    private BaseCodeOperation code() {
-        return sysOp.code();
+    private LocalCodeOperation code() {
+        return new LocalCodeOperation(sysOp.getRunConfig());
     }
 
     private List<ExecuteCodeStreamResult> collectStreamResults(Iterator<ExecuteCodeStreamResult> it) {

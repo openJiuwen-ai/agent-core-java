@@ -13,113 +13,63 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages callback handlers and triggers events.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.callback.callback_manager.CallbackManager}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code CallbackManager} in
+ * {@code openjiuwen/core/session/callback/callback_manager.py}.</p>
  */
 public class CallbackManager {
-    private final Map<String, BaseHandler> handlers = new ConcurrentHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
+    private final Map<String, BaseHandler> handlers = new ConcurrentHashMap<>();
     private final Map<String, List<String>> triggerEvents = new ConcurrentHashMap<>();
 
-    /**
-     * CallbackManager.
-     * 
-     * @since 0.1.7
-     */
-    public CallbackManager() {
-    }
-
-    /**
-     * Register handlers from a config map.
-     * 
-     * @param configs map of handler name -> handler instance
-     * @since 0.1.7
-     */
     public void register(Map<String, BaseHandler> configs) {
         if (configs == null) {
             return;
         }
         for (Map.Entry<String, BaseHandler> entry : configs.entrySet()) {
-            String handlerName = entry.getKey();
             BaseHandler handler = entry.getValue();
-            handlers.put(handlerName, handler);
-            triggerEvents.put(handlerName, handler.getTriggerEvents());
+            handlers.put(entry.getKey(), handler);
+            triggerEvents.put(entry.getKey(), handler.getTriggerEvents());
         }
     }
 
-    /**
-     * Trigger a specific event on a handler.
-     * 
-     * @param handlerClassName the handler name
-     * @param eventName the event method name
-     * @param kwargs the event arguments
-     * @since 0.1.7
-     */
     public void trigger(String handlerClassName, String eventName, Map<String, Object> kwargs) {
         BaseHandler handler = handlers.get(handlerClassName);
         if (handler == null) {
             Loggers.SESSION.error("Handler not found: {}", handlerClassName);
             return;
         }
-
         String resolvedEventName = resolveEventName(handlerClassName, eventName);
         if (resolvedEventName == null) {
-            Loggers.SESSION.error("Event name not registered in callback manager: handler={}, event={}",
-                    handlerClassName, eventName);
             throw new IllegalArgumentException("event name not isExists: " + eventName);
         }
-
         try {
             Method method = findMethod(handler, resolvedEventName);
-            if (method != null) {
-                if (method.getParameterCount() == 0) {
-                    method.invoke(handler);
-                } else if (method.getParameterCount() == 1 && method.getParameterTypes()[0] == Map.class) {
-                    method.invoke(handler, kwargs);
-                } else {
-                    method.invoke(handler, buildMethodArgs(method, kwargs));
-                }
+            if (method == null) {
+                return;
             }
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            Loggers.SESSION.error("Failed to trigger event: handler={}, event={}", handlerClassName, eventName, e);
-            // Propagate the target exception to match Python behavior where handler errors are not swallowed
-            Throwable cause = e.getTargetException();
-            if (cause instanceof RuntimeException runtimeEx) {
-                throw runtimeEx;
+            if (method.getParameterCount() == 0) {
+                method.invoke(handler);
+            } else if (method.getParameterCount() == 1 && method.getParameterTypes()[0] == Map.class) {
+                method.invoke(handler, kwargs);
+            } else {
+                method.invoke(handler, buildMethodArgs(method, kwargs));
+            }
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            Throwable cause = error.getTargetException();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
             throw new RuntimeException("Callback handler failed: " + eventName, cause);
-        } catch (Exception e) {
-            Loggers.SESSION.error("Failed to trigger event: handler={}, event={}", handlerClassName, eventName, e);
-            throw new RuntimeException("Callback invocation failed: " + eventName, e);
+        } catch (ReflectiveOperationException | SecurityException error) {
+            throw new RuntimeException("Callback invocation failed: " + eventName, error);
         }
     }
 
-    /**
-     * Get a registered handler by name.
-     * 
-     * @param handlerName the handler name
-     * @return the handler or null
-     * @since 0.1.7
-     */
     public BaseHandler getHandler(String handlerName) {
         return handlers.get(handlerName);
     }
 
-    /**
-     * findMethod.
-     * 
-     * @param handler handler
-     * @param eventName eventName
-     * @return the result
-     * @since 0.1.7
-     */
     private Method findMethod(BaseHandler handler, String eventName) {
         for (Method method : handler.getClass().getMethods()) {
             if (method.getName().equals(eventName)) {
@@ -129,14 +79,6 @@ public class CallbackManager {
         return null;
     }
 
-    /**
-     * resolveEventName.
-     * 
-     * @param handlerClassName handlerClassName
-     * @param eventName eventName
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveEventName(String handlerClassName, String eventName) {
         List<String> events = triggerEvents.get(handlerClassName);
         if (events == null || events.isEmpty()) {
@@ -146,25 +88,14 @@ public class CallbackManager {
             return eventName;
         }
         String candidate = snakeToCamel(eventName);
-        if (events.contains(candidate)) {
-            return candidate;
-        }
-        return null;
+        return events.contains(candidate) ? candidate : null;
     }
 
-    /**
-     * buildMethodArgs.
-     * 
-     * @param method method
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
     private Object[] buildMethodArgs(Method method, Map<String, Object> kwargs) {
         java.lang.reflect.Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
-        for (int i = 0; i < parameters.length; i++) {
-            java.lang.reflect.Parameter parameter = parameters[i];
+        for (int index = 0; index < parameters.length; index++) {
+            java.lang.reflect.Parameter parameter = parameters[index];
             Object value = null;
             if (kwargs != null) {
                 value = kwargs.get(parameter.getName());
@@ -172,21 +103,13 @@ public class CallbackManager {
                     value = kwargs.get(camelToSnake(parameter.getName()));
                 }
             }
-            if (value == null && parameter.getType().isPrimitive()) {
-                value = defaultPrimitiveValue(parameter.getType());
-            }
-            args[i] = value;
+            args[index] = value == null && parameter.getType().isPrimitive()
+                    ? defaultPrimitiveValue(parameter.getType())
+                    : value;
         }
         return args;
     }
 
-    /**
-     * defaultPrimitiveValue.
-     * 
-     * @param primitiveType primitiveType
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object defaultPrimitiveValue(Class<?> primitiveType) {
         if (primitiveType == boolean.class) {
             return false;
@@ -215,13 +138,6 @@ public class CallbackManager {
         return null;
     }
 
-    /**
-     * snakeToCamel.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String snakeToCamel(String value) {
         if (value == null || value.isEmpty() || !value.contains("_")) {
             return value;
@@ -231,21 +147,14 @@ public class CallbackManager {
         for (char ch : value.toCharArray()) {
             if (ch == '_') {
                 upperNext = true;
-                continue;
+            } else {
+                builder.append(upperNext ? Character.toUpperCase(ch) : ch);
+                upperNext = false;
             }
-            builder.append(upperNext ? Character.toUpperCase(ch) : ch);
-            upperNext = false;
         }
         return builder.toString();
     }
 
-    /**
-     * camelToSnake.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String camelToSnake(String value) {
         if (value == null || value.isEmpty()) {
             return value;

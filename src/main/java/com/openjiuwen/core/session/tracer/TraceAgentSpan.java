@@ -4,48 +4,36 @@
 
 package com.openjiuwen.core.session.tracer;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Map;
 
 /**
- * Agent trace span with invoke type, name, and metadata.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.span.TraceAgentSpan}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TraceAgentSpan} in
+ * {@code openjiuwen/core/session/tracer/span.py}.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TraceAgentSpan extends Span {
+    @JsonProperty("invokeType")
     private String invokeType;
+
+    @JsonProperty("name")
     private String name;
+
+    @JsonProperty("elapsedTime")
     private String elapsedTime;
+
+    @JsonProperty("metaData")
     private Map<String, Object> metaData;
 
-    /**
-     * TraceAgentSpan.
-     * 
-     * @since 0.1.7
-     */
     public TraceAgentSpan() {
     }
 
-    /**
-     * TraceAgentSpan.
-     * 
-     * @param traceId traceId
-     * @param invokeId invokeId
-     * @param parentInvokeId parentInvokeId
-     * @since 0.1.7
-     */
     public TraceAgentSpan(String traceId, String invokeId, String parentInvokeId) {
         super(traceId, invokeId, parentInvokeId);
     }
 
-    /**
-     * setField.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @since 0.1.7
-     */
     @Override
     @SuppressWarnings("unchecked")
     protected void setField(String fieldName, Object value) {
@@ -69,7 +57,7 @@ public class TraceAgentSpan extends Span {
                 break;
             case "meta_data":
             case "metaData":
-                if (value instanceof Map) {
+                if (value instanceof Map<?, ?>) {
                     metaData = (Map<String, Object>) value;
                 }
                 break;
@@ -78,12 +66,6 @@ public class TraceAgentSpan extends Span {
         }
     }
 
-    /**
-     * snapshot.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public TraceAgentSpan snapshot() {
         TraceAgentSpan copy = new TraceAgentSpan();
@@ -95,82 +77,34 @@ public class TraceAgentSpan extends Span {
         return copy;
     }
 
-    /**
-     * getInvokeType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getInvokeType() {
         return invokeType;
     }
 
-    /**
-     * setInvokeType.
-     * 
-     * @param invokeType invokeType
-     * @since 0.1.7
-     */
     public void setInvokeType(String invokeType) {
         this.invokeType = invokeType;
     }
 
-    /**
-     * getName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getName() {
         return name;
     }
 
-    /**
-     * setName.
-     * 
-     * @param name name
-     * @since 0.1.7
-     */
     public void setName(String name) {
         this.name = name;
     }
 
-    /**
-     * getElapsedTime.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getElapsedTime() {
         return elapsedTime;
     }
 
-    /**
-     * setElapsedTime.
-     * 
-     * @param elapsedTime elapsedTime
-     * @since 0.1.7
-     */
     public void setElapsedTime(String elapsedTime) {
         this.elapsedTime = elapsedTime;
     }
 
-    /**
-     * getMetaData.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getMetaData() {
         return metaData;
     }
 
-    /**
-     * setMetaData.
-     * 
-     * @param metaData metaData
-     * @since 0.1.7
-     */
     public void setMetaData(Map<String, Object> metaData) {
         this.metaData = metaData;
     }

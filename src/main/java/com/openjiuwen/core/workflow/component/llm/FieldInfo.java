@@ -11,8 +11,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * Describes a field to be extracted by the Questioner component.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code FieldInfo} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 @Data
 @Builder

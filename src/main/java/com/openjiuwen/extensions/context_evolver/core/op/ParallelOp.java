@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.context_evolver.core.op;
@@ -9,93 +9,55 @@ import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.op.parallel_op.ParallelOp}.
- * Parallel composition of operations.
- * 
- * @since 0.1.7
+ * Parallel composition of context evolver operations.
+ * <p>
+ * Mirrors Python's {@code ParallelOp} in
+ * {@code openjiuwen/extensions/context_evolver/core/op/parallel_op.py}.
+ * </p>
  */
 public class ParallelOp extends BaseOp {
+
     private final List<BaseOp> ops;
 
-    /**
-     * ParallelOp.
-     * 
-     * @param ops ops
-     * @since 0.1.7
-     */
     public ParallelOp(BaseOp... ops) {
         super();
-        this.ops = new ArrayList<>(Arrays.asList(ops));
+        this.ops = ops == null ? new ArrayList<>() : new ArrayList<>(Arrays.asList(ops));
     }
 
-    /**
-     * ParallelOp.
-     * 
-     * @param ops ops
-     * @since 0.1.7
-     */
-    public ParallelOp(List<BaseOp> ops) {
-        super();
-        this.ops = new ArrayList<>(ops);
+    public List<BaseOp> getOps() {
+        return new ArrayList<>(ops);
     }
 
-    /**
-     * asyncExecute.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
-        if (ops.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
+    public CompletableFuture<Void> asyncExecute(RuntimeContext context) {
+        List<CompletableFuture<RuntimeContext>> futures = new ArrayList<>();
+        for (BaseOp op : ops) {
+            futures.add(op.call(context));
         }
-
-        @SuppressWarnings("unchecked")
-        CompletableFuture<Void>[] futures =
-            ops.stream().map(op -> op.execute(context).thenApply(ctx -> null)).toArray(CompletableFuture[]::new);
-
-        return CompletableFuture.allOf(futures);
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
     }
 
-    /**
-     * Add another operation to parallel execution.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
-    public ParallelOp parallel(BaseOp other) {
-        if (other instanceof ParallelOp) {
-            List<BaseOp> newOps = new ArrayList<>(this.ops);
-            newOps.addAll(((ParallelOp) other).ops);
-            return new ParallelOp(newOps);
+    @Override
+    public ParallelOp parallelWith(BaseOp other) {
+        List<BaseOp> combined = new ArrayList<>(ops);
+        if (other instanceof ParallelOp parallelOp) {
+            combined.addAll(parallelOp.ops);
+        } else {
+            combined.add(other);
         }
-        List<BaseOp> newOps = new ArrayList<>(this.ops);
-        newOps.add(other);
-        return new ParallelOp(newOps);
+        return new ParallelOp(combined.toArray(BaseOp[]::new));
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("(");
-        for (int i = 0; i < ops.size(); i++) {
-            if (i > 0) {
-                sb.append(" | ");
-            }
-            sb.append(ops.get(i).toString());
+        StringJoiner joiner = new StringJoiner(" | ");
+        for (BaseOp op : ops) {
+            joiner.add(String.valueOf(op));
         }
-        sb.append(")");
-        return sb.toString();
+        return "(" + joiner + ")";
     }
 }

@@ -19,15 +19,15 @@ import java.util.Map;
 /**
  * Schema describing a workflow reference in agent configuration.
  * <p>
- * Mirrors Python's {@code WorkflowSchema} used in application agent configs.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code WorkflowSchema} in
+ * {@code openjiuwen/core/single_agent/legacy/schema.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkflowSchema {
+
     @Builder.Default
     private String id = "";
 
@@ -43,32 +43,15 @@ public class WorkflowSchema {
     @Builder.Default
     @JsonProperty("inputs")
     @JsonAlias("inputParams")
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> inputParams = new LinkedHashMap<>();
 
-    /**
-     * getInputs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @JsonIgnore
     public Map<String, Object> getInputs() {
         return inputParams;
     }
 
-    /**
-     * setInputs.
-     * 
-     * @param inputs inputs
-     * @since 0.1.7
-     */
     @JsonIgnore
     public void setInputs(Map<String, Object> inputs) {
-        this.inputParams = inputs;
+        this.inputParams = inputs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(inputs);
     }
 }

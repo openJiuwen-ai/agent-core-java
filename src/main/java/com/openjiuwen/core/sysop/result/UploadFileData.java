@@ -10,16 +10,21 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Data structure for upload file operation.
- * 
- * @since 0.1.7
+ * Backward-compatible upload-file payload for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code UploadFileData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.UploadFileData}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class UploadFileData {
+
     private String localPath;
     private String targetPath;
-    private long size;
+    private int size;
 }

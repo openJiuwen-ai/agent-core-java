@@ -1,0 +1,1 @@
+Cached template content

@@ -8,35 +8,30 @@ import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 /**
- * Interface for graph nodes that can consume streaming data.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamConsumer}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code StreamConsumer} in
+ * {@code openjiuwen/core/graph/stream_actor/base.py}.
  */
 public interface StreamConsumer {
+
     /**
-     * streamCall.
-     * 
-     * @param latch latch
-     * @param errorCallback errorCallback
-     * @since 0.1.7
+     * Starts a stream call and counts the latch down when the consumer is ready.
+     *
+     * @param latch callback readiness latch
+     * @param errorCallback callback receiving stream call failures
      */
     void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback);
 
     /**
-     * Whether this consumer should handle stream messages.
-     * 
-     * @return true if it has stream abilities (COLLECT/TRANSFORM)
-     * @since 0.1.7
+     * Returns whether this consumer accepts stream messages now.
+     *
+     * @return {@code true} when messages should be handled
      */
     boolean shouldHandleMessage();
 
     /**
-     * Whether this consumer has completed its execution cycle.
-     * 
-     * @return true if done
-     * @since 0.1.7
+     * Returns whether the consumer is in the Python "done" state.
+     *
+     * @return {@code true} when a first frame may start a stream call
      */
     boolean isDone();
 }

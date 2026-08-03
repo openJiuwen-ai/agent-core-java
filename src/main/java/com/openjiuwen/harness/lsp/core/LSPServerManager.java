@@ -1,514 +1,381 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.lsp.core;
 
-import java.lang.reflect.Method;
+import com.openjiuwen.harness.lsp.InitializeOptions;
+import com.openjiuwen.harness.lsp.InitializeResult;
+import com.openjiuwen.harness.lsp.LspStatus;
+import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
+import com.openjiuwen.harness.lsp.servers.BuiltinServerRegistry;
+import com.openjiuwen.harness.lsp.servers.ServerDefinition;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 
 /**
- * Minimal LSP server manager for didOpen/didChange and diagnostics routing.
- * 
- * @since 0.1.7
+ * Global singleton LSP server manager with lazy-loading server startup.
+ * <p>
+ * Mirrors Python's {@code LSPServerManager} in
+ * {@code openjiuwen/harness/lsp/core/manager.py}.
+ * </p>
  */
 public class LSPServerManager {
-    private final Map<String, Object> configs = new LinkedHashMap<>();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Object> instances = new LinkedHashMap<>();
+    private static LSPServerManager instance;
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Object> spawning = new LinkedHashMap<>();
+    private String workspaceRoot = "";
+    private Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
+    private Map<ServerInstanceKey, LspServerInstance> instances = new LinkedHashMap<>();
+    private Map<ServerInstanceKey, Thread> spawning = new LinkedHashMap<>();
+    private Map<String, List<String>> extensionMap = new LinkedHashMap<>();
+    private final Set<LspServerInstance> diagnosticHandlerInstances =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<String, Integer> documentVersions = new LinkedHashMap<>();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, String> extensionMap = new LinkedHashMap<>();
-    private String workspaceRoot;
-
-    /**
-     * java.util.HashSet<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Set<Integer> diagHandlerInstances = new java.util.HashSet<>();
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Integer> docVersions = new LinkedHashMap<>();
-
-    /**
-     * LSPServerManager.
-     * 
-     * @since 0.1.7
-     */
-    public LSPServerManager() {
-        this.workspaceRoot = Path.of("").toAbsolutePath().normalize().toString();
+    public static synchronized InitializeResult initialize() {
+        return initialize(null);
     }
 
-    /**
-     * ensureDiagnosticHandler.
-     * 
-     * @param server server
-     * @since 0.1.7
-     */
-    public void ensureDiagnosticHandler(Object server) {
-        int identity = System.identityHashCode(server);
-        if (diagHandlerInstances.contains(identity)) {
-            return;
+    public static synchronized InitializeResult initialize(InitializeOptions options) {
+        InitializeOptions opts = options == null ? new InitializeOptions() : options;
+        if (instance != null) {
+            return initializeResult(true, instance.getStatus().size(), 0.0d);
         }
-        diagHandlerInstances.add(identity);
-        Consumer<Map<String, Object>> handler = payload -> {
-            String uri = String.valueOf(payload.get("uri"));
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> diagnostics =
-                (List<Map<String, Object>>) payload.getOrDefault("diagnostics", List.of());
-            LspDiagnosticRegistry.getInstance().register(resolveServerId(server), uri, diagnostics);
-        };
-        invoke(server, "addNotificationHandler", new Class[]{String.class, Consumer.class},
-                new Object[]{"textDocument/publishDiagnostics", handler});
-    }
 
-    /**
-     * ensureDiagnosticHandlerCompat.
-     * 
-     * @param server server
-     * @since 0.1.7
-     */
-    public void ensureDiagnosticHandlerCompat(Object server) {
-        ensureDiagnosticHandler(server);
-    }
-
-    /**
-     * getOrStartServer.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getOrStartServer(String filePath) {
-        return instances.get(filePath);
-    }
-
-    /**
-     * registerServer.
-     * 
-     * @param filePath filePath
-     * @param server server
-     * @since 0.1.7
-     */
-    public void registerServer(String filePath, Object server) {
-        instances.put(filePath, server);
-    }
-
-    /**
-     * hasServer.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean hasServer(String filePath) {
-        return instances.containsKey(filePath);
-    }
-
-    /**
-     * activeServerCount.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int activeServerCount() {
-        return new HashSet<>(instances.values()).size();
-    }
-
-    /**
-     * getDocumentVersion.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    public Integer getDocumentVersion(String filePath) {
-        return docVersions.get(filePath);
-    }
-
-    /**
-     * shutdownServer.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean shutdownServer(String filePath) {
-        Object server = instances.remove(filePath);
-        docVersions.remove(filePath);
-        if (server == null) {
-            return false;
+        String cwd = resolveCwd(opts.getCwd());
+        List<ScopedLspServerConfig> builtConfigs = BuiltinServerRegistry.buildConfigs(opts, cwd);
+        if (builtConfigs.isEmpty()) {
+            instance = null;
+            return initializeResult(true, 0, 0.0d);
         }
-        if (!instances.containsValue(server)) {
-            shutdownLifecycle(server);
-            diagHandlerInstances.remove(System.identityHashCode(server));
-        }
-        return true;
+
+        LSPServerManager manager = new LSPServerManager();
+        manager.workspaceRoot = cwd;
+        manager.configs = groupConfigs(builtConfigs);
+        manager.extensionMap = buildExtensionMap(builtConfigs);
+        instance = manager;
+        return initializeResult(true, builtConfigs.size(), 0.0d);
     }
 
-    /**
-     * shutdownAll.
-     * 
-     * @since 0.1.7
-     */
-    public void shutdownAll() {
-        RuntimeException firstFailure = null;
-        Set<Object> servers = new HashSet<>(instances.values());
-        for (Object server : servers) {
+    public static synchronized void shutdown() {
+        if (instance != null) {
+            instance.stopAll();
+            instance = null;
+        }
+    }
+
+    public static synchronized LSPServerManager getInstance() {
+        return instance;
+    }
+
+    public static synchronized LspStatus getGlobalStatus() {
+        LspStatus status = new LspStatus();
+        status.setInitialized(instance != null);
+        status.setServers(instance == null ? List.of() : instance.getStatus());
+        return status;
+    }
+
+    public void stopAll() {
+        for (Thread task : new ArrayList<>(spawning.values())) {
+            task.interrupt();
+        }
+        spawning.clear();
+        for (LspServerInstance serverInstance : new ArrayList<>(instances.values())) {
             try {
-                shutdownLifecycle(server);
-            } catch (RuntimeException ex) {
-                if (firstFailure == null) {
-                    firstFailure = ex;
-                }
+                serverInstance.stop();
+            } catch (RuntimeException ignored) {
+                // Continue stopping the remaining server instances.
             }
         }
         instances.clear();
-        spawning.clear();
-        docVersions.clear();
-        diagHandlerInstances.clear();
-        if (firstFailure != null) {
-            throw firstFailure;
-        }
     }
 
-    /**
-     * setWorkspaceRoot.
-     * 
-     * @param workspaceRoot workspaceRoot
-     * @since 0.1.7
-     */
-    public void setWorkspaceRoot(String workspaceRoot) {
-        this.workspaceRoot = workspaceRoot;
-    }
-
-    /**
-     * getWorkspaceRoot.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getWorkspaceRoot() {
         return workspaceRoot;
     }
 
-    /**
-     * openFile.
-     * 
-     * @param filePath filePath
-     * @param languageId languageId
-     * @since 0.1.7
-     */
-    public void openFile(String filePath, String languageId) {
-        Object server = getOrStartServer(filePath);
-        if (server == null) {
-            return;
-        }
-        ensureDiagnosticHandler(server);
-        String text = readText(filePath);
-        docVersions.put(filePath, 0);
-        Map<String, Object> params = Map.of("textDocument",
-                Map.of("uri", pathToFileUri(filePath), "languageId", languageId, "version", 0, "text", text));
-        invoke(server, "sendNotification", new Class[]{String.class, Map.class},
-                new Object[]{"textDocument/didOpen", params});
-    }
+    public LspServerInstance getOrStartServer(String filePath) {
+        String extension = extensionOf(filePath);
+        List<String> serverIds = extensionMap.getOrDefault(extension, List.of());
 
-    /**
-     * changeFile.
-     * 
-     * @param filePath filePath
-     * @param languageId languageId
-     * @since 0.1.7
-     */
-    public void changeFile(String filePath, String languageId) {
-        changeFile(filePath, languageId, null);
-    }
-
-    /**
-     * changeFile.
-     * 
-     * @param filePath filePath
-     * @param languageId languageId
-     * @param content content
-     * @since 0.1.7
-     */
-    public void changeFile(String filePath, String languageId, String content) {
-        Object server = getOrStartServer(filePath);
-        if (server == null) {
-            return;
-        }
-        ensureDiagnosticHandler(server);
-        String text = content != null ? content : readText(filePath);
-        int nextVersion = docVersions.getOrDefault(filePath, 0) + 1;
-        docVersions.put(filePath, nextVersion);
-        Map<String, Object> params =
-            Map.of("textDocument", Map.of("uri", pathToFileUri(filePath), "version", nextVersion), "contentChanges",
-                    List.of(Map.of("text", text)));
-        invoke(server, "sendNotification", new Class[]{String.class, Map.class},
-                new Object[]{"textDocument/didChange", params});
-    }
-
-    /**
-     * request.
-     * 
-     * @param filePath filePath
-     * @param method method
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object request(String filePath, String method, Map<String, Object> params) {
-        Object server = getOrStartServer(filePath);
-        if (server == null) {
-            return null;
-        }
-        ensureDiagnosticHandler(server);
-        return requestServer(server, method, params == null ? Map.of() : params);
-    }
-
-    /**
-     * getPendingDiagnostics.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<LspDiagnostic> getPendingDiagnostics() {
-        return LspDiagnosticRegistry.getInstance().getAndClear();
-    }
-
-    /**
-     * getPendingDiagnostics.
-     * 
-     * @param maxPerFile maxPerFile
-     * @param maxTotal maxTotal
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<LspDiagnostic> getPendingDiagnostics(int maxPerFile, int maxTotal) {
-        List<LspDiagnostic> all = LspDiagnosticRegistry.getInstance().getAndClear();
-        Map<String, Integer> perFile = new LinkedHashMap<>();
-        List<LspDiagnostic> filtered = new ArrayList<>();
-        for (LspDiagnostic diagnostic : all) {
-            int count = perFile.getOrDefault(diagnostic.getUri(), 0);
-            if (count >= maxPerFile || filtered.size() >= maxTotal) {
+        for (String serverId : serverIds) {
+            ServerDefinition serverDefinition = BuiltinServerRegistry.BUILTIN_SERVERS.get(serverId);
+            if (serverDefinition == null) {
                 continue;
             }
-            filtered.add(diagnostic);
-            perFile.put(diagnostic.getUri(), count + 1);
-        }
-        return filtered;
-    }
+            String root = serverDefinition.getFindRoot().apply(filePath);
+            if (root == null || root.isBlank()) {
+                continue;
+            }
 
-    /**
-     * resolveServerId.
-     * 
-     * @param server server
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String resolveServerId(Object server) {
-        try {
-            Object config = invokeAndReturn(server, "getConfig");
-            if (config != null) {
-                Object serverId = invokeAndReturn(config, "getServerId");
-                if (serverId != null) {
-                    return String.valueOf(serverId);
+            for (ScopedLspServerConfig config : configs.getOrDefault(serverId, List.of())) {
+                ServerInstanceKey key = new ServerInstanceKey(serverId, root);
+                LspServerInstance existing = instances.get(key);
+                if (existing != null) {
+                    if (existing.isRunning()) {
+                        if (existing.isHealthy()) {
+                            return existing;
+                        }
+                        instances.remove(key);
+                    } else if (existing.getState() == LspServerState.ERROR) {
+                        instances.remove(key);
+                    } else if (spawning.containsKey(key)) {
+                        Thread thread = spawning.get(key);
+                        joinQuietly(thread);
+                        LspServerInstance spawned = instances.get(key);
+                        if (spawned != null && spawned.isRunning()) {
+                            return spawned;
+                        }
+                    }
+                }
+
+                LspServerInstance started = startServer(key, config, root);
+                if (started != null && started.isRunning()) {
+                    return started;
                 }
             }
-        } catch (RuntimeException ignored) {
-            // Server ID extraction via reflection may fail on various configs; fall back to "unknown".
         }
-        return "unknown";
+        return null;
     }
 
-    /**
-     * readText.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String readText(String filePath) {
-        try {
-            return java.nio.file.Files.readString(Path.of(filePath));
-        } catch (java.io.IOException | SecurityException ex) {
-            return "";
+    public LspServerInstance startServer(ServerInstanceKey key, ScopedLspServerConfig config, String root) {
+        LspServerInstance existing = instances.get(key);
+        if (existing != null && existing.isRunning()) {
+            return existing;
         }
-    }
-
-    /**
-     * pathToFileUri.
-     * 
-     * @param filePath filePath
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String pathToFileUri(String filePath) {
-        return Path.of(filePath).toUri().toString();
-    }
-
-    /**
-     * invoke.
-     * 
-     * @param target target
-     * @param methodName methodName
-     * @param paramTypes paramTypes
-     * @param args args
-     * @since 0.1.7
-     */
-    private static void invoke(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
-        try {
-            Method method = target.getClass().getMethod(methodName, paramTypes);
-            method.setAccessible(true);
-            method.invoke(target, args);
-        } catch (ReflectiveOperationException | SecurityException ex) {
-            throw new IllegalStateException("failed to invoke method: " + methodName, ex);
+        if (spawning.containsKey(key)) {
+            joinQuietly(spawning.get(key));
+            return instances.get(key);
         }
-    }
 
-    /**
-     * invokeAndReturn.
-     * 
-     * @param target target
-     * @param methodName methodName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object invokeAndReturn(Object target, String methodName) {
+        ScopedLspServerConfig activeConfig = root != null && !Objects.equals(root, config.getWorkspaceFolder())
+                ? cloneForRoot(config, root)
+                : config;
+        LspServerInstance serverInstance = new LspServerInstance(
+                activeConfig,
+                error -> logServerError(activeConfig.getServerId(), error)
+        );
+        instances.put(key, serverInstance);
         try {
-            Method method = target.getClass().getMethod(methodName);
-            method.setAccessible(true);
-            return method.invoke(target);
-        } catch (ReflectiveOperationException | SecurityException ex) {
+            serverInstance.start();
+        } catch (RuntimeException exception) {
+            logServerError(activeConfig.getServerId(), exception);
+            instances.remove(key);
             return null;
         }
+        return serverInstance.isRunning() ? serverInstance : null;
     }
 
-    /**
-     * requestServer.
-     * 
-     * @param server server
-     * @param method method
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object requestServer(Object server, String method, Map<String, Object> params) {
-        Object result = invokeRequestMethod(server, "sendRequest", method, params);
-        if (result != RequestMethodMissing.instance) {
-            return result;
-        }
-        result = invokeRequestMethod(server, "request", method, params);
-        if (result != RequestMethodMissing.instance) {
-            return result;
-        }
-        result = invokeRequestMethod(server, "send_request", method, params);
-        if (result != RequestMethodMissing.instance) {
-            return result;
-        }
-        throw new IllegalStateException("LSP server does not expose a request method");
-    }
-
-    /**
-     * invokeRequestMethod.
-     * 
-     * @param target target
-     * @param methodName methodName
-     * @param method method
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object invokeRequestMethod(Object target, String methodName, String method,
-            Map<String, Object> params) {
+    public static boolean pathBelongsToRoot(String filePath, String root) {
         try {
-            Method reflect = target.getClass().getMethod(methodName, String.class, Map.class);
-            reflect.setAccessible(true);
-            return reflect.invoke(target, method, params);
-        } catch (NoSuchMethodException ex) {
-            return RequestMethodMissing.instance;
-        } catch (ReflectiveOperationException | SecurityException ex) {
-            throw new IllegalStateException("failed to request LSP method: " + methodName, ex);
+            Path absoluteFile = Path.of(filePath).toAbsolutePath().normalize();
+            Path absoluteRoot = Path.of(root).toAbsolutePath().normalize();
+            absoluteRoot.relativize(absoluteFile);
+            return absoluteFile.startsWith(absoluteRoot);
+        } catch (RuntimeException exception) {
+            return false;
         }
     }
 
-    /**
-     * shutdownLifecycle.
-     * 
-     * @param server server
-     * @since 0.1.7
-     */
-    private static void shutdownLifecycle(Object server) {
+    public static void logServerError(String serverId, Exception error) {
+        System.getLogger(LSPServerManager.class.getName()).log(
+                System.Logger.Level.WARNING,
+                "[LSP] Server '" + serverId + "' failed: " + error
+        );
+    }
+
+    public void ensureDiagnosticHandler(LspServerInstance server) {
+        if (server == null || diagnosticHandlerInstances.contains(server)) {
+            return;
+        }
+        LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
+        String serverName = server.getConfig().getServerId();
+        server.addNotificationHandler("textDocument/publishDiagnostics", params -> {
+            if (!(params instanceof Map<?, ?> map)) {
+                return;
+            }
+            Object uriValue = map.get("uri");
+            Object diagnosticsValue = map.get("diagnostics");
+            if (uriValue == null || !(diagnosticsValue instanceof List<?> diagnostics)) {
+                return;
+            }
+            registry.register(serverName, String.valueOf(uriValue), diagnostics);
+        });
+        diagnosticHandlerInstances.add(server);
+    }
+
+    public static List<LspDiagnosticFile> getPendingDiagnostics(int maxPerFile, int maxTotal) {
+        return LspDiagnosticRegistry.getInstance().getAndClear(maxPerFile, maxTotal);
+    }
+
+    public boolean isFileOpen(String uri) {
+        return documentVersions.containsKey(uri);
+    }
+
+    public void openFile(String filePath, String languageId) {
+        LspServerInstance server = getOrStartServer(filePath);
         if (server == null) {
             return;
         }
-        if (invokeNoArgIfPresent(server, "shutdown")) {
-            invokeNoArgIfPresent(server, "exit");
+        ensureDiagnosticHandler(server);
+        String text;
+        try {
+            text = Path.of(filePath).toAbsolutePath().normalize().toFile().isFile()
+                    ? java.nio.file.Files.readString(Path.of(filePath), StandardCharsets.UTF_8)
+                    : "";
+        } catch (IOException exception) {
+            text = "";
+        }
+
+        String uri = FileUriUtils.pathToFileUri(filePath);
+        documentVersions.put(uri, 0);
+        server.sendNotification(
+                "textDocument/didOpen",
+                Map.of(
+                        "textDocument",
+                        Map.of(
+                                "uri", uri,
+                                "languageId", languageId,
+                                "version", 0,
+                                "text", text
+                        )
+                )
+        );
+    }
+
+    public void changeFile(String filePath, String languageId, String content) {
+        LspServerInstance server = getOrStartServer(filePath);
+        if (server == null) {
             return;
         }
-        if (invokeNoArgIfPresent(server, "close") || invokeNoArgIfPresent(server, "stop")
-                || invokeNoArgIfPresent(server, "disconnect")) {
-            return;
-        }
-        if (server instanceof java.io.Closeable closeable) {
+        ensureDiagnosticHandler(server);
+        String resolvedContent = content;
+        if (resolvedContent == null) {
             try {
-                closeable.close();
-            } catch (java.io.IOException ex) {
-                throw new IllegalStateException("failed to close LSP server", ex);
+                resolvedContent = java.nio.file.Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
+            } catch (IOException exception) {
+                resolvedContent = "";
             }
         }
+
+        String uri = FileUriUtils.pathToFileUri(filePath);
+        int version = documentVersions.getOrDefault(uri, 0) + 1;
+        documentVersions.put(uri, version);
+        server.sendNotification(
+                "textDocument/didChange",
+                Map.of(
+                        "textDocument",
+                        Map.of("uri", uri, "version", version),
+                        "contentChanges",
+                        List.of(Map.of("text", resolvedContent))
+                )
+        );
     }
 
-    /**
-     * invokeNoArgIfPresent.
-     * 
-     * @param target target
-     * @param methodName methodName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean invokeNoArgIfPresent(Object target, String methodName) {
+    public Object sendRequest(String filePath, String method, Map<String, Object> params) {
+        LspServerInstance server = getOrStartServer(filePath);
+        if (server == null) {
+            throw new RuntimeException("No LSP server for file: " + filePath);
+        }
+        return server.sendRequest(method, params == null ? Map.of() : params);
+    }
+
+    public List<LspServerStatus> getStatus() {
+        List<LspServerStatus> statuses = new ArrayList<>();
+        for (LspServerInstance serverInstance : instances.values()) {
+            LspServerStatus status = new LspServerStatus();
+            status.setServerId(serverInstance.getConfig().getServerId());
+            status.setName(serverInstance.getConfig().getServerId());
+            status.setRunning(serverInstance.isRunning());
+            status.setState(serverInstance.getState());
+            status.setRoot(serverInstance.getConfig().getWorkspaceFolder());
+            status.setCrashCount(serverInstance.getCrashCount());
+            status.setLastError(serverInstance.getLastError() == null ? null : serverInstance.getLastError().toString());
+            statuses.add(status);
+        }
+        return statuses;
+    }
+
+    private static InitializeResult initializeResult(boolean success, int serversLoaded, double durationMs) {
+        InitializeResult result = new InitializeResult();
+        result.setSuccess(success);
+        result.setServersLoaded(serversLoaded);
+        result.setDurationMs(durationMs);
+        return result;
+    }
+
+    private static String resolveCwd(String cwd) {
         try {
-            Method method = target.getClass().getMethod(methodName);
-            method.setAccessible(true);
-            method.invoke(target);
-            return true;
-        } catch (NoSuchMethodException ex) {
-            return false;
-        } catch (ReflectiveOperationException | SecurityException ex) {
-            throw new IllegalStateException("failed to invoke lifecycle method: " + methodName, ex);
+            String value = cwd == null || cwd.isBlank() ? System.getProperty("user.dir") : cwd;
+            return Path.of(value).toAbsolutePath().normalize().toString();
+        } catch (RuntimeException exception) {
+            return System.getProperty("user.dir");
         }
     }
 
-    private enum RequestMethodMissing {
-        instance
+    private static Map<String, List<ScopedLspServerConfig>> groupConfigs(List<ScopedLspServerConfig> builtConfigs) {
+        Map<String, List<ScopedLspServerConfig>> grouped = new LinkedHashMap<>();
+        for (ScopedLspServerConfig config : builtConfigs) {
+            grouped.computeIfAbsent(config.getServerId(), ignored -> new ArrayList<>()).add(config);
+        }
+        return grouped;
+    }
+
+    private static Map<String, List<String>> buildExtensionMap(List<ScopedLspServerConfig> builtConfigs) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (ScopedLspServerConfig config : builtConfigs) {
+            for (String extension : config.getExtensionToLanguage().keySet()) {
+                String normalized = extension == null ? "" : extension.toLowerCase();
+                List<String> serverIds = result.computeIfAbsent(normalized, ignored -> new ArrayList<>());
+                if (!serverIds.contains(config.getServerId())) {
+                    serverIds.add(config.getServerId());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static ScopedLspServerConfig cloneForRoot(ScopedLspServerConfig config, String root) {
+        ScopedLspServerConfig activeConfig = new ScopedLspServerConfig();
+        activeConfig.setServerId(config.getServerId());
+        activeConfig.setCommand(config.getCommand());
+        activeConfig.setArgs(config.getArgs());
+        activeConfig.setEnv(config.getEnv());
+        activeConfig.setWorkspaceFolder(root);
+        activeConfig.setInitializationOptions(config.getInitializationOptions());
+        activeConfig.setStartupTimeout(config.getStartupTimeout());
+        activeConfig.setExtensionToLanguage(config.getExtensionToLanguage());
+        return activeConfig;
+    }
+
+    private static void joinQuietly(Thread thread) {
+        if (thread == null) {
+            return;
+        }
+        try {
+            thread.join();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String extensionOf(String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return "";
+        }
+        String fileName = Path.of(filePath).getFileName().toString();
+        int index = fileName.lastIndexOf('.');
+        return index >= 0 ? fileName.substring(index).toLowerCase() : "";
     }
 }

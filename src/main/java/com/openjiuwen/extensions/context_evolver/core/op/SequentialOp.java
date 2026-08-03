@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.context_evolver.core.op;
@@ -9,93 +9,55 @@ import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.op.sequential_op.SequentialOp}.
- * Sequential composition of operations.
- * 
- * @since 0.1.7
+ * Sequential composition of context evolver operations.
+ * <p>
+ * Mirrors Python's {@code SequentialOp} in
+ * {@code openjiuwen/extensions/context_evolver/core/op/sequential_op.py}.
+ * </p>
  */
 public class SequentialOp extends BaseOp {
+
     private final List<BaseOp> ops;
 
-    /**
-     * SequentialOp.
-     * 
-     * @param ops ops
-     * @since 0.1.7
-     */
     public SequentialOp(BaseOp... ops) {
         super();
-        this.ops = new ArrayList<>(Arrays.asList(ops));
+        this.ops = ops == null ? new ArrayList<>() : new ArrayList<>(Arrays.asList(ops));
     }
 
-    /**
-     * SequentialOp.
-     * 
-     * @param ops ops
-     * @since 0.1.7
-     */
-    public SequentialOp(List<BaseOp> ops) {
-        super();
-        this.ops = new ArrayList<>(ops);
+    public List<BaseOp> getOps() {
+        return new ArrayList<>(ops);
     }
 
-    /**
-     * asyncExecute.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
-        if (ops.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+    public CompletableFuture<Void> asyncExecute(RuntimeContext context) {
+        CompletableFuture<RuntimeContext> chain = CompletableFuture.completedFuture(context);
         for (BaseOp op : ops) {
-            future = future.thenCompose(v -> op.execute(context).thenApply(ctx -> null));
+            chain = chain.thenCompose(op::call);
         }
-        return future;
+        return chain.thenApply(ignored -> null);
     }
 
-    /**
-     * Add another operation to the sequence.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
     public SequentialOp then(BaseOp other) {
-        if (other instanceof SequentialOp) {
-            List<BaseOp> newOps = new ArrayList<>(this.ops);
-            newOps.addAll(((SequentialOp) other).ops);
-            return new SequentialOp(newOps);
+        List<BaseOp> combined = new ArrayList<>(ops);
+        if (other instanceof SequentialOp sequentialOp) {
+            combined.addAll(sequentialOp.ops);
+        } else {
+            combined.add(other);
         }
-        List<BaseOp> newOps = new ArrayList<>(this.ops);
-        newOps.add(other);
-        return new SequentialOp(newOps);
+        return new SequentialOp(combined.toArray(BaseOp[]::new));
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("(");
-        for (int i = 0; i < ops.size(); i++) {
-            if (i > 0) {
-                sb.append(" >> ");
-            }
-            sb.append(ops.get(i).toString());
+        StringJoiner joiner = new StringJoiner(" >> ");
+        for (BaseOp op : ops) {
+            joiner.add(String.valueOf(op));
         }
-        sb.append(")");
-        return sb.toString();
+        return "(" + joiner + ")";
     }
 }

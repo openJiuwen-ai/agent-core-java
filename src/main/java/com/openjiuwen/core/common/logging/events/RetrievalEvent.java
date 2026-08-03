@@ -13,8 +13,9 @@ import java.util.Map;
 
 /**
  * Retrieval related event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code RetrievalEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -28,22 +29,11 @@ public class RetrievalEvent extends BaseLogEvent {
     private Double latencyMs;
     private String knowledgeBaseId;
 
-    /**
-     * RetrievalEvent.
-     * 
-     * @since 0.1.7
-     */
     public RetrievalEvent() {
         super();
         setModuleType(ModuleType.RETRIEVAL);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "retrieval_type", retrievalType);
@@ -55,3 +45,5 @@ public class RetrievalEvent extends BaseLogEvent {
         putIfNotNull(map, "knowledge_base_id", knowledgeBaseId);
     }
 }
+
+

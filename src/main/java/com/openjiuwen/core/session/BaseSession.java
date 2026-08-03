@@ -1,162 +1,123 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.session;
 
-import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 /**
- * Base session abstraction providing access to all session subsystems.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.session.BaseSession}.
- * Extends the minimal {@link Session} interface for backward compatibility with ContextEngine.
- * 
- * @since 0.1.7
+ * Base session abstraction shared by workflow, agent, and graph runtime sessions.
+ *
+ * <p>Mirrors Python's {@code BaseSession} in
+ * {@code openjiuwen/core/session/session.py}.</p>
  */
-public abstract class BaseSession implements Session {
-    private volatile String currentOperatorId;
+public abstract class BaseSession {
+
+    private String currentOperatorId;
+
+    @SuppressWarnings("unchecked")
+    public <T extends SessionConfigAccess> T config() {
+        return (T) new Config();
+    }
+
+    public <T extends SessionStateAccess> T state() {
+        return null;
+    }
+
+    public Object tracer() {
+        return null;
+    }
+
+    public <T> T streamWriterManager() {
+        return null;
+    }
 
     /**
-     * Get the session configuration.
-     * 
-     * @return config instance
-     * @since 0.1.7
+     * Get the raw {@link StreamWriterManager} instance, bypassing any adapter layer.
+     *
+     * <p>Subclasses that wrap or adapt the stream writer manager (e.g., returning a
+     * {@code Vertex.VertexStreamWriterManager} adapter from {@link #streamWriterManager()})
+     * should override this method to return the underlying {@code StreamWriterManager}
+     * directly. This allows downstream code that requires the concrete
+     * {@code StreamWriterManager} type to access it without reflection.</p>
+     *
+     * @return the raw StreamWriterManager, or null if not available
      */
-    public abstract Config config();
+    public StreamWriterManager rawStreamWriterManager() {
+        Object manager = streamWriterManager();
+        return manager instanceof StreamWriterManager typed ? typed : null;
+    }
 
-    /**
-     * Get the session state.
-     * 
-     * @return state instance
-     * @since 0.1.7
-     */
-    public abstract State state();
+    public String sessionId() {
+        return "";
+    }
 
-    /**
-     * Get the tracer instance.
-     * 
-     * @return tracer or null if not configured
-     * @since 0.1.7
-     */
-    public abstract Object tracer();
+    public String workflowId() {
+        return sessionId();
+    }
 
-    /**
-     * Get the stream writer manager.
-     * 
-     * @return stream writer manager
-     * @since 0.1.7
-     */
-    public abstract StreamWriterManager streamWriterManager();
+    public String mainWorkflowId() {
+        return workflowId();
+    }
 
-    /**
-     * Get the callback manager.
-     * 
-     * @return callback manager
-     * @since 0.1.7
-     */
-    public abstract CallbackManager callbackManager();
+    public int workflowNestingDepth() {
+        return 0;
+    }
 
-    /**
-     * Get the unique session identifier.
-     * 
-     * @return session ID
-     * @since 0.1.7
-     */
-    public abstract String sessionId();
+    public String agentId() {
+        return sessionId();
+    }
 
-    /**
-     * Get the checkpointer instance.
-     * 
-     * @return checkpointer or null
-     * @since 0.1.7
-     */
-    public abstract Object checkpointer();
+    public String teamId() {
+        return sessionId();
+    }
 
-    /**
-     * Get the actor manager for this session.
-     * <p>
-     * Mirrors Python's {@code BaseSession.actor_manager()}.
-     * 
-     * @return actor manager or null if not applicable
-     * @since 0.1.7
-     */
+    public BaseSession parent() {
+        return null;
+    }
+
+    public Object checkpointer() {
+        return null;
+    }
+
     public Object actorManager() {
         return null;
     }
 
-    // ---- Session interface compatibility ----
+    public <T> T callbackManager() {
+        return null;
+    }
 
-    /**
-     * getSessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public String getSessionId() {
         return sessionId();
     }
 
-    /**
-     * getState.
-     * 
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public Object getState(String key) {
-        if (state() != null) {
-            return state().get(key);
-        }
-        return null;
+        State currentState = state();
+        return currentState == null ? null : currentState.get(key);
     }
 
-    /**
-     * updateState.
-     * 
-     * @param stateMap stateMap
-     * @since 0.1.7
-     */
-    @Override
-    public void updateState(java.util.Map<String, Object> stateMap) {
-        if (state() != null && stateMap != null) {
-            state().update(stateMap);
+    public void updateState(java.util.Map<String, Object> data) {
+        State currentState = state();
+        if (currentState != null && data != null) {
+            currentState.update(data);
         }
     }
 
-    /**
-     * setCurrentOperatorId.
-     * 
-     * @param operatorId operatorId
-     * @since 0.1.7
-     */
-    @Override
     public void setCurrentOperatorId(String operatorId) {
         this.currentOperatorId = operatorId;
     }
 
-    /**
-     * getCurrentOperatorId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public String getCurrentOperatorId() {
         return currentOperatorId;
     }
 
-    /**
-     * Close the session and release resources.
-     * 
-     * @since 0.1.7
-     */
     public void close() {
-        // Default no-op, subclasses can override.
     }
 }

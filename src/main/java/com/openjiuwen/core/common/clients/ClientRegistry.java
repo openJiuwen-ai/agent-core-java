@@ -4,119 +4,69 @@
 
 package com.openjiuwen.core.common.clients;
 
-import com.openjiuwen.core.common.utils.SingletonSupport;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.net.http.HttpClient;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Registry for client factories and client classes.
- * 
- * @since 0.1.7
+ * Registry for managing client classes and factories.
+ *
+ * <p>Mirrors Python's {@code ClientRegistry} in
+ * {@code openjiuwen/core/common/clients/client_registry.py}.</p>
  */
-public final class ClientRegistry {
-    private final Map<String, ClientFactory> factories = new ConcurrentHashMap<>();
-    private final Map<String, Class<?>> clientClasses = new ConcurrentHashMap<>();
+public class ClientRegistry {
 
-    /**
-     * Public interface ClientFactory used by the Java parity implementation.
-     * 
-     * @since 0.1.7
-     */
     @FunctionalInterface
     public interface ClientFactory {
-        /**
-         * create.
-         * 
-         * @param kwargs kwargs
-         * @return the result
-         * @throws Exception Exception
-         * @since 0.1.7
-         */
         Object create(Map<String, Object> kwargs) throws Exception;
     }
 
-    /**
-     * ClientRegistry.
-     * 
-     * @since 0.1.7
-     */
-    private ClientRegistry() {
-        registerBuiltins();
+    private static final ClientRegistry GLOBAL_REGISTRY = new ClientRegistry();
+
+    private final Map<String, ClientFactory> factories = new LinkedHashMap<>();
+    private final Map<String, Class<?>> clientClasses = new LinkedHashMap<>();
+
+    public static ClientRegistry getClientRegistry() {
+        return GLOBAL_REGISTRY;
     }
 
-    /**
-     * getInstance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static ClientRegistry getInstance() {
-        return SingletonSupport.getInstance(ClientRegistry.class, ClientRegistry::new);
-    }
-
-    /**
-     * registerClient.
-     * 
-     * @param name name
-     * @param clientType clientType
-     * @param factory factory
-     * @since 0.1.7
-     */
-    public synchronized void registerClient(String name, String clientType, ClientFactory factory) {
-        Objects.requireNonNull(factory, "factory must not be null");
+    public void registerClient(String name, String clientType, ClientFactory factoryFunc) {
         String fullName = fullName(name, clientType);
         if (factories.containsKey(fullName)) {
             throw new IllegalArgumentException("Client type '" + fullName + "' already registered");
         }
-        factories.put(fullName, factory);
+        factories.put(fullName, factoryFunc);
     }
 
-    /**
-     * registerClass.
-     * 
-     * @param clientClass clientClass
-     * @since 0.1.7
-     */
-    public synchronized void registerClass(Class<?> clientClass) {
-        Objects.requireNonNull(clientClass, "clientClass must not be null");
-        Object clientNameValue = readStaticField(clientClass, "__client_name__");
-        Object clientTypeValue = readStaticField(clientClass, "__client_type__");
+    public void registerClient(String name, ClientFactory factoryFunc) {
+        registerClient(name, "common", factoryFunc);
+    }
 
-        if (clientNameValue == null) {
+    public void registerClass(Class<?> clientClass) {
+        List<String> names = getClientNames(clientClass);
+        if (names.isEmpty()) {
             throw new IllegalArgumentException(
-                    "Client class " + clientClass.getName() + " must define __client_name__");
+                    "Client class " + clientClass.getSimpleName() + " must define __client_name__");
         }
-        if (clientTypeValue == null || String.valueOf(clientTypeValue).isBlank()) {
+
+        String clientType = getClientType(clientClass);
+        if (clientType == null) {
             throw new IllegalArgumentException(
-                    "Client class " + clientClass.getName() + " __client_type__ cannot be empty");
+                    "Client class " + clientClass.getSimpleName() + " must define __client_type__");
         }
-        List<String> names = new ArrayList<>();
-        if (clientNameValue instanceof String[] array) {
-            for (String item : array) {
-                if (item != null && !item.isBlank()) {
-                    names.add(item);
-                }
-            }
-        } else if (clientNameValue instanceof Iterable<?> iterable) {
-            for (Object item : iterable) {
-                if (item != null && !String.valueOf(item).isBlank()) {
-                    names.add(String.valueOf(item));
-                }
-            }
-        } else {
-            names.add(String.valueOf(clientNameValue));
+        if (clientType.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Client class " + clientClass.getSimpleName()
+                            + " __client_type__ cannot be empty, register failed");
         }
-        String clientType = String.valueOf(clientTypeValue);
+
         for (String name : names) {
-            String fullName = fullName(name, clientType);
+            String fullName = clientType + "_" + name;
             if (factories.containsKey(fullName) || clientClasses.containsKey(fullName)) {
                 return;
             }
@@ -125,74 +75,51 @@ public final class ClientRegistry {
         }
     }
 
-    /**
-     * getClient.
-     * 
-     * @param name name
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public Object getClient(String name) throws Exception {
+    public Object getClient(String name) {
         return getClient(name, "common", Map.of());
     }
 
-    /**
-     * getClient.
-     * 
-     * @param name name
-     * @param clientType clientType
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public Object getClient(String name, String clientType) throws Exception {
+    public Object getClient(String name, Map<String, Object> kwargs) {
+        return getClient(name, "common", kwargs);
+    }
+
+    public Object getClient(String name, String clientType) {
         return getClient(name, clientType, Map.of());
     }
 
-    /**
-     * getClient.
-     * 
-     * @param name name
-     * @param clientType clientType
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public Object getClient(String name, String clientType, Map<String, Object> kwargs) throws Exception {
-        if (name == null || name.isBlank()) {
+    public Object getClient(String name, String clientType, Map<String, Object> kwargs) {
+        if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Client name cannot be empty");
         }
 
         String lookupName = name;
-        if (clientType != null && !clientType.isBlank()) {
-            String typedName = fullName(name, clientType);
-            if (factories.containsKey(typedName)) {
-                lookupName = typedName;
+        if (clientType != null) {
+            String fullName = fullName(name, clientType);
+            if (factories.containsKey(fullName)) {
+                lookupName = fullName;
             }
         }
+
         ClientFactory factory = factories.get(lookupName);
         if (factory == null) {
-            String searchKey = clientType != null && !clientType.isBlank() ? fullName(name, clientType) : name;
-            throw new IllegalArgumentException("Unknown client type: '" + searchKey + "'. Available: " + listClients());
+            List<String> available = new ArrayList<>(factories.keySet());
+            String searchKey = clientType != null ? fullName(name, clientType) : name;
+            throw new IllegalArgumentException(
+                    "Unknown client type: '" + searchKey + "'. Available: " + available);
         }
 
         try {
             return factory.create(kwargs != null ? kwargs : Map.of());
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to create client '" + lookupName + "': " + e.getMessage(), e);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to create client '" + lookupName + "': " + ex.getMessage(), ex);
         }
     }
 
-    /**
-     * unregister.
-     * 
-     * @param name name
-     * @param clientType clientType
-     * @since 0.1.7
-     */
-    public synchronized void unregister(String name, String clientType) {
+    public void unregister(String name) {
+        unregister(name, null);
+    }
+
+    public void unregister(String name, String clientType) {
         String fullName = fullName(name, clientType);
         if (!factories.containsKey(fullName)) {
             throw new IllegalArgumentException("Client type '" + fullName + "' not registered");
@@ -201,129 +128,135 @@ public final class ClientRegistry {
         clientClasses.remove(fullName);
     }
 
-    /**
-     * listClients.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public boolean isRegistered(String name, String clientType) {
+        String fullName = fullName(name, clientType);
+        return factories.containsKey(fullName) || clientClasses.containsKey(fullName);
+    }
+
+    public boolean isRegistered(String name) {
+        return isRegistered(name, "common");
+    }
+
     public List<String> listClients() {
         return new ArrayList<>(factories.keySet());
     }
 
-    synchronized void resetForTests() {
-        factories.clear();
-        clientClasses.clear();
-        registerBuiltins();
+    private String fullName(String name, String clientType) {
+        return clientType != null ? clientType + "_" + name : name;
     }
 
-    /**
-     * registerBuiltins.
-     * 
-     * @since 0.1.7
-     */
-    private void registerBuiltins() {
-        registerClient("http", "common", kwargs -> {
-            Object configObj = kwargs.get("config");
-            SessionConfig sessionConfig = SessionConfig.from(configObj);
-            boolean isReuseSessionEnabled = ClientConfigSupport.asBoolean(kwargs.get("reuse_session"), true);
-            return new com.openjiuwen.core.common.clients.HttpClient(sessionConfig, isReuseSessionEnabled);
-        });
-        registerClient("httpx", "common", kwargs -> {
-            HttpXConnectorPoolConfig config = HttpXConnectorPoolConfig.from(kwargs.get("config"));
-            return ConnectorPoolManager.getInstance().getConnectorPool("httpx", config).conn();
-        });
-        registerClient("openai", "common", kwargs -> {
-            Object configObj = kwargs.get("config");
-            ModelClientConfig modelClientConfig = configObj instanceof ModelClientConfig config
-                    ? config
-                    : modelClientConfigFromMap(ClientConfigSupport.asObjectMap(configObj));
-            return Clients.createOpenAiClient(modelClientConfig);
-        });
-        registerClient("async_openai", "common", kwargs -> {
-            Object configObj = kwargs.get("config");
-            ModelClientConfig modelClientConfig = configObj instanceof ModelClientConfig config
-                    ? config
-                    : modelClientConfigFromMap(ClientConfigSupport.asObjectMap(configObj));
-            return Clients.createAsyncOpenAiClient(modelClientConfig);
-        });
-    }
-
-    /**
-     * modelClientConfigFromMap.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ModelClientConfig modelClientConfigFromMap(Map<String, Object> config) {
-        return ModelClientConfig.builder()
-                .clientProvider(ClientConfigSupport.asString(config.getOrDefault("client_provider", "openai")))
-                .apiKey(ClientConfigSupport.asString(config.get("api_key")))
-                .apiBase(ClientConfigSupport.asString(config.get("api_base")))
-                .timeout(ClientConfigSupport.asNullableDouble(config.get("timeout")) != null
-                        ? ClientConfigSupport.asNullableDouble(config.get("timeout"))
-                        : 60.0)
-                .maxRetries(ClientConfigSupport.asInt(config.get("max_retries"), 3))
-                .verifySsl(ClientConfigSupport.asBoolean(config.get("verify_ssl"), true))
-                .sslCert(ClientConfigSupport.asString(config.get("ssl_cert")))
-                .headers(ClientConfigSupport.asStringMap(config.get("headers"))).build();
-    }
-
-    /**
-     * instantiateClient.
-     * 
-     * @param clientClass clientClass
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private static Object instantiateClient(Class<?> clientClass, Map<String, Object> kwargs) throws Exception {
-        try {
-            Constructor<?> mapConstructor = clientClass.getDeclaredConstructor(Map.class);
-            mapConstructor.setAccessible(true);
+    private Object instantiateClient(Class<?> clientClass, Map<String, Object> kwargs) throws Exception {
+        Constructor<?> mapConstructor = findConstructor(clientClass, Map.class);
+        if (mapConstructor != null) {
             return mapConstructor.newInstance(kwargs);
-        } catch (NoSuchMethodException ignored) {
-            Constructor<?> noArgConstructor = clientClass.getDeclaredConstructor();
-            noArgConstructor.setAccessible(true);
-            return noArgConstructor.newInstance();
         }
+
+        Constructor<?> emptyConstructor = findConstructor(clientClass);
+        if (emptyConstructor != null) {
+            Object instance = emptyConstructor.newInstance();
+            if (instance instanceof BaseClient baseClient) {
+                baseClient.initialize(kwargs);
+            }
+            return instance;
+        }
+
+        throw new IllegalStateException("No usable constructor for " + clientClass.getName());
     }
 
-    /**
-     * readStaticField.
-     * 
-     * @param clientClass clientClass
-     * @param fieldName fieldName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object readStaticField(Class<?> clientClass, String fieldName) {
+    private Constructor<?> findConstructor(Class<?> type, Class<?>... parameterTypes) {
         try {
-            Field field = clientClass.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field.get(null);
-        } catch (ReflectiveOperationException e) {
+            Constructor<?> constructor = type.getDeclaredConstructor(parameterTypes);
+            constructor.setAccessible(true);
+            return constructor;
+        } catch (NoSuchMethodException ex) {
             return null;
         }
     }
 
-    /**
-     * fullName.
-     * 
-     * @param name name
-     * @param clientType clientType
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String fullName(String name, String clientType) {
-        if (name == null || name.isBlank()) {
-            return "";
+    private List<String> getClientNames(Class<?> clientClass) {
+        Object value = getClassMetadata(
+                clientClass,
+                new String[]{"getClientName"},
+                "__client_name__",
+                "CLIENT_NAME",
+                "clientName");
+        List<String> result = new ArrayList<>();
+        if (value instanceof String text) {
+            result.add(text);
+        } else if (value instanceof String[] array) {
+            for (String item : array) {
+                result.add(item);
+            }
+        } else if (value instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                result.add(String.valueOf(item));
+            }
         }
-        if (clientType == null || clientType.isBlank()) {
-            return name;
+        return result;
+    }
+
+    private String getClientType(Class<?> clientClass) {
+        Object value = getClassMetadata(
+                clientClass,
+                new String[]{"getClientType"},
+                "__client_type__",
+                "CLIENT_TYPE",
+                "clientType");
+        return value instanceof String text ? text : null;
+    }
+
+    private Object getClassMetadata(Class<?> clientClass, String[] methodNames, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            Field field = findField(clientClass, fieldName);
+            if (field != null) {
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(null);
+                    if (value != null) {
+                        return value;
+                    }
+                } catch (IllegalAccessException ignored) {
+                }
+            }
         }
-        return clientType + "_" + name;
+
+        for (String methodName : methodNames) {
+            Method method = findMethod(clientClass, methodName);
+            if (method != null) {
+                try {
+                    method.setAccessible(true);
+                    Object value = method.invoke(null);
+                    if (value != null) {
+                        return value;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    private Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private Method findMethod(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(name);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 }

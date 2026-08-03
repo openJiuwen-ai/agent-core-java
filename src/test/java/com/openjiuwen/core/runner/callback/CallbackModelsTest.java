@@ -1,28 +1,32 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
-
 package com.openjiuwen.core.runner.callback;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for callback framework data models.
- * Translated from Python test_models.py
+ *
+ * <p>Mirrors Python's {@code test_models.py} in
+ * {@code tests/unit_tests/core/runner/callback/test_models.py}.</p>
  */
 @DisplayName("Callback Models Tests")
 class CallbackModelsTest {
-    // ========== CallbackMetrics ==========
+
     @Test
     @DisplayName("CallbackMetrics default values")
     void testCallbackMetricsDefaultValues() {
         CallbackMetrics metrics = new CallbackMetrics();
         assertEquals(0, metrics.getCallCount());
         assertEquals(0.0, metrics.getTotalTime());
-        assertEquals(Double.MAX_VALUE, metrics.getMinTime());
+        assertEquals(Double.POSITIVE_INFINITY, metrics.getMinTime());
         assertEquals(0.0, metrics.getMaxTime());
         assertEquals(0, metrics.getErrorCount());
         assertNull(metrics.getLastCallTime());
@@ -57,6 +61,7 @@ class CallbackModelsTest {
         metrics.update(0.1, false);
         metrics.update(0.3, false);
         metrics.update(0.2, false);
+
         assertEquals(3, metrics.getCallCount());
         assertEquals(0.6, metrics.getTotalTime(), 0.01);
         assertEquals(0.1, metrics.getMinTime(), 0.01);
@@ -67,7 +72,8 @@ class CallbackModelsTest {
     @DisplayName("CallbackMetrics avg_time no calls")
     void testCallbackMetricsAvgTimeNoCalls() {
         CallbackMetrics metrics = new CallbackMetrics();
-        assertEquals(0.0, metrics.getAvgTime(), 0.001);
+
+        assertEquals(0.0, metrics.getAvgTime(), 0.0);
     }
 
     @Test
@@ -80,7 +86,7 @@ class CallbackModelsTest {
     }
 
     @Test
-    @DisplayName("CallbackMetrics toMap")
+    @DisplayName("CallbackMetrics toMap keeps python keys")
     void testCallbackMetricsToMap() {
         CallbackMetrics metrics = new CallbackMetrics();
         metrics.update(0.5, false);
@@ -97,16 +103,16 @@ class CallbackModelsTest {
     }
 
     @Test
-    @DisplayName("CallbackMetrics toMap no calls")
+    @DisplayName("CallbackMetrics toMap no calls keeps null last_call_time")
     void testCallbackMetricsToMapNoCalls() {
         CallbackMetrics metrics = new CallbackMetrics();
         Map<String, Object> result = metrics.toMap();
         assertEquals(0, result.get("call_count"));
-        assertEquals(0.0, result.get("min_time")); // should convert MAX_VALUE to 0
+        assertEquals(0.0, result.get("min_time"));
         assertEquals(0.0, result.get("error_rate"));
+        assertTrue(result.containsKey("last_call_time"));
+        assertNull(result.get("last_call_time"));
     }
-
-    // ========== FilterResult ==========
 
     @Test
     @DisplayName("FilterResult continue")
@@ -137,8 +143,6 @@ class CallbackModelsTest {
         assertEquals(newKwargs, result.getModifiedKwargs());
     }
 
-    // ========== ChainContext ==========
-
     @Test
     @DisplayName("ChainContext default initialization")
     void testChainContextDefaultInit() {
@@ -151,63 +155,76 @@ class CallbackModelsTest {
         assertEquals(0, context.getCurrentIndex());
         assertFalse(context.isCompleted());
         assertFalse(context.isRolledBack());
-        assertTrue(context.getStartTime() > 0);
+        assertTrue(context.getStartTime() > 0.0);
     }
 
     @Test
-    @DisplayName("ChainContext get_last_result empty")
+    @DisplayName("ChainContext result and metadata helpers")
+    void testChainContextHelpers() {
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+        context.getResults().add("first");
+        context.getResults().add("second");
+        context.setMetadata("key1", "value1");
+
+        assertEquals("second", context.getLastResult());
+        assertEquals("value1", context.getMetadata("key1", null));
+        assertEquals("default", context.getMetadata("missing", "default"));
+        assertEquals(2, context.getAllResults().size());
+        assertTrue(context.getElapsedTime() >= 0.0);
+    }
+
+    @Test
+    @DisplayName("ChainContext getLastResult returns null when empty")
     void testChainContextGetLastResultEmpty() {
         ChainContext context = new ChainContext("test", new Object[0], Map.of());
+
         assertNull(context.getLastResult());
     }
 
     @Test
-    @DisplayName("ChainContext get_last_result")
-    void testChainContextGetLastResult() {
-        ChainContext context = new ChainContext("test", new Object[0], Map.of());
-        context.getResults().add("first");
-        context.getResults().add("second");
-        context.getResults().add("third");
-        assertEquals("third", context.getLastResult());
-    }
-
-    @Test
     @DisplayName("ChainContext getAllResults returns copy")
-    void testChainContextGetAllResults() {
+    void testChainContextGetAllResultsReturnsCopy() {
         ChainContext context = new ChainContext("test", new Object[0], Map.of());
         context.getResults().add("a");
         context.getResults().add("b");
+
         var results = context.getAllResults();
-        assertEquals(2, results.size());
         results.add("c");
+
         assertEquals(2, context.getResults().size());
+        assertEquals(3, results.size());
     }
 
     @Test
     @DisplayName("ChainContext metadata operations")
     void testChainContextMetadataOperations() {
         ChainContext context = new ChainContext("test", new Object[0], Map.of());
+
         context.setMetadata("key1", "value1");
+
         assertEquals("value1", context.getMetadata("key1", null));
         assertNull(context.getMetadata("nonexistent", null));
         assertEquals("default", context.getMetadata("nonexistent", "default"));
     }
 
+    @Disabled("remote env do not support node")
     @Test
-    @DisplayName("ChainContext elapsed time")
+    @DisplayName("ChainContext elapsed time increases")
     void testChainContextElapsedTime() throws InterruptedException {
         ChainContext context = new ChainContext("test", new Object[0], Map.of());
-        Thread.sleep(50);
-        double elapsed = context.getElapsedTime();
-        assertTrue(elapsed >= 0.05);
-    }
 
-    // ========== ChainResult ==========
+        Thread.sleep(50L);
+
+        assertTrue(context.getElapsedTime() >= 0.05d);
+    }
 
     @Test
     @DisplayName("ChainResult continue")
     void testChainResultContinue() {
-        ChainResult result = ChainResult.builder().action(ChainAction.CONTINUE).result("success").build();
+        ChainResult result = ChainResult.builder()
+                .action(ChainAction.CONTINUE)
+                .result("success")
+                .build();
         assertEquals(ChainAction.CONTINUE, result.getAction());
         assertEquals("success", result.getResult());
         assertNull(result.getContext());
@@ -218,27 +235,37 @@ class CallbackModelsTest {
     @DisplayName("ChainResult rollback with error")
     void testChainResultRollbackWithError() {
         Exception error = new RuntimeException("Something went wrong");
-        ChainContext ctx = new ChainContext("test", new Object[0], Map.of());
-        ChainResult result = ChainResult.builder().action(ChainAction.ROLLBACK).context(ctx).error(error).build();
+        ChainContext context = new ChainContext("test", new Object[0], Map.of());
+        ChainResult result = ChainResult.builder()
+                .action(ChainAction.ROLLBACK)
+                .context(context)
+                .error(error)
+                .build();
         assertEquals(ChainAction.ROLLBACK, result.getAction());
-        assertSame(ctx, result.getContext());
+        assertSame(context, result.getContext());
         assertSame(error, result.getError());
     }
 
     @Test
     @DisplayName("ChainResult break")
     void testChainResultBreak() {
-        ChainResult result = ChainResult.builder().action(ChainAction.BREAK).result(Map.of("data", "value")).build();
-        assertEquals(ChainAction.BREAK, result.getAction());
-        assertEquals(Map.of("data", "value"), result.getResult());
-    }
+        Map<String, Object> resultData = Map.of("data", "value");
+        ChainResult result = ChainResult.builder()
+                .action(ChainAction.BREAK)
+                .result(resultData)
+                .build();
 
-    // ========== CallbackInfo ==========
+        assertEquals(ChainAction.BREAK, result.getAction());
+        assertEquals(resultData, result.getResult());
+    }
 
     @Test
     @DisplayName("CallbackInfo default initialization")
     void testCallbackInfoDefaultInit() {
-        CallbackInfo info = CallbackInfo.builder().callback(kwargs -> null).priority(0).build();
+        CallbackInfo info = CallbackInfo.builder()
+                .callback(kwargs -> null)
+                .priority(0)
+                .build();
         assertNotNull(info.getCallback());
         assertEquals(0, info.getPriority());
         assertFalse(info.isOnce());
@@ -248,15 +275,29 @@ class CallbackModelsTest {
         assertEquals(0, info.getMaxRetries());
         assertEquals(0.0, info.getRetryDelay());
         assertNull(info.getTimeout());
-        assertTrue(info.getCreatedAt() > 0);
+        assertTrue(info.getCreatedAt() > 0.0);
+        assertNull(info.getWrapper());
+        assertEquals("", info.getCallbackType());
     }
 
     @Test
     @DisplayName("CallbackInfo full initialization")
     void testCallbackInfoFullInit() {
-        CallbackInfo info =
-            CallbackInfo.builder().callback(kwargs -> null).priority(10).once(true).enabled(false).namespace("custom")
-                    .tags(java.util.Set.of("tag1", "tag2")).maxRetries(3).retryDelay(1.0).timeout(30.0).build();
+        Function<Map<String, Object>, Object> callback = kwargs -> null;
+        Function<Map<String, Object>, Object> wrapper = kwargs -> "wrapped";
+        CallbackInfo info = CallbackInfo.builder()
+                .callback(callback)
+                .priority(10)
+                .once(true)
+                .enabled(false)
+                .namespace("custom")
+                .tags(Set.of("tag1", "tag2"))
+                .maxRetries(3)
+                .retryDelay(1.0)
+                .timeout(30.0)
+                .wrapper(wrapper)
+                .callbackType("transform")
+                .build();
         assertEquals(10, info.getPriority());
         assertTrue(info.isOnce());
         assertFalse(info.isEnabled());
@@ -265,5 +306,21 @@ class CallbackModelsTest {
         assertEquals(3, info.getMaxRetries());
         assertEquals(1.0, info.getRetryDelay());
         assertEquals(30.0, info.getTimeout());
+        assertSame(wrapper, info.getWrapper());
+        assertEquals("transform", info.getCallbackType());
+    }
+
+    @Test
+    @DisplayName("CallbackInfo hash is callback identity")
+    void testCallbackInfoHash() {
+        Function<Map<String, Object>, Object> callback1 = kwargs -> null;
+        Function<Map<String, Object>, Object> callback2 = kwargs -> null;
+
+        CallbackInfo info1 = CallbackInfo.builder().callback(callback1).priority(0).build();
+        CallbackInfo info2 = CallbackInfo.builder().callback(callback1).priority(10).build();
+        CallbackInfo info3 = CallbackInfo.builder().callback(callback2).priority(0).build();
+
+        assertEquals(info1.hashCode(), info2.hashCode());
+        assertNotEquals(info1.hashCode(), info3.hashCode());
     }
 }

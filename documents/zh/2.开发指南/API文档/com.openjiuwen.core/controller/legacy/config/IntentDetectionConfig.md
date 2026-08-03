@@ -1,4 +1,4 @@
-# com.openjiuwen.core.controller.legacy.config.IntentDetectionConfig
+# com.openjiuwen.core.single_agent.legacy.config.IntentDetectionConfig
 
 ## class IntentDetectionConfig
 

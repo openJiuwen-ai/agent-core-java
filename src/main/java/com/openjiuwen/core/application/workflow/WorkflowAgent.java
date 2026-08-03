@@ -4,414 +4,1347 @@
 
 package com.openjiuwen.core.application.workflow;
 
+import com.openjiuwen.core.application.schema.DefaultResponse;
 import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
-import com.openjiuwen.core.common.constants.ControllerType;
-import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.controller.Controller;
-import com.openjiuwen.core.controller.ControllerConfig;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
-import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
-import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.singleagent.ControllerAgent;
+import com.openjiuwen.core.session.stream.TraceSchema;
+import com.openjiuwen.core.session.tracer.TraceWorkflowSpan;
+import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
-import com.openjiuwen.core.workflow.WorkflowOutput;
-import com.openjiuwen.core.workflow.WorkflowUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Iterator;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Workflow-based Agent - Executes predefined workflows with multi-workflow controller.
- * Implemented using ControllerAgent with WorkflowEventHandler for
- * workflow-specific execution logic including intent detection and
- * interruption handling.
- * 
- * @since 0.1.7
+ * Backward-compatible facade for the 0.1.12 workflow agent package.
+ *
+ * <p>Mirrors Python's {@code WorkflowAgent} in
+ * {@code openjiuwen/core/application/workflow_agent/workflow_agent.py}.</p>
  */
-public class WorkflowAgent extends ControllerAgent {
-    private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
+public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agent.WorkflowAgent {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final WorkflowAgentConfig agentConfig;
+    private final AbilityManager abilityManager = new AbilityManager();
+    private final AgentCard card;
 
-    /**
-     * Create WorkflowAgent with the given configuration.
-     * 
-     * @param agentConfig the workflow agent configuration
-     * @since 0.1.7
-     */
     public WorkflowAgent(WorkflowAgentConfig agentConfig) {
-        super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(),
-                buildContextEngineConfig(agentConfig));
-        if (agentConfig.getControllerType() != null
-                && agentConfig.getControllerType() != ControllerType.WORKFLOW_CONTROLLER) {
-            throw new UnsupportedOperationException(
-                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + agentConfig.getControllerType());
-        }
-        this.agentConfig = agentConfig;
-
-        // Set up the WorkflowEventHandler on the controller
-        WorkflowEventHandler eventHandler = new WorkflowEventHandler(agentConfig, getContextEngine());
-        getController().setEventHandler(eventHandler);
+        super(toLegacyConfig(agentConfig));
+        this.agentConfig = agentConfig == null ? WorkflowAgentConfig.builder().build() : agentConfig;
+        this.card = toAgentCard(this.agentConfig);
+        this.abilityManager.setContextEngine(getContextEngine());
     }
 
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public ControllerOutput invoke(Object inputs, Session session) {
-        AgentSessionApi managedSession = session == null ? createManagedSession(inputs) : null;
-        Session effectiveSession = managedSession != null ? managedSession : session;
-
-        if (managedSession != null) {
-            managedSession.preRun(inputs);
-        }
-        setCallMode(effectiveSession, "invoke");
-        try {
-            return normalizeInvokeOutput(super.invoke(inputs, effectiveSession));
-        } finally {
-            clearCallMode(effectiveSession);
-            if (managedSession != null) {
-                managedSession.postRun();
-            }
-        }
-    }
-
-    /**
-     * stream.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param streamModes streamModes
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        AgentSessionApi managedSession = session == null ? createManagedSession(inputs, streamModes) : null;
-        Session effectiveSession = managedSession != null ? managedSession : session;
-
-        if (managedSession != null) {
-            managedSession.preRun(inputs);
-        }
-        setCallMode(effectiveSession, "stream");
-        Iterator<Object> delegate = super.stream(inputs, effectiveSession, streamModes);
-        return new Iterator<>() {
-            private boolean finalized;
-            @Override
-            public boolean hasNext() {
-                boolean hasNext = delegate.hasNext();
-                if (!hasNext) {
-                    finalizeStream();
-                }
-                return hasNext;
-            }
-
-            @Override
-            public Object next() {
-                try {
-                    return delegate.next();
-                } catch (NoSuchElementException e) {
-                    finalizeStream();
-                    throw e;
-                }
-            }
-
-            private void finalizeStream() {
-                if (finalized) {
-                    return;
-                }
-                finalized = true;
-                clearCallMode(effectiveSession);
-                if (managedSession != null) {
-                    managedSession.postRun();
-                }
-            }
-        };
-    }
-
-    /**
-     * getAgentConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public WorkflowAgentConfig getAgentConfig() {
         return agentConfig;
     }
 
-    /**
-     * Set prompt template and keep it on the application config for Python compatibility.
-     * 
-     * @param promptTemplate promptTemplate
-     * @since 0.1.7
-     */
-    public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
-        agentConfig.setPromptTemplate(promptTemplate != null ? promptTemplate : new ArrayList<>());
+    public AbilityManager getAbilityManager() {
+        return abilityManager;
     }
 
-    /**
-     * Append prompt template entries, mirroring Python's {@code add_prompt()}.
-     * 
-     * @param promptTemplate promptTemplate
-     * @since 0.1.7
-     */
-    public void addPrompt(List<Map<String, String>> promptTemplate) {
+    @Override
+    public com.openjiuwen.core.context.ContextEngine getContextEngine() {
+        return (com.openjiuwen.core.context.ContextEngine) super.getContextEngine();
+    }
+
+    public AbilityManager get_ability_manager() {
+        return abilityManager;
+    }
+
+    public AgentCard getCard() {
+        return card;
+    }
+
+    @Override
+    public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+        try {
+            Map<String, Object> inputMap = toInputMap(inputs);
+            logLegacyModelParams();
+            InvocationResult invocation = invokeController(inputMap, session);
+            recordContextMessages(inputMap, invocation.output(), invocation.session());
+            Map<String, Object> data = directInvokeMapView(invocation.output());
+            if (data != null) {
+                return new MapCompletedStage(invocation.output(), data);
+            }
+            return CompletableFuture.completedFuture(invocation.output());
+        } catch (RuntimeException error) {
+            return MapCompletedStage.failed(error);
+        }
+    }
+
+    private static Map<String, Object> directInvokeMapView(ControllerOutput output) {
+        if (output == null) {
+            return null;
+        }
+        Map<String, Object> data = output.getDataAsMap();
+        if (data != null) {
+            Map<String, Object> interactionView = interactionMapView(data);
+            if (interactionView != null) {
+                return interactionView;
+            }
+            Map<String, Object> completedResultView = completedWorkflowResultView(data);
+            if (completedResultView != null) {
+                return completedResultView;
+            }
+            return data;
+        }
+        Object rawData = normalizeCompletedStages(output.getData());
+        if (rawData instanceof Map<?, ?> rawMap) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            Map<String, Object> interactionView = interactionMapView(result);
+            if (interactionView != null) {
+                return interactionView;
+            }
+            return result;
+        }
+        if (rawData instanceof List<?> list) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("interaction", list);
+            return result;
+        }
+        if (rawData instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            return completedWorkflowResultMap(workflowOutput);
+        }
+        return null;
+    }
+
+    private static Map<String, Object> interactionMapView(Map<String, Object> data) {
+        if (data.containsKey("result_type")) {
+            return null;
+        }
+        Object workflowOutput = data.get("output");
+        if (!(workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput)) {
+            return null;
+        }
+        Object result = normalizeCompletedStages(typedOutput.getResult());
+        if (typedOutput.getState() == WorkflowExecutionState.COMPLETED && result instanceof Map<?, ?> rawResult) {
+            return stringKeyMap(rawResult);
+        }
+        if (result instanceof OutputSchema outputSchema) {
+            return Map.of("interaction", List.of(outputSchema));
+        }
+        if (result instanceof List<?> list && list.stream().anyMatch(OutputSchema.class::isInstance)) {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("interaction", list);
+            return view;
+        }
+        return null;
+    }
+
+    private static Map<String, Object> completedWorkflowResultView(Map<String, Object> data) {
+        if (data.size() != 1 || !(data.get("output") instanceof Map<?, ?> outputMap)) {
+            return null;
+        }
+        return stringKeyMap(outputMap);
+    }
+
+    public ControllerOutput invoke(Object inputs, AgentSessionApi session) {
+        Map<String, Object> inputMap = toInputMap(inputs);
+        logLegacyModelParams();
+        InvocationResult invocation = invokeController(inputMap, session);
+        recordContextMessages(inputMap, invocation.output(), invocation.session());
+        return invocation.output();
+    }
+
+    @Override
+    public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        Map<String, Object> inputMap = toInputMap(inputs);
+        if (agentConfig.getModel() == null) {
+            return super.stream(inputMap, session, streamModes);
+        }
+        logLegacyModelParams();
+        InvocationResult invocation = invokeController(inputMap, session, streamModes);
+        recordContextMessages(inputMap, invocation.output(), invocation.session());
+        List<Object> chunks = streamChunksView(invocation);
+        return chunks.iterator();
+    }
+
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        return stream(toInputMap(inputs), session, streamModes);
+    }
+
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session) {
+        return stream(inputs, session, List.of(StreamMode.OUTPUT));
+    }
+
+    public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
+        agentConfig.setPromptTemplate(promptTemplate == null ? List.of() : promptTemplate);
+    }
+
+    @Override
+    @SuppressWarnings("rawtypes")
+    public void addPrompt(List promptTemplate) {
         if (promptTemplate == null || promptTemplate.isEmpty()) {
             return;
         }
-        List<Map<String, String>> merged = agentConfig.getPromptTemplate() == null
-                ? new ArrayList<>()
-                : new ArrayList<>(agentConfig.getPromptTemplate());
-        merged.addAll(promptTemplate);
-        setPromptTemplate(merged);
-    }
-
-    /**
-     * Add tools to this agent (update config, ability manager, and resource manager).
-     * Mirrors Python's {@code BaseAgent.add_tools()} behavior used by workflow-agent tests.
-     * 
-     * @param tools tools
-     * @since 0.1.7
-     */
-    public void addTools(List<Tool> tools) {
-        if (tools == null || tools.isEmpty()) {
-            return;
-        }
-        for (Tool tool : tools) {
-            if (tool == null || tool.getCard() == null) {
-                continue;
-            }
-            getAbilityManager().add(tool.getCard());
-            Runner.resourceMgr().addTool(tool, getCard().getId());
-            if (agentConfig.getTools() != null && !agentConfig.getTools().contains(tool.getCard().getName())) {
-                agentConfig.getTools().add(tool.getCard().getName());
+        for (Object item : promptTemplate) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, String> prompt = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    prompt.put(String.valueOf(entry.getKey()),
+                            entry.getValue() == null ? null : String.valueOf(entry.getValue()));
+                }
+                agentConfig.getPromptTemplate().add(prompt);
             }
         }
     }
 
-    /**
-     * addWorkflows.
-     * 
-     * @param workflows workflows
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public void addWorkflows(List<Workflow> workflows) {
-        if (workflows == null || workflows.isEmpty()) {
-            return;
-        }
-        String agentId = getCard() != null ? getCard().getId() : null;
-        boolean canRegisterWorkflowResource = agentId != null && !agentId.isBlank();
-        for (Workflow workflow : workflows) {
-            WorkflowCard card = workflow.getCard();
-            getAbilityManager().add(card);
-            agentConfig.getWorkflows()
-                    .add(WorkflowSchema.builder().id(card.getId()).name(card.getName()).version(card.getVersion())
-                            .description(card.getDescription())
-                            .inputParams(card.getInputParams() instanceof Map
-                                    ? (Map<String, Object>) card.getInputParams()
-                                    : Map.of())
-                            .build());
-            String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
-            WorkflowCard resourceCard =
-                WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
-                        .description(card.getDescription()).inputParams(card.getInputParams()).build();
-            if (canRegisterWorkflowResource) {
-                Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
-            }
+    @Override
+    public void addWorkflows(List<?> incomingWorkflows) {
+        super.addWorkflows(incomingWorkflows);
+        Object controller = getController();
+        if (controller instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController workflowController) {
+            workflowController.setupFromAgent(this);
         }
     }
 
-    // ==================== Private Helpers ====================
-
-    /**
-     * buildAgentCard.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static AgentCard buildAgentCard(WorkflowAgentConfig config) {
-        return AgentCard.builder().id(config.getId()).name(config.getId()).description(config.getDescription()).build();
+    private static com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig toLegacyConfig(
+            WorkflowAgentConfig source) {
+        WorkflowAgentConfig effective = source == null ? WorkflowAgentConfig.builder().build() : source;
+        com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig target =
+                new com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig();
+        target.setId(effective.getId());
+        target.setVersion(effective.getVersion());
+        target.setDescription(effective.getDescription());
+        target.setModel(effective.getModel());
+        target.setControllerType(effective.getControllerType());
+        target.setTools(effective.getTools());
+        target.setConstrain(effective.getConstrain());
+        target.setWorkflows(effective.getWorkflows().stream()
+                .map(WorkflowAgent::toLegacyWorkflowSchema)
+                .toList());
+        target.setStartWorkflow(toLegacyWorkflowSchema(effective.getStartWorkflow()));
+        target.setEndWorkflow(toLegacyWorkflowSchema(effective.getEndWorkflow()));
+        target.setGlobalVariables(effective.getGlobalVariables());
+        target.setGlobalParams(effective.getGlobalParams());
+        target.setDefaultResponse(toControllerDefaultResponse(effective.getDefaultResponse()));
+        return target;
     }
 
-    /**
-     * buildControllerConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ControllerConfig buildControllerConfig() {
-        ControllerConfig cc = new ControllerConfig();
-        cc.setMaxConcurrentTasks(1);
-        return cc;
-    }
-
-    /**
-     * buildContextEngineConfig.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ContextEngineConfig buildContextEngineConfig(WorkflowAgentConfig config) {
-        if (config.getContextEngineConfig() != null) {
-            return config.getContextEngineConfig();
+    private static com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema toLegacyWorkflowSchema(
+            WorkflowSchema source) {
+        if (source == null) {
+            return new com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema();
         }
-        int maxRounds = config.getConstrain() != null ? config.getConstrain().getReservedMaxChatRounds() : 10;
-        return ContextEngineConfig.builder().maxContextMessageNum(maxRounds * 2).defaultWindowRoundNum(maxRounds)
+        return com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema.builder()
+                .id(source.getId())
+                .name(source.getName())
+                .version(source.getVersion())
+                .description(source.getDescription())
+                .inputs(source.getInputParams() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(
+                        source.getInputParams()))
                 .build();
     }
 
-    /**
-     * createManagedSession.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
-    private AgentSessionApi createManagedSession(Object inputs) {
-        return createManagedSession(inputs, null);
+    private static com.openjiuwen.core.controller.ControllerConfig.DefaultResponse toControllerDefaultResponse(
+            DefaultResponse source) {
+        if (source == null) {
+            return new com.openjiuwen.core.controller.ControllerConfig.DefaultResponse();
+        }
+        return new com.openjiuwen.core.controller.ControllerConfig.DefaultResponse(source.getType(), source.getText());
     }
 
-    /**
-     * createManagedSession.
-     * 
-     * @param inputs inputs
-     * @param streamModes streamModes
-     * @return the result
-     * @since 0.1.7
-     */
-    private AgentSessionApi createManagedSession(Object inputs, List<StreamMode> streamModes) {
-        String sessionId = "default_session";
-        if (inputs instanceof Map<?, ?> inputMap) {
-            Object conversationId = inputMap.get("conversation_id");
-            if (conversationId instanceof String s && !s.isBlank()) {
-                sessionId = s;
+    private static Map<String, Object> toInputMap(Object inputs) {
+        if (inputs instanceof Map<?, ?> map) {
+            Map<String, Object> typed = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                typed.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return typed;
+        }
+        return Map.of("input", inputs);
+    }
+
+    private static AgentCard toAgentCard(WorkflowAgentConfig source) {
+        return new AgentCard(valueOrEmpty(source.getId()), valueOrEmpty(source.getId()),
+                valueOrEmpty(source.getDescription()));
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private void logLegacyModelParams() {
+        if (agentConfig.getModel() == null || agentConfig.getModel().getModelInfo() == null) {
+            return;
+        }
+        var info = agentConfig.getModel().getModelInfo();
+        Loggers.LLM.info("WorkflowAgent model params {\"temperature\":" + decimalText(info.getTemperature())
+                + ",\"top_p\":" + info.getTopP()
+                + ",\"timeout\":" + decimalText(info.getTimeout())
+                + "}");
+    }
+
+    private static String decimalText(Number value) {
+        return value == null ? "null" : String.format(java.util.Locale.ROOT, "%.1f", value.doubleValue());
+    }
+
+    private void recordContextMessages(Map<String, Object> inputs, ControllerOutput output, AgentSessionApi session) {
+        String sessionId = resolveSessionId(inputs, session);
+        if (sessionId == null || sessionId.isEmpty()) {
+            return;
+        }
+        com.openjiuwen.core.context.ModelContext context = contextFor(null, session);
+        if (context == null) {
+            return;
+        }
+        Object query = visibleQuery(inputs.get("query"));
+        Object agentResponse = extractAgentContextResponse(output);
+        Object workflowResponse = extractWorkflowContextResponse(output);
+        if (query != null) {
+            addVisibleMessage(context, new UserMessage(String.valueOf(query)));
+        }
+        if (agentResponse != null) {
+            addVisibleMessage(context, new AssistantMessage(String.valueOf(agentResponse)));
+        }
+        pruneVisibleMessages(context);
+        recordWorkflowContextMessages(session, query, workflowResponse);
+    }
+
+    private static Object visibleQuery(Object query) {
+        if (query instanceof com.openjiuwen.core.session.interaction.InteractiveInput interactiveInput
+                && interactiveInput.getUserInputs() != null
+                && !interactiveInput.getUserInputs().isEmpty()) {
+            return interactiveInput.getUserInputs().values().iterator().next();
+        }
+        return query;
+    }
+
+    private static void addVisibleMessage(com.openjiuwen.core.context.ModelContext context,
+                                          com.openjiuwen.core.foundation.llm.schema.BaseMessage message) {
+        context.addMessages(message).toCompletableFuture().join();
+        if (message.getMetadata() != null) {
+            message.getMetadata().remove("context_message_id");
+        }
+    }
+
+    private static String resolveSessionId(Map<String, Object> inputs, AgentSessionApi session) {
+        if (session != null && session.getSessionId() != null) {
+            return session.getSessionId();
+        }
+        Object conversationId = inputs.get("conversation_id");
+        return conversationId == null ? "default_session" : String.valueOf(conversationId);
+    }
+
+    private static Object extractAgentContextResponse(ControllerOutput output) {
+        if (output == null) {
+            return null;
+        }
+        Object data = output.getData();
+        if (data instanceof List<?> list) {
+            return list.stream()
+                    .map(WorkflowAgent::interactionResponse)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (output.getDataAsMap() == null) {
+            return null;
+        }
+        Object workflowOutput = output.getDataAsMap().get("output");
+        if (workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput) {
+            if (typedOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED) {
+                return extractResponseValue(typedOutput.getResult());
+            }
+            return completedAgentResponse(typedOutput.getResult());
+        }
+        return null;
+    }
+
+    private static Object completedAgentResponse(Object result) {
+        if (result instanceof Map<?, ?> map && map.containsKey("response")) {
+            return map.get("response");
+        }
+        return "";
+    }
+
+    private void recordWorkflowContextMessages(AgentSessionApi session, Object query, Object response) {
+        if (session == null) {
+            return;
+        }
+        String workflowId = currentWorkflowId(session);
+        if (workflowId == null || workflowId.isBlank()) {
+            return;
+        }
+        com.openjiuwen.core.context.ModelContext workflowContext = contextFor(workflowId, session);
+        if (workflowContext == null) {
+            return;
+        }
+        if (query != null) {
+            addVisibleMessage(workflowContext, new UserMessage(String.valueOf(query)));
+        }
+        if (response != null) {
+            addVisibleMessage(workflowContext, new AssistantMessage(String.valueOf(response)));
+        }
+        pruneVisibleMessages(workflowContext);
+    }
+
+    private com.openjiuwen.core.context.ModelContext contextFor(String contextId, AgentSessionApi session) {
+        com.openjiuwen.core.context.ModelContext context =
+                getContextEngine().getContext(contextId, session.getSessionId());
+        return context == null ? getContextEngine().createContext(contextId, session) : context;
+    }
+
+    private static Object extractWorkflowContextResponse(ControllerOutput output) {
+        if (output == null) {
+            return null;
+        }
+        Object data = output.getData();
+        if (data instanceof List<?> list) {
+            return list.stream()
+                    .map(WorkflowAgent::interactionResponse)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
+        Map<String, Object> dataMap = output.getDataAsMap();
+        if (dataMap == null) {
+            return null;
+        }
+        Object workflowOutput = dataMap.get("output");
+        if (workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput) {
+            if (typedOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED) {
+                return extractResponseValue(typedOutput.getResult());
+            }
+            return compactJson(typedOutput.getResult());
+        }
+        return null;
+    }
+
+    private static String currentWorkflowId(AgentSessionApi session) {
+        Object state = session.getState("workflow_controller");
+        if (!(state instanceof Map<?, ?> stateMap)) {
+            return null;
+        }
+        Object current = stateMap.get("current_workflow_id");
+        if (current != null) {
+            return String.valueOf(current);
+        }
+        Object interrupted = stateMap.get("interrupted_tasks");
+        if (!(interrupted instanceof Map<?, ?> interruptedTasks) || interruptedTasks.isEmpty()) {
+            return null;
+        }
+        Object first = interruptedTasks.values().iterator().next();
+        if (!(first instanceof Map<?, ?> info)) {
+            return null;
+        }
+        Object task = info.get("task");
+        if (!(task instanceof Map<?, ?> taskMap)) {
+            return null;
+        }
+        Object input = taskMap.get("input");
+        if (!(input instanceof Map<?, ?> inputMap)) {
+            return null;
+        }
+        Object targetId = inputMap.get("targetId");
+        return targetId == null ? null : String.valueOf(targetId);
+    }
+
+    private void pruneVisibleMessages(com.openjiuwen.core.context.ModelContext context) {
+        int maxRounds = agentConfig == null || agentConfig.getConstrain() == null
+                ? 0
+                : agentConfig.getConstrain().getReservedMaxChatRounds();
+        if (maxRounds <= 0) {
+            return;
+        }
+        List<com.openjiuwen.core.foundation.llm.schema.BaseMessage> messages = context.getMessages();
+        int maxMessages = maxRounds * 2;
+        if (messages.size() <= maxMessages) {
+            return;
+        }
+        context.setMessages(new ArrayList<>(messages.subList(messages.size() - maxMessages, messages.size())));
+    }
+
+    private static String compactJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException error) {
+            return String.valueOf(value);
+        }
+    }
+
+    private static Object interactionResponse(Object item) {
+        if (!(item instanceof OutputSchema outputSchema)
+                || !com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(outputSchema.getType())) {
+            return null;
+        }
+        return interactionPayloadField(outputSchema.getPayload(), "value");
+    }
+
+    private static Object extractResponseValue(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            Object response = map.get("response");
+            return response != null ? response : result;
+        }
+        return result;
+    }
+
+    private static ControllerOutput toControllerOutput(Object result) {
+        result = normalizeCompletedStages(result);
+        if (result instanceof ControllerOutput controllerOutput) {
+            return controllerOutput;
+        }
+        if (result instanceof Iterable<?> iterable && !(result instanceof Map<?, ?>)) {
+            List<Object> chunks = new java.util.ArrayList<>();
+            iterable.forEach(chunks::add);
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), chunks);
+        }
+        if (result instanceof OutputSchema) {
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), List.of(result));
+        }
+        if (result instanceof Map<?, ?> map) {
+            Map<String, Object> typed = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                typed.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), typed);
+        }
+        return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), result);
+    }
+
+    private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session) {
+        return invokeController(inputMap, session, null);
+    }
+
+    private InvocationResult invokeController(Map<String, Object> inputMap, AgentSessionApi session,
+                                              List<StreamMode> streamModes) {
+        AgentSession createdSession = null;
+        AgentSessionApi activeSession = session;
+        if (activeSession == null) {
+            createdSession = createCompatibilitySession(inputMap);
+            activeSession = createdSession;
+        }
+        activeSession.updateState(Map.of("__workflow_interaction_outputs__", new ArrayList<>()));
+        Map<String, Object> submittedInteractions = submittedInteractionInputs(inputMap, activeSession);
+        AgentSession captureSession = activeSession instanceof AgentSession agentSession ? agentSession : null;
+        Object result = getController() instanceof com.openjiuwen.core.application.workflow_agent.WorkflowController controller
+                && streamModes != null
+                ? controller.invoke(inputMap, activeSession, streamModes).toCompletableFuture().join()
+                : super.invoke(inputMap, activeSession).toCompletableFuture().join();
+        ControllerOutput output = toControllerOutput(result);
+        List<Object> streamChunks = captureSession == null ? List.of() : closeAndCollect(captureSession);
+        output = legacyInvokeOutputView(output);
+        List<Object> interactionSource = streamChunks.isEmpty() ? outputDataChunks(output) : streamChunks;
+        List<Object> interactions = interactionChunks(interactionSource, activeSession);
+        if (!streamChunks.isEmpty() && !interactions.isEmpty()) {
+            List<Object> mergedStreamChunks = new ArrayList<>(streamChunks);
+            for (Object interaction : interactions) {
+                if (!mergedStreamChunks.contains(interaction)) {
+                    mergedStreamChunks.add(interaction);
+                }
+            }
+            streamChunks = mergedStreamChunks;
+        }
+        if (streamModes == null && !interactions.isEmpty() && shouldReturnInteractions(output)) {
+            output = new ControllerOutput(EventType.TASK_COMPLETION.getValue(), interactions);
+        }
+        if (createdSession != null) {
+            getContextEngine().saveContexts(createdSession);
+            createdSession.commit();
+        }
+        return new InvocationResult(output, streamChunks, activeSession, submittedInteractions);
+    }
+
+    private static boolean shouldReturnInteractions(ControllerOutput output) {
+        if (output == null) {
+            return true;
+        }
+        Map<String, Object> dataMap = output.getDataAsMap();
+        if (dataMap == null) {
+            return true;
+        }
+        Object workflowOutput = dataMap.get("output");
+        if (workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput) {
+            return typedOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED;
+        }
+        return true;
+    }
+
+    private static ControllerOutput legacyInvokeOutputView(ControllerOutput output) {
+        if (output == null) {
+            return null;
+        }
+        Object data = output.getData();
+        if (data instanceof List<?> list) {
+            Object finalPayload = workflowFinalPayload(list);
+            if (finalPayload != null) {
+                Map<String, Object> normalizedData = new LinkedHashMap<>();
+                normalizedData.put("result_type", "answer");
+                normalizedData.put("output", new com.openjiuwen.core.workflow.WorkflowOutput(
+                        finalPayload,
+                        WorkflowExecutionState.COMPLETED));
+                return new ControllerOutput(output.getType(), normalizedData);
             }
         }
-        return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
+        if (data instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            Map<String, Object> normalizedData = completedWorkflowResultMap(workflowOutput);
+            if (normalizedData != null) {
+                return new ControllerOutput(output.getType(), normalizedData);
+            }
+        }
+        Map<String, Object> dataMap = output.getDataAsMap();
+        if (dataMap == null) {
+            return output;
+        }
+        Object workflowOutput = dataMap.get("output");
+        if (workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput) {
+            Map<String, Object> normalizedAnswer = legacyAnswerOutputMap(dataMap, typedOutput);
+            if (normalizedAnswer != null) {
+                return new ControllerOutput(output.getType(), normalizedAnswer);
+            }
+        }
+        if (dataMap.containsKey("result_type")
+                || !(workflowOutput instanceof com.openjiuwen.core.workflow.WorkflowOutput typedOutput)) {
+            return output;
+        }
+        Map<String, Object> completedOutput = completedWorkflowOutputMap(typedOutput);
+        if (completedOutput != null) {
+            if (dataMap.size() == 1) {
+                return new ControllerOutput(output.getType(), completedWorkflowResultMap(typedOutput));
+            }
+            Map<String, Object> normalizedData = new LinkedHashMap<>(dataMap);
+            normalizedData.put("output", completedOutput.get("output"));
+            return new ControllerOutput(output.getType(), normalizedData);
+        }
+        Object normalizedResult = legacyInvokeWorkflowResult(typedOutput.getResult());
+        if (normalizedResult == typedOutput.getResult()) {
+            return output;
+        }
+        Map<String, Object> normalizedData = new LinkedHashMap<>(dataMap);
+        normalizedData.put("output", new com.openjiuwen.core.workflow.WorkflowOutput(
+                normalizedResult,
+                typedOutput.getState()));
+        return new ControllerOutput(output.getType(), normalizedData);
     }
 
-    /**
-     * normalizeInvokeOutput.
-     * 
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    private ControllerOutput normalizeInvokeOutput(ControllerOutput result) {
+    private static Map<String, Object> completedWorkflowOutputMap(
+            com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+        Map<String, Object> result = completedWorkflowResultMap(workflowOutput);
         if (result == null) {
             return null;
         }
-        List<Object> outputs = flattenControllerOutputs(result.getData());
-        if (outputs.isEmpty()) {
+        Map<String, Object> normalizedData = new LinkedHashMap<>();
+        normalizedData.put("output", result);
+        return normalizedData;
+    }
+
+    private static Map<String, Object> completedWorkflowResultMap(
+            com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+        Object result = normalizeCompletedStages(workflowOutput.getResult());
+        if (workflowOutput.getState() != WorkflowExecutionState.COMPLETED || !(result instanceof Map<?, ?> rawResult)) {
+            return null;
+        }
+        return stringKeyMap(rawResult);
+    }
+
+    private static Map<String, Object> legacyAnswerOutputMap(
+            Map<String, Object> dataMap,
+            com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+        if (!"answer".equals(dataMap.get("result_type"))
+                || workflowOutput.getState() != WorkflowExecutionState.COMPLETED) {
+            return null;
+        }
+        Object result = legacyInvokeWorkflowResult(workflowOutput.getResult());
+        Map<String, Object> normalized = new LinkedHashMap<>(dataMap);
+        normalized.put("output", new com.openjiuwen.core.workflow.WorkflowOutput(
+                result,
+                WorkflowExecutionState.COMPLETED));
+        return normalized;
+    }
+
+    private static Map<String, Object> stringKeyMap(Map<?, ?> rawMap) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static Object workflowFinalPayload(List<?> list) {
+        boolean hasInteraction = list.stream()
+                .filter(OutputSchema.class::isInstance)
+                .map(OutputSchema.class::cast)
+                .anyMatch(schema -> com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(schema.getType()));
+        if (hasInteraction) {
+            return null;
+        }
+        for (int index = list.size() - 1; index >= 0; index--) {
+            Object item = normalizeCompletedStages(list.get(index));
+            if (item instanceof OutputSchema schema && "workflow_final".equals(schema.getType())) {
+                return normalizeWorkflowFinalPayload(schema.getPayload());
+            }
+        }
+        return null;
+    }
+
+    private static Object legacyInvokeWorkflowResult(Object result) {
+        Object normalized = normalizeCompletedStages(result);
+        if (!(normalized instanceof List<?> list) || list.isEmpty()
+                || list.stream().noneMatch(OutputSchema.class::isInstance)) {
             return result;
         }
-
-        List<Object> interactionOutputs =
-            outputs.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
-                    .filter(os -> "__interaction__".equals(os.getType())).map(Object.class::cast).toList();
-        if (!interactionOutputs.isEmpty()) {
-            return new ControllerOutput(result.getType(), interactionOutputs);
+        List<OutputSchema> schemas = list.stream()
+                .filter(OutputSchema.class::isInstance)
+                .map(OutputSchema.class::cast)
+                .toList();
+        if (schemas.stream().anyMatch(schema -> com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(
+                schema.getType()))) {
+            return result;
         }
+        for (int index = schemas.size() - 1; index >= 0; index--) {
+            OutputSchema schema = schemas.get(index);
+            if ("workflow_final".equals(schema.getType())) {
+                return normalizeWorkflowFinalPayload(schema.getPayload());
+            }
+        }
+        return null;
+    }
 
-        OutputSchema finalAnswer = null;
-        for (int i = outputs.size() - 1; i >= 0; i--) {
-            Object output = outputs.get(i);
-            if (output instanceof OutputSchema os
-                    && ("workflow_final".equals(os.getType()) || "answer".equals(os.getType()))) {
-                finalAnswer = os;
+    private static Object normalizeWorkflowFinalPayload(Object payload) {
+        Object normalized = normalizeCompletedStages(payload);
+        if (normalized instanceof Map<?, ?> map && map.containsKey("output")) {
+            return normalizeCompletedStages(map.get("output"));
+        }
+        return normalized;
+    }
+
+    private AgentSession createCompatibilitySession(Map<String, Object> inputMap) {
+        String sessionId = String.valueOf(inputMap.getOrDefault("conversation_id", "default_session"));
+        AgentSession session = AgentSession.createAgentSession(sessionId, null, card);
+        session.preRun(Map.of("inputs", inputMap));
+        return session;
+    }
+
+    private static List<Object> closeAndCollect(AgentSession session) {
+        session.closeStream();
+        List<Object> result = new ArrayList<>();
+        Iterator<Object> iterator = session.streamIterator();
+        while (iterator.hasNext()) {
+            result.add(normalizeCompletedStages(iterator.next()));
+        }
+        return result;
+    }
+
+    private static List<Object> streamChunksView(InvocationResult invocation) {
+        if (!invocation.streamChunks().isEmpty()) {
+            List<Object> result = new ArrayList<>(invocation.streamChunks());
+            appendOutputDataChunks(result, invocation.output());
+            appendWorkflowOutputChunks(result, invocation.output());
+            appendMissingComponentInteractionTraces(result, invocation.submittedInteractions(), invocation.session());
+            appendMissingEndComponentTrace(result, invocation.session());
+            appendMissingRootWorkflowTrace(result, invocation.session());
+            moveTrailingTracesBeforeTerminalOutput(result);
+            return result;
+        }
+        ControllerOutput output = invocation.output();
+        Object data = output.getData();
+        if (data instanceof List<?> list) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                result.add(normalizeCompletedStages(item));
+            }
+            appendMissingComponentInteractionTraces(result, invocation.submittedInteractions(), invocation.session());
+            appendMissingEndComponentTrace(result, invocation.session());
+            appendMissingRootWorkflowTrace(result, invocation.session());
+            moveTrailingTracesBeforeTerminalOutput(result);
+            return result;
+        }
+        Map<String, Object> dataMap = output.getDataAsMap();
+        if (dataMap != null && dataMap.get("output") instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            List<Object> result = workflowOutputChunks(workflowOutput);
+            appendMissingComponentInteractionTraces(result, invocation.submittedInteractions(), invocation.session());
+            appendMissingEndComponentTrace(result, invocation.session());
+            appendMissingRootWorkflowTrace(result, invocation.session());
+            moveTrailingTracesBeforeTerminalOutput(result);
+            return result;
+        }
+        if (data instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            List<Object> result = workflowOutputChunks(workflowOutput);
+            appendMissingComponentInteractionTraces(result, invocation.submittedInteractions(), invocation.session());
+            appendMissingEndComponentTrace(result, invocation.session());
+            appendMissingRootWorkflowTrace(result, invocation.session());
+            moveTrailingTracesBeforeTerminalOutput(result);
+            return result;
+        }
+        List<Object> result = new ArrayList<>();
+        result.add(new OutputSchema("workflow_final", 0, normalizeCompletedStages(data)));
+        appendMissingComponentInteractionTraces(result, invocation.submittedInteractions(), invocation.session());
+        appendMissingEndComponentTrace(result, invocation.session());
+        appendMissingRootWorkflowTrace(result, invocation.session());
+        moveTrailingTracesBeforeTerminalOutput(result);
+        return result;
+    }
+
+    private static void moveTrailingTracesBeforeTerminalOutput(List<Object> result) {
+        if (result.size() < 2 || !isTraceOnly(result.get(result.size() - 1))) {
+            return;
+        }
+        int outputIndex = -1;
+        for (int index = result.size() - 2; index >= 0; index--) {
+            if (result.get(index) instanceof OutputSchema) {
+                outputIndex = index;
                 break;
             }
         }
-        if (finalAnswer == null) {
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            normalized.put("output", new WorkflowOutput(null, WorkflowExecutionState.COMPLETED));
-            normalized.put("result_type", "answer");
-            return new ControllerOutput(result.getType(), normalized);
+        if (outputIndex < 0) {
+            return;
         }
-
-        Object payload = finalAnswer.getPayload();
-        if ("answer".equals(finalAnswer.getType()) && payload instanceof Map<?, ?> payloadMap) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> typedPayload = (Map<String, Object>) payloadMap;
-            return new ControllerOutput(result.getType(), typedPayload);
-        }
-
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        normalized.put("output", new WorkflowOutput(payload, WorkflowExecutionState.COMPLETED));
-        normalized.put("result_type", "answer");
-        return new ControllerOutput(result.getType(), normalized);
-    }
-
-    /**
-     * flattenControllerOutputs.
-     * 
-     * @param rawData rawData
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Object> flattenControllerOutputs(Object rawData) {
-        if (!(rawData instanceof List<?> rawList)) {
-            return List.of();
-        }
-        List<Object> flattened = new ArrayList<>();
-        for (Object item : rawList) {
-            if (item instanceof ControllerOutputChunk chunk) {
-                Object payload = chunk.getPayload();
-                if (payload != null) {
-                    flattened.add(payload);
-                }
+        List<Object> trailingTraces = new ArrayList<>();
+        for (int index = result.size() - 1; index > outputIndex; index--) {
+            Object item = result.remove(index);
+            if (isTraceOnly(item)) {
+                trailingTraces.add(0, item);
             } else {
-                flattened.add(item);
+                result.add(item);
+                return;
             }
         }
-        return flattened;
+        result.addAll(outputIndex, trailingTraces);
     }
 
-    /**
-     * setCallMode.
-     * 
-     * @param session session
-     * @param mode mode
-     * @since 0.1.7
-     */
-    private void setCallMode(Session session, String mode) {
-        if (session instanceof AgentSessionApi agentSession) {
-            agentSession.updateState(Map.of(CALL_MODE_STATE_KEY, mode));
+    private static boolean isTraceOnly(Object item) {
+        return item instanceof TraceSchema && !(item instanceof OutputSchema);
+    }
+
+    private static void appendWorkflowOutputChunks(List<Object> result, ControllerOutput output) {
+        if (output == null) {
+            return;
+        }
+        List<Object> outputChunks = List.of();
+        Map<String, Object> dataMap = output.getDataAsMap();
+        if (dataMap != null && dataMap.get("output") instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            outputChunks = workflowOutputChunks(workflowOutput);
+        } else if (output.getData() instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            outputChunks = workflowOutputChunks(workflowOutput);
+        }
+        for (Object chunk : outputChunks) {
+            if (!result.contains(chunk)) {
+                result.add(chunk);
+            }
         }
     }
 
-    /**
-     * clearCallMode.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
-    private void clearCallMode(Session session) {
-        if (session instanceof AgentSessionApi agentSession) {
-            Map<String, Object> stateUpdate = new LinkedHashMap<>();
-            stateUpdate.put(CALL_MODE_STATE_KEY, null);
-            agentSession.updateState(stateUpdate);
+    private static void appendOutputDataChunks(List<Object> result, ControllerOutput output) {
+        if (output == null || !(output.getData() instanceof List<?> list)) {
+            return;
+        }
+        for (Object item : list) {
+            Object normalized = normalizeCompletedStages(item);
+            if (!result.contains(normalized)) {
+                result.add(normalized);
+            }
+        }
+    }
+
+    private static List<Object> outputDataChunks(ControllerOutput output) {
+        if (output == null) {
+            return List.of();
+        }
+        Object data = output.getData();
+        if (data instanceof List<?> list) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                result.add(normalizeCompletedStages(item));
+            }
+            return result;
+        }
+        if (data instanceof OutputSchema) {
+            return List.of(data);
+        }
+        return List.of();
+    }
+
+    private static List<Object> workflowOutputChunks(com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+        Object result = normalizeCompletedStages(workflowOutput.getResult());
+        if (workflowOutput.getState() == WorkflowExecutionState.INPUT_REQUIRED) {
+            if (result instanceof List<?> list) {
+                return new ArrayList<>(list);
+            }
+            return result == null ? List.of() : List.of(result);
+        }
+        if (result instanceof List<?> list && list.stream().anyMatch(OutputSchema.class::isInstance)) {
+            return new ArrayList<>(list);
+        }
+        return new ArrayList<>(List.of(new OutputSchema("workflow_final", 0, result)));
+    }
+
+    private static void appendMissingRootWorkflowTrace(List<Object> result, AgentSessionApi session) {
+        Object finalPayload = lastWorkflowFinalPayload(result);
+        if (finalPayload == null) {
+            return;
+        }
+        String workflowId = workflowTraceId(result, session);
+        if (workflowId == null || workflowId.isBlank()
+                || hasRootWorkflowTraceWithOutputs(result, workflowId, finalPayload)) {
+            return;
+        }
+        TraceWorkflowSpan span = new TraceWorkflowSpan();
+        span.setInvokeId(workflowId);
+        span.setWorkflowId(workflowId);
+        span.setOutputs(finalPayload);
+        span.setStatus("success");
+        addTraceBeforeTrailingWorkflowFinal(result, new TraceSchema("tracer_workflow", span));
+    }
+
+    private static void appendMissingEndComponentTrace(List<Object> result, AgentSessionApi session) {
+        Object finalPayload = lastWorkflowFinalPayload(result);
+        if (finalPayload == null || hasComponentOutputTrace(result, "end", finalPayload)) {
+            return;
+        }
+        TraceWorkflowSpan span = new TraceWorkflowSpan();
+        span.setInvokeId("end");
+        span.setComponentId("end");
+        span.setComponentName("end");
+        span.setComponentType("End");
+        span.setWorkflowId(workflowTraceId(result, session));
+        span.setOutputs(finalPayload);
+        span.setStatus("success");
+        addTraceBeforeTrailingWorkflowFinal(result, new TraceSchema("tracer_workflow", span));
+    }
+
+    private static void appendMissingComponentInteractionTraces(List<Object> result,
+                                                               Map<String, Object> submittedInteractions,
+                                                               AgentSessionApi session) {
+        if (submittedInteractions == null || submittedInteractions.isEmpty()) {
+            return;
+        }
+        String workflowId = workflowTraceId(result, session);
+        for (Map.Entry<String, Object> entry : submittedInteractions.entrySet()) {
+            String componentId = entry.getKey();
+            Object interactiveInput = normalizeCompletedStages(entry.getValue());
+            if (componentId == null || componentId.isBlank()
+                    || hasComponentInteractiveTrace(result, componentId, interactiveInput)) {
+                continue;
+            }
+            TraceWorkflowSpan span = new TraceWorkflowSpan();
+            span.setInvokeId(componentId);
+            span.setComponentId(componentId);
+            span.setComponentName(componentId);
+            span.setComponentType("InteractiveNode");
+            span.setWorkflowId(workflowId);
+            span.setInteractiveInputs(interactiveInput);
+            span.setStatus("success");
+            addTraceBeforeTerminalInteraction(result, new TraceSchema("tracer_workflow", span));
+        }
+    }
+
+    private static void addTraceBeforeTerminalInteraction(List<Object> result, TraceSchema trace) {
+        int insertIndex = result.size();
+        if (!result.isEmpty()
+                && result.get(result.size() - 1) instanceof OutputSchema schema
+                && com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(schema.getType())) {
+            insertIndex = result.size() - 1;
+        }
+        result.add(insertIndex, trace);
+    }
+
+    private static void addTraceBeforeTrailingWorkflowFinal(List<Object> result, TraceSchema trace) {
+        int insertIndex = result.size();
+        if (!result.isEmpty()
+                && result.get(result.size() - 1) instanceof OutputSchema schema
+                && "workflow_final".equals(schema.getType())) {
+            insertIndex = result.size() - 1;
+        }
+        result.add(insertIndex, trace);
+    }
+
+    private static boolean hasComponentInteractiveTrace(List<Object> chunks, String componentId,
+                                                        Object interactiveInput) {
+        for (Object chunk : chunks) {
+            if (!(chunk instanceof TraceSchema traceSchema)
+                    || !(traceSchema.getPayload() instanceof TraceWorkflowSpan span)
+                    || !componentId.equals(span.getComponentId())
+                    || !Objects.equals(normalizeCompletedStages(span.getInteractiveInputs()), interactiveInput)) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean hasComponentOutputTrace(List<Object> chunks, String componentId, Object outputs) {
+        for (Object chunk : chunks) {
+            if (!(chunk instanceof TraceSchema traceSchema)
+                    || !(traceSchema.getPayload() instanceof TraceWorkflowSpan span)
+                    || !componentId.equals(span.getComponentId())
+                    || !Objects.equals(normalizeCompletedStages(span.getOutputs()), outputs)) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static Map<String, Object> submittedInteractionInputs(Map<String, Object> inputMap,
+                                                                  AgentSessionApi session) {
+        Object value = inputMap.get("input");
+        if (value == null) {
+            value = inputMap.get("query");
+        }
+        if (value instanceof InteractiveInput interactiveInput) {
+            if (interactiveInput.getUserInputs() != null && !interactiveInput.getUserInputs().isEmpty()) {
+                return new LinkedHashMap<>(interactiveInput.getUserInputs());
+            }
+            if (interactiveInput.getRawInputs() != null) {
+                return interactionForInterruptedComponent(session, interactiveInput.getRawInputs());
+            }
+            return Map.of();
+        }
+        if (value != null) {
+            return interactionForInterruptedComponent(session, value);
+        }
+        return Map.of();
+    }
+
+    private static Map<String, Object> interactionForInterruptedComponent(AgentSessionApi session, Object value) {
+        String componentId = firstInterruptedComponentId(session);
+        if (componentId == null || componentId.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put(componentId, value);
+        return result;
+    }
+
+    private static String firstInterruptedComponentId(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        Object state = session.getState("workflow_controller");
+        if (!(state instanceof Map<?, ?> stateMap)) {
+            return null;
+        }
+        Object interrupted = stateMap.get("interrupted_tasks");
+        if (!(interrupted instanceof Map<?, ?> interruptedTasks) || interruptedTasks.isEmpty()) {
+            return null;
+        }
+        Object first = interruptedTasks.values().iterator().next();
+        if (!(first instanceof Map<?, ?> info)) {
+            return null;
+        }
+        Object componentId = info.get("component_id");
+        if (componentId instanceof Iterable<?> ids) {
+            Iterator<?> iterator = ids.iterator();
+            return iterator.hasNext() ? String.valueOf(iterator.next()) : null;
+        }
+        return componentId == null ? null : String.valueOf(componentId);
+    }
+
+    private static Object lastWorkflowFinalPayload(List<Object> chunks) {
+        for (int index = chunks.size() - 1; index >= 0; index--) {
+            Object chunk = chunks.get(index);
+            if (chunk instanceof OutputSchema schema && "workflow_final".equals(schema.getType())) {
+                return normalizeCompletedStages(schema.getPayload());
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasRootWorkflowTraceWithOutputs(List<Object> chunks, String workflowId,
+                                                           Object finalPayload) {
+        for (Object chunk : chunks) {
+            if (!(chunk instanceof TraceSchema traceSchema)
+                    || !(traceSchema.getPayload() instanceof TraceWorkflowSpan span)
+                    || !workflowId.equals(span.getInvokeId())
+                    || (span.getParentNodeId() != null && !span.getParentNodeId().isEmpty())) {
+                continue;
+            }
+            if (Objects.equals(normalizeCompletedStages(span.getOutputs()), finalPayload)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String workflowTraceId(List<Object> chunks, AgentSessionApi session) {
+        for (Object chunk : chunks) {
+            if (chunk instanceof TraceSchema traceSchema
+                    && traceSchema.getPayload() instanceof TraceWorkflowSpan span
+                    && span.getWorkflowId() != null
+                    && !span.getWorkflowId().isBlank()) {
+                return normalizeWorkflowTraceId(span.getWorkflowId());
+            }
+        }
+        return normalizeWorkflowTraceId(session == null ? null : currentWorkflowId(session));
+    }
+
+    private static String normalizeWorkflowTraceId(String workflowId) {
+        if (workflowId == null || workflowId.isBlank()) {
+            return null;
+        }
+        return workflowId.replaceFirst("_[0-9]+(?:[._][0-9]+)*$", "");
+    }
+
+    private static List<Object> interactionChunks(List<Object> chunks, AgentSessionApi session) {
+        List<Object> result = new ArrayList<>();
+        Set<String> seenIds = new java.util.LinkedHashSet<>();
+        if (chunks != null) {
+            for (Object chunk : chunks) {
+                if (chunk instanceof OutputSchema outputSchema
+                        && com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(outputSchema.getType())) {
+                    result.add(outputSchema);
+                    Object id = interactionPayloadField(outputSchema.getPayload(), "id");
+                    if (id != null) {
+                        seenIds.add(String.valueOf(id));
+                    }
+                }
+            }
+        }
+        appendRememberedInteractionOutputs(result, seenIds, session);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void appendInterruptedComponentIds(List<Object> result, Set<String> seenIds, AgentSessionApi session) {
+        if (session == null) {
+            return;
+        }
+        Object state = session.getState("workflow_controller");
+        if (!(state instanceof Map<?, ?> stateMap)) {
+            return;
+        }
+        Object interrupted = stateMap.get("interrupted_tasks");
+        if (!(interrupted instanceof Map<?, ?> interruptedTasks)) {
+            return;
+        }
+        for (Object value : interruptedTasks.values()) {
+            if (!(value instanceof Map<?, ?> taskInfo)) {
+                continue;
+            }
+            Object componentId = taskInfo.get("component_id");
+            if (componentId instanceof Iterable<?> ids) {
+                for (Object id : ids) {
+                    appendInterruptedComponentId(result, seenIds, id);
+                }
+            } else {
+                appendInterruptedComponentId(result, seenIds, componentId);
+            }
+        }
+    }
+
+    private static void appendRememberedInteractionOutputs(List<Object> result, Set<String> seenIds,
+                                                           AgentSessionApi session) {
+        Object remembered = session.getState("__workflow_interaction_outputs__");
+        if (!(remembered instanceof Iterable<?> iterable)) {
+            return;
+        }
+        for (Object item : iterable) {
+            if (!(item instanceof OutputSchema outputSchema)
+                    || !com.openjiuwen.core.common.constants.Constant.INTERACTION.equals(outputSchema.getType())) {
+                continue;
+            }
+            Object id = interactionPayloadField(outputSchema.getPayload(), "id");
+            if (id == null || seenIds.contains(String.valueOf(id))) {
+                continue;
+            }
+            seenIds.add(String.valueOf(id));
+            result.add(outputSchema);
+        }
+    }
+
+    private static void appendInterruptedComponentId(List<Object> result, Set<String> seenIds, Object id) {
+        if (id == null) {
+            return;
+        }
+        String text = String.valueOf(id);
+        if (text.isEmpty() || seenIds.contains(text)) {
+            return;
+        }
+        seenIds.add(text);
+        result.add(new OutputSchema(
+                com.openjiuwen.core.common.constants.Constant.INTERACTION,
+                0,
+                new InteractionOutput(text, null)
+        ));
+    }
+
+    private static Object interactionPayloadField(Object payload, String fieldName) {
+        if (payload instanceof Map<?, ?> map) {
+            return map.get(fieldName);
+        }
+        try {
+            String getter = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+            return payload == null ? null : payload.getClass().getMethod(getter).invoke(payload);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Object normalizeCompletedStages(Object value) {
+        if (value instanceof CompletionStage<?> stage) {
+            return normalizeCompletedStages(stage.toCompletableFuture().join());
+        }
+        if (value instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            return new com.openjiuwen.core.workflow.WorkflowOutput(
+                    normalizeCompletedStages(workflowOutput.getResult()),
+                    workflowOutput.getState());
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                normalized.put(String.valueOf(entry.getKey()), normalizeCompletedStages(entry.getValue()));
+            }
+            return normalized;
+        }
+        if (value instanceof Iterable<?> iterable && !(value instanceof String)) {
+            List<Object> normalized = new ArrayList<>();
+            for (Object item : iterable) {
+                normalized.add(normalizeCompletedStages(item));
+            }
+            return normalized;
+        }
+        return value;
+    }
+
+    private record InvocationResult(ControllerOutput output, List<Object> streamChunks, AgentSessionApi session,
+                                    Map<String, Object> submittedInteractions) {
+    }
+
+    private static final class MapCompletedStage extends CompletableFuture<Object> implements Map<String, Object> {
+        private final Map<String, Object> delegate = new LinkedHashMap<>();
+
+        private MapCompletedStage() {
+        }
+
+        private MapCompletedStage(ControllerOutput output, Map<String, Object> value) {
+            delegate.putAll(value);
+            if (value.containsKey("interaction")) {
+                complete(new ControllerOutput(
+                        output == null ? EventType.TASK_COMPLETION.getValue() : output.getType(),
+                        value.get("interaction")));
+                return;
+            }
+            complete(output);
+        }
+
+        private static MapCompletedStage failed(Throwable error) {
+            MapCompletedStage stage = new MapCompletedStage();
+            stage.completeExceptionally(error);
+            return stage;
+        }
+
+        private void throwIfFailed() {
+            if (isCompletedExceptionally()) {
+                join();
+            }
+        }
+
+        @Override
+        public int size() {
+            throwIfFailed();
+            return delegate.size();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            throwIfFailed();
+            return delegate.isEmpty();
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            throwIfFailed();
+            return delegate.containsKey(key);
+        }
+
+        @Override
+        public boolean containsValue(Object value) {
+            throwIfFailed();
+            return delegate.containsValue(value);
+        }
+
+        @Override
+        public Object get(Object key) {
+            throwIfFailed();
+            return delegate.get(key);
+        }
+
+        @Override
+        public Object put(String key, Object value) {
+            throwIfFailed();
+            return delegate.put(key, value);
+        }
+
+        @Override
+        public Object remove(Object key) {
+            throwIfFailed();
+            return delegate.remove(key);
+        }
+
+        @Override
+        public void putAll(Map<? extends String, ?> map) {
+            throwIfFailed();
+            delegate.putAll(map);
+        }
+
+        @Override
+        public void clear() {
+            throwIfFailed();
+            delegate.clear();
+        }
+
+        @Override
+        public Set<String> keySet() {
+            throwIfFailed();
+            return delegate.keySet();
+        }
+
+        @Override
+        public Collection<Object> values() {
+            throwIfFailed();
+            return delegate.values();
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            throwIfFailed();
+            return delegate.entrySet();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            throwIfFailed();
+            return delegate.equals(other);
+        }
+
+        @Override
+        public int hashCode() {
+            throwIfFailed();
+            return delegate.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            if (isCompletedExceptionally()) {
+                return "MapCompletedStage[failed]";
+            }
+            return delegate.toString();
         }
     }
 }

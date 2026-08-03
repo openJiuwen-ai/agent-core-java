@@ -4,14 +4,16 @@
 
 package com.openjiuwen.core.application.llm;
 
-import com.openjiuwen.core.application.schema.LlmAgentConfig;
-import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -22,70 +24,49 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Backward-compatible facade mirroring Python's {@code LLMController}.
- * 
- * @since 0.1.7
+ * Backward-compatible facade.
+ *
+ * <p>Mirrors Python's {@code LLMController} in
+ * {@code openjiuwen/core/application/llm_agent/llm_controller.py}.</p>
  */
 public class LlmController {
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private LlmAgentConfig agentConfig;
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private LegacyReActAgentConfig agentConfig;
     private ContextEngine contextEngine;
     private LlmEventHandler eventHandler;
 
-    /**
-     * LlmController.
-     * 
-     * @since 0.1.7
-     */
     public LlmController() {
     }
 
-    /**
-     * LlmController.
-     * 
-     * @param config config
-     * @param contextEngine contextEngine
-     * @since 0.1.7
-     */
-    public LlmController(LlmAgentConfig config, ContextEngine contextEngine) {
+    public LlmController(LegacyReActAgentConfig config, ContextEngine contextEngine) {
         configure(config, contextEngine);
     }
 
-    /**
-     * setupFromAgent.
-     * 
-     * @param agent agent
-     * @since 0.1.7
-     */
-    public void setupFromAgent(LlmAgent agent) {
+    public void setupFromAgent(Object agent) {
         if (agent == null) {
             throw new IllegalArgumentException("agent is required");
         }
-        configure(agent.getAgentConfig(), agent.getContextEngine());
-        eventHandler.setAbilityManager(agent.getAbilityManager());
+        Object rawConfig = invokeNoArg(agent, "getTypedAgentConfig");
+        if (!(rawConfig instanceof LegacyReActAgentConfig)) {
+            rawConfig = invokeNoArg(agent, "getAgentConfig");
+        }
+        LegacyReActAgentConfig config = legacyConfig(rawConfig);
+        if (config == null) {
+            throw new IllegalArgumentException("agent config must be LegacyReActAgentConfig");
+        }
+        Object rawContextEngine = invokeNoArg(agent, "getContextEngine");
+        configure(config, rawContextEngine instanceof ContextEngine context ? context : null);
+        eventHandler.setAbilityManager(invokeNoArg(agent, "getAbilityManager"));
     }
 
-    /**
-     * handleEvent.
-     * 
-     * @param event event
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> handleEvent(Event event, AgentSessionApi session) {
         ensureConfigured();
         return eventHandler.handleInput(new EventHandlerInput(event, session));
     }
 
-    /**
-     * createMessage.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     public Event createMessage(Map<String, Object> inputs) {
         Map<String, Object> normalized = new LinkedHashMap<>();
         if (inputs != null) {
@@ -98,100 +79,72 @@ public class LlmController {
         return InputEvent.fromUserInput(normalized);
     }
 
-    /**
-     * setLlmControllerPromptTemplate.
-     * 
-     * @param promptTemplate promptTemplate
-     * @since 0.1.7
-     */
-    public void setLlmControllerPromptTemplate(List<Map<String, String>> promptTemplate) {
+    public void setLlmControllerPromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
         ensureConfigured();
         eventHandler.setPromptTemplate(promptTemplate);
     }
 
-    /**
-     * setPromptTemplate.
-     * 
-     * @param promptTemplate promptTemplate
-     * @since 0.1.7
-     */
-    public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
+    public void setPromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
         setLlmControllerPromptTemplate(promptTemplate);
     }
 
-    /**
-     * getAgentConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public LlmAgentConfig getAgentConfig() {
+    public LegacyReActAgentConfig getAgentConfig() {
         return agentConfig;
     }
 
-    /**
-     * getContextEngine.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
 
-    /**
-     * getEventHandler.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public LlmEventHandler getEventHandler() {
         ensureConfigured();
         return eventHandler;
     }
 
-    /**
-     * convertTimestamp.
-     * 
-     * @param utcTimestamp utcTimestamp
-     * @return the result
-     * @since 0.1.7
-     */
     public static String convertTimestamp(String utcTimestamp) {
         if (utcTimestamp == null || utcTimestamp.isBlank()) {
             return utcTimestamp;
         }
         try {
             LocalDateTime parsed = LocalDateTime.parse(utcTimestamp, TIMESTAMP_FORMATTER);
-            return parsed.atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.systemDefault())
+            return parsed.atOffset(ZoneOffset.UTC)
+                    .atZoneSameInstant(ZoneId.systemDefault())
                     .format(TIMESTAMP_FORMATTER);
         } catch (DateTimeParseException e) {
             return utcTimestamp;
         }
     }
 
-    /**
-     * configure.
-     * 
-     * @param config config
-     * @param contextEngine contextEngine
-     * @since 0.1.7
-     */
-    private void configure(LlmAgentConfig config, ContextEngine contextEngine) {
+    private void configure(LegacyReActAgentConfig config, ContextEngine contextEngine) {
         this.agentConfig = config;
-        this.contextEngine =
-            contextEngine != null ? contextEngine : new ContextEngine(ContextEngineConfig.builder().build());
+        this.contextEngine = contextEngine != null
+                ? contextEngine
+                : new ContextEngine(new ContextEngineConfig());
         this.eventHandler = config != null ? new LlmEventHandler(config, this.contextEngine) : null;
     }
 
-    /**
-     * ensureConfigured.
-     * 
-     * @since 0.1.7
-     */
     private void ensureConfigured() {
         if (eventHandler == null) {
             throw new IllegalStateException("LlmController is not configured with agent config");
         }
+    }
+
+    private static Object invokeNoArg(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
+    private static LegacyReActAgentConfig legacyConfig(Object rawConfig) {
+        if (rawConfig instanceof LegacyReActAgentConfig legacyConfig) {
+            return legacyConfig;
+        }
+        if (rawConfig instanceof LlmAgentConfig applicationConfig) {
+            return LlmAgent.toLegacyConfig(applicationConfig);
+        }
+        return null;
     }
 }

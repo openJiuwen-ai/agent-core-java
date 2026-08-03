@@ -5,90 +5,62 @@
 package com.openjiuwen.core.common.task_manager;
 
 /**
- * Thread-local task-manager context.
- * 
- * @since 0.1.7
+ * Context helpers for task-group and current-task bindings.
+ *
+ * <p>Mirrors Python's module functions in
+ * {@code openjiuwen/core/common/task_manager/context.py}.</p>
  */
 public final class TaskContext {
-    private static final ThreadLocal<String> CURRENT_TASK_ID = new ThreadLocal<>();
 
-    /**
-     * ThreadLocal<>.
-     * 
-     * @since 0.1.7
-     */
-    private static final ThreadLocal<TaskGroupScope> ROOT_TASK_GROUP = new ThreadLocal<>();
+    private static final ThreadLocal<Object> ROOT_TASK_GROUP = new InheritableThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_TASK_ID = new InheritableThreadLocal<>();
 
-    /**
-     * Public record Token used by the Java parity implementation.
-     * 
-     * @since 0.1.7
-     */
-    public record Token(TaskGroupScope previousGroup) {
-    }
-
-    /**
-     * TaskContext.
-     * 
-     * @since 0.1.7
-     */
     private TaskContext() {
     }
 
     /**
-     * getTaskGroup.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Token used to restore the prior ThreadLocal state.
+     *
+     * <p>Mirrors the restore-token pattern returned by Python ContextVar#set.</p>
      */
-    public static TaskGroupScope getTaskGroup() {
+    public record ContextToken<T>(T previousValue, boolean hadValue) {
+    }
+
+    public static Object getTaskGroup() {
         return ROOT_TASK_GROUP.get();
     }
 
-    /**
-     * setTaskGroup.
-     * 
-     * @param group group
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Token setTaskGroup(TaskGroupScope group) {
-        TaskGroupScope previous = ROOT_TASK_GROUP.get();
-        ROOT_TASK_GROUP.set(group);
-        return new Token(previous);
+    public static ContextToken<Object> setTaskGroup(Object taskGroup) {
+        Object previous = ROOT_TASK_GROUP.get();
+        boolean hadValue = previous != null;
+        ROOT_TASK_GROUP.set(taskGroup);
+        return new ContextToken<>(previous, hadValue);
     }
 
-    /**
-     * resetTaskGroup.
-     * 
-     * @param token token
-     * @since 0.1.7
-     */
-    public static void resetTaskGroup(Token token) {
-        ROOT_TASK_GROUP.set(token != null ? token.previousGroup() : null);
+    public static void resetTaskGroup(ContextToken<Object> token) {
+        reset(ROOT_TASK_GROUP, token);
     }
 
-    /**
-     * getCurrentTaskId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static String getCurrentTaskId() {
         return CURRENT_TASK_ID.get();
     }
 
-    static String setCurrentTaskId(String taskId) {
+    static ContextToken<String> setCurrentTaskId(String taskId) {
         String previous = CURRENT_TASK_ID.get();
+        boolean hadValue = previous != null;
         CURRENT_TASK_ID.set(taskId);
-        return previous;
+        return new ContextToken<>(previous, hadValue);
     }
 
-    static void resetCurrentTaskId(String previous) {
-        if (previous == null) {
-            CURRENT_TASK_ID.remove();
-        } else {
-            CURRENT_TASK_ID.set(previous);
+    static void resetCurrentTaskId(ContextToken<String> token) {
+        reset(CURRENT_TASK_ID, token);
+    }
+
+    private static <T> void reset(ThreadLocal<T> context, ContextToken<T> token) {
+        if (token == null || !token.hadValue()) {
+            context.remove();
+            return;
         }
+        context.set(token.previousValue());
     }
 }

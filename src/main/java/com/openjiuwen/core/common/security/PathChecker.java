@@ -4,46 +4,44 @@
 
 package com.openjiuwen.core.common.security;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Path checker — singleton that determines whether a file path is sensitive.
- * <p>
- * Thread-safe singleton using double-checked locking.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code PathChecker} in
+ * {@code openjiuwen/core/common/security/path_checker.py}.
  */
 public final class PathChecker {
+
+    private static final Object LOCK = new Object();
+    private static final List<String> FALLBACK_SENSITIVE_PATHS = List.of(
+            "/etc/passwd",
+            "/etc/shadow",
+            "/etc/hosts",
+            "/etc/hostname",
+            "/etc/ssh/",
+            "/proc/",
+            "/sys/",
+            "/dev/",
+            "C:\\Windows\\System32\\",
+            "C:\\Windows\\SysWOW64\\",
+            "C:\\Windows\\System\\"
+    );
+
     private static volatile PathChecker instance;
 
-    /**
-     * HashSet<>.
-     * 
-     * @since 0.1.7
-     */
     private final Set<String> sensitivePaths = new HashSet<>();
 
-    /**
-     * PathChecker.
-     * 
-     * @since 0.1.7
-     */
     private PathChecker() {
         loadConfig();
     }
 
-    /**
-     * Get or create the singleton instance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static PathChecker getInstance() {
         if (instance == null) {
-            synchronized (PathChecker.class) {
+            synchronized (LOCK) {
                 if (instance == null) {
                     instance = new PathChecker();
                 }
@@ -52,64 +50,83 @@ public final class PathChecker {
         return instance;
     }
 
-    /**
-     * loadConfig.
-     * 
-     * @since 0.1.7
-     */
+    public static boolean isSensitivePath(String path) {
+        return getInstance().checkSensitive(path);
+    }
+
+    public static boolean isSensitivePath(Path path) {
+        return getInstance().checkSensitive(path);
+    }
+
+    static void resetForTests() {
+        synchronized (LOCK) {
+            instance = null;
+        }
+    }
+
     private void loadConfig() {
         sensitivePaths.clear();
-        List<String> paths;
+        List<String> configuredPaths;
         try {
-            paths = UserConfig.getSensitivePaths();
-        } catch (Exception e) {
-            paths = UserConfig.DEFAULT_SENSITIVE_PATHS;
+            configuredPaths = UserConfig.getSensitivePaths();
+        } catch (RuntimeException exception) {
+            configuredPaths = FALLBACK_SENSITIVE_PATHS;
         }
-        for (String p : paths) {
-            if (p == null || p.isBlank()) {
+        for (String rawPath : configuredPaths) {
+            if (rawPath == null) {
+                continue;
+            }
+            String trimmed = rawPath.trim();
+            if (trimmed.isEmpty()) {
                 continue;
             }
             try {
-                String normalized = Path.of(p.trim()).toAbsolutePath().normalize().toString();
-                sensitivePaths.add(normalized);
-            } catch (Exception e) {
-                sensitivePaths.add(p.trim());
+                sensitivePaths.add(normalize(trimmed));
+            } catch (InvalidPathException | SecurityException exception) {
+                sensitivePaths.add(trimmed);
             }
         }
     }
 
-    /**
-     * Check if a path is sensitive.
-     * 
-     * @param path path string to check
-     * @return true if path starts with any configured sensitive path
-     * @since 0.1.7
-     */
     public boolean checkSensitive(String path) {
         if (path == null || path.isBlank()) {
             return false;
         }
         try {
-            String normalized = Path.of(path).toAbsolutePath().normalize().toString();
-            for (String sensitive : sensitivePaths) {
-                if (normalized.startsWith(sensitive)) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (Exception e) {
-            return true; // Fail-isClosed
+            return isNormalizedPathSensitive(normalize(path));
+        } catch (InvalidPathException | SecurityException exception) {
+            return true;
         }
     }
 
-    /**
-     * Convenience static method.
-     * 
-     * @param path path
-     * @return the result
-     * @since 0.1.7
-     */
-    public static boolean isSensitivePath(String path) {
-        return getInstance().checkSensitive(path);
+    public boolean checkSensitive(Path path) {
+        if (path == null) {
+            return false;
+        }
+        try {
+            return isNormalizedPathSensitive(normalize(path.toString()));
+        } catch (InvalidPathException | SecurityException exception) {
+            return true;
+        }
+    }
+
+    private boolean isNormalizedPathSensitive(String normalizedPath) {
+        for (String sensitivePath : sensitivePaths) {
+            if (normalizedPath.startsWith(sensitivePath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalize(String rawPath) {
+        return Path.of(expandUser(rawPath)).toAbsolutePath().normalize().toString();
+    }
+
+    private static String expandUser(String rawPath) {
+        if (rawPath.startsWith("~")) {
+            return System.getProperty("user.home") + rawPath.substring(1);
+        }
+        return rawPath;
     }
 }

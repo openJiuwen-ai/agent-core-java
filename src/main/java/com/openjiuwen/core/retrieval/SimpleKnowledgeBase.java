@@ -1,21 +1,24 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
-import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
+import com.openjiuwen.core.retrieval.common.TextChunk;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
+import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
 import com.openjiuwen.core.retrieval.retriever.AgenticRetriever;
 import com.openjiuwen.core.retrieval.retriever.HybridRetriever;
@@ -23,350 +26,469 @@ import com.openjiuwen.core.retrieval.retriever.Retriever;
 import com.openjiuwen.core.retrieval.retriever.SparseRetriever;
 import com.openjiuwen.core.retrieval.retriever.VectorRetriever;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Standard chunk-based knowledge base.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code SimpleKnowledgeBase} in
+ * {@code openjiuwen/core/retrieval/simple_knowledge_base.py}.
  */
 public class SimpleKnowledgeBase extends KnowledgeBase {
-    /**
-     * SimpleKnowledgeBase.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SimpleKnowledgeBase.class);
+
     public SimpleKnowledgeBase(KnowledgeBaseConfig config) {
-        super(config);
+        this(config, null, null, null, null, null, null, null, null);
     }
 
-    /**
-     * SimpleKnowledgeBase.
-     * 
-     * @param config config
-     * @param vectorStore vectorStore
-     * @param embedModel embedModel
-     * @param parser parser
-     * @param chunker chunker
-     * @param indexManager indexManager
-     * @param llmClient llmClient
-     * @param retriever retriever
-     * @since 0.1.7
-     */
-    public SimpleKnowledgeBase(KnowledgeBaseConfig config, VectorStore vectorStore, Embedding embedModel, Parser parser,
-            Chunker chunker, Indexer indexManager, BaseModelClient llmClient, Retriever retriever) {
-        super(config, vectorStore, embedModel, parser, chunker, null, indexManager, llmClient, retriever);
+    public SimpleKnowledgeBase(
+            KnowledgeBaseConfig config,
+            VectorStore vectorStore,
+            Embedding embedModel,
+            Parser parser,
+            Chunker chunker,
+            Extractor extractor,
+            Indexer indexManager,
+            BaseModelClient llmClient,
+            Retriever retriever
+    ) {
+        super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever);
     }
 
-    /**
-     * addDocuments.
-     * 
-     * @param documents documents
-     * @return the result
-     * @since 0.1.7
-     */
+    public SimpleKnowledgeBase(
+            KnowledgeBaseConfig config,
+            VectorStore vectorStore,
+            Embedding embedModel,
+            Parser parser,
+            Chunker chunker,
+            Indexer indexManager,
+            BaseModelClient llmClient,
+            Retriever retriever
+    ) {
+        this(config, vectorStore, embedModel, parser, chunker, null, indexManager, llmClient, retriever);
+    }
+
     @Override
-    public List<String> addDocuments(List<Document> documents) {
+    public CompletableFuture<List<String>> addDocuments(List<Document> documents, Map<String, Object> kwargs) {
         if (chunker == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND,
+                    "error_msg",
+                    "chunker is required for add_documents"
+            );
+        }
+        if (indexManager == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+                    "error_msg",
+                    "index_manager is required for add_documents"
+            );
         }
         if (strictValidation && vectorStore != null) {
             vectorStore.checkVectorField();
         }
-        Indexer activeIndexManager = requireIndexManager();
-        List<Document> normalized = new ArrayList<>();
+
         List<String> docIds = new ArrayList<>();
-        for (Document document : documents) {
-            String docId = document.getId() == null || document.getId().isBlank()
-                    ? UUID.randomUUID().toString()
-                    : document.getId();
-            normalized.add(new Document(docId, document.getText(), document.getMetadata()));
-            docIds.add(docId);
+        for (Document doc : documents) {
+            if (doc.getId_() == null || doc.getId_().isBlank()) {
+                doc.setId_(UUID.randomUUID().toString());
+            }
+            docIds.add(doc.getId_());
         }
-        boolean built = activeIndexManager.buildIndex(chunker.chunkDocuments(normalized),
-                new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
-        if (!built) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_BUILD_EXECUTION_ERROR,
-                    "Failed to build index");
-        }
-        return docIds;
+        List<TextChunk> chunks = chunker.chunkDocuments(documents);
+        Map<String, Object> buildOptions = new LinkedHashMap<>();
+        buildOptions.put("database_name", databaseNameFromVectorStore());
+
+        IndexConfig indexConfig = IndexConfig.builder()
+                .indexName(chunkIndexName())
+                .indexType(config.getIndexType())
+                .useCaptionForImages(config.isUseCaptionForImages())
+                .build();
+        return indexManager.buildIndex(chunks, indexConfig, embedModel, buildOptions)
+                .thenApply(success -> {
+                    if (!Boolean.TRUE.equals(success)) {
+                        throw ErrorHelper.buildError(
+                                StatusCode.RETRIEVAL_KB_INDEX_BUILD_EXECUTION_ERROR,
+                                "error_msg",
+                                "Failed to build index"
+                        );
+                    }
+                    return List.copyOf(docIds);
+                });
     }
 
-    /**
-     * retrieve.
-     * 
-     * @param query query
-     * @param retrievalConfig retrievalConfig
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public List<RetrievalResult> retrieve(String query, RetrievalConfig retrievalConfig) {
-        RetrievalConfig config = retrievalConfig == null ? new RetrievalConfig() : retrievalConfig;
-        Retriever activeRetriever = resolveRetriever(config);
-        String mode = switch (this.config.getIndexType()) {
+    public CompletableFuture<List<RetrievalResult>> retrieve(
+            String query,
+            RetrievalConfig retrievalConfig,
+            Map<String, Object> kwargs
+    ) {
+        RetrievalConfig activeConfig = retrievalConfig == null ? new RetrievalConfig() : retrievalConfig;
+        Retriever activeRetriever = resolveRetriever(activeConfig, kwargs == null ? Map.of() : kwargs);
+        String mode = retrievalMode();
+        Map<String, Object> options = optionsFrom(activeConfig);
+        return CompletableFuture.completedFuture(activeRetriever.retrieve(
+                query,
+                activeConfig.getTopK(),
+                activeConfig.getScoreThreshold(),
+                mode,
+                options
+        ));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteDocuments(List<String> docIds, Map<String, Object> kwargs) {
+        if (indexManager == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+                    "error_msg",
+                    "index_manager is required for delete_documents"
+            );
+        }
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
+        if (docIds == null || docIds.isEmpty()) {
+            return CompletableFuture.completedFuture(Boolean.TRUE);
+        }
+
+        CompletableFuture<Boolean> chain = CompletableFuture.completedFuture(Boolean.TRUE);
+        for (String docId : docIds) {
+            chain = chain.thenCompose(previous -> indexManager.deleteIndex(
+                            docId,
+                            chunkIndexName(),
+                            kwargs == null ? Map.of() : kwargs
+                    )
+                    .thenApply(result -> previous && Boolean.TRUE.equals(result)));
+        }
+        return chain;
+    }
+
+    @Override
+    public CompletableFuture<List<String>> updateDocuments(List<Document> documents, Map<String, Object> kwargs) {
+        if (chunker == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND,
+                    "error_msg",
+                    "chunker is required for update_documents"
+            );
+        }
+        if (indexManager == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+                    "error_msg",
+                    "index_manager is required for update_documents"
+            );
+        }
+        if (strictValidation && vectorStore != null) {
+            vectorStore.checkVectorField();
+        }
+
+        List<TextChunk> chunks = chunker.chunkDocuments(documents);
+        IndexConfig indexConfig = IndexConfig.builder()
+                .indexName(chunkIndexName())
+                .indexType(config.getIndexType())
+                .build();
+        List<String> docIds = new ArrayList<>();
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (Document doc : documents) {
+            List<TextChunk> docChunks = chunks.stream()
+                    .filter(chunk -> doc.getId_() != null && doc.getId_().equals(chunk.getDocId()))
+                    .toList();
+            if (docChunks.isEmpty()) {
+                continue;
+            }
+            chain = chain.thenCompose(ignored -> indexManager.updateIndex(
+                            docChunks,
+                            doc.getId_(),
+                            indexConfig,
+                            embedModel,
+                            kwargs == null ? Map.of() : kwargs
+                    )
+                    .thenAccept(success -> {
+                        if (Boolean.TRUE.equals(success)) {
+                            docIds.add(doc.getId_());
+                        }
+                    }));
+        }
+        return chain.thenApply(ignored -> List.copyOf(docIds));
+    }
+
+    @Override
+    protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
+        if (indexManager == null) {
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("kb_id", config.getKbId());
+            stats.put("index_exists", false);
+            return CompletableFuture.completedFuture(stats);
+        }
+        return indexManager.getIndexInfo(chunkIndexName()).thenApply(indexInfo -> {
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("kb_id", config.getKbId());
+            stats.put("index_type", config.getIndexType());
+            stats.put("index_info", indexInfo);
+            stats.put("has_parser", parser != null);
+            stats.put("has_chunker", chunker != null);
+            stats.put("has_extractor", extractor != null);
+            stats.put("has_embed_model", embedModel != null);
+            stats.put("has_vector_store", vectorStore != null);
+            return stats;
+        });
+    }
+
+    public static FutureList<String> retrieveMultiKb(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return FutureList.fromFuture(retrieveMultiKbAsync(knowledgeBases, query, config, topK));
+    }
+
+    public static CompletableFuture<List<String>> retrieveMultiKbAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        if (knowledgeBases == null || knowledgeBases.isEmpty()) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        RetrievalConfig activeConfig = config == null ? new RetrievalConfig() : config;
+        List<CompletableFuture<List<RetrievalResult>>> tasks = knowledgeBases.stream()
+                .map(kb -> kb.retrieveAsync(query, activeConfig)
+                        .exceptionally(exception -> {
+                            LOGGER.warn("retrieve_multi_kb: kb_id={} failed: {}",
+                                    kb.getConfig().getKbId(),
+                                    exception.getMessage());
+                            return List.of();
+                        }))
+                .toList();
+        return allResults(tasks).thenApply(results -> {
+            Map<String, Double> merged = new LinkedHashMap<>();
+            for (List<RetrievalResult> oneKbResults : results) {
+                for (RetrievalResult result : oneKbResults) {
+                    double score = result.getScore();
+                    merged.merge(result.getText(), score, Math::max);
+                }
+            }
+            int limit = pythonLimit(topK, config);
+            List<String> ranked = merged.entrySet().stream()
+                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                    .map(Map.Entry::getKey)
+                    .toList();
+            return pythonSlice(ranked, limit);
+        });
+    }
+
+    public static FutureList<MultiKBRetrievalResult> retrieveMultiKbWithSource(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return FutureList.fromFuture(retrieveMultiKbWithSourceAsync(knowledgeBases, query, config, topK));
+    }
+
+    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiKbWithSourceAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        if (knowledgeBases == null || knowledgeBases.isEmpty()) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        RetrievalConfig activeConfig = config == null ? new RetrievalConfig() : config;
+        List<CompletableFuture<List<RetrievalResult>>> tasks = knowledgeBases.stream()
+                .map(kb -> kb.retrieveAsync(query, activeConfig)
+                        .exceptionally(exception -> {
+                            LOGGER.warn("retrieve_multi_kb_with_source: kb_id={} failed: {}",
+                                    kb.getConfig().getKbId(),
+                                    exception.getMessage());
+                            return List.of();
+                        }))
+                .toList();
+        return allResults(tasks).thenApply(results -> {
+            Map<String, MultiKBRetrievalResult> merged = new LinkedHashMap<>();
+            for (int index = 0; index < knowledgeBases.size(); index++) {
+                Object kbId = knowledgeBases.get(index).getConfig().getKbId();
+                List<RetrievalResult> oneKbResults = results.get(index);
+                if (oneKbResults == null) {
+                    continue;
+                }
+                for (RetrievalResult result : oneKbResults) {
+                    mergeWithSource(merged, result, kbId);
+                }
+            }
+            int limit = pythonLimit(topK, config);
+            List<MultiKBRetrievalResult> ranked = merged.values().stream()
+                    .sorted((left, right) -> Double.compare(right.getScore(), left.getScore()))
+                    .toList();
+            return pythonSlice(ranked, limit);
+        });
+    }
+
+    private Retriever resolveRetriever(RetrievalConfig retrievalConfig, Map<String, Object> kwargs) {
+        Retriever activeRetriever = retriever;
+        if (activeRetriever == null) {
+            if (vectorStore == null) {
+                throw ErrorHelper.buildError(
+                        StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+                        "error_msg",
+                        "vector_store or retriever is required for retrieve"
+                );
+            }
+            activeRetriever = switch (config.getIndexType()) {
+                case "vector" -> new VectorRetriever(vectorStore, embedModel);
+                case "bm25" -> new SparseRetriever(vectorStore);
+                default -> new HybridRetriever(vectorStore, embedModel);
+            };
+            retriever = activeRetriever;
+        }
+        if (retrievalConfig.isAgentic()) {
+            activeRetriever = new AgenticRetriever(activeRetriever, llmClient, agenticMaxIter(kwargs));
+        }
+        return activeRetriever;
+    }
+
+    private String retrievalMode() {
+        return switch (config.getIndexType()) {
             case "vector" -> "vector";
             case "bm25" -> "sparse";
             default -> "hybrid";
         };
-        return activeRetriever.retrieve(query, config.getTopK(), config.getScoreThreshold(), mode, optionsFrom(config));
     }
 
-    /**
-     * deleteDocuments.
-     * 
-     * @param docIds docIds
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean deleteDocuments(List<String> docIds) {
-        Indexer activeIndexManager = requireIndexManager();
-        if (strictValidation && vectorStore != null) {
-            vectorStore.checkVectorField();
-        }
-        boolean deleted = true;
-        for (String docId : docIds) {
-            deleted &= activeIndexManager.deleteIndex(docId, chunkIndexName(), Map.of());
-        }
-        return deleted;
-    }
-
-    /**
-     * updateDocuments.
-     * 
-     * @param documents documents
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<String> updateDocuments(List<Document> documents) {
-        if (chunker == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
-        }
-        if (strictValidation && vectorStore != null) {
-            vectorStore.checkVectorField();
-        }
-        Indexer activeIndexManager = requireIndexManager();
-        List<String> ids = new ArrayList<>();
-        for (Document document : documents) {
-            String docId = document.getId() == null || document.getId().isBlank()
-                    ? UUID.randomUUID().toString()
-                    : document.getId();
-            ids.add(docId);
-            activeIndexManager.updateIndex(
-                    chunker.chunkDocuments(List.of(new Document(docId, document.getText(), document.getMetadata()))),
-                    docId, new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
-        }
-        return ids;
-    }
-
-    /**
-     * getStatistics.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, Object> getStatistics() {
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("kb_id", config.getKbId());
-        stats.put("index_type", config.getIndexType());
-        Indexer activeIndexManager = resolveIndexManager();
-        if (activeIndexManager == null) {
-            stats.put("index_exists", false);
-            return stats;
-        }
-        stats.put("index_exists", activeIndexManager.indexExists(chunkIndexName()));
-        stats.put("index_info", activeIndexManager.getIndexInfo(chunkIndexName()));
-        return stats;
-    }
-
-    /**
-     * chunkIndexName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    protected String chunkIndexName() {
-        return "kb_" + config.getKbId() + "_chunks";
-    }
-
-    /**
-     * optionsFrom.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Map<String, Object> optionsFrom(RetrievalConfig config) {
+    private Map<String, Object> optionsFrom(RetrievalConfig config) {
         Map<String, Object> options = new LinkedHashMap<>();
         if (config.getFilters() != null) {
             options.put("filters", config.getFilters());
         }
-        if (config.isGraphExpansion()) {
-            options.put("graph_expansion", true);
-        }
         return options;
     }
 
-    /**
-     * resolveRetriever.
-     * 
-     * @param retrievalConfig retrievalConfig
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Retriever resolveRetriever(RetrievalConfig retrievalConfig) {
-        Retriever baseRetriever = retriever;
-        if (baseRetriever == null) {
-            if (vectorStore == null) {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
-                        "vector_store or retriever is required");
-            }
-            baseRetriever = switch (config.getIndexType()) {
-                case "vector" -> new VectorRetriever(vectorStore.withCollection(chunkIndexName()), embedModel);
-                case "bm25" -> new SparseRetriever(vectorStore.withCollection(chunkIndexName()));
-                default -> new HybridRetriever(vectorStore.withCollection(chunkIndexName()), embedModel);
-            };
-        }
-        if (retrievalConfig.isAgentic()) {
-            if (llmClient == null) {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND,
-                        "llm_client is required");
-            }
-            return new AgenticRetriever(baseRetriever, llmClient);
-        }
-        return baseRetriever;
+    private String chunkIndexName() {
+        return "kb_" + config.getKbId() + "_chunks";
     }
 
-    /**
-     * retrieveMultiKb.
-     * 
-     * @param knowledgeBases knowledgeBases
-     * @param query query
-     * @param config config
-     * @param topK topK
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query,
-            RetrievalConfig config, Integer topK) {
-        if (knowledgeBases == null || knowledgeBases.isEmpty()) {
+    private String databaseNameFromVectorStore() {
+        Object vectorConfig = readNoArg(vectorStore, "getConfig");
+        Object databaseName = readNoArg(vectorConfig, "getDatabaseName");
+        return databaseName instanceof String text ? text : "";
+    }
+
+    private static Object readNoArg(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            if (method.getParameterCount() == 0) {
+                return method.invoke(target);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static CompletableFuture<List<List<RetrievalResult>>> allResults(
+            List<CompletableFuture<List<RetrievalResult>>> tasks
+    ) {
+        return CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new))
+                .thenApply(ignored -> tasks.stream().map(CompletableFuture::join).toList());
+    }
+
+    private static void mergeWithSource(
+            Map<String, MultiKBRetrievalResult> merged,
+            RetrievalResult result,
+            Object kbId
+    ) {
+        String text = result.getText();
+        Map<String, Object> metadata = result.getMetadata() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(result.getMetadata());
+        double score = result.getScore();
+        double rawScore = metadata.get("raw_score") instanceof Number number ? number.doubleValue() : score;
+        double scaled = metadata.get("raw_score_scaled") instanceof Number number ? number.doubleValue() : score;
+        MultiKBRetrievalResult existing = merged.get(text);
+        if (existing == null) {
+            merged.put(text, new MultiKBRetrievalResult(
+                    text,
+                    score,
+                    rawScore,
+                    scaled,
+                    mutableSingleton(kbId),
+                    metadata
+            ));
+            return;
+        }
+        if (score > existing.getScore()) {
+            existing.setScore(score);
+        }
+        existing.setRawScore(Math.max(existing.getRawScore(), rawScore));
+        existing.setRawScoreScaled(Math.max(existing.getRawScoreScaled(), scaled));
+        LinkedHashSet<String> kbIds = new LinkedHashSet<>(existing.getKbIds());
+        kbIds.add(String.valueOf(kbId));
+        existing.setKbIds(sortedKbIds(kbIds));
+    }
+
+    private static int agenticMaxIter(Map<String, Object> kwargs) {
+        if (kwargs == null || kwargs.isEmpty()) {
+            return 2;
+        }
+        Object value = kwargs.containsKey("max_iter") ? kwargs.get("max_iter") : kwargs.get("maxIter");
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return 2;
+            }
+        }
+        return 2;
+    }
+
+    private static int pythonLimit(Integer topK, RetrievalConfig config) {
+        if (topK != null && topK != 0) {
+            return topK;
+        }
+        if (config != null && config.getTopK() != 0) {
+            return config.getTopK();
+        }
+        return 5;
+    }
+
+    private static <T> List<T> pythonSlice(List<T> ranked, int limit) {
+        if (ranked == null || ranked.isEmpty()) {
             return List.of();
         }
-        RetrievalConfig retrievalConfig = config != null ? config : new RetrievalConfig();
-        Map<String, Double> byText = new LinkedHashMap<>();
-        for (KnowledgeBase kb : knowledgeBases) {
-            try {
-                for (RetrievalResult result : kb.retrieve(query, retrievalConfig)) {
-                    String text = result.getText();
-                    double score = result.getScore();
-                    Double existing = byText.get(text);
-                    if (existing == null || score > existing) {
-                        byText.put(text, score);
-                    }
-                }
-            } catch (Exception ignored) {
-
-                // Ignore.
-            }
-        }
-        int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
-        List<Map.Entry<String, Double>> ranked = new ArrayList<>(byText.entrySet());
-        ranked.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-        List<String> results = new ArrayList<>();
-        for (int i = 0; i < Math.min(limit, ranked.size()); i++) {
-            results.add(ranked.get(i).getKey());
-        }
-        return results;
+        int end = limit >= 0 ? Math.min(limit, ranked.size()) : Math.max(ranked.size() + limit, 0);
+        return List.copyOf(ranked.subList(0, end));
     }
 
-    /**
-     * Convenience overload without config/topK.
-     * 
-     * @param knowledgeBases knowledgeBases
-     * @param query query
-     * @param topK topK
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query, int topK) {
-        return retrieveMultiKb(knowledgeBases, query, null, topK);
+    private static List<String> sortedKbIds(LinkedHashSet<String> kbIds) {
+        return kbIds.stream()
+                .sorted(Comparator.comparing(value -> value == null ? "" : String.valueOf(value)))
+                .toList();
     }
 
-    /**
-     * retrieveMultiKbWithSource.
-     * 
-     * @param knowledgeBases knowledgeBases
-     * @param query query
-     * @param config config
-     * @param topK topK
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
-            String query, RetrievalConfig config, Integer topK) {
-        if (knowledgeBases == null || knowledgeBases.isEmpty()) {
-            return List.of();
-        }
-        RetrievalConfig retrievalConfig = config != null ? config : new RetrievalConfig();
-        Map<String, MultiKBRetrievalResult> byText = new LinkedHashMap<>();
-        for (KnowledgeBase kb : knowledgeBases) {
-            String kbId = kb.getConfig().getKbId();
-            try {
-                for (RetrievalResult result : kb.retrieve(query, retrievalConfig)) {
-                    MultiKBRetrievalResult aggregate = byText.get(result.getText());
-                    double rawScore =
-                        result.getMetadata().get("raw_score") instanceof Number n ? n.doubleValue() : result.getScore();
-                    double scaled = result.getMetadata().get("raw_score_scaled") instanceof Number n
-                            ? n.doubleValue()
-                            : result.getScore();
-                    if (aggregate == null) {
-                        aggregate = new MultiKBRetrievalResult(result.getText(), result.getScore(), rawScore, scaled,
-                                List.of(kbId), result.getMetadata());
-                        byText.put(result.getText(), aggregate);
-                    } else {
-                        if (result.getScore() > aggregate.getScore()) {
-                            aggregate.setScore(result.getScore());
-                            aggregate.setRawScore(rawScore);
-                            aggregate.setRawScoreScaled(scaled);
-                            aggregate.setMetadata(result.getMetadata());
-                        }
-                        LinkedHashSet<String> kbIds = new LinkedHashSet<>(aggregate.getKbIds());
-                        kbIds.add(kbId);
-                        aggregate.setKbIds(new ArrayList<>(kbIds));
-                    }
-                }
-            } catch (Exception ignored) {
-
-                // Ignore.
-            }
-        }
-        int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
-        List<MultiKBRetrievalResult> results = new ArrayList<>(byText.values());
-        results.sort((a, b) -> Double.compare(b.getScore(), a.getScore()));
-        return results.size() <= limit ? results : new ArrayList<>(results.subList(0, limit));
-    }
-
-    /**
-     * Convenience overload without config/topK.
-     * 
-     * @param knowledgeBases knowledgeBases
-     * @param query query
-     * @param topK topK
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
-            String query, int topK) {
-        return retrieveMultiKbWithSource(knowledgeBases, query, null, topK);
+    private static List<String> mutableSingleton(Object value) {
+        List<String> values = new ArrayList<>(1);
+        values.add(String.valueOf(value));
+        return values;
     }
 }

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.schema.GroupCard
+# com.openjiuwen.core.multi_agent.schema.GroupCard
 
 ## class GroupCard
 

@@ -7,33 +7,12 @@ package com.openjiuwen.core.session.checkpointer;
 import java.util.Map;
 
 /**
- * Provider interface for creating checkpointer instances.
- * <p>
- * Implementations are discovered via {@link java.util.ServiceLoader} from
- * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
- * Each provider declares which {@code typeName()} it supports.
- * Service adapters can also register providers programmatically via
- * {@link CheckpointerFactory#register(String, CheckpointerProvider)}.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerProvider}.
- * 
- * @since 0.1.7
+ * Factory provider for a checkpointer implementation.
+ *
+ * <p>Mirrors Python's {@code CheckpointerProvider} in
+ * {@code openjiuwen/core/session/checkpointer/checkpointer.py}.</p>
  */
 public interface CheckpointerProvider {
-    /**
-     * typeName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    String typeName();
 
-    /**
-     * Create a checkpointer with the given configuration.
-     * 
-     * @param conf the configuration map
-     * @return a checkpointer instance
-     * @since 0.1.7
-     */
     Checkpointer create(Map<String, Object> conf);
 }

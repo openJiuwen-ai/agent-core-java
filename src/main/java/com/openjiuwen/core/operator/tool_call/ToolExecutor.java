@@ -7,20 +7,19 @@ package com.openjiuwen.core.operator.tool_call;
 import com.openjiuwen.core.session.Session;
 
 /**
- * Router-mode executor for tool call batches.
- * 
+ * Functional interface for executing a tool call.
+ *
  * @since 0.1.7
  */
 @FunctionalInterface
 public interface ToolExecutor {
+
     /**
-     * execute.
-     * 
-     * @param toolCall toolCall
-     * @param session session
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * Execute a tool call.
+     *
+     * @param toolCall the tool call object
+     * @param session  the session context
+     * @return the execution result
      */
-    ToolExecutionResult execute(Object toolCall, Session session) throws Exception;
+    ToolExecutionResult execute(Object toolCall, Session session);
 }

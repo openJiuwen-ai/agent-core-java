@@ -15,50 +15,51 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * <p>
  * Binds a {@link Tool} and creates a {@link ToolExecutable} for graph execution.
  * <p>
- * Mirrors Python's {@code ToolComponent}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ToolComponent} in
+ * {@code openjiuwen/core/workflow/components/tool/tool_comp.py}.
  */
 public class ToolComponent implements ComponentComposable {
+
     private final ToolComponentConfig config;
     private Tool tool;
 
-    /**
-     * ToolComponent.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public ToolComponent(ToolComponentConfig config) {
         this.config = config;
         // If toolId is set, tool lookup would happen via Runner.resourceMgr.getTool()
         // in the full framework. For now we support explicit binding.
     }
 
-    /**
-     * toExecutable.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Executable<?, ?> toExecutable() {
-        if (tool == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_INIT_FAILED, "error_msg",
-                    "tool component not bind a valid tool");
+        Tool executableTool = tool != null ? tool : resolveToolById();
+        if (executableTool == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_INIT_FAILED,
+                    "error_msg", "tool component not bind a valid tool");
         }
-        return new ToolExecutable(config).setTool(tool);
+        return new ToolExecutable(config).setTool(executableTool);
     }
 
     /**
      * Bind a tool instance to this component.
-     * 
-     * @param tool tool
-     * @return the result
-     * @since 0.1.7
      */
     public ToolComponent bindTool(Tool tool) {
         this.tool = tool;
         return this;
+    }
+
+    private Tool resolveToolById() {
+        if (config == null || config.getToolId() == null || config.getToolId().isBlank()) {
+            return null;
+        }
+        try {
+            Class<?> runnerClass = Class.forName("com.openjiuwen.core.runner.Runner");
+            Object resourceManager = runnerClass.getMethod("resourceMgr").invoke(null);
+            Object resolved = resourceManager.getClass()
+                    .getMethod("getTool", String.class)
+                    .invoke(resourceManager, config.getToolId());
+            return resolved instanceof Tool ? (Tool) resolved : null;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return null;
+        }
     }
 }

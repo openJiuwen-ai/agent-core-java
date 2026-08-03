@@ -4,467 +4,422 @@
 
 package com.openjiuwen.core.session.tracer;
 
-import com.openjiuwen.core.session.internal.AgentSession;
-
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
- * Tracer decorator utilities for wrapping model, tool, and workflow invocations with trace spans.
+ * Decorator utilities for wrapping model, tool, and workflow invocations with tracer events.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.decorator} module.
- * In Java, dynamic proxying replaces Python's dynamic class wrapping.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code openjiuwen/core/session/tracer/decorator.py}.
+ * </p>
  */
 public final class TracerDecorator {
-    /**
-     * TracerDecorator.
-     * 
-     * @since 0.1.7
-     */
+
+    private static final String TRACE_HANDLER = "tracer_agent";
+
     private TracerDecorator() {
     }
 
-    /**
-     * Check if the object+session combination should be decorated with trace.
-     * 
-     * @param obj obj
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean shouldDecorate(Object obj, Object session) {
-        if (obj == null || session == null) {
-            return false;
-        }
-        try {
-            Method tracerMethod = session.getClass().getMethod("tracer");
-            Object tracer = tracerMethod.invoke(session);
-            if (tracer == null) {
-                return false;
-            }
-            Method spanMethod = session.getClass().getMethod("span");
-            return spanMethod != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * Decorate a model with trace. Wraps invoke/stream calls with trace span recording.
-     *
-     * @param model the model object
-     * @param agentSession the agent session API (expects an _inner field or getInner method)
-     * @param <T> the model type
-     * @return the wrapped model, or original if tracing is not applicable
-     */
-
-    /**
-     * decorateModelWithTrace.
-     * 
-     * @param model model
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static <T> T decorateModelWithTrace(T model, Object agentSession) {
-        Object innerSession = getInnerSession(agentSession);
-        if (!shouldDecorate(model, innerSession)) {
+        Object session = getInnerSession(agentSession);
+        if (!shouldDecorate(model, session)) {
             return model;
         }
-
-        String modelName = getClassName(model);
-        Map<String, Object> instanceInfo = new HashMap<>();
-        instanceInfo.put("class_name", modelName);
+        Map<String, Object> instanceInfo = new LinkedHashMap<>();
+        instanceInfo.put("class_name", resolveModelName(model));
         instanceInfo.put("type", "llm");
-
-        return createTracingProxy(model, innerSession, InvokeType.LLM, instanceInfo);
+        return (T) createTracingProxy(model, session, InvokeType.LLM, instanceInfo);
     }
 
-    /**
-     * Decorate a tool with trace. Wraps invoke calls with trace span recording.
-     *
-     * @param tool the tool object
-     * @param agentSession the agent session API
-     * @param <T> the tool type
-     * @return the wrapped tool, or original if tracing is not applicable
-     */
-
-    /**
-     * decorateToolWithTrace.
-     * 
-     * @param tool tool
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static <T> T decorateToolWithTrace(T tool, Object agentSession) {
-        Object innerSession = getInnerSession(agentSession);
-        if (!shouldDecorate(tool, innerSession)) {
+        Object session = getInnerSession(agentSession);
+        if (!shouldDecorate(tool, session)) {
             return tool;
         }
-
-        String toolName = getCardName(tool);
-        Map<String, Object> instanceInfo = new HashMap<>();
-        instanceInfo.put("class_name", toolName);
+        Map<String, Object> instanceInfo = new LinkedHashMap<>();
+        instanceInfo.put("class_name", resolveCardName(tool));
         instanceInfo.put("type", "tool");
-
-        return createTracingProxy(tool, innerSession, InvokeType.PLUGIN, instanceInfo);
+        return (T) createTracingProxy(tool, session, InvokeType.PLUGIN, instanceInfo);
     }
 
-    /**
-     * Decorate a workflow with trace. Wraps invoke/stream calls with trace span recording.
-     *
-     * @param workflow the workflow object
-     * @param agentSession the agent session API
-     * @param <T> the workflow type
-     * @return the wrapped workflow, or original if tracing is not applicable
-     */
-
-    /**
-     * decorateWorkflowWithTrace.
-     * 
-     * @param workflow workflow
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static <T> T decorateWorkflowWithTrace(T workflow, Object agentSession) {
-        Object innerSession = getInnerSession(agentSession);
-        if (!shouldDecorate(workflow, innerSession)) {
+        Object session = getInnerSession(agentSession);
+        if (!shouldDecorate(workflow, session)) {
             return workflow;
         }
-
-        String wfName = getCardName(workflow);
-        Map<String, Object> instanceInfo = new HashMap<>();
-        instanceInfo.put("class_name", wfName);
+        Map<String, Object> instanceInfo = new LinkedHashMap<>();
+        instanceInfo.put("class_name", resolveCardName(workflow));
         instanceInfo.put("type", "workflow");
-
-        // Try to collect metadata from card
-        try {
-            Method cardMethod = workflow.getClass().getMethod("getCard");
-            Object card = cardMethod.invoke(workflow);
-            if (card != null) {
-                Map<String, Object> metadata = new HashMap<>();
-                tryPutField(metadata, "id", card);
-                tryPutField(metadata, "name", card);
-                tryPutField(metadata, "description", card);
-                tryPutField(metadata, "version", card);
-                instanceInfo.put("metadata", metadata);
-            }
-        } catch (Exception ignored) {
-            // no card — skip metadata
+        Map<String, Object> metadata = resolveWorkflowMetadata(workflow);
+        if (!metadata.isEmpty()) {
+            instanceInfo.put("metadata", metadata);
         }
-
-        return createTracingProxy(workflow, innerSession, InvokeType.WORKFLOW, instanceInfo);
+        return (T) createTracingProxy(workflow, session, InvokeType.WORKFLOW, instanceInfo);
     }
 
-    /**
-     * Synchronous trace wrapper around a function-like call.
-     * Mirrors Python's {@code trace()}.
-     * 
-     * @param session the agent session (must expose tracer() and span())
-     * @param invokeType the type of invocation
-     * @param instanceInfo descriptive info about the invoked instance
-     * @param callable the callable to wrap (args -> result)
-     * @param args the input arguments
-     * @param kwargs the keyword-style arguments
-     * @return the invocation result
-     * @since 0.1.7
-     */
-    public static Object trace(Object session, InvokeType invokeType, Map<String, Object> instanceInfo,
-            BiFunction<Object[], Map<String, Object>, Object> callable, Object[] args, Map<String, Object> kwargs) {
-        Tracer tracer = getTracer(session);
-        if (tracer == null) {
-            return callable.apply(args, kwargs);
-        }
-        TraceAgentSpan span = null;
-        try {
-            Span agentSpan = getSpan(session);
-            span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-
-            Map<String, Object> triggerKwargs = new HashMap<>();
-            triggerKwargs.put("span", span);
-            triggerKwargs.put("inputs", Map.of("inputs", args != null && args.length > 0 ? args[0] : new HashMap<>()));
-            triggerKwargs.put("instance_info", instanceInfo);
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_start",
-                    triggerKwargs);
-
-            Object result = callable.apply(args, kwargs);
-
-            Map<String, Object> endKwargs = new HashMap<>();
-            endKwargs.put("span", span);
-            endKwargs.put("outputs", Map.of("outputs", result));
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_end", endKwargs);
-
-            return result;
-        } catch (RuntimeException error) {
-            Map<String, Object> errorKwargs = new HashMap<>();
-            errorKwargs.put("span", span);
-            errorKwargs.put("error", error);
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_error",
-                    errorKwargs);
-            throw error;
-        }
+    private static boolean shouldDecorate(Object target, Object session) {
+        return target != null && session != null && getTracer(session) != null && hasZeroArgMethod(session, "span");
     }
 
-    // ---- private helpers ----
-
-    /**
-     * getInnerSession.
-     * 
-     * @param agentSession agentSession
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object getInnerSession(Object agentSession) {
         if (agentSession == null) {
             return null;
         }
-        if (agentSession instanceof AgentSession
-                || (hasMethod(agentSession, "tracer") && hasMethod(agentSession, "span"))) {
+        if (hasZeroArgMethod(agentSession, "tracer") && hasZeroArgMethod(agentSession, "span")) {
             return agentSession;
         }
-        try {
-            Method getInner = agentSession.getClass().getMethod("getInner");
-            return getInner.invoke(agentSession);
-        } catch (Exception e) {
-            return null;
+        Object inner = readField(agentSession, "_inner");
+        if (inner != null) {
+            return inner;
         }
+        Object getterInner = invokeZeroArg(agentSession, "getInner");
+        if (getterInner != null) {
+            return getterInner;
+        }
+        return null;
     }
 
-    /**
-     * hasMethod.
-     * 
-     * @param obj obj
-     * @param methodName methodName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean hasMethod(Object obj, String methodName) {
-        try {
-            obj.getClass().getMethod(methodName);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
-        }
-    }
-
-    /**
-     * getTracer.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Tracer getTracer(Object session) {
-        try {
-            Method tracerMethod = session.getClass().getMethod("tracer");
-            Object result = tracerMethod.invoke(session);
-            return result instanceof Tracer ? (Tracer) result : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * getSpan.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Span getSpan(Object session) {
-        try {
-            Method spanMethod = session.getClass().getMethod("span");
-            Object result = spanMethod.invoke(session);
-            return result instanceof Span ? (Span) result : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * getClassName.
-     * 
-     * @param obj obj
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String getClassName(Object obj) {
-        try {
-            Method configMethod = obj.getClass().getMethod("getConfig");
-            Object config = configMethod.invoke(obj);
-            if (config != null) {
-                Method modelConfigMethod = config.getClass().getMethod("getModelConfig");
-                Object modelConfig = modelConfigMethod.invoke(config);
-                if (modelConfig != null) {
-                    Method nameMethod = modelConfig.getClass().getMethod("getModelName");
-                    Object name = nameMethod.invoke(modelConfig);
-                    if (name != null) {
-                        return name.toString();
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        return obj.getClass().getSimpleName();
-    }
-
-    /**
-     * getCardName.
-     * 
-     * @param obj obj
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String getCardName(Object obj) {
-        try {
-            Method cardMethod = obj.getClass().getMethod("getCard");
-            Object card = cardMethod.invoke(obj);
-            if (card != null) {
-                Method nameMethod = card.getClass().getMethod("getName");
-                Object name = nameMethod.invoke(card);
-                if (name != null) {
-                    return name.toString();
-                }
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        return obj.getClass().getSimpleName();
-    }
-
-    /**
-     * tryPutField.
-     * 
-     * @param map map
-     * @param field field
-     * @param obj obj
-     * @since 0.1.7
-     */
-    private static void tryPutField(Map<String, Object> map, String field, Object obj) {
-        try {
-            String getter = "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1);
-            Method method = obj.getClass().getMethod(getter);
-            Object value = method.invoke(obj);
-            if (value != null) {
-                map.put(field, value);
-            }
-        } catch (ReflectiveOperationException ignored) {
-            // skip
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * createTracingProxy.
-     * 
-     * @param original original
-     * @param session session
-     * @param invokeType invokeType
-     * @param instanceInfo instanceInfo
-     * @return the result
-     * @since 0.1.7
-     */
-    private static <T> T createTracingProxy(T original, Object session, InvokeType invokeType,
-            Map<String, Object> instanceInfo) {
-        Class<?>[] interfaces = original.getClass().getInterfaces();
+    private static Object createTracingProxy(Object target, Object session, InvokeType invokeType,
+                                             Map<String, Object> instanceInfo) {
+        Class<?>[] interfaces = target.getClass().getInterfaces();
         if (interfaces.length == 0) {
-            // Cannot proxy non-interface types; return original
-            return original;
+            return target;
         }
-
-        Tracer tracer = getTracer(session);
-        if (tracer == null) {
-            return original;
-        }
-
-        Object proxy = Proxy.newProxyInstance(original.getClass().getClassLoader(), interfaces,
-                new TracingInvocationHandler(original, session, tracer, invokeType, instanceInfo));
-
-        return (T) proxy;
+        return Proxy.newProxyInstance(
+                target.getClass().getClassLoader(),
+                interfaces,
+                new TracingInvocationHandler(target, session, invokeType, instanceInfo)
+        );
     }
 
-    /**
-     * Dynamic invocation handler that wraps "invoke" and "stream" methods with tracing.
-     */
-    private static class TracingInvocationHandler implements InvocationHandler {
+    private static String resolveModelName(Object model) {
+        Object config = invokeZeroArg(model, "getConfig");
+        if (config == null) {
+            config = readField(model, "config");
+        }
+        Object modelConfig = config == null ? null : invokeZeroArg(config, "getModelConfig");
+        if (modelConfig == null && config != null) {
+            modelConfig = readField(config, "modelConfig");
+        }
+        Object modelName = modelConfig == null ? null : invokeZeroArg(modelConfig, "getModelName");
+        if (modelName == null && modelConfig != null) {
+            modelName = readField(modelConfig, "modelName");
+        }
+        return modelName == null ? model.getClass().getSimpleName() : String.valueOf(modelName);
+    }
+
+    private static String resolveCardName(Object target) {
+        Object card = invokeZeroArg(target, "getCard");
+        if (card == null) {
+            card = readField(target, "card");
+        }
+        Object name = card == null ? null : invokeZeroArg(card, "getName");
+        if (name == null && card != null) {
+            name = readField(card, "name");
+        }
+        return name == null ? target.getClass().getSimpleName() : String.valueOf(name);
+    }
+
+    private static Map<String, Object> resolveWorkflowMetadata(Object workflow) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        Object card = invokeZeroArg(workflow, "getCard");
+        if (card == null) {
+            card = readField(workflow, "card");
+        }
+        if (card == null) {
+            return metadata;
+        }
+        putIfPresent(metadata, "id", readProperty(card, "Id"));
+        putIfPresent(metadata, "name", readProperty(card, "Name"));
+        putIfPresent(metadata, "description", readProperty(card, "Description"));
+        putIfPresent(metadata, "version", readProperty(card, "Version"));
+        return metadata;
+    }
+
+    private static Object getTracer(Object session) {
+        return invokeZeroArg(session, "tracer");
+    }
+
+    private static Object getSpan(Object session) {
+        return invokeZeroArg(session, "span");
+    }
+
+    private static Object createAgentSpan(Object tracer, Object parentSpan) {
+        if (tracer == null) {
+            return null;
+        }
+        Object manager = invokeZeroArg(tracer, "getTracerAgentSpanManager");
+        if (manager == null) {
+            manager = readField(tracer, "tracerAgentSpanManager");
+        }
+        if (manager == null) {
+            manager = readField(tracer, "tracer_agent_span_manager");
+        }
+        if (manager == null) {
+            return null;
+        }
+        Method withParent = findMethod(manager.getClass(), "createAgentSpan", 1);
+        if (withParent != null) {
+            return invokeMethod(manager, withParent, parentSpan);
+        }
+        Method noArg = findMethod(manager.getClass(), "createAgentSpan", 0);
+        if (noArg != null) {
+            return invokeMethod(manager, noArg);
+        }
+        return null;
+    }
+
+    private static void trigger(Object tracer, String eventName, Map<String, Object> kwargs) {
+        if (tracer == null) {
+            return;
+        }
+        for (String methodName : List.of("trigger", "syncTrigger", "sync_trigger")) {
+            Method method = findMethod(tracer.getClass(), methodName, 3);
+            if (method != null) {
+                invokeMethod(tracer, method, TRACE_HANDLER, eventName, kwargs);
+                return;
+            }
+        }
+    }
+
+    private static Object invokeMethod(Object target, Method method, Object... args) {
+        try {
+            method.setAccessible(true);
+            return method.invoke(target, args);
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            throw new IllegalStateException("Failed to invoke method: " + method.getName(), unwrap(exception));
+        }
+    }
+
+    private static Method findMethod(Class<?> type, String name, int parameterCount) {
+        for (Method method : type.getMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
+                return method;
+            }
+        }
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasZeroArgMethod(Object target, String name) {
+        return target != null && findMethod(target.getClass(), name, 0) != null;
+    }
+
+    private static Object invokeZeroArg(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        Method method = findMethod(target.getClass(), name, 0);
+        if (method == null) {
+            return null;
+        }
+        try {
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            return null;
+        }
+    }
+
+    private static Object readField(Object target, String fieldName) {
+        if (target == null) {
+            return null;
+        }
+        Class<?> current = target.getClass();
+        while (current != null) {
+            try {
+                Field field = current.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException exception) {
+                current = current.getSuperclass();
+            } catch (IllegalAccessException exception) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Object readProperty(Object target, String suffix) {
+        Object value = invokeZeroArg(target, "get" + suffix);
+        if (value != null) {
+            return value;
+        }
+        String fieldName = Character.toLowerCase(suffix.charAt(0)) + suffix.substring(1);
+        return readField(target, fieldName);
+    }
+
+    private static void putIfPresent(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private static Throwable unwrap(Throwable throwable) {
+        if (throwable instanceof InvocationTargetException invocationTargetException
+                && invocationTargetException.getCause() != null) {
+            return invocationTargetException.getCause();
+        }
+        return throwable;
+    }
+
+    private static final class TracingInvocationHandler implements InvocationHandler {
+
         private final Object target;
         private final Object session;
-        private final Tracer tracer;
         private final InvokeType invokeType;
         private final Map<String, Object> instanceInfo;
 
-        TracingInvocationHandler(Object target, Object session, Tracer tracer, InvokeType invokeType,
-                Map<String, Object> instanceInfo) {
+        private TracingInvocationHandler(Object target, Object session, InvokeType invokeType,
+                                         Map<String, Object> instanceInfo) {
             this.target = target;
             this.session = session;
-            this.tracer = tracer;
             this.invokeType = invokeType;
-            this.instanceInfo = instanceInfo;
+            this.instanceInfo = new LinkedHashMap<>(instanceInfo);
         }
 
-        /**
-         * invoke.
-         * 
-         * @param proxy proxy
-         * @param method method
-         * @param args args
-         * @return the result
-         * @throws Throwable Throwable
-         * @since 0.1.7
-         */
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            String methodName = method.getName();
-
-            // Only trace "invoke" and "stream" methods
-            if ("invoke".equals(methodName) || "stream".equals(methodName)) {
-                TraceAgentSpan span = null;
-                try {
-                    Span agentSpan = getSpan(session);
-                    span = tracer.getTracerAgentSpanManager().createAgentSpan(agentSpan);
-
-                    Map<String, Object> startKwargs = new HashMap<>();
-                    startKwargs.put("span", span);
-                    startKwargs.put("inputs",
-                            Map.of("inputs", args != null && args.length > 0 ? args[0] : new HashMap<>()));
-                    startKwargs.put("instance_info", instanceInfo);
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_start",
-                            startKwargs);
-
-                    Object result = method.invoke(target, args);
-
-                    Map<String, Object> endKwargs = new HashMap<>();
-                    endKwargs.put("span", span);
-                    endKwargs.put("outputs", Map.of("outputs", result));
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_end",
-                            endKwargs);
-
-                    return result;
-                } catch (Exception error) {
-                    Throwable cause = error.getCause() != null ? error.getCause() : error;
-                    Map<String, Object> errorKwargs = new HashMap<>();
-                    errorKwargs.put("span", span);
-                    errorKwargs.put("error", cause);
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_error",
-                            errorKwargs);
-                    throw cause;
-                }
+            if (!Objects.equals(method.getName(), "invoke") && !Objects.equals(method.getName(), "stream")) {
+                return method.invoke(target, args);
+            }
+            Object tracer = getTracer(session);
+            if (tracer == null) {
+                return method.invoke(target, args);
             }
 
-            // All other methods delegate directly
-            return method.invoke(target, args);
+            Object span = createAgentSpan(tracer, getSpan(session));
+            trigger(tracer, "on_" + invokeType.getValue() + "_start", startPayload(span, args));
+            Object[] invocationArgs = invokeType == InvokeType.LLM
+                    ? withTracerRecordCallback(args, tracer, span)
+                    : args;
+            try {
+                Object result = method.invoke(target, invocationArgs);
+                if ("stream".equals(method.getName())) {
+                    return wrapStreamResult(result, tracer, span);
+                }
+                trigger(tracer, "on_" + invokeType.getValue() + "_end", Map.of(
+                        "span", span,
+                        "outputs", Map.of("outputs", result)
+                ));
+                return result;
+            } catch (InvocationTargetException exception) {
+                Throwable cause = unwrap(exception);
+                trigger(tracer, "on_" + invokeType.getValue() + "_error", Map.of(
+                        "span", span,
+                        "error", cause
+                ));
+                throw cause;
+            }
+        }
+
+        private Map<String, Object> startPayload(Object span, Object[] args) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("span", span);
+            payload.put("inputs", Map.of("inputs", firstInput(args)));
+            payload.put("instance_info", new LinkedHashMap<>(instanceInfo));
+            return payload;
+        }
+
+        private Object firstInput(Object[] args) {
+            if (args != null && args.length > 0) {
+                return args[0];
+            }
+            return Map.of();
+        }
+
+        @SuppressWarnings("unchecked")
+        private Object[] withTracerRecordCallback(Object[] args, Object tracer, Object span) {
+            if (args == null || args.length == 0 || !(args[args.length - 1] instanceof Map<?, ?> rawMap)) {
+                return args;
+            }
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                kwargs.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            Object existing = kwargs.get("tracer_record_data");
+            Consumer<Map<String, Object>> callback = payload -> {
+                Map<String, Object> eventKwargs = new LinkedHashMap<>();
+                eventKwargs.put("span", span);
+                if (payload != null) {
+                    eventKwargs.putAll(payload);
+                }
+                trigger(tracer, "on_" + invokeType.getValue() + "_request", eventKwargs);
+                invokeExistingCallback(existing, payload);
+            };
+            kwargs.put("tracer_record_data", callback);
+            Object[] updated = args.clone();
+            updated[updated.length - 1] = kwargs;
+            return updated;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void invokeExistingCallback(Object callback, Map<String, Object> payload) {
+            if (callback instanceof Consumer<?> consumer) {
+                ((Consumer<Map<String, Object>>) consumer).accept(payload);
+            }
+        }
+
+        private Object wrapStreamResult(Object result, Object tracer, Object span) {
+            if (result instanceof Iterator<?> iterator) {
+                return new Iterator<>() {
+                    private final List<Object> outputs = new ArrayList<>();
+                    private boolean finished;
+
+                    @Override
+                    public boolean hasNext() {
+                        boolean hasNext = iterator.hasNext();
+                        if (!hasNext) {
+                            finishOnce();
+                        }
+                        return hasNext;
+                    }
+
+                    @Override
+                    public Object next() {
+                        Object item = iterator.next();
+                        outputs.add(item);
+                        return item;
+                    }
+
+                    private void finishOnce() {
+                        if (finished) {
+                            return;
+                        }
+                        finished = true;
+                        trigger(tracer, "on_" + invokeType.getValue() + "_end", Map.of(
+                                "span", span,
+                                "outputs", Map.of("outputs", List.copyOf(outputs))
+                        ));
+                    }
+                };
+            }
+            if (result instanceof Iterable<?> iterable) {
+                return wrapStreamResult(iterable.iterator(), tracer, span);
+            }
+            trigger(tracer, "on_" + invokeType.getValue() + "_end", Map.of(
+                    "span", span,
+                    "outputs", Map.of("outputs", result)
+            ));
+            return result;
         }
     }
 }

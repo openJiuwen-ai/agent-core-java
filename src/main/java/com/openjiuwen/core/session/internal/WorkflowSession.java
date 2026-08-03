@@ -5,301 +5,183 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
+import com.openjiuwen.core.graph.stream_actor.ActorManagerSession;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
-import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.stream.StreamEmitter;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Internal workflow session implementation.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.WorkflowSession}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code WorkflowSession} in
+ * {@code openjiuwen/core/session/internal/workflow.py}.</p>
  */
-public class WorkflowSession extends BaseSession {
-    private final String sessionIdField;
+public class WorkflowSession extends BaseSession implements ActorManagerSession {
+
     private final BaseSession parent;
-    private final Config configField;
-    private State stateField;
-    private final CallbackManager callbackManagerField;
-    private StreamWriterManager streamWriterManagerField;
-    private Object tracerField;
-    private ActorManager actorManagerField;
+    private final String sessionId;
+    private final Config config;
+    private WorkflowCommitState state;
+    private StreamWriterManager streamWriterManager;
+    private Object tracer;
+    private CallbackManager callbackManager;
+    private ActorManager actorManager;
     private String workflowId;
 
-    /**
-     * WorkflowSession.
-     * 
-     * @param workflowId workflowId
-     * @param parent parent
-     * @param sessionId sessionId
-     * @param state state
-     * @param callbackManager callbackManager
-     * @since 0.1.7
-     */
-    public WorkflowSession(String workflowId, BaseSession parent, String sessionId, State state,
-            CallbackManager callbackManager) {
-        this.workflowId = workflowId != null ? workflowId : "";
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                           WorkflowCommitState state, Object callbackManager) {
+        this.workflowId = workflowId == null ? "" : workflowId;
         this.parent = parent;
-
-        if (parent != null) {
-            this.sessionIdField = sessionId != null ? sessionId : parent.sessionId();
-            this.configField = parent.config();
-            this.tracerField = parent.tracer();
-        } else {
-            this.sessionIdField = sessionId != null ? sessionId : UUID.randomUUID().toString().replace("-", "");
-            this.configField = new Config();
-            this.tracerField = null;
-        }
-
-        this.stateField = state != null ? state : InMemoryState.create();
-        this.callbackManagerField = callbackManager != null ? callbackManager : new CallbackManager();
-        this.streamWriterManagerField = null;
-        this.actorManagerField = null;
+        this.sessionId = sessionId != null
+                ? sessionId
+                : parent != null ? parent.sessionId() : UUID.randomUUID().toString().replace("-", "");
+        this.config = parent != null ? parent.config() : new Config();
+        this.state = state == null ? InMemoryState.create() : state;
+        this.tracer = parent == null ? null : parent.tracer();
+        this.callbackManager = callbackManager instanceof CallbackManager typedManager ? typedManager : null;
     }
 
-    /**
-     * WorkflowSession.
-     * 
-     * @param workflowId workflowId
-     * @param parent parent
-     * @since 0.1.7
-     */
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                           WorkflowCommitState state, CallbackManager callbackManager) {
+        this(workflowId, parent, sessionId, state, (Object) callbackManager);
+    }
+
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                           State state, CallbackManager callbackManager) {
+        this(workflowId, parent, sessionId, toWorkflowCommitState(state), (Object) callbackManager);
+    }
+
     public WorkflowSession(String workflowId, BaseSession parent) {
-        this(workflowId, parent, null, null, null);
+        this(workflowId, parent, null, (WorkflowCommitState) null, (Object) null);
     }
 
-    /**
-     * WorkflowSession.
-     * 
-     * @param workflowId workflowId
-     * @since 0.1.7
-     */
     public WorkflowSession(String workflowId) {
-        this(workflowId, null, null, null, null);
+        this(workflowId, null, null, (WorkflowCommitState) null, (Object) null);
     }
 
-    /**
-     * Compatibility constructor for translated tests that only need an empty
-     * workflow session with generated identifiers.
-     * 
-     * @since 0.1.7
-     */
     public WorkflowSession() {
-        this(null, null, null, null, null);
+        this(null, null, null, (WorkflowCommitState) null, (Object) null);
     }
 
-    /**
-     * Compatibility factory mirroring the Python-style helper.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static WorkflowSession create() {
         return new WorkflowSession();
     }
 
-    /**
-     * Compatibility factory for translated tests that want to control sessionId.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
     public static WorkflowSession create(String sessionId) {
-        return new WorkflowSession(null, null, sessionId, null, null);
+        return new WorkflowSession(null, null, sessionId, (WorkflowCommitState) null, (Object) null);
     }
 
-    /**
-     * setStreamWriterManager.
-     * 
-     * @param streamWriterManager streamWriterManager
-     * @since 0.1.7
-     */
-    public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
-        if (this.streamWriterManagerField == null) {
-            this.streamWriterManagerField = streamWriterManager;
+    private static WorkflowCommitState toWorkflowCommitState(State state) {
+        if (state instanceof WorkflowCommitState workflowCommitState) {
+            return workflowCommitState;
         }
+        return state == null ? null : InMemoryState.fromMap(state.getState());
     }
 
-    /**
-     * setTracer.
-     * 
-     * @param tracer tracer
-     * @since 0.1.7
-     */
+    @Override
+    public Config config() {
+        return config;
+    }
+
+    @Override
+    public WorkflowCommitState state() {
+        return state;
+    }
+
+    public void setState(WorkflowCommitState state) {
+        this.state = state == null ? InMemoryState.create() : state;
+    }
+
+    @Override
+    public Object tracer() {
+        return tracer;
+    }
+
     public void setTracer(Object tracer) {
-        this.tracerField = tracer;
+        this.tracer = tracer;
     }
 
-    /**
-     * setActorManager.
-     * 
-     * @param actorManager actorManager
-     * @since 0.1.7
-     */
-    public void setActorManager(ActorManager actorManager) {
-        if (this.actorManagerField == null) {
-            this.actorManagerField = actorManager;
+    @Override
+    public StreamWriterManager streamWriterManager() {
+        return streamWriterManager;
+    }
+
+    public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
+        if (this.streamWriterManager == null) {
+            this.streamWriterManager = streamWriterManager;
         }
     }
 
-    /**
-     * setWorkflowId.
-     * 
-     * @param workflowId workflowId
-     * @since 0.1.7
-     */
-    public void setWorkflowId(String workflowId) {
-        this.workflowId = workflowId;
+    public void ensureStreamWriterManager(List<StreamMode> modes) {
+        if (streamWriterManager == null) {
+            streamWriterManager = new StreamWriterManager(new StreamEmitter(), modes);
+        }
     }
 
-    /**
-     * workflowId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    public String sessionId() {
+        return sessionId;
+    }
+
     public String workflowId() {
         return workflowId;
     }
 
-    /**
-     * mainWorkflowId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setWorkflowId(String workflowId) {
+        this.workflowId = workflowId == null ? "" : workflowId;
+    }
+
     public String mainWorkflowId() {
         return workflowId;
     }
 
-    /**
-     * workflowNestingDepth.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int workflowNestingDepth() {
         return 0;
     }
 
-    /**
-     * parent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public BaseSession parent() {
         return parent;
     }
 
-    /**
-     * actorManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public ActorManager actorManager() {
-        return actorManagerField;
-    }
-
-    /**
-     * config.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Config config() {
-        return configField;
-    }
-
-    /**
-     * state.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public State state() {
-        return stateField;
-    }
-
-    /**
-     * tracer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object tracer() {
-        return tracerField;
-    }
-
-    /**
-     * streamWriterManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public StreamWriterManager streamWriterManager() {
-        return streamWriterManagerField;
-    }
-
-    /**
-     * callbackManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public CallbackManager callbackManager() {
-        return callbackManagerField;
+        return callbackManager;
     }
 
-    /**
-     * sessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String sessionId() {
-        return sessionIdField;
+    public void setCallbackManager(Object callbackManager) {
+        this.callbackManager = callbackManager instanceof CallbackManager typedManager ? typedManager : null;
     }
 
-    /**
-     * checkpointer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Object checkpointer() {
-        if (parent != null) {
-            return parent.checkpointer();
-        }
-        return CheckpointerFactory.getCheckpointer();
+        return parent == null ? CheckpointerFactory.getCheckpointer() : parent.checkpointer();
     }
 
-    /**
-     * close.
-     * 
-     * @since 0.1.7
-     */
+    @Override
+    public ActorManager actorManager() {
+        return actorManager;
+    }
+
+    public void setActorManager(ActorManager actorManager) {
+        if (this.actorManager == null) {
+            this.actorManager = actorManager;
+        }
+    }
+
     @Override
     public void close() {
-        if (actorManagerField != null) {
-            actorManagerField.shutdown();
+        if (actorManager != null) {
+            actorManager.shutdown();
         }
     }
 }

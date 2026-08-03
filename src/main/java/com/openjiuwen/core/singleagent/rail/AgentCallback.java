@@ -4,13 +4,15 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import java.util.function.Consumer;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Functional interface for agent callback.
- * 
- * @since 0.1.7
+ * Asynchronous callback contract for agent lifecycle hooks.
+ *
+ * <p>Mirrors Python's {@code AgentCallback} in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
 @FunctionalInterface
-public interface AgentCallback extends Consumer<AgentCallbackContext> {
+public interface AgentCallback {
+    CompletionStage<Void> handle(AgentCallbackContext context);
 }

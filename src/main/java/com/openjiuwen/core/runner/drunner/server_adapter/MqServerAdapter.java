@@ -4,21 +4,31 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.RunnerTermination;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.runner.drunner.DistributedRunner;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DMessageType;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,237 +38,326 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
- * MQ-based server adapter for distributed-runner requests.
- * 
- * @since 0.1.7
+ * Server adapter responsible for handling distributed MQ requests.
+ *
+ * <p>Mirrors Python's {@code MqServerAdapter} in
+ * {@code openjiuwen/core/runner/drunner/server_adapter/mq_server_adapter.py}.</p>
  */
 public class MqServerAdapter {
-    private static final Logger logger = LoggerFactory.getLogger(MqServerAdapter.class);
+
+    private static final LoggerProtocol LOGGER = Loggers.RUNNER;
 
     private final String adapterId;
     private final String topic;
     private final Function<Map<String, Object>, Object> invokeHandler;
-    private final Function<Map<String, Object>, Iterator<Object>> streamHandler;
-
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private final ExecutorService executor = Executors.newCachedThreadPool();
-
-    /**
-     * Executors.newSingleThreadScheduledExecutor.
-     * 
-     * @since 0.1.7
-     */
+    private final Function<Map<String, Object>, Object> streamHandler;
+    private final ExecutorService executor = VirtualThreadSupport.newThreadPerTaskExecutor();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, MessageTask> runningTasks = new ConcurrentHashMap<>();
 
     private MessageQueueBase mq;
     private SubscriptionBase subscription;
-    private boolean active;
+    private volatile boolean active;
 
-    /**
-     * MqServerAdapter.
-     * 
-     * @param adapterId adapterId
-     * @param topic topic
-     * @param invokeHandler invokeHandler
-     * @param streamHandler streamHandler
-     * @since 0.1.7
-     */
-    public MqServerAdapter(String adapterId, String topic, Function<Map<String, Object>, Object> invokeHandler,
-            Function<Map<String, Object>, Iterator<Object>> streamHandler) {
+    public MqServerAdapter(String adapterId,
+                           String topic,
+                           Function<Map<String, Object>, Object> invokeHandler,
+                           Function<Map<String, Object>, Object> streamHandler) {
         this.adapterId = adapterId;
         this.topic = topic;
         this.invokeHandler = invokeHandler;
         this.streamHandler = streamHandler;
+        this.mq = RunnerAccess.messageQueue();
     }
 
-    /**
-     * start.
-     * 
-     * @since 0.1.7
-     */
     public void start() {
         if (active) {
             return;
         }
-        DistributedRunner.ensureStarted();
-        this.mq = DistributedRunner.messageQueue();
-        this.subscription = mq.subscribe(topic);
-        this.subscription.setMessageHandler(message -> {
+        if (mq == null) {
+            mq = RunnerAccess.messageQueue();
+        }
+        if (mq == null) {
+            throw ErrorHelper.buildError(StatusCode.DIST_MESSAGE_QUEUE_CLIENT_START_ERROR,
+                    "reason", "message queue not initialized");
+        }
+        subscription = mq.subscribe(topic);
+        subscription.setMessageHandler(message -> {
             if (message instanceof DmqRequestMessage request) {
                 handleMessage(request);
             }
             return CompletableFuture.completedFuture(null);
         });
-        this.subscription.activate();
-        this.active = true;
-        logger.info("[{}] Adapter started on {}", adapterId, topic);
+        subscription.activate();
+        active = true;
+        LOGGER.info("[{}] Adapter started on {}", adapterId, topic);
     }
 
-    /**
-     * stop.
-     * 
-     * @since 0.1.7
-     */
-    public void stop() {
-        logger.info("[{}] Stopping adapter...", adapterId);
+    public CompletionStage<Void> stop() {
+        LOGGER.info("[{}] Stopping adapter...", adapterId);
         if (!active) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
         active = false;
-
         if (subscription != null) {
             subscription.deactivate();
-            mq.unsubscribe(topic);
+            if (mq != null) {
+                mq.unsubscribe(topic);
+            }
             subscription = null;
         }
 
-        // Cancel all running tasks with inner cancel writeback
-        for (Map.Entry<String, MessageTask> entry : runningTasks.entrySet()) {
-            cancelTask(entry.getKey(), true);
+        List<CompletableFuture<Void>> cancellations = new ArrayList<>();
+        for (String msgId : new ArrayList<>(runningTasks.keySet())) {
+            cancellations.add(cancelTask(msgId, true));
         }
-        runningTasks.clear();
-        executor.shutdownNow();
-        scheduler.shutdownNow();
-        logger.info("[{}] Adapter stopped", adapterId);
+        CompletableFuture<Void> combined = CompletableFuture.allOf(cancellations.toArray(CompletableFuture[]::new));
+        return combined.whenComplete((ignored, error) -> {
+            runningTasks.clear();
+            executor.shutdownNow();
+            scheduler.shutdownNow();
+            LOGGER.info("[{}] Adapter stopped", adapterId);
+        });
     }
 
-    /**
-     * handleMessage.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
+    public boolean isActive() {
+        return active;
+    }
+
+    public int runningTaskCount() {
+        return runningTasks.size();
+    }
+
     private void handleMessage(DmqRequestMessage message) {
         String msgId = message.getMessageId();
-        logger.info("[{}] Received message {}, type={}", adapterId, msgId, message.getType());
+        LOGGER.info("[{}] Received message {}, message_type={}", adapterId, msgId, message.getType());
 
-        // Discard expired messages
-        if (message.getExpireAt() != null && message.getExpireAt() < (System.currentTimeMillis() / 1000.0)) {
-            logger.warn("[{}] Ignoring expired message {}", adapterId, msgId);
+        if (message.getExpireAt() != null && message.getExpireAt() < nowSeconds()) {
+            LOGGER.warning("[{}] Ignoring expired message {}, expire_at: {}, current_time: {}",
+                    adapterId, msgId, message.getExpireAt(), nowSeconds());
             return;
         }
 
-        // Passive cancellation via STOP message
         if (message.getType() == DMessageType.STOP) {
             cancelTask(msgId, false);
             return;
         }
 
-        // Duplicate message - cancel old, isReplace
         if (runningTasks.containsKey(msgId)) {
-            logger.warn("[{}] Duplicate msg_id {}, replacing old task", adapterId, msgId);
-            cancelTask(msgId, true);
+            LOGGER.warning("[{}] Duplicate msg_id {}, replacing old task", adapterId, msgId);
+            cancelTask(msgId, true).join();
         }
 
-        // Start execution task
         Future<?> future = executor.submit(() -> processMessage(message));
         runningTasks.put(msgId, new MessageTask(message, future));
-
-        // Schedule timeout cancellation
         if (message.getExpireAt() != null) {
-            double delay = message.getExpireAt() - (System.currentTimeMillis() / 1000.0);
+            double delay = message.getExpireAt() - nowSeconds();
             if (delay > 0) {
-                scheduler.schedule(() -> timeoutCancel(msgId), (long) (delay * 1000), TimeUnit.MILLISECONDS);
+                scheduler.schedule(() -> timeoutCancel(msgId), Math.round(delay * 1000.0d), TimeUnit.MILLISECONDS);
             }
         }
-        logger.info("[{}] Submitted task message_id={}", adapterId, msgId);
+        LOGGER.info("[{}] Submitted task message_id={}", adapterId, msgId);
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * processMessage.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
     private void processMessage(DmqRequestMessage message) {
         try {
-            Map<String, Object> payload =
-                message.getBody() instanceof Map<?, ?> map ? (Map<String, Object>) map : java.util.Map.of();
+            Map<String, Object> payload = toPayloadMap(message.getBody());
             if (message.isEnableStream()) {
                 int seq = 0;
-                Iterator<Object> iterator = streamHandler.apply(payload);
+                Iterator<Object> iterator = toIterator(streamHandler.apply(payload));
                 while (iterator.hasNext()) {
                     mq.produceMessage(message.getReplyTopic(),
-                            MqMessageUtils.buildStreamResponse(message, adapterId, iterator.next(), seq++, false));
+                            MqMessageUtils.buildStreamResponse(message, adapterId, iterator.next(), seq, false));
+                    seq++;
                 }
-                mq.produceMessage(message.getReplyTopic(), MqMessageUtils.buildFinalResponse(message, adapterId, seq));
+                mq.produceMessage(message.getReplyTopic(),
+                        MqMessageUtils.buildFinalResponse(message, adapterId, seq));
             } else {
-                Object result = invokeHandler.apply(payload);
+                Object result = awaitIfNeeded(invokeHandler.apply(payload));
                 mq.produceMessage(message.getReplyTopic(),
                         MqMessageUtils.buildBatchResponse(message, adapterId, result));
             }
-        } catch (CancellationException e) {
-            logger.info("[{}] Task {} cancelled", adapterId, message.getMessageId());
-        } catch (Exception e) {
-            logger.error("[{}] Task {} error: {}", adapterId, message.getMessageId(), e.getMessage(), e);
-            try {
-                mq.produceMessage(message.getReplyTopic(), MqMessageUtils.buildErrorResponse(message, adapterId, e));
-            } catch (Exception ex) {
-                logger.error("[{}] Failed to send error response for {}: {}", adapterId, message.getMessageId(),
-                        ex.getMessage());
-            }
+        } catch (CancellationException error) {
+            LOGGER.info("[{}] Task {} cancelled", adapterId, message.getMessageId());
+        } catch (RunnerTermination error) {
+            LOGGER.info("[{}] Task {} cancelled", adapterId, message.getMessageId());
+            throw error;
+        } catch (BaseError error) {
+            LOGGER.warning("[{}] adapter run error msg: {}: {}", adapterId, message.getMessageId(), error);
+            mq.produceMessage(message.getReplyTopic(),
+                    MqMessageUtils.buildErrorResponse(message, adapterId, error));
+        } catch (Exception error) {
+            LOGGER.exception("[{}] Unexpected error: {}", error, adapterId, error.getMessage());
+            BaseError remoteError = ErrorHelper.buildError(
+                    StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
+                    "reason", error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+            mq.produceMessage(message.getReplyTopic(),
+                    MqMessageUtils.buildErrorResponse(message, adapterId, remoteError));
         } finally {
             runningTasks.remove(message.getMessageId());
         }
     }
 
-    /**
-     * timeoutCancel.
-     * 
-     * @param msgId msgId
-     * @since 0.1.7
-     */
     private void timeoutCancel(String msgId) {
         MessageTask msgTask = runningTasks.get(msgId);
         if (msgTask == null) {
             return;
         }
-        if (!msgTask.getTask().isDone()) {
-            logger.warn("[{}] Task {} expired and will be cancelled", adapterId, msgId);
-            msgTask.getTask().cancel(true);
+        Future<?> task = msgTask.task();
+        if (!task.isDone()) {
+            LOGGER.warning("[{}] Task {} expired and will be cancelled", adapterId, msgId);
+            task.cancel(true);
         }
     }
 
-    /**
-     * Cancel a running task. If innerCancel is true, sends an error response
-     * back to the client indicating the task was cancelled by the adapter.
-     * 
-     * @param msgId msgId
-     * @param innerCancel innerCancel
-     * @since 0.1.7
-     */
-    private void cancelTask(String msgId, boolean innerCancel) {
+    private CompletableFuture<Void> cancelTask(String msgId, boolean innerCancel) {
         MessageTask msgTask = runningTasks.remove(msgId);
         if (msgTask == null) {
-            logger.info("[{}] No task found for msg_id {} during cancellation", adapterId, msgId);
-            return;
+            LOGGER.info("[{}] No task found for msg_id {} during cancellation", adapterId, msgId);
+            return CompletableFuture.completedFuture(null);
         }
-        logger.info("[{}] Cancelling task {}", adapterId, msgId);
-        msgTask.getTask().cancel(true);
-
+        LOGGER.info("[{}] Cancelling task {}", adapterId, msgId);
+        msgTask.task().cancel(true);
         if (innerCancel) {
-            logger.info("[{}] Sending cancellation error response for task {}", adapterId, msgId);
             try {
-                Exception err = ErrorHelper.buildError(StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
+                BaseError error = ErrorHelper.buildError(
+                        StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
                         "reason", "Task cancelled by adapter stop (" + adapterId + ")");
-                mq.produceMessage(msgTask.getMessage().getReplyTopic(),
-                        MqMessageUtils.buildErrorResponse(msgTask.getMessage(), adapterId, err));
-                logger.info("[{}] Sent cancellation error response for task {}", adapterId, msgId);
-            } catch (Exception e) {
-                logger.warn("[{}] Failed to send cancel error for task {}: {}", adapterId, msgId, e.getMessage());
+                mq.produceMessage(msgTask.message().getReplyTopic(),
+                        MqMessageUtils.buildErrorResponse(msgTask.message(), adapterId, error));
+            } catch (Exception error) {
+                LOGGER.warning("[{}] Failed to send cancel error for task {}: {}",
+                        adapterId, msgId, error.getMessage());
             }
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object awaitIfNeeded(Object value) {
+        if (value instanceof CompletionStage<?> stage) {
+            return stage.toCompletableFuture().join();
+        }
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Iterator<Object> toIterator(Object value) {
+        Object awaited = awaitIfNeeded(value);
+        if (awaited instanceof Iterator<?> iterator) {
+            return (Iterator<Object>) iterator;
+        }
+        if (awaited instanceof Iterable<?> iterable) {
+            return (Iterator<Object>) iterable.iterator();
+        }
+        return List.of(awaited).iterator();
+    }
+
+    private static Map<String, Object> toPayloadMap(Object value) {
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
+        return result;
+    }
+
+    private static double nowSeconds() {
+        return System.currentTimeMillis() / 1000.0d;
+    }
+
+    /**
+     * Reflection bridge for Python's lazy {@code Runner} imports used by the MQ server adapter.
+     *
+     * <p>Mirrors Python's {@code Runner} access in
+     * {@code openjiuwen/core/runner/drunner/server_adapter/mq_server_adapter.py}.</p>
+     */
+    static final class RunnerAccess {
+        private RunnerAccess() {
+        }
+
+        static MessageQueueBase messageQueue() {
+            Object value = readRunnerMember("dist_pubsub", "distPubsub", "messageQueue");
+            return value instanceof MessageQueueBase messageQueue ? messageQueue : null;
+        }
+
+        static Object runAgent(String agentId, Map<String, Object> inputs) {
+            return invokeRunnerMethod("run_agent", "runAgent", agentId, inputs);
+        }
+
+        static Object runAgentStreaming(String agentId, Map<String, Object> inputs) {
+            return invokeRunnerMethod("run_agent_streaming", "runAgentStreaming", agentId, inputs);
+        }
+
+        private static Object readRunnerMember(String pythonFieldName, String javaFieldName, String methodName) {
+            for (String className : List.of("com.openjiuwen.core.runner.Runner",
+                    "com.openjiuwen.core.runner.drunner.DistributedRunner")) {
+                Object value = readStaticField(className, pythonFieldName);
+                if (value != null) {
+                    return value;
+                }
+                value = readStaticField(className, javaFieldName);
+                if (value != null) {
+                    return value;
+                }
+                value = invokeStaticNoArg(className, methodName);
+                if (value != null) {
+                    return value;
+                }
+            }
+            return null;
+        }
+
+        private static Object invokeRunnerMethod(String pythonName, String javaName, Object... args) {
+            for (String className : List.of("com.openjiuwen.core.runner.Runner")) {
+                Object result = invokeStaticFlexible(className, pythonName, args);
+                if (result != null) {
+                    return result;
+                }
+                result = invokeStaticFlexible(className, javaName, args);
+                if (result != null) {
+                    return result;
+                }
+            }
+            throw new IllegalStateException("Runner method not available: " + javaName);
+        }
+
+        private static Object readStaticField(String className, String fieldName) {
+            try {
+                Field field = Class.forName(className).getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(null);
+            } catch (ReflectiveOperationException ignored) {
+                return null;
+            }
+        }
+
+        private static Object invokeStaticNoArg(String className, String methodName) {
+            try {
+                Method method = Class.forName(className).getMethod(methodName);
+                return method.invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+                return null;
+            }
+        }
+
+        private static Object invokeStaticFlexible(String className, String methodName, Object... args) {
+            try {
+                Class<?> type = Class.forName(className);
+                for (Method method : type.getMethods()) {
+                    if (!method.getName().equals(methodName) || method.getParameterCount() < args.length) {
+                        continue;
+                    }
+                    Object[] invocationArgs = new Object[method.getParameterCount()];
+                    System.arraycopy(args, 0, invocationArgs, 0, args.length);
+                    return method.invoke(null, invocationArgs);
+                }
+            } catch (ClassNotFoundException ignored) {
+                return null;
+            } catch (IllegalAccessException | InvocationTargetException error) {
+                throw new CompletionException(error.getCause() == null ? error : error.getCause());
+            }
+            return null;
         }
     }
 }

@@ -15,176 +15,81 @@ import java.util.Optional;
 
 /**
  * Schema definition for a vector collection.
- * <p>
- * Mirrors Python's {@code CollectionSchema} Pydantic model.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code CollectionSchema} in
+ * {@code openjiuwen/core/foundation/store/base_vector_store.py}.</p>
  */
 public class CollectionSchema {
+
     private final List<FieldSchema> fields;
     private final String description;
     private final boolean enableDynamicField;
 
-    /**
-     * CollectionSchema.
-     * 
-     * @param fields fields
-     * @param description description
-     * @param enableDynamicField enableDynamicField
-     * @since 0.1.7
-     */
+    public CollectionSchema() {
+        this(new ArrayList<>(), null, false);
+    }
+
     public CollectionSchema(List<FieldSchema> fields, String description, boolean enableDynamicField) {
-        this.fields = fields != null ? new ArrayList<>(fields) : new ArrayList<>();
+        this.fields = fields == null ? new ArrayList<>() : new ArrayList<>(fields);
         this.description = description;
         this.enableDynamicField = enableDynamicField;
         validatePrimaryKey();
     }
 
-    /**
-     * CollectionSchema.
-     * 
-     * @since 0.1.7
-     */
-    public CollectionSchema() {
-        this(new ArrayList<>(), null, false);
-    }
-
-    /**
-     * validatePrimaryKey.
-     * 
-     * @since 0.1.7
-     */
     private void validatePrimaryKey() {
         List<FieldSchema> primaryFields = fields.stream().filter(FieldSchema::isPrimary).toList();
         if (primaryFields.size() > 1) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
-                    "collection can have at most one primary key field, primary_field=" + primaryFields.get(0).getName()
-                            + ", field=" + primaryFields.get(1).getName());
+            throw ErrorHelper.buildError(
+                    StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+                    "error_msg",
+                    "collection can have at most one primary key field, primary_field="
+                            + primaryFields.get(0).getName() + ", field=" + primaryFields.get(1).getName()
+            );
         }
     }
 
-    // Getters
-    /**
-     * getFields.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<FieldSchema> getFields() {
-        return fields;
-    }
-
-    /**
-     * getDescription.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * isEnableDynamicField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean isEnableDynamicField() {
-        return enableDynamicField;
-    }
-
-    /**
-     * Add a field to the schema. Returns this for chaining.
-     * 
-     * @param field field
-     * @return the result
-     * @since 0.1.7
-     */
     public CollectionSchema addField(FieldSchema field) {
-        if (fields.stream().anyMatch(f -> f.getName().equals(field.getName()))) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
-                    "field name already exists, field=" + field.getName());
+        if (fields.stream().anyMatch(existing -> existing.getName().equals(field.getName()))) {
+            throw ErrorHelper.buildError(
+                    StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+                    "error_msg", "field name already exists, field=" + field.getName()
+            );
         }
         if (field.isPrimary() && fields.stream().anyMatch(FieldSchema::isPrimary)) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
-                    "collection can have at most one primary key field, field=" + field.getName());
+            throw ErrorHelper.buildError(
+                    StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+                    "error_msg", "collection can have at most one primary key field, field=" + field.getName()
+            );
         }
         fields.add(field);
         return this;
     }
 
-    /**
-     * Add a field from a dictionary representation.
-     * 
-     * @param fieldDict fieldDict
-     * @return the result
-     * @since 0.1.7
-     */
     public CollectionSchema addField(Map<String, Object> fieldDict) {
         return addField(FieldSchema.fromDict(fieldDict));
     }
 
-    /**
-     * Remove a field by name. Returns this for chaining.
-     * 
-     * @param fieldName fieldName
-     * @return the result
-     * @since 0.1.7
-     */
     public CollectionSchema removeField(String fieldName) {
-        fields.removeIf(f -> f.getName().equals(fieldName));
+        fields.removeIf(field -> field.getName().equals(fieldName));
         return this;
     }
 
-    /**
-     * Get a field by name.
-     * 
-     * @param fieldName fieldName
-     * @return the result
-     * @since 0.1.7
-     */
     public Optional<FieldSchema> getField(String fieldName) {
-        return fields.stream().filter(f -> f.getName().equals(fieldName)).findFirst();
+        return fields.stream().filter(field -> field.getName().equals(fieldName)).findFirst();
     }
 
-    /**
-     * Check if a field exists.
-     * 
-     * @param fieldName fieldName
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean hasField(String fieldName) {
-        return fields.stream().anyMatch(f -> f.getName().equals(fieldName));
+        return fields.stream().anyMatch(field -> field.getName().equals(fieldName));
     }
 
-    /**
-     * Get the primary key field (if any).
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Optional<FieldSchema> getPrimaryKeyField() {
         return fields.stream().filter(FieldSchema::isPrimary).findFirst();
     }
 
-    /**
-     * Get all vector fields.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<FieldSchema> getVectorFields() {
-        return fields.stream().filter(f -> f.getDtype() == VectorDataType.FLOAT_VECTOR).toList();
+        return fields.stream().filter(field -> field.getDtype() == VectorDataType.FLOAT_VECTOR).toList();
     }
 
-    /**
-     * Convert to dictionary format.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> toDict() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("fields", fields.stream().map(FieldSchema::toDict).toList());
@@ -193,49 +98,64 @@ public class CollectionSchema {
         return result;
     }
 
-    /** Create schema from dictionary. */
-
-    /**
-     * fromDict.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static CollectionSchema fromDict(Map<String, Object> data) {
         List<FieldSchema> fields = new ArrayList<>();
-        List<Map<String, Object>> fieldList = (List<Map<String, Object>>) data.getOrDefault("fields", List.of());
-        for (Map<String, Object> fd : fieldList) {
-            fields.add(FieldSchema.fromDict(fd));
+        Object rawFields = data.getOrDefault("fields", List.of());
+        if (rawFields instanceof List<?> fieldList) {
+            for (Object field : fieldList) {
+                if (field instanceof FieldSchema fieldSchema) {
+                    fields.add(fieldSchema);
+                } else if (field instanceof Map<?, ?> fieldMap) {
+                    fields.add(FieldSchema.fromDict((Map<String, Object>) fieldMap));
+                }
+            }
         }
-        return new CollectionSchema(fields, (String) data.get("description"),
-                Boolean.TRUE.equals(data.get("enable_dynamic_field")));
+        return new CollectionSchema(
+                fields,
+                (String) data.get("description"),
+                Boolean.TRUE.equals(data.get("enable_dynamic_field"))
+        );
     }
 
-    /** Create schema from a list of field definitions. */
-
-    /**
-     * fromFields.
-     * 
-     * @param fields fields
-     * @param description description
-     * @param enableDynamicField enableDynamicField
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static CollectionSchema fromFields(List<?> fields, String description, boolean enableDynamicField) {
         CollectionSchema schema = new CollectionSchema(new ArrayList<>(), description, enableDynamicField);
         for (Object field : fields) {
-            if (field instanceof FieldSchema fs) {
-                schema.addField(fs);
-            } else if (field instanceof Map<?, ?> map) {
-                schema.addField((Map<String, Object>) map);
-            } else {
-                // no-op
+            if (field instanceof FieldSchema fieldSchema) {
+                schema.addField(fieldSchema);
+            } else if (field instanceof Map<?, ?> fieldMap) {
+                schema.addField((Map<String, Object>) fieldMap);
             }
         }
         return schema;
+    }
+
+    static CollectionSchema fromCore(com.openjiuwen.core.foundation.store.CollectionSchema schema) {
+        if (schema == null) {
+            return null;
+        }
+        List<FieldSchema> fields = schema.getFields().stream().map(FieldSchema::fromCore).toList();
+        return new CollectionSchema(fields, schema.getDescription(), schema.isEnableDynamicField());
+    }
+
+    com.openjiuwen.core.foundation.store.CollectionSchema toCore() {
+        return new com.openjiuwen.core.foundation.store.CollectionSchema(
+                fields.stream().map(FieldSchema::toCore).toList(),
+                description,
+                enableDynamicField
+        );
+    }
+
+    public List<FieldSchema> getFields() {
+        return fields;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public boolean isEnableDynamicField() {
+        return enableDynamicField;
     }
 }

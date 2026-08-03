@@ -4,423 +4,273 @@
 
 package com.openjiuwen.core.context.processor;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.context.OffloadCapableContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.OffloadMessages;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.result.WriteFileResult;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * Abstract base class for all context-processing plug-ins.
- * <p>
- * A context processor can intervene at two life-cycle points:
- * <ol>
- * <li>When new messages are about to be added ({@link #onAddMessages})
- * <li>When the context window is being materialized ({@link #onGetContextWindow})
- * </ol>
- * Each processor decides <em>whether</em> to intervene via the corresponding {@code trigger_*}
- * method and, if so, <em>how</em> to intervene in the paired {@code on_*} method.
- * <p>
- * Mirrors Python's {@code ContextProcessor} from {@code processor/base.py}.
- * 
+ *
+ * <p>Mirrors Python's {@code ContextProcessor} in
+ * {@code openjiuwen/core/context_engine/processor/base.py}.</p>
+ *
  * @since 0.1.7
  */
 public abstract class ContextProcessor {
-    private static final String OFFLOAD_MESSAGE_HANDLE = "[[OFFLOAD: handle=%s, type=%s]]";
-    private static final String OFFLOAD_MESSAGE_HANDLE_WITH_PATH = "[[OFFLOAD: type=%s, path=%s]]";
 
     /**
-     * ObjectMapper.
-     * 
-     * @since 0.1.7
+     * Offload handle marker format for in-memory offloaded messages.
      */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    public static final String OFFLOAD_MESSAGE_HANDLE = "[[OFFLOAD: handle=%s, type=%s]]";
+
+    /**
+     * Offload handle marker format for filesystem offloaded messages.
+     */
+    public static final String OFFLOAD_MESSAGE_HANDLE_WITH_PATH = "[[OFFLOAD: type=%s, path=%s]]";
 
     private final Object config;
 
     /**
-     * Store the processor-specific configuration.
-     * 
-     * @param config validated configuration object
-     * @since 0.1.7
+     * Construct a ContextProcessor with the given configuration.
+     *
+     * @param config processor configuration
      */
     protected ContextProcessor(Object config) {
         this.config = config;
     }
 
-    // ------------------------------------------------------------------
-    // Result record
-    // ------------------------------------------------------------------
-
     /**
-     * Result from a processor hook. Contains the processed messages and/or a modified context window.
-     * 
-     * @since 0.1.7
-     */
-    public record ProcessResult(ContextEvent event, List<BaseMessage> messages, ContextWindow contextWindow) {
-        public static ProcessResult ofMessages(ContextEvent event, List<BaseMessage> messages) {
-            return new ProcessResult(event, messages, null);
-        }
-
-        public static ProcessResult ofContextWindow(ContextEvent event, ContextWindow contextWindow) {
-            return new ProcessResult(event, null, contextWindow);
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Processing hooks (synchronous – Python async → Java sync)
-    // ------------------------------------------------------------------
-
-    /**
-     * Transform or filter the <b>incoming</b> message batch.
-     * <p>
-     * Called only when {@link #triggerAddMessages} returned {@code true}. Default implementation
-     * is a no-op pass-through.
-     * 
-     * @param context context
-     * @param messagesToAdd messagesToAdd
-     * @return the result
-     * @since 0.1.7
-     */
-    public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        return ProcessResult.ofMessages(null, messagesToAdd);
-    }
-
-    /**
-     * Mutate the <b>outgoing</b> context window (e.g. compress, reorder).
-     * <p>
-     * Called only when {@link #triggerGetContextWindow} returned {@code true}. Default
-     * implementation is a no-op pass-through.
-     * 
-     * @param context context
-     * @param contextWindow contextWindow
-     * @return the result
-     * @since 0.1.7
-     */
-    public ProcessResult onGetContextWindow(ModelContext context, ContextWindow contextWindow) {
-        return ProcessResult.ofContextWindow(null, contextWindow);
-    }
-
-    // ------------------------------------------------------------------
-    // Trigger hooks
-    // ------------------------------------------------------------------
-
-    /**
-     * Return {@code true} if this processor wants to intervene <b>before</b> the messages are
-     * appended to the context.
-     * 
-     * @param context context
-     * @param messagesToAdd messagesToAdd
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        return false;
-    }
-
-    /**
-     * Return {@code true} if this processor wants to intervene <b>before</b> the context window is
-     * returned to the caller.
-     * 
-     * @param context context
-     * @param contextWindow contextWindow
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean triggerGetContextWindow(ModelContext context, ContextWindow contextWindow) {
-        return false;
-    }
-
-    // ------------------------------------------------------------------
-    // State persistence
-    // ------------------------------------------------------------------
-
-    /**
-     * Restore internal state from a dictionary produced by {@link #saveState()}.
-     * 
-     * @param state state
-     * @since 0.1.7
-     */
-    public abstract void loadState(Map<String, Object> state);
-
-    /**
-     * Export internal state to a serialisable map.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public abstract Map<String, Object> saveState();
-
-    // ------------------------------------------------------------------
-    // Introspection
-    // ------------------------------------------------------------------
-
-    /**
-     * Return the registered processor type string (the simple class name). Replaces Python's
-     * metaclass-set {@code __processor_type}.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Return the processor type name (defaults to the simple class name).
+     *
+     * @return processor type name
      */
     public String processorType() {
-        return this.getClass().getSimpleName();
+        return getClass().getSimpleName();
     }
 
-    /** Read-only access to the validated configuration object. */
-
     /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Return the typed configuration object.
+     *
+     * @param <T> configuration type
+     * @return the configuration cast to the expected type
      */
     @SuppressWarnings("unchecked")
     public <T> T getConfig() {
         return (T) config;
     }
 
-    // ------------------------------------------------------------------
-    // Offload helpers
-    // ------------------------------------------------------------------
+    /**
+     * Determine whether the processor should trigger on add-messages.
+     *
+     * @param context       the model context
+     * @param messagesToAdd the messages being added
+     * @return true if the processor should activate
+     */
+    public abstract boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd);
 
     /**
-     * Offload messages to in-memory storage and return a replacement marker message.
-     * 
-     * @param role the role of the replacement message
-     * @param content base content (offload marker will be appended)
-     * @param messages messages to store
-     * @param context the model context (must support offloading)
-     * @param offloadHandle unique handle; auto-generated if null
-     * @param offloadType storage type, defaults to "in_memory"
-     * @param extraFields additional fields from the original message to preserve
-     * @return replacement message with offload marker, or null
-     * @since 0.1.7
+     * Process messages being added to the context.
+     *
+     * @param context       the model context
+     * @param messagesToAdd the messages being added
+     * @return the processing result
      */
-    protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context,
-            String offloadHandle, String offloadType, Map<String, Object> extraFields) {
-        return offloadMessages(role, content, messages, context, offloadHandle, offloadType, null, extraFields);
-    }
+    public abstract ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd);
 
     /**
-     * offloadMessages.
-     * 
-     * @param role role
-     * @param content content
-     * @param messages messages
-     * @param context context
-     * @param offloadHandle offloadHandle
-     * @param offloadType offloadType
-     * @param offloadPath offloadPath
-     * @param extraFields extraFields
-     * @return the result
-     * @since 0.1.7
+     * Determine whether the processor should trigger on get-context-window.
+     *
+     * @param context       the model context
+     * @param contextWindow the context window being built
+     * @return true if the processor should activate
      */
-    protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context,
-            String offloadHandle, String offloadType, String offloadPath, Map<String, Object> extraFields) {
+    public abstract boolean triggerGetContextWindow(ModelContext context, ContextWindow contextWindow);
+
+    /**
+     * Process the context window being constructed.
+     *
+     * @param context       the model context
+     * @param contextWindow the context window
+     * @return the processing result
+     */
+    public abstract ProcessResult onGetContextWindow(ModelContext context, ContextWindow contextWindow);
+
+    /**
+     * Load processor state from a persisted map.
+     *
+     * @param state the state map
+     */
+    public abstract void loadState(Map<String, Object> state);
+
+    /**
+     * Save processor state to a map for persistence.
+     *
+     * @return the state map
+     */
+    public abstract Map<String, Object> saveState();
+
+    /**
+     * Offload messages to memory or filesystem storage.
+     *
+     * @param role         message role
+     * @param content      trimmed content
+     * @param messages     original messages to offload
+     * @param context      the model context
+     * @param offloadHandle offload handle identifier
+     * @param offloadType  storage type ("in_memory" or "filesystem")
+     * @param offloadPath  filesystem path (may be null for in-memory)
+     * @param extraFields  additional fields to preserve
+     * @return the offload replacement message, or null on failure
+     */
+    protected BaseMessage offloadMessages(
+            String role,
+            String content,
+            List<BaseMessage> messages,
+            ModelContext context,
+            String offloadHandle,
+            String offloadType,
+            String offloadPath,
+            Map<String, Object> extraFields) {
         if (messages == null || messages.isEmpty()) {
             return null;
         }
-        if (offloadHandle == null || offloadHandle.isEmpty()) {
-            offloadHandle = UUID.randomUUID().toString().replace("-", "");
+        String effectiveHandle = isBlank(offloadHandle)
+                ? UUID.randomUUID().toString().replace("-", "")
+                : offloadHandle;
+        if (context == null) {
+            return null;
         }
-        if (offloadType == null || offloadType.isEmpty()) {
-            offloadType = "in_memory";
-        }
+        String effectiveType = isBlank(offloadType) ? "filesystem" : offloadType;
 
-        if ("in_memory".equals(offloadType)) {
-            return offloadMessagesToMemory(role, content, messages, context, offloadHandle, extraFields);
+        if ("in_memory".equals(effectiveType)) {
+            return offloadMessagesToMemory(role, content, messages, context, effectiveHandle, extraFields);
         }
-        if ("filesystem".equals(offloadType)) {
-            String sessionId = context != null ? context.sessionId() : "default_session_id";
-            String workspaceDir = context != null ? context.workspaceDir() : "";
-            String effectivePath = offloadPath != null && !offloadPath.isBlank()
-                    ? offloadPath
-                    : generateOffloadPath(workspaceDir, sessionId, offloadHandle);
-            boolean isWriteSuccess = writeOffloadToFile(sessionId, offloadHandle, effectivePath, messages,
-                    context != null ? context.sysOperation() : null);
-            if (!isWriteSuccess) {
-                return offloadMessagesToMemory(role, content, messages, context, offloadHandle, extraFields);
+        if ("filesystem".equals(effectiveType)) {
+            String path = isBlank(offloadPath)
+                    ? generateOffloadPath(context.workspaceDir(), context.sessionId(), effectiveHandle)
+                    : offloadPath;
+            boolean writeSuccess = writeOffloadToFile(context.sessionId(), effectiveHandle, path, messages);
+            if (!writeSuccess) {
+                return offloadMessagesToMemory(role, content, messages, context, effectiveHandle, extraFields);
             }
-            return offloadMessagesToFilesystem(role, content, offloadHandle, effectivePath, extraFields);
+            return offloadMessagesToFilesystem(role, content, effectiveHandle, path, extraFields);
         }
         return null;
     }
 
     /**
-     * Overloaded convenience method without extra fields.
-     * 
-     * @param role role
-     * @param content content
-     * @param messages messages
-     * @param context context
-     * @param offloadHandle offloadHandle
-     * @param offloadType offloadType
-     * @return the result
-     * @since 0.1.7
+     * Generate a filesystem path for offloaded messages.
+     *
+     * @param workspaceDir  workspace directory
+     * @param sessionId     session identifier
+     * @param offloadHandle offload handle
+     * @return the generated path string
      */
-    protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages, ModelContext context,
-            String offloadHandle, String offloadType) {
-        return offloadMessages(role, content, messages, context, offloadHandle, offloadType, null);
-    }
-
-    /**
-     * Overloaded convenience method with defaults.
-     * 
-     * @param role role
-     * @param content content
-     * @param messages messages
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
-    protected BaseMessage offloadMessages(String role, String content, List<BaseMessage> messages,
-            ModelContext context) {
-        return offloadMessages(role, content, messages, context, null, "in_memory", null);
-    }
-
-    /**
-     * offloadMessagesToMemory.
-     * 
-     * @param role role
-     * @param content content
-     * @param messages messages
-     * @param context context
-     * @param offloadHandle offloadHandle
-     * @param extraFields extraFields
-     * @return the result
-     * @since 0.1.7
-     */
-    private static BaseMessage offloadMessagesToMemory(String role, String content, List<BaseMessage> messages,
-            ModelContext context, String offloadHandle, Map<String, Object> extraFields) {
-        String markedContent = content + String.format(OFFLOAD_MESSAGE_HANDLE, offloadHandle, "in_memory");
-
-        if (context instanceof OffloadCapableContext offloadCapable) {
-            offloadCapable.offloadMessages(offloadHandle, messages);
-            BaseMessage offloadMsg =
-                OffloadMessages.createOffloadMessage(role, markedContent, offloadHandle, "in_memory", extraFields);
-            return offloadMsg;
-        }
-        return null;
-    }
-
-    /**
-     * offloadMessagesToFilesystem.
-     * 
-     * @param role role
-     * @param content content
-     * @param offloadHandle offloadHandle
-     * @param offloadPath offloadPath
-     * @param extraFields extraFields
-     * @return the result
-     * @since 0.1.7
-     */
-    private static BaseMessage offloadMessagesToFilesystem(String role, String content, String offloadHandle,
-            String offloadPath, Map<String, Object> extraFields) {
-        String markedContent = offloadPath != null && !offloadPath.isBlank()
-                ? content + String.format(OFFLOAD_MESSAGE_HANDLE_WITH_PATH, "filesystem", offloadPath)
-                : content + String.format(OFFLOAD_MESSAGE_HANDLE, offloadHandle, "filesystem");
-        return OffloadMessages.createOffloadMessage(role, markedContent, offloadHandle, "filesystem", extraFields);
-    }
-
-    /**
-     * generateOffloadPath.
-     * 
-     * @param workspaceDir workspaceDir
-     * @param sessionId sessionId
-     * @param offloadHandle offloadHandle
-     * @return the result
-     * @since 0.1.7
-     */
-    protected static String generateOffloadPath(String workspaceDir, String sessionId, String offloadHandle) {
-        if (workspaceDir != null && !workspaceDir.isBlank()) {
-            return Path.of(workspaceDir, "context", sessionId + "_context", "offload", offloadHandle + ".json")
-                    .toString();
+    public static String generateOffloadPath(String workspaceDir, String sessionId, String offloadHandle) {
+        if (!isBlank(workspaceDir)) {
+            return Path.of(workspaceDir, "context", sessionId + "_context", "offload",
+                    offloadHandle + ".json").toString();
         }
         return Path.of("memory", "offloads", sessionId, offloadHandle + ".json").toString();
     }
 
-    /**
-     * writeOffloadToFile.
-     * 
-     * @param sessionId sessionId
-     * @param offloadHandle offloadHandle
-     * @param offloadPath offloadPath
-     * @param messages messages
-     * @param sysOperation sysOperation
-     * @return the result
-     * @since 0.1.7
-     */
-    protected boolean writeOffloadToFile(String sessionId, String offloadHandle, String offloadPath,
-            List<BaseMessage> messages, SysOperation sysOperation) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("offload_handle", offloadHandle);
-        payload.put("messages", messages.stream().map(this::messageToMap).toList());
+    private static BaseMessage offloadMessagesToMemory(
+            String role, String content, List<BaseMessage> messages,
+            ModelContext context, String offloadHandle, Map<String, Object> kwargs) {
+        String markedContent = String.valueOf(content)
+                + String.format(OFFLOAD_MESSAGE_HANDLE, offloadHandle, "in_memory");
+        if (context instanceof SessionModelContext smc) {
+            smc.offloadMessages(offloadHandle, messages);
+        }
+        return OffloadMessages.createOffloadMessage(role, markedContent, offloadHandle, "in_memory", kwargs);
+    }
+
+    private static BaseMessage offloadMessagesToFilesystem(
+            String role, String content, String offloadHandle,
+            String offloadPath, Map<String, Object> kwargs) {
+        String markedContent;
+        if (!isBlank(offloadPath)) {
+            markedContent = String.valueOf(content)
+                    + String.format(OFFLOAD_MESSAGE_HANDLE_WITH_PATH, "filesystem", offloadPath);
+        } else {
+            markedContent = String.valueOf(content)
+                    + String.format(OFFLOAD_MESSAGE_HANDLE, offloadHandle, "filesystem");
+        }
+        return OffloadMessages.createOffloadMessage(role, markedContent, offloadHandle, "filesystem", kwargs);
+    }
+
+    private static boolean writeOffloadToFile(
+            String sessionId, String offloadHandle, String offloadPath,
+            List<BaseMessage> messages) {
+        String filePath = isBlank(offloadPath)
+                ? Path.of("memory", "offloads", sessionId, offloadHandle + ".json").toString()
+                : offloadPath;
         try {
-            String contentJson = MAPPER.writeValueAsString(payload);
-            if (sysOperation == null) {
-                Path path = Path.of(offloadPath);
-                if (!path.isAbsolute()) {
-                    return false;
-                }
-                Files.createDirectories(path.getParent());
-                Files.writeString(path, contentJson);
-                return true;
+            com.fasterxml.jackson.databind.ObjectMapper jsonMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("offload_handle", offloadHandle);
+            payload.put("messages", messages.stream().map(BaseMessage::modelDump).toList());
+            String jsonContent = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
+            Path path = Path.of(filePath);
+            if (!path.isAbsolute()) {
+                return false;
             }
-            WriteFileResult result =
-                sysOperation.fs().writeFile(offloadPath, contentJson, "text", false, false, true, "644", "utf-8", null);
-            return result.getCode() == 0;
-        } catch (IOException e) {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, jsonContent, StandardCharsets.UTF_8);
+            return true;
+        } catch (Exception ignored) {
             return false;
         }
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     /**
-     * messageToMap.
-     * 
-     * @param message message
-     * @return the result
-     * @since 0.1.7
+     * Result record returned by context processor operations.
+     *
+     * @param event         the context event describing modifications, or null
+     * @param messages      the resulting messages (for onAddMessages), or null
+     * @param contextWindow the resulting context window (for onGetContextWindow), or null
      */
-    private Map<String, Object> messageToMap(BaseMessage message) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("role", message.getRole());
-        result.put("content", message.getContent());
-        if (message.getName() != null) {
-            result.put("name", message.getName());
+    public record ProcessResult(ContextEvent event, List<BaseMessage> messages, ContextWindow contextWindow) {
+
+        /**
+         * Create a ProcessResult for add-messages operations.
+         *
+         * @param event    the context event
+         * @param messages the resulting messages
+         * @return a new ProcessResult
+         */
+        public static ProcessResult ofMessages(ContextEvent event, List<BaseMessage> messages) {
+            return new ProcessResult(event, messages, null);
         }
-        if (message instanceof ToolMessage toolMessage && toolMessage.getToolCallId() != null) {
-            result.put("tool_call_id", toolMessage.getToolCallId());
+
+        /**
+         * Create a ProcessResult for get-context-window operations.
+         *
+         * @param event         the context event
+         * @param contextWindow the resulting context window
+         * @return a new ProcessResult
+         */
+        public static ProcessResult ofContextWindow(ContextEvent event, ContextWindow contextWindow) {
+            return new ProcessResult(event, null, contextWindow);
         }
-        if (message instanceof AssistantMessage assistantMessage) {
-            if (assistantMessage.getToolCalls() != null) {
-                result.put("tool_calls", assistantMessage.getToolCalls());
-            }
-            if (assistantMessage.getUsageMetadata() != null) {
-                result.put("usage_metadata", assistantMessage.getUsageMetadata());
-            }
-            if (assistantMessage.getFinishReason() != null) {
-                result.put("finish_reason", assistantMessage.getFinishReason());
-            }
-            if (assistantMessage.getParserContent() != null) {
-                result.put("parser_content", assistantMessage.getParserContent());
-            }
-            if (assistantMessage.getReasoningContent() != null) {
-                result.put("reasoning_content", assistantMessage.getReasoningContent());
-            }
-        }
-        return result;
     }
 }

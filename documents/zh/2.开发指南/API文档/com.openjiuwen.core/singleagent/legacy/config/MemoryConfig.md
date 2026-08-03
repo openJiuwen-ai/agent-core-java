@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.MemoryConfig
+# com.openjiuwen.core.single_agent.legacy.config.MemoryConfig
 
 ## 类 MemoryConfig
 

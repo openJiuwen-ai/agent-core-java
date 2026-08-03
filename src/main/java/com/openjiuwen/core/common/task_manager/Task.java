@@ -4,513 +4,357 @@
 
 package com.openjiuwen.core.common.task_manager;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 
 /**
- * Coroutine-task data model.
- * 
- * @since 0.1.7
+ * Coroutine task data model.
+ *
+ * <p>Mirrors Python's {@code Task} in
+ * {@code openjiuwen/core/common/task_manager/task.py}.</p>
  */
 public class Task {
-    private static final Logger log = LoggerFactory.getLogger(Task.class);
 
-    private final TaskManager owner;
     private final String taskId;
-    private final String name;
-    private final String group;
+    private String name;
+    private String group;
     private String parentTaskId;
-    private volatile TaskStatus status = TaskStatus.PENDING;
-    private final Double timeout;
-    private final Instant createdAt = Instant.now();
-    private volatile Instant startedAt;
-    private volatile Instant finishedAt;
-    private volatile Object result;
-    private volatile Throwable exception;
-    private final Map<String, Object> metadata;
+    private TaskStatus status = TaskStatus.PENDING;
+    private Double timeout;
+    private Instant createdAt = Instant.now();
+    private Instant startedAt;
+    private Instant finishedAt;
+    private Object result;
+    private Throwable exception;
+    private Map<String, Object> metadata = new LinkedHashMap<>();
+    private String cancelledBy;
+    private String cancelReason;
     private final CompletableFuture<Object> doneFuture = new CompletableFuture<>();
-    private volatile Future<?> cancelHandle;
-    private volatile Future<?> timeoutHandle;
-    private volatile String cancelledBy;
-    private volatile String cancelReason;
-    private volatile boolean isTimeoutTriggered;
+    private volatile CompletableFuture<?> executionFuture;
 
-    @FunctionalInterface
-    interface StatusCallback {
-        /**
-         * handle.
-         * 
-         * @param task task
-         * @param status status
-         * @since 0.1.7
-         */
-        void handle(Task task, String status);
+    public Task(String taskId) {
+        this(taskId, null, null, null, Map.of());
     }
 
-    /**
-     * Task.
-     * 
-     * @param owner owner
-     * @param taskId taskId
-     * @param name name
-     * @param group group
-     * @param timeout timeout
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    public Task(TaskManager owner, String taskId, String name, String group, Double timeout,
-            Map<String, Object> metadata) {
-        this.owner = owner;
-        this.taskId = taskId;
+    public Task(String taskId, String name, String group, Double timeout, Map<String, Object> metadata) {
+        this.taskId = Objects.requireNonNull(taskId, "taskId must not be null");
         this.name = name;
         this.group = group;
         this.timeout = timeout;
-        this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
+        this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
 
-    /**
-     * getTaskId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getTaskId() {
-        return taskId;
-    }
-
-    /**
-     * getName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getName() {
-        return name;
-    }
-
-    /**
-     * getGroup.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getGroup() {
-        return group;
-    }
-
-    /**
-     * getParentTaskId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getParentTaskId() {
-        return parentTaskId;
-    }
-
-    /**
-     * setParentTaskId.
-     * 
-     * @param parentTaskId parentTaskId
-     * @since 0.1.7
-     */
-    public void setParentTaskId(String parentTaskId) {
-        this.parentTaskId = parentTaskId;
-    }
-
-    /**
-     * getStatus.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TaskStatus getStatus() {
-        return status;
-    }
-
-    /**
-     * getTimeout.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Double getTimeout() {
-        return timeout;
-    }
-
-    /**
-     * getCreatedAt.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    /**
-     * getStartedAt.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Instant getStartedAt() {
-        return startedAt;
-    }
-
-    /**
-     * getFinishedAt.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Instant getFinishedAt() {
-        return finishedAt;
-    }
-
-    /**
-     * getResult.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getResult() {
-        return result;
-    }
-
-    /**
-     * getException.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Throwable getException() {
-        return exception;
-    }
-
-    /**
-     * getMetadata.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getMetadata() {
-        return new LinkedHashMap<>(metadata);
-    }
-
-    /**
-     * getCancelledBy.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getCancelledBy() {
-        return cancelledBy;
-    }
-
-    /**
-     * getCancelReason.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getCancelReason() {
-        return cancelReason;
-    }
-
-    /**
-     * isTerminal.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isTerminal() {
-        return TaskStatus.TERMINAL_STATES.contains(status);
+        return status != null && status.isTerminal();
     }
 
-    /**
-     * getDisplayName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getDisplayName() {
-        return name != null && !name.isBlank() ? name : taskId.substring(0, Math.min(taskId.length(), 8));
+        return name == null || name.isBlank() ? taskId.substring(0, Math.min(8, taskId.length())) : name;
     }
 
-    /**
-     * getError.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getError() {
-        return exception != null ? exception.getMessage() : null;
+        return exception == null ? null : exception.getMessage();
     }
 
-    /**
-     * setRunningFuture.
-     * 
-     * @param future future
-     * @since 0.1.7
-     */
-    public synchronized void setRunningFuture(Future<?> future) {
-        this.cancelHandle = future;
+    public CompletableFuture<Object> waitForCompletion() {
+        return doneFuture;
     }
 
-    /**
-     * setTimeoutHandle.
-     * 
-     * @param future future
-     * @since 0.1.7
-     */
-    public synchronized void setTimeoutHandle(Future<?> future) {
-        this.timeoutHandle = future;
+    public CompletableFuture<Object> waitResult() {
+        return waitForCompletion();
     }
 
-    /**
-     * waitFor.
-     * 
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public Object waitFor() throws Exception {
+    public Object waitForResult() throws Exception {
         try {
             return doneFuture.get();
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof Exception ex) {
-                throw ex;
+        } catch (java.util.concurrent.ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof Exception checkedException) {
+                throw checkedException;
             }
-            throw new IllegalStateException(cause);
+            throw new RuntimeException(cause);
         }
     }
 
-    /**
-     * cancel.
-     * 
-     * @param isCascade isCascade
-     * @param reason reason
-     * @param cancelledBy cancelledBy
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean cancel(boolean isCascade, String reason, String cancelledBy) {
-        synchronized (this) {
-            if (isTerminal()) {
-                return false;
-            }
-            this.cancelReason = reason != null ? reason : "manual_cancel";
-            if (cancelledBy != null) {
-                this.cancelledBy = cancelledBy;
-            }
-            if (status == TaskStatus.PENDING) {
-                markCancelled();
-            }
-            if (isCascade && owner != null) {
-                owner.cascadeCancel(taskId, "parent_cancelled");
-            }
-            if (timeoutHandle != null) {
-                timeoutHandle.cancel(false);
-            }
-            return cancelHandle != null && cancelHandle.cancel(true);
-        }
+    public boolean cancel() {
+        return cancel(false, "manual_cancel", null);
     }
 
-    /**
-     * abort.
-     * 
-     * @param reason reason
-     * @return the result
-     * @since 0.1.7
-     */
+    public boolean cancel(boolean cascade, String reason, String cancelledBy) {
+        if (isTerminal()) {
+            return false;
+        }
+        boolean cancelled = TaskManager.getInstance().cancelTask(taskId, reason == null ? "manual_cancel" : reason,
+                cancelledBy);
+        if (cancelled && cascade) {
+            TaskManager.getInstance().cascadeCancel(taskId, "parent_cancelled");
+        }
+        return cancelled;
+    }
+
     public boolean abort(String reason) {
-        synchronized (this) {
-            if (isTerminal()) {
-                return false;
-            }
-            this.cancelReason = reason != null ? reason : "manual_cancel";
-            if (status == TaskStatus.PENDING) {
-                markCancelled();
-            }
-            if (timeoutHandle != null) {
-                timeoutHandle.cancel(false);
-            }
-            return cancelHandle != null && cancelHandle.cancel(true);
+        if (executionFuture == null || executionFuture.isDone()) {
+            return false;
         }
+        return markCancelled(reason == null ? "manual_cancel" : reason, cancelledBy);
     }
 
-    synchronized void triggerTimeout() {
-        if (isTerminal()) {
-            return;
-        }
-        isTimeoutTriggered = true;
-        cancelReason = "timeout";
-        if (status == TaskStatus.PENDING) {
-            markTimeout();
-        }
-        if (cancelHandle != null) {
-            cancelHandle.cancel(true);
-        }
+    public CompletableFuture<Object> execute(Callable<?> callable,
+                                             BiConsumer<Task, String> callbackTrigger,
+                                             boolean catchExceptions) {
+        return execute(callable, callbackTrigger, catchExceptions, ForkJoinPool.commonPool());
     }
 
-    void execute(Callable<?> callable, StatusCallback callback, boolean isCatchExceptionsEnabled) {
-        String previousTaskId = TaskContext.setCurrentTaskId(taskId);
-        startedAt = Instant.now();
+    public CompletableFuture<Object> execute(Callable<?> callable,
+                                             BiConsumer<Task, String> callbackTrigger,
+                                             boolean catchExceptions,
+                                             Executor executor) {
+        Objects.requireNonNull(callable, "callable");
+        Executor actualExecutor = executor == null ? ForkJoinPool.commonPool() : executor;
+        CompletableFuture<Object> future = CompletableFuture.supplyAsync(
+                () -> executeCore(callable, callbackTrigger, catchExceptions), actualExecutor);
+        setExecutionFuture(future);
+        return future;
+    }
+
+    void start() {
         status = TaskStatus.RUNNING;
-        log.info("Task execute start: taskId={} name={} group={}", taskId, name, group);
-        invokeCallback(callback, "running");
-        try {
-            Object value = callable.call();
-            synchronized (this) {
-                if (isTimeoutTriggered) {
-                    markTimeout();
-                } else if (cancelReason != null) {
-                    markCancelled();
-                    return;
-                } else {
-                    result = value;
-                    status = TaskStatus.COMPLETED;
-                    finishedAt = Instant.now();
-                    doneFuture.complete(value);
-                    log.info("Task execute completed: taskId={} name={}", taskId, name);
-                    invokeCallback(callback, "completed");
-                }
-            }
-        } catch (InterruptedException e) {
-            synchronized (this) {
-                if (isTimeoutTriggered) {
-                    markTimeout();
-                } else if (!isTerminal()) {
-                    markCancelled();
-                } else {
-                    // no-op
-                }
-            }
-        } catch (CancellationException e) {
-            synchronized (this) {
-                if (isTimeoutTriggered) {
-                    markTimeout();
-                } else if (!isTerminal()) {
-                    markCancelled();
-                } else {
-                    // no-op
-                }
-            }
-        } catch (Exception e) {
-            synchronized (this) {
-                exception = e;
-                status = TaskStatus.FAILED;
-                finishedAt = Instant.now();
-                doneFuture.completeExceptionally(e);
-                log.info("Task execute failed: taskId={} name={} errorType={} message={}", taskId, name,
-                        e.getClass().getSimpleName(), e.getMessage());
-                invokeCallback(callback, "failed");
-            }
-            // The executor future observes this failure; task waiters use doneFuture.
-        } finally {
-            if (timeoutHandle != null) {
-                timeoutHandle.cancel(false);
-            }
-            log.info("Task execute end: taskId={} name={} status={}", taskId, name, status);
-            TaskContext.resetCurrentTaskId(previousTaskId);
-        }
+        startedAt = Instant.now();
     }
 
-    /**
-     * markCancelled.
-     * 
-     * @since 0.1.7
-     */
-    private void markCancelled() {
+    void complete(Object value) {
         if (isTerminal()) {
             return;
+        }
+        result = value;
+        status = TaskStatus.COMPLETED;
+        finishedAt = Instant.now();
+        doneFuture.complete(value);
+    }
+
+    void fail(Throwable throwable) {
+        if (isTerminal()) {
+            return;
+        }
+        exception = throwable;
+        status = TaskStatus.FAILED;
+        finishedAt = Instant.now();
+        doneFuture.completeExceptionally(throwable);
+    }
+
+    boolean markCancelled(String reason, String byTaskId) {
+        if (isTerminal()) {
+            return false;
         }
         status = TaskStatus.CANCELLED;
+        cancelReason = reason == null ? "manual_cancel" : reason;
+        cancelledBy = byTaskId;
         finishedAt = Instant.now();
-        CancellationException error = new CancellationException(cancelReason != null ? cancelReason : "manual_cancel");
-        exception = error;
-        doneFuture.completeExceptionally(error);
-        log.info("Task markCancelled: taskId={} name={} reason={}", taskId, name, cancelReason);
-        invokeCallback(null, null);
+        if (!doneFuture.isDone()) {
+            doneFuture.completeExceptionally(new CancellationException(cancelReason));
+        }
+        return true;
     }
 
-    /**
-     * markTimeout.
-     * 
-     * @since 0.1.7
-     */
-    private void markTimeout() {
+    void markTimeout() {
         if (isTerminal()) {
             return;
         }
         status = TaskStatus.TIMEOUT;
+        exception = new java.util.concurrent.TimeoutException("Task timeout");
         finishedAt = Instant.now();
-        TimeoutException error = new TimeoutException("Task timeout");
-        exception = error;
-        doneFuture.completeExceptionally(error);
-        log.info("Task markTimeout: taskId={} name={}", taskId, name);
-        invokeCallback(null, null);
+        doneFuture.completeExceptionally(exception);
     }
 
-    /**
-     * invokeCallback.
-     * 
-     * @param callback callback
-     * @param statusName statusName
-     * @since 0.1.7
-     */
-    private void invokeCallback(StatusCallback callback, String statusName) {
-        if (callback != null && statusName != null) {
-            callback.handle(this, statusName);
-        } else if (owner != null) {
-            if (status == TaskStatus.CANCELLED) {
-                owner.handleStatus(this, "cancelled");
-            } else if (status == TaskStatus.TIMEOUT) {
-                owner.handleStatus(this, "timeout");
+    void setExecutionFuture(CompletableFuture<?> future) {
+        executionFuture = future;
+    }
+
+    public void setFuture(CompletableFuture<?> future) {
+        setExecutionFuture(future);
+    }
+
+    static Throwable unwrap(Throwable throwable) {
+        if (throwable instanceof CompletionException completionException && completionException.getCause() != null) {
+            return completionException.getCause();
+        }
+        return throwable;
+    }
+
+    private Object executeCore(Callable<?> callable, BiConsumer<Task, String> callbackTrigger, boolean catchExceptions) {
+        TaskContext.ContextToken<String> token = TaskContext.setCurrentTaskId(taskId);
+        start();
+        trigger(callbackTrigger, "running");
+        try {
+            Object value = callable.call();
+            completeFromExecute(value, callbackTrigger);
+            return value;
+        } catch (CancellationException cancellation) {
+            cancelFromExecute(callbackTrigger);
+            if (catchExceptions) {
+                return null;
             }
-        } else {
-            // no-op
+            throw cancellation;
+        } catch (TimeoutException timeoutException) {
+            timeoutFromExecute(callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw new CompletionException(timeoutException);
+        } catch (Exception exception) {
+            failFromExecute(exception, callbackTrigger);
+            if (catchExceptions) {
+                return null;
+            }
+            throw new CompletionException(exception);
+        } finally {
+            TaskContext.resetCurrentTaskId(token);
         }
     }
 
-    /**
-     * hashCode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    private void completeFromExecute(Object value, BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        result = value;
+        status = TaskStatus.COMPLETED;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "completed");
+        doneFuture.complete(value);
+    }
+
+    private void failFromExecute(Throwable throwable, BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        exception = throwable;
+        status = TaskStatus.FAILED;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "failed");
+        doneFuture.completeExceptionally(throwable);
+    }
+
+    private void cancelFromExecute(BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        status = TaskStatus.CANCELLED;
+        cancelReason = cancelReason == null ? "manual_cancel" : cancelReason;
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "cancelled");
+        doneFuture.completeExceptionally(new CancellationException(cancelReason));
+    }
+
+    private void timeoutFromExecute(BiConsumer<Task, String> callbackTrigger) {
+        if (isTerminal()) {
+            return;
+        }
+        status = TaskStatus.TIMEOUT;
+        exception = new TimeoutException("Task timeout");
+        finishedAt = Instant.now();
+        trigger(callbackTrigger, "timeout");
+        doneFuture.completeExceptionally(exception);
+    }
+
+    private void trigger(BiConsumer<Task, String> callbackTrigger, String status) {
+        if (callbackTrigger != null) {
+            callbackTrigger.accept(this, status);
+        }
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getGroup() {
+        return group;
+    }
+
+    public String getParentTaskId() {
+        return parentTaskId;
+    }
+
+    public void setParentTaskId(String parentTaskId) {
+        this.parentTaskId = parentTaskId;
+    }
+
+    public TaskStatus getStatus() {
+        return status;
+    }
+
+    public Double getTimeout() {
+        return timeout;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public Instant getFinishedAt() {
+        return finishedAt;
+    }
+
+    public Object getResult() {
+        return result;
+    }
+
+    public Throwable getException() {
+        return exception;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public String getCancelledBy() {
+        return cancelledBy;
+    }
+
+    public void setCancelledBy(String cancelledBy) {
+        this.cancelledBy = cancelledBy;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
+    }
+
+    public CompletableFuture<?> getExecutionFuture() {
+        return executionFuture;
+    }
+
+    public CompletableFuture<?> getFuture() {
+        return executionFuture == null ? doneFuture : executionFuture;
+    }
+
     @Override
     public int hashCode() {
-        return Objects.hash(taskId);
+        return taskId.hashCode();
     }
 
-    /**
-     * equals.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean equals(Object other) {
-        if (!(other instanceof Task task)) {
-            return false;
-        }
-        return Objects.equals(taskId, task.taskId);
+        return other instanceof Task task && taskId.equals(task.taskId);
     }
 }

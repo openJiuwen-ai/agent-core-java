@@ -4,13 +4,18 @@
 
 package com.openjiuwen.core.workflow.component;
 
+import com.openjiuwen.core.graph.Vertex;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.utils.SessionUtils;
+import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,11 +26,11 @@ import java.util.Set;
  * Manages template segments, variable positions, and supports both
  * synchronous rendering and streaming output.
  * <p>
- * Mirrors Python's {@code TemplateProcessor} from {@code end_comp.py}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TemplateProcessor} in
+ * {@code openjiuwen/core/workflow/components/flow/end_comp.py}.
  */
 public class TemplateProcessor {
+
     private final String template;
     private final List<String> segments;
     private final Set<Integer> variablePositions;
@@ -33,13 +38,8 @@ public class TemplateProcessor {
     private int chunkIndex;
     private int dataSourceCount;
     private int count;
+    private final Object lock = new Object();
 
-    /**
-     * TemplateProcessor.
-     * 
-     * @param template template
-     * @since 0.1.7
-     */
     public TemplateProcessor(String template) {
         this.template = template;
         List<String> rawSegments = TemplateUtils.renderTemplateToList(template);
@@ -58,44 +58,21 @@ public class TemplateProcessor {
         this.count = 0;
     }
 
-    /**
-     * setDataSourceCount.
-     * 
-     * @param dataSourceCount dataSourceCount
-     * @since 0.1.7
-     */
     public void setDataSourceCount(int dataSourceCount) {
-        this.dataSourceCount = dataSourceCount;
-        this.count = 0;
+        synchronized (lock) {
+            this.dataSourceCount = dataSourceCount;
+            this.count = 0;
+        }
     }
 
-    /**
-     * currentPosition.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int currentPosition() {
         return currentPosition;
     }
 
-    /**
-     * getCurrentSegment.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getCurrentSegment() {
         return getSegment(currentPosition);
     }
 
-    /**
-     * getSegment.
-     * 
-     * @param pos pos
-     * @return the result
-     * @since 0.1.7
-     */
     private String getSegment(int pos) {
         if (pos >= segments.size()) {
             return "";
@@ -103,22 +80,10 @@ public class TemplateProcessor {
         return segments.get(pos);
     }
 
-    /**
-     * shouldRender.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean shouldRender() {
         return variablePositions.contains(currentPosition);
     }
 
-    /**
-     * advancePosition.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int advancePosition() {
         currentPosition++;
         return currentPosition;
@@ -126,10 +91,6 @@ public class TemplateProcessor {
 
     /**
      * Render the entire template with the given inputs (synchronous).
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
      */
     public String render(Map<String, Object> inputs) {
         return TemplateUtils.renderTemplate(template, inputs);
@@ -137,23 +98,13 @@ public class TemplateProcessor {
 
     /**
      * Reset position and counters.
-     * 
-     * @since 0.1.7
      */
     public void reset() {
-        if (currentPosition != 0) {
-            currentPosition = 0;
+        synchronized (lock) {
+            resetLocked();
         }
-        chunkIndex = 0;
-        count = 0;
     }
 
-    /**
-     * isFinished.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isFinished() {
         return currentPosition >= segments.size();
     }
@@ -164,64 +115,157 @@ public class TemplateProcessor {
      * <p>
      * Mirrors Python's {@code TemplateProcessor.render_stream(inputs, session, timeout)}.
      * In Java the iteration is synchronous via an {@link Iterator}.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
      */
-    public Iterator<Map<String, Object>> renderStream(Map<String, Object> inputs, NodeSessionApi session) {
-        List<Map<String, Object>> frames = new ArrayList<>();
-        boolean hasAnyValue = needRender(inputs);
+    public Iterator<Map<String, Object>> renderStream(Map<String, Object> inputs, BaseSession session) {
+        Map<String, Object> safeInputs = restoreSourceContainerOrder(
+                inputs != null ? inputs : Map.of(), session);
+        long waitTimeoutMs = resolveTimeoutMillis(session);
+        boolean hasAnyValue = needRender(safeInputs);
 
-        while (!isFinished()) {
-            String segment = getCurrentSegment();
-            if (!shouldRender()) {
-                Map<String, Object> frame = new HashMap<>();
-                frame.put("data", segment);
-                frame.put("index", chunkIndex++);
-                frames.add(frame);
-                advancePosition();
-                continue;
-            }
+        return new Iterator<>() {
+            private Iterator<?> currentIterator;
+            private Map<String, Object> nextFrame;
+            private boolean finished;
 
-            Object value = SessionUtils.getValueByNestedPath(segment, inputs);
-            if (value == null) {
-                advancePosition();
-                continue;
-            }
-
-            if (value instanceof Iterator<?> iter) {
-                while (iter.hasNext()) {
-                    Map<String, Object> frame = new HashMap<>();
-                    frame.put("data", iter.next());
-                    frame.put("index", chunkIndex++);
-                    frames.add(frame);
+            @Override
+            public boolean hasNext() {
+                if (finished) {
+                    return false;
                 }
-            } else {
-                Map<String, Object> frame = new HashMap<>();
-                frame.put("data", value);
-                frame.put("index", chunkIndex++);
-                frames.add(frame);
+                if (nextFrame != null) {
+                    return true;
+                }
+                nextFrame = prepareNext();
+                if (nextFrame == null) {
+                    finished = true;
+                    finish(safeInputs);
+                    return false;
+                }
+                return true;
             }
-            advancePosition();
-        }
 
-        count++;
-        if (count == dataSourceCount) {
-            reset();
-        }
+            @Override
+            public Map<String, Object> next() {
+                if (!hasNext()) {
+                    throw new java.util.NoSuchElementException();
+                }
+                Map<String, Object> current = nextFrame;
+                nextFrame = null;
+                return current;
+            }
 
-        return frames.iterator();
+            private Map<String, Object> prepareNext() {
+                while (true) {
+                    if (currentIterator != null) {
+                        if (currentIterator.hasNext()) {
+                            return frame(currentIterator.next());
+                        }
+                        currentIterator = null;
+                        synchronized (lock) {
+                            advancePosition();
+                            lock.notifyAll();
+                        }
+                        continue;
+                    }
+
+                    synchronized (lock) {
+                        if (currentPosition >= segments.size()) {
+                            return null;
+                        }
+
+                        String segment = getSegment(currentPosition);
+                        if (!variablePositions.contains(currentPosition)) {
+                            Map<String, Object> frame = frameLocked(segment);
+                            advancePosition();
+                            lock.notifyAll();
+                            return frame;
+                        }
+
+                        Object value = SessionUtils.getValueByNestedPath(segment, safeInputs);
+                        if (value == null) {
+                            if (shouldWaitForAnotherSource() || hasAnyValue) {
+                                long waitedMs = waitForTemplatePosition(waitTimeoutMs);
+                                if (waitTimeoutMs > 0
+                                        && waitedMs >= waitTimeoutMs
+                                        && currentPosition < segments.size()
+                                        && segment.equals(getSegment(currentPosition))
+                                        && SessionUtils.getValueByNestedPath(segment, safeInputs) == null) {
+                                    advancePosition();
+                                    lock.notifyAll();
+                                }
+                                continue;
+                            }
+                            advancePosition();
+                            lock.notifyAll();
+                            continue;
+                        }
+
+                        if (value instanceof Iterator<?> iterator) {
+                            currentIterator = iterator;
+                            continue;
+                        }
+                        Map<String, Object> frame = frameLocked(value);
+                        advancePosition();
+                        lock.notifyAll();
+                        return frame;
+                    }
+                }
+            }
+        };
     }
 
-    /**
-     * needRender.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> restoreSourceContainerOrder(
+            Map<String, Object> inputs, BaseSession session) {
+        BaseSession effectiveSession = session instanceof NodeSessionApi nodeSession
+                ? nodeSession.getInner()
+                : session;
+        if (!(effectiveSession instanceof Vertex.VertexSession vertexSession)) {
+            return inputs;
+        }
+        Object schema = vertexSession.nodeConfig().ioConfigs().inputsSchema();
+        if (schema == null) {
+            return inputs;
+        }
+        Object rawIoState = vertexSession.state().dump().get("io_state");
+        if (!(rawIoState instanceof Map<?, ?> rawMap)) {
+            return inputs;
+        }
+        Object sourceInputs = SessionUtils.getBySchema(schema, (Map<String, Object>) rawMap);
+        Object reordered = reorderContainers(inputs, sourceInputs);
+        return reordered instanceof Map<?, ?> reorderedMap
+                ? (Map<String, Object>) reorderedMap
+                : inputs;
+    }
+
+    private static Object reorderContainers(Object current, Object source) {
+        if (current instanceof Map<?, ?> currentMap && source instanceof Map<?, ?> sourceMap) {
+            Map<Object, Object> reordered = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> sourceEntry : sourceMap.entrySet()) {
+                Object key = sourceEntry.getKey();
+                if (currentMap.containsKey(key)) {
+                    reordered.put(key, reorderContainers(currentMap.get(key), sourceEntry.getValue()));
+                }
+            }
+            for (Map.Entry<?, ?> currentEntry : currentMap.entrySet()) {
+                Object key = currentEntry.getKey();
+                if (!reordered.containsKey(key)) {
+                    reordered.put(key, reorderContainers(currentEntry.getValue(), sourceMap.get(key)));
+                }
+            }
+            return reordered;
+        }
+        if (current instanceof List<?> currentList && source instanceof List<?> sourceList) {
+            List<Object> reordered = new ArrayList<>(currentList.size());
+            for (int index = 0; index < currentList.size(); index++) {
+                Object sourceValue = index < sourceList.size() ? sourceList.get(index) : null;
+                reordered.add(reorderContainers(currentList.get(index), sourceValue));
+            }
+            return reordered;
+        }
+        return current;
+    }
+
     private boolean needRender(Object inputs) {
         if (!(inputs instanceof Map)) {
             return false;
@@ -236,5 +280,90 @@ public class TemplateProcessor {
             }
         }
         return false;
+    }
+
+    private boolean shouldWaitForAnotherSource() {
+        return dataSourceCount > 1 && count < dataSourceCount;
+    }
+
+    private long waitForTemplatePosition(long waitTimeoutMs) {
+        long start = System.nanoTime();
+        try {
+            if (waitTimeoutMs > 0) {
+                lock.wait(waitTimeoutMs);
+            } else {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return (System.nanoTime() - start) / 1_000_000L;
+    }
+
+    private Map<String, Object> frame(Object data) {
+        synchronized (lock) {
+            return frameLocked(data);
+        }
+    }
+
+    private Map<String, Object> frameLocked(Object data) {
+        Map<String, Object> frame = new HashMap<>();
+        frame.put("data", data);
+        frame.put("index", chunkIndex++);
+        return frame;
+    }
+
+    private void finish(Map<String, Object> inputs) {
+        consumeAllIterators(inputs);
+        synchronized (lock) {
+            count++;
+            if (count == dataSourceCount) {
+                resetLocked();
+            }
+            lock.notifyAll();
+        }
+    }
+
+    private void resetLocked() {
+        currentPosition = 0;
+        chunkIndex = 0;
+        count = 0;
+    }
+
+    private static void consumeAllIterators(Object value) {
+        if (value instanceof Iterator<?> iterator) {
+            while (iterator.hasNext()) {
+                iterator.next();
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Object child : map.values()) {
+                consumeAllIterators(child);
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object child : iterable) {
+                consumeAllIterators(child);
+            }
+        }
+    }
+
+    private static long resolveTimeoutMillis(BaseSession session) {
+        Object raw = session != null
+                ? WorkflowSessionSupport.getEnv(session, SessionConstants.END_COMP_TEMPLATE_RENDER_POSITION_TIMEOUT_KEY)
+                : null;
+        if (raw instanceof Number number) {
+            return Math.max(0L, Math.round(number.doubleValue() * 1000));
+        }
+        if (raw != null) {
+            try {
+                return Math.max(0L, Math.round(Double.parseDouble(String.valueOf(raw)) * 1000));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 }

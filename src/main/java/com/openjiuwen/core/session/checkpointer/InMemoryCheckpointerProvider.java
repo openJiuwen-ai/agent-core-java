@@ -25,7 +25,6 @@ public final class InMemoryCheckpointerProvider implements CheckpointerProvider 
      * @return the type name "in_memory"
      * @since 0.1.7
      */
-    @Override
     public String typeName() {
         return "in_memory";
     }

@@ -8,49 +8,21 @@ import com.openjiuwen.core.common.exception.AgentError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
-import java.util.Map;
-
 /**
- * Unified exception for ability execution failures.
- * 
- * @since 0.1.7
+ * Exception wrapper for ability/tool execution failures.
+ *
+ * <p>Mirrors Python's {@code AbilityExecutionError} in
+ * {@code openjiuwen/core/single_agent/ability_manager.py}.</p>
  */
 public class AbilityExecutionError extends AgentError {
     private final ToolMessage toolMessage;
 
-    /**
-     * AbilityExecutionError.
-     * 
-     * @param status status
-     * @param msg msg
-     * @param toolMessage toolMessage
-     * @since 0.1.7
-     */
-    public AbilityExecutionError(StatusCode status, String msg, ToolMessage toolMessage) {
-        super(status, msg, null, null, Map.of("error_msg", msg));
+    public AbilityExecutionError(StatusCode status, String message, Object details,
+                                 Throwable cause, ToolMessage toolMessage) {
+        super(status, message, details, cause, java.util.Map.of());
         this.toolMessage = toolMessage;
     }
 
-    /**
-     * AbilityExecutionError.
-     * 
-     * @param status status
-     * @param msg msg
-     * @param cause cause
-     * @param toolMessage toolMessage
-     * @since 0.1.7
-     */
-    public AbilityExecutionError(StatusCode status, String msg, Throwable cause, ToolMessage toolMessage) {
-        super(status, msg, null, cause, Map.of("error_msg", msg));
-        this.toolMessage = toolMessage;
-    }
-
-    /**
-     * getToolMessage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public ToolMessage getToolMessage() {
         return toolMessage;
     }

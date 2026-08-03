@@ -4,14 +4,22 @@
 
 package com.openjiuwen.core.runner.base;
 
-import java.util.function.Supplier;
-
 /**
- * Provider functional interface for creating Agent instances.
- * Mirrors Python's {@code AgentProvider = Callable[..., BaseAgent]}.
- * 
- * @since 0.1.7
+ * Functional interface for providing agent instances.
+ *
+ * <p>Mirrors Python's agent provider pattern used by
+ * {@link com.openjiuwen.core.multiagent.runtime.TeamRuntime} and
+ * {@link com.openjiuwen.core.multiagent.BaseTeam}.</p>
+ *
+ * @param <T> the agent type
  */
 @FunctionalInterface
-public interface AgentProvider<T> extends Supplier<T> {
+public interface AgentProvider<T> {
+
+    /**
+     * Create or retrieve an agent instance.
+     *
+     * @return agent instance
+     */
+    T get();
 }

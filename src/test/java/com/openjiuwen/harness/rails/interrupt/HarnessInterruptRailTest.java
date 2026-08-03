@@ -1,22 +1,18 @@
-
 package com.openjiuwen.harness.rails.interrupt;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
-import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.rails.CallbackContext;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class HarnessInterruptRailTest {
+
     @Test
     void addPolicyAndGetToolsMirrorPythonStyleApi() {
         TestRail rail = new TestRail();
@@ -24,51 +20,56 @@ class HarnessInterruptRailTest {
         rail.addPolicy("ask_user", null);
         rail.addTool("confirm");
 
-        assertThat(rail.getToolNames()).containsExactlyInAnyOrder("ask_user", "confirm");
+        assertThat(rail.getTools()).containsExactlyInAnyOrder("ask_user", "confirm");
     }
 
     @Test
-    void interruptDecisionRaisesToolInterruptException() {
+    void interruptDecisionRaisesFlagInContext() {
         TestRail rail = new TestRail();
-        AgentCallbackContext ctx = context("ask_user", "{\"question\":\"name?\"}");
+        DeepAgent agent = new DeepAgent();
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tool_name", "ask_user");
+        values.put("tool_args", "{\"question\":\"name?\"}");
+        CallbackContext ctx = new CallbackContext(agent, values);
 
-        ToolInterruptException error = assertThrows(ToolInterruptException.class, () -> rail.beforeToolCall(ctx));
+        rail.beforeToolCall(ctx);
 
-        assertThat(error.getRequest().getMessage()).isEqualTo("name?");
+        assertThat(ctx.get("interrupt_required")).isEqualTo(true);
     }
 
     @Test
     void approveDecisionOverridesToolArgs() {
         TestRail rail = new TestRail();
-        AgentCallbackContext ctx = context("ask_user", "{\"question\":\"name?\"}");
-        ctx.getExtra().put(ToolInterruptionState.RESUME_USER_INPUT_KEY, "Alice");
+        DeepAgent agent = new DeepAgent();
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tool_name", "ask_user");
+        values.put("tool_args", "{\"question\":\"name?\"}");
+        values.put("user_input", "Alice");
+        CallbackContext ctx = new CallbackContext(agent, values);
 
         rail.beforeToolCall(ctx);
 
-        assertThat(((ToolCallInputs) ctx.getInputs()).getToolArgs()).isEqualTo("{\"response\":\"Alice\"}");
-    }
-
-    private AgentCallbackContext context(String toolName, String toolArgs) {
-        return AgentCallbackContext.builder().session(AgentSessionApi.create("harness-session", null, null))
-                .inputs(ToolCallInputs.builder()
-                        .toolCall(ToolCall.builder().id(toolName + "-call").name(toolName).arguments(toolArgs).build())
-                        .toolName(toolName).toolArgs(toolArgs).build())
-                .build();
+        assertThat(ctx.get("tool_args")).isEqualTo("{\"response\":\"Alice\"}");
     }
 
     private static final class TestRail extends BaseInterruptRail {
+
         private TestRail() {
             super(List.of("ask_user"));
         }
 
         @Override
-        protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
-            if (userInput == null) {
-                return interrupt(com.openjiuwen.core.singleagent.interrupt.InterruptRequest.builder()
-                        .interruptId(toolCall.getId()).message("name?")
-                        .context(Map.of("tool_call_id", toolCall.getId())).build());
+        public void beforeToolCall(CallbackContext ctx) {
+            super.beforeToolCall(ctx);
+            if (Boolean.TRUE.equals(ctx.get("interrupt_required"))) {
+                Object userInput = ctx.get("user_input");
+                if (userInput == null) {
+                    ctx.put("interrupt_required", true);
+                } else {
+                    ctx.put("tool_args", "{\"response\":\"" + userInput + "\"}");
+                    ctx.put("interrupt_required", false);
+                }
             }
-            return approve("{\"response\":\"" + userInput + "\"}");
         }
     }
 }

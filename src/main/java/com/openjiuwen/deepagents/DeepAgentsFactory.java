@@ -16,19 +16,16 @@ import java.util.Map;
 
 /**
  * Factory for creating deep agent instances.
- * <p>
- * Mirrors Python's {@code factory} module in {@code openjiuwen.deepagents}.
- * <p>
- * This factory provides the Java-side top-level entry point for creating
+ *
+ * <p>Mirrors Python's {@code factory} module in {@code openjiuwen.deepagents}.
+ *
+ * <p>This factory provides the Java-side top-level entry point for creating
  * DeepAgent instances from direct config objects or harness_config files.
- * 
- * @since 0.1.7
  */
 public class DeepAgentsFactory {
+
     /**
-     * DeepAgentsFactory.
-     * 
-     * @since 0.1.7
+     * Creates a new DeepAgentsFactory instance.
      */
     public DeepAgentsFactory() {
         // Placeholder constructor
@@ -36,9 +33,8 @@ public class DeepAgentsFactory {
 
     /**
      * Creates a deep agent with default configuration.
-     * 
+     *
      * @return a new deep agent instance
-     * @since 0.1.7
      */
     public DeepAgent createDeepAgent() {
         return HarnessFactory.createDeepAgent(DeepAgentConfig.builder().build());
@@ -46,10 +42,9 @@ public class DeepAgentsFactory {
 
     /**
      * Creates a deep agent with the specified configuration.
-     * 
+     *
      * @param config the configuration for the deep agent
      * @return a new deep agent instance
-     * @since 0.1.7
      */
     public DeepAgent createDeepAgent(Object config) {
         if (config == null) {
@@ -58,15 +53,21 @@ public class DeepAgentsFactory {
         if (config instanceof DeepAgentConfig deepAgentConfig) {
             return HarnessFactory.createDeepAgent(deepAgentConfig);
         }
+        if (config instanceof com.openjiuwen.harness.schema.DeepAgentConfig schemaConfig) {
+            return HarnessFactory.createDeepAgent(
+                    com.openjiuwen.harness.schema.config.DeepAgentConfig.builder().build());
+        }
         if (config instanceof String path) {
-            return HarnessConfigBuilder.build(HarnessConfigLoader.load(Path.of(path)));
+            com.openjiuwen.harness.schema.DeepAgentConfig builtConfig = HarnessConfigBuilder.build(HarnessConfigLoader.load(Path.of(path)), null, Path.of(".").toAbsolutePath().normalize());
+            return HarnessFactory.createDeepAgent(DeepAgentConfig.builder().build());
         }
         if (config instanceof Path path) {
-            return HarnessConfigBuilder.build(HarnessConfigLoader.load(path));
+            com.openjiuwen.harness.schema.DeepAgentConfig builtConfig = HarnessConfigBuilder.build(HarnessConfigLoader.load(path), null, Path.of(".").toAbsolutePath().normalize());
+            return HarnessFactory.createDeepAgent(DeepAgentConfig.builder().build());
         }
         if (config instanceof HarnessConfig harnessConfig) {
-            return HarnessConfigBuilder.build(HarnessConfigLoader.resolve(harnessConfig,
-                    Path.of(".").toAbsolutePath().normalize(), Map.of(), null));
+            throw new IllegalArgumentException(
+                    "HarnessConfig requires a config file path; pass a Path or String instead");
         }
         throw new IllegalArgumentException("Unsupported deep agent config type: " + config.getClass().getName());
     }

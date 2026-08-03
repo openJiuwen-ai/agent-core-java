@@ -5,17 +5,15 @@
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
 /**
- * Text preprocessor abstraction.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TextPreprocessor} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
  */
+@FunctionalInterface
 public interface TextPreprocessor {
-    /**
-     * process.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
+
     String process(String text);
+
+    default String call(String text) {
+        return process(text);
+    }
 }

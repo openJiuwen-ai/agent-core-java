@@ -8,24 +8,18 @@ package com.openjiuwen.core.workflow.component.llm;
  * Utility class for workflow LLM operations.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.WorkflowLLMUtils}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public final class WorkflowLLMUtils {
-    /**
-     * WorkflowLLMUtils.
-     * 
-     * @since 0.1.7
-     */
+
     private WorkflowLLMUtils() {
     }
 
     /**
      * Extract content string from an LLM response object.
-     * 
+     *
      * @param response the response object
      * @return the content string
-     * @since 0.1.7
      */
     public static String extractContent(Object response) {
         if (response == null) {

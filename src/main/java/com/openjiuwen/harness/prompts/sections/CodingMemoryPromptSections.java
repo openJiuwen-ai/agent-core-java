@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.prompts.sections;
 
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 
 import java.util.Map;
 
@@ -195,7 +196,7 @@ public final class CodingMemoryPromptSections {
      * @since 0.1.7
      */
     public static PromptSection buildCodingMemorySection(String language, boolean isReadOnly, String memoryDir) {
-        String lang = language == null || language.isBlank() ? PromptSection.DEFAULT_LANGUAGE : language;
+        String lang = language == null || language.isBlank() ? SystemPromptBuilder.DEFAULT_LANGUAGE : language;
         String dir = memoryDir == null || memoryDir.isBlank() ? "coding_memory/" : memoryDir;
         String template = isReadOnly
                 ? ("cn".equals(lang) ? CODING_MEMORY_READ_ONLY_CN : CODING_MEMORY_READ_ONLY_EN)

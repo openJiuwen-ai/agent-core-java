@@ -44,7 +44,6 @@ public class ReActAgentCompConfig extends ReActAgentConfig {
             this.setApiBase(source.getApiBase());
             this.setPromptTemplateName(source.getPromptTemplateName());
             this.setPromptTemplate(source.getPromptTemplate());
-            this.setPromptMode(source.getPromptMode());
             this.setCustomHeaders(source.getCustomHeaders());
             this.setMaxIterations(source.getMaxIterations());
             this.setModelClientConfig(source.getModelClientConfig());

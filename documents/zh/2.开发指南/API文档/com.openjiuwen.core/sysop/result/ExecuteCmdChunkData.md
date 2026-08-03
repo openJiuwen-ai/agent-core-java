@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.ExecuteCmdChunkData
+# com.openjiuwen.core.sys_operation.result.ExecuteCmdChunkData
 
 ## 类 ExecuteCmdChunkData
 

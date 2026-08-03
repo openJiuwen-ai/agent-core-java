@@ -9,96 +9,59 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
- * Manages all channels and message routing between Pregel nodes.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.ChannelManager}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ChannelManager} in
+ * {@code openjiuwen/core/graph/pregel/channels.py}.
  */
 public class ChannelManager {
+
     private final Map<String, Channel> mapKeyToChannel = new HashMap<>();
 
-    /**
-     * Maps node name → list of Channels.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, List<Channel>> mapNodeToChannels = new HashMap<>();
 
-    /**
-     * Set of node names that are ready to execute.
-     * 
-     * @since 0.1.7
-     */
     private final Set<String> readyNodeNames = new HashSet<>();
 
-    /**
-     * Message buffer for next flush.
-     * 
-     * @since 0.1.7
-     */
     private final List<Message> buffer = new ArrayList<>();
 
-    /**
-     * ChannelManager.
-     * 
-     * @param channels channels
-     * @since 0.1.7
-     */
     public ChannelManager(List<Channel> channels) {
-        for (Channel ch : channels) {
-            mapKeyToChannel.put(ch.getKey(), ch);
-            mapNodeToChannels.computeIfAbsent(ch.getNodeName(), k -> new ArrayList<>()).add(ch);
-
-            // Recover: if already ready, mark the node
-            if (ch.isReady()) {
-                readyNodeNames.add(ch.getNodeName());
+        for (Channel channel : channels) {
+            mapKeyToChannel.put(channel.getKey(), channel);
+            mapNodeToChannels.computeIfAbsent(channel.getNodeName(), ignored -> new ArrayList<>()).add(channel);
+            if (channel.isReady()) {
+                readyNodeNames.add(channel.getNodeName());
             }
         }
     }
 
-    /**
-     * Add a message to the buffer for the next flush.
-     * 
-     * @param msg msg
-     * @since 0.1.7
-     */
-    public void bufferMessage(Message msg) {
-        buffer.add(msg);
+    public void bufferMessage(Message message) {
+        buffer.add(message);
     }
 
-    /**
-     * Check if the message buffer is empty.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isEmpty() {
         return buffer.isEmpty();
     }
 
-    /**
-     * Flush buffered messages into channels and update ready nodes.
-     * 
-     * @since 0.1.7
-     */
     public void flush() {
         Set<String> updatedNodes = new HashSet<>();
 
-        for (Message msg : buffer) {
-            Channel ch = mapKeyToChannel.get(msg.getTarget());
-            if (ch == null) {
-                throw new IllegalStateException("Channel not found for target key: '" + msg.getTarget() + "'");
+        for (Message message : buffer) {
+            Channel channel = mapKeyToChannel.get(message.getTarget());
+            if (channel == null) {
+                throw new IllegalArgumentException("Channel not found for target key: '" + message.getTarget() + "'");
             }
 
-            boolean changed = ch.accept(msg);
+            Object before = channel.snapshot();
+            channel.accept(message);
+            Object after = channel.snapshot();
+            boolean changed = !Objects.deepEquals(before, after);
             if (changed) {
-                updatedNodes.add(ch.getNodeName());
+                updatedNodes.add(channel.getNodeName());
             }
         }
+
         buffer.clear();
 
         for (String nodeName : updatedNodes) {
@@ -109,120 +72,86 @@ public class ChannelManager {
         }
     }
 
-    /**
-     * Get names of all nodes that are ready to execute.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<String> getReadyNodes() {
         return new ArrayList<>(readyNodeNames);
     }
 
-    /**
-     * Consume (clear) all ready channels for the given node.
-     * 
-     * @param nodeName nodeName
-     * @since 0.1.7
-     */
     public void consume(String nodeName) {
         List<Channel> channels = mapNodeToChannels.get(nodeName);
         if (channels == null) {
             return;
         }
-        for (Channel ch : channels) {
-            if (ch.isReady()) {
-                ch.consume();
+
+        for (Channel channel : channels) {
+            if (channel.isReady()) {
+                channel.consume();
             }
         }
+
         readyNodeNames.remove(nodeName);
     }
 
-    /**
-     * Create a snapshot of all channel states for persistence.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> snapshot() {
-        Map<String, Object> snap = new HashMap<>();
+        Map<String, Object> snapshot = new HashMap<>();
         for (Map.Entry<String, List<Channel>> entry : mapNodeToChannels.entrySet()) {
-            String name = entry.getKey();
-            if (PregelConstants.END.equals(name)) {
+            String nodeName = entry.getKey();
+            if (PregelConstants.END.equals(nodeName)) {
                 continue;
             }
-            List<Object> nodeChannelsSnap = new ArrayList<>();
+
+            List<Object> channelStates = new ArrayList<>();
             boolean hasState = false;
-            for (Channel c : entry.getValue()) {
-                Object s = c.snapshot();
-                nodeChannelsSnap.add(s);
-                if (s != null && !isEmptyCollection(s)) {
+            for (Channel channel : entry.getValue()) {
+                Object state = channel.snapshot();
+                channelStates.add(state);
+                if (state != null && !isEmptyState(state)) {
                     hasState = true;
                 }
             }
+
             if (hasState) {
-                snap.put(name, nodeChannelsSnap);
+                snapshot.put(nodeName, channelStates);
             }
         }
-        return snap;
+        return snapshot;
     }
 
-    /**
-     * restore.
-     * 
-     * @param snapshotMap snapshotMap
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public void restore(Map<String, Object> snapshotMap) {
-        if (snapshotMap == null) {
+    public void restore(Map<String, Object> snapshot) {
+        if (snapshot == null) {
             return;
         }
-        for (Map.Entry<String, Object> entry : snapshotMap.entrySet()) {
-            String nodeName = entry.getKey();
-            List<Channel> channels = mapNodeToChannels.get(nodeName);
-            if (channels == null) {
+
+        for (Map.Entry<String, Object> entry : snapshot.entrySet()) {
+            List<Channel> channels = mapNodeToChannels.get(entry.getKey());
+            if (channels == null || !(entry.getValue() instanceof List<?> channelStates)) {
                 continue;
             }
-            if (entry.getValue() instanceof List<?> channelStates) {
-                if (channels.size() != channelStates.size()) {
-                    continue;
-                }
-                for (int i = 0; i < channels.size(); i++) {
-                    Object state = channelStates.get(i);
-                    if (state != null && !isEmptyCollection(state)) {
-                        channels.get(i).restore(state);
-                        if (channels.get(i).isReady()) {
-                            readyNodeNames.add(nodeName);
-                        }
+            if (channels.size() != channelStates.size()) {
+                continue;
+            }
+
+            for (int i = 0; i < channels.size(); i++) {
+                Object state = channelStates.get(i);
+                if (state != null && !isEmptyState(state)) {
+                    Channel channel = channels.get(i);
+                    channel.restore(state);
+                    if (channel.isReady()) {
+                        readyNodeNames.add(entry.getKey());
                     }
                 }
             }
         }
     }
 
-    /**
-     * Get the raw buffer (for error state persistence).
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Message> getBuffer() {
         return buffer;
     }
 
-    /**
-     * isEmptyCollection.
-     * 
-     * @param obj obj
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean isEmptyCollection(Object obj) {
-        if (obj instanceof List<?> list) {
+    private static boolean isEmptyState(Object state) {
+        if (state instanceof List<?> list) {
             return list.isEmpty();
         }
-        if (obj instanceof Map<?, ?> map) {
+        if (state instanceof Map<?, ?> map) {
             return map.isEmpty();
         }
         return false;

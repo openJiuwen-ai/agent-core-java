@@ -4,80 +4,73 @@
 
 package com.openjiuwen.harness.tools;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Locale;
+import com.openjiuwen.core.sys_operation.Cwd;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 /**
- * Minimal local code execution tool.
- * 
- * @since 0.1.7
+ * Code execution tool facade.
+ *
+ * <p>Mirrors Python's {@code CodeTool} in
+ * {@code openjiuwen/harness/tools/code.py}.</p>
  */
-public class CodeTool {
-    /**
-     * invoke.
-     * 
-     * @param code code
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
-    public ToolOutput invoke(String code, String language) {
-        if (code == null) {
-            return ToolOutput.builder().success(false).error("code is required").build();
-        }
-        String normalized = language == null ? "" : language.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("python", "python3", "bash", "sh").contains(normalized)) {
-            return ToolOutput.builder().success(false).error("unsupported language: " + language).build();
-        }
+public class CodeTool extends AbstractHarnessTool {
 
-        List<String> command = switch (normalized) {
-            case "python", "python3" -> List.of("python3", "-c", code);
-            case "bash" -> List.of("bash", "-lc", code);
-            default -> List.of("sh", "-c", code);
-        };
+    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
+    private static final int FALLBACK_MAX_TIMEOUT_SECONDS = 3600;
 
-        try {
-            Process process = new ProcessBuilder(command).start();
-            CompletableFuture<String> stdoutFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getInputStream()));
-            CompletableFuture<String> stderrFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
-            int exitCode = process.onExit().join().exitValue();
-            String stdout = stdoutFuture.join();
-            String stderr = stderrFuture.join();
-            boolean isExecutionSuccessful = exitCode == 0;
-            return ToolOutput.builder().success(isExecutionSuccessful)
-                    .data(Map.of("exit_code", exitCode, "stdout", stdout, "stderr", stderr))
-                    .error(isExecutionSuccessful
-                            ? null
-                            : (stderr.isBlank() ? "process exited with code " + exitCode : stderr))
-                    .build();
-        } catch (IOException | SecurityException | CompletionException ex) {
-            return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+    private final CodeExecutor executor;
+    private final boolean localOperation;
+
+    public CodeTool(CodeExecutor executor) {
+        this(executor, true);
+    }
+
+    public CodeTool(CodeExecutor executor, boolean localOperation) {
+        super(toolCard("code", "CodeTool", "Execute source code snippets in the configured runtime."));
+        this.executor = executor;
+        this.localOperation = localOperation;
+    }
+
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        String code = stringValue(inputs == null ? null : inputs.get("code"));
+        String language = stringValue(inputs == null ? "python" : inputs.getOrDefault("language", "python"));
+        int timeout = resolveTimeout(inputs == null ? null : inputs.get("timeout"));
+        if (executor == null) {
+            return ToolOutput.failure("code executor is not configured");
         }
+        Map<String, Object> executorKwargs = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
+        if (localOperation) {
+            executorKwargs.putIfAbsent("cwd", Cwd.getCwd());
+        }
+        CodeExecutionResult result = executor.execute(code, language, timeout, executorKwargs);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("stdout", result.stdout());
+        data.put("stderr", result.stderr());
+        data.put("exit_code", result.exitCode());
+        return ToolOutput.of(result.exitCode() == 0, data, result.exitCode() == 0 ? null : result.stderr());
+    }
+
+    public static int resolveTimeout(Object rawValue) {
+        int timeout = intValue(rawValue, DEFAULT_TIMEOUT_SECONDS);
+        int maxTimeout = intValue(System.getenv("CODE_TOOL_MAX_TIMEOUT_SECONDS"), FALLBACK_MAX_TIMEOUT_SECONDS);
+        maxTimeout = Math.max(1, maxTimeout);
+        return Math.max(1, Math.min(timeout, maxTimeout));
     }
 
     /**
-     * read.
-     * 
-     * @param stream stream
-     * @return the result
-     * @since 0.1.7
+     * Java boundary for Python's {@code SysOperation.code().execute_code(...)}.
      */
-    private static String read(InputStream stream) {
-        try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            stream.transferTo(buffer);
-            return buffer.toString(StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return "";
-        }
+    @FunctionalInterface
+    public interface CodeExecutor {
+        CodeExecutionResult execute(String code, String language, int timeoutSeconds, Map<String, Object> kwargs);
+    }
+
+    /**
+     * Mirrors Python's code execution payload consumed by {@code CodeTool}.
+     */
+    public record CodeExecutionResult(String stdout, String stderr, int exitCode) {
     }
 }

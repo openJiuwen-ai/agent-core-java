@@ -4,124 +4,96 @@
 
 package com.openjiuwen.extensions.context_evolver.summary.task.ace;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
-import com.openjiuwen.extensions.context_evolver.schema.SchemaUtils;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Builds ACE playbook delta operations from the reflection payload.
- * 
- * @since 0.1.7
+ * Generate ACE playbook delta operations from a reflection.
+ * <p>
+ * Mirrors Python's {@code CurateOp} in
+ * {@code openjiuwen/extensions/context_evolver/summary/task/ace/update.py}.
+ * </p>
  */
 public class CurateOp extends BaseOp {
-    /**
-     * asyncExecute.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
+
     @Override
-    protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
-        String matts = context.getString("matts", "none");
+    public CompletableFuture<Void> asyncExecute(RuntimeContext context) {
+        String matts = String.valueOf(context.get("matts", "none"));
         if (!"none".equals(matts) && !"sequential".equals(matts)) {
+            LOGGER.info("Skipping CurateOp for matts mode: %s", matts);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Object llmObject = getLlm();
+        if (!(llmObject instanceof AceAsyncLlm llm)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("LLM not configured in ServiceContext"));
+        }
+
+        Map<String, Object> reflection = reflection(context.get("reflection", Map.of()));
+        if (reflection.isEmpty()) {
+            LOGGER.warning("No reflection to curate from");
             context.set("delta", new Playbook.DeltaBatch("", List.of()));
             return CompletableFuture.completedFuture(null);
         }
 
-        Playbook playbook = context.get("playbook") instanceof Playbook existing ? existing : new Playbook();
-        Map<String, Object> reflection = context.getMap("reflection");
-        if (reflection == null || reflection.isEmpty()) {
-            context.set("delta", new Playbook.DeltaBatch("", List.of()));
-            return CompletableFuture.completedFuture(null);
-        }
+        String query = requiredString(context.get("query"), "query");
+        Playbook playbook = ReflectOp.playbook(context.get("playbook", new Playbook()));
+        String trajectory = ReflectOp.firstTrajectory(context.get("trajectories", List.of()));
+        String userPrompt = AcePrompts.ACE_CURATOR_PROMPT
+                .replace("{question_context}", query)
+                .replace("{playbook}", playbook.asPrompt())
+                .replace("{trajectory}", trajectory)
+                .replace("{reflection}", jsonString(reflection));
 
-        List<Playbook.DeltaOperation> operations = new ArrayList<>();
-        Object candidatesValue = reflection.get("candidate_insights");
-        if (candidatesValue instanceof Iterable<?> iterable) {
-            for (Object rawCandidate : iterable) {
-                if (!(rawCandidate instanceof Map<?, ?> rawMap)) {
-                    continue;
-                }
-
-                Map<String, Object> candidate = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-                    candidate.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-
-                String content = AceUtils.compactWhitespace(SchemaUtils.stringValue(candidate.get("content"), ""));
-                if (content.isBlank()) {
-                    continue;
-                }
-
-                String section = SchemaUtils.stringValue(candidate.get("section"),
-                        AceUtils.guessSection(context.getString("query", ""), content));
-                String tag = normalizeTag(SchemaUtils.stringValue(candidate.get("tag"), "helpful"));
-                Playbook.Bullet existingBullet = findMatchingBullet(playbook, content);
-
-                if (existingBullet != null) {
-                    Map<String, Integer> metadata = new LinkedHashMap<>();
-                    metadata.put(tag, 1);
-                    operations.add(new Playbook.DeltaOperation("TAG", section, null, existingBullet.getId(), metadata));
-                } else {
-                    Map<String, Integer> metadata = new LinkedHashMap<>();
-                    Object metadataValue = candidate.get("metadata");
-                    if (metadataValue instanceof Map<?, ?> rawMetadata) {
-                        for (Map.Entry<?, ?> entry : rawMetadata.entrySet()) {
-                            String key = String.valueOf(entry.getKey());
-                            Object value = entry.getValue();
-                            if (value instanceof Number number) {
-                                metadata.put(key, number.intValue());
-                            }
+        LOGGER.debug("Generating playbook operations from reflection...");
+        try {
+            return llm.asyncGenerate(userPrompt)
+                    .thenAccept(response -> {
+                        try {
+                            Playbook.DeltaBatch delta = Playbook.DeltaBatch.fromJson(AceUtils.safeJsonLoads(response));
+                            context.set("delta", delta);
+                            LOGGER.info("Generated %s playbook operations", delta.getOperations().size());
+                        } catch (RuntimeException exception) {
+                            LOGGER.error("Failed to parse curation: %s", exception);
+                            context.set("delta", new Playbook.DeltaBatch("", List.of()));
                         }
-                    }
-                    operations.add(new Playbook.DeltaOperation("ADD", section, content, null, metadata));
-                }
-            }
+                    });
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
         }
-
-        String reasoning = SchemaUtils.stringValue(reflection.get("reasoning"), "");
-        context.set("delta", new Playbook.DeltaBatch(reasoning, operations));
-        return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * findMatchingBullet.
-     * 
-     * @param playbook playbook
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Playbook.Bullet findMatchingBullet(Playbook playbook, String content) {
-        String normalizedContent = AceUtils.normalizeForMatch(content);
-        for (Playbook.Bullet bullet : playbook.bullets()) {
-            if (AceUtils.normalizeForMatch(bullet.getContent()).equals(normalizedContent)) {
-                return bullet;
-            }
+    static Map<String, Object> reflection(Object value) {
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            return Map.of();
         }
-        return null;
+        return OBJECT_MAPPER.convertValue(rawMap, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+        });
     }
 
-    /**
-     * normalizeTag.
-     * 
-     * @param tag tag
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String normalizeTag(String tag) {
-        String upper = tag != null ? tag.toLowerCase(Locale.ROOT) : "helpful";
-        return switch (upper) {
-            case "harmful", "neutral" -> upper;
-            default -> "helpful";
-        };
+    static String requiredString(Object value, String key) {
+        if (value == null) {
+            throw new IllegalStateException("Context has no attribute '" + key + "'");
+        }
+        return String.valueOf(value);
+    }
+
+    static String jsonString(Map<String, Object> value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to serialize reflection.", exception);
+        }
     }
 }

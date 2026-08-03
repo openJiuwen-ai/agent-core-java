@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.skills.SkillUtil
+# com.openjiuwen.core.single_agent.skills.SkillUtil
 
 ## 类 SkillUtil
 

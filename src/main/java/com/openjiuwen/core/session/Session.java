@@ -4,70 +4,60 @@
 
 package com.openjiuwen.core.session;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Minimal session interface required by ContextEngine.
- * <p>
- * This is a partial interface covering only the methods needed
- * for context state persistence. The full implementation will be
- * provided by the session module.
- * <p>
- * Mirrors the subset of Python's {@code Session} used by {@code ContextEngine}.
- * 
- * @since 0.1.7
+ * Deprecated compatibility facade for the root session module.
+ *
+ * <p>Mirrors Python's deprecated {@code Session} in
+ * {@code openjiuwen/core/session/session.py}.</p>
  */
-public interface Session {
-    /**
-     * getSessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    String getSessionId();
+@Deprecated(since = "0.1.14", forRemoval = false)
+public final class Session implements AgentSessionApi {
 
-    /**
-     * Retrieve a named state block (e.g., "context") from session storage.
-     * 
-     * @param key the state key
-     * @return the stored state, or null if not present
-     * @since 0.1.7
-     */
-    Object getState(String key);
+    public static final String DEPRECATION_MESSAGE =
+            "`openjiuwen.core.session.Session` is deprecated and will be removed in a future release. "
+                    + "Use `openjiuwen.core.[module].Session` instead.";
 
-    /**
-     * Merge the given state map into session storage.
-     * 
-     * @param state map of state keys to their values
-     * @since 0.1.7
-     */
-    void updateState(Map<String, Object> state);
+    private final String sessionId = UUID.randomUUID().toString().replace("-", "");
+    private final List<Object> streamChunks = new ArrayList<>();
 
-    /**
-     * Write a streaming payload to the session output channel.
-     * 
-     * @param data stream payload
-     * @since 0.1.7
-     */
-    default void writeStream(Object data) {
+    public Session() {
     }
 
-    /**
-     * Set the current operator id for tracing and attribution.
-     * 
-     * @param operatorId operator id, or null to clear it
-     * @since 0.1.7
-     */
-    default void setCurrentOperatorId(String operatorId) {
+    public String deprecationMessage() {
+        return DEPRECATION_MESSAGE;
     }
 
-    /**
-     * Get the current operator id used by the active execution span.
-     * 
-     * @return current operator id, or null if not set
-     * @since 0.1.7
-     */
-    default String getCurrentOperatorId() {
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void writeStream(Object data) {
+        streamChunks.add(data);
+    }
+
+    public void write_stream(Object data) {
+        writeStream(data);
+    }
+
+    public Iterator<Object> streamIterator() {
+        return List.copyOf(streamChunks).iterator();
+    }
+
+    public Iterator<Object> stream_iterator() {
+        return streamIterator();
+    }
+
+    public Object getState(String key) {
         return null;
+    }
+
+    public void updateState(Map<String, Object> data) {
+        // Root Session is a legacy facade with no persistent state backend.
     }
 }

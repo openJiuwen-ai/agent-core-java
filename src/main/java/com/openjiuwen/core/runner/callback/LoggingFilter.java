@@ -4,55 +4,49 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Arrays;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.logging.Logger;
 
 /**
- * Filter for logging callback execution.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code LoggingFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class LoggingFilter extends EventFilter {
-    private final Logger log;
 
-    /**
-     * LoggingFilter.
-     * 
-     * @since 0.1.7
-     */
+    private final Logger logger;
+
     public LoggingFilter() {
         this(null, "Logging");
     }
 
-    /**
-     * LoggingFilter.
-     * 
-     * @param logger logger
-     * @param name name
-     * @since 0.1.7
-     */
-    public LoggingFilter(Logger logger, String name) {
-        super(name);
-        this.log = logger != null ? logger : LoggerFactory.getLogger(LoggingFilter.class);
+    public LoggingFilter(Logger logger) {
+        this(logger, "Logging");
     }
 
-    /**
-     * filter.
-     * 
-     * @param event event
-     * @param callback callback
-     * @param args args
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
+    public LoggingFilter(Logger logger, String name) {
+        super(name);
+        this.logger = logger != null ? logger : Logger.getLogger(LoggingFilter.class.getName());
+    }
+
+    public Logger getLogger() {
+        return logger;
+    }
+
     @Override
-    public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs) {
-        log.info("Event: {}, Callback: {}, Args: {}, Kwargs: {}", event, callback.getCallbackDisplayName(),
-                Arrays.toString(args), kwargs);
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        logger.info(
+                "Event: " + event
+                        + ", Callback: " + callbackName(callback)
+                        + ", Args: " + Arrays.toString(safeArgs(args))
+                        + ", Kwargs: " + safeKwargs(kwargs)
+        );
         return FilterResult.continueResult();
     }
 }

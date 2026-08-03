@@ -1,13 +1,16 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -15,778 +18,708 @@ import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Inference Affinity (vLLM-style) client with cache sharing and release support.
- * 
- * @since 0.1.7
+ * Inference Affinity (vLLM) API client with cache release support.
+ *
+ * <p>Mirrors Python's {@code InferenceAffinityModelClient} in
+ * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
  */
 public class InferenceAffinityModelClient extends BaseModelClient {
-    private static final Logger LOG = LoggerFactory.getLogger(InferenceAffinityModelClient.class);
 
-    /**
-     * ObjectMapper.
-     * 
-     * @since 0.1.7
-     */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    public static final String CLIENT_NAME = ProviderType.INFERENCE_AFFINITY.getValue();
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
+    private static final String RELEASE_KV_CACHE_PATH = "/release_kv_cache";
+    private static final String CONTENT_TYPE = "application/json";
 
     private final HttpClient httpClient;
 
-    /**
-     * InferenceAffinityModelClient.
-     * 
-     * @param modelConfig modelConfig
-     * @param modelClientConfig modelClientConfig
-     * @since 0.1.7
-     */
-    public InferenceAffinityModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        super(modelConfig, modelClientConfig);
-        this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
+    static {
+        registerClientClass(InferenceAffinityModelClient.class);
     }
 
-    /**
-     * getClientName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public InferenceAffinityModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        super(modelConfig, modelClientConfig);
+        this.httpClient = createHttpClient(modelClientConfig);
+    }
+
+    @SuppressWarnings("unchecked")
+    public InferenceAffinityModelClient(Map<String, Object> kwargs) {
+        this(
+                (ModelRequestConfig) kwargs.get("model_config"),
+                (ModelClientConfig) kwargs.get("model_client_config")
+        );
+    }
+
     @Override
     protected String getClientName() {
         return "InferenceAffinity client";
     }
 
-    /**
-     * validateConfig.
-     * 
-     * @since 0.1.7
-     */
-    @Override
-    protected void validateConfig() {
-        if (modelClientConfig.getApiBase() == null || modelClientConfig.getApiBase().isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
-                    "model client config api_base is required for InferenceAffinity client.");
-        }
-    }
-
-    /**
-     * invoke.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param maxTokens maxTokens
-     * @param stop stop
-     * @param outputParser outputParser
-     * @param timeout timeout
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    @Override
-    public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
-            throws Exception {
-        Map<String, Object> params =
-            buildAndSanitizeParams(messages, tools, temperature, topP, model, maxTokens, stop, false, kwargs);
-
-        HttpResponse<String> response = httpClient.send(buildJsonRequest("/v1/chat/completions", params, timeout),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        ensureSuccess(response.statusCode(), response.body());
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);
-        return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
-    }
-
-    /**
-     * stream.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param maxTokens maxTokens
-     * @param stop stop
-     * @param outputParser outputParser
-     * @param timeout timeout
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    @Override
-    public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-            Map<String, Object> kwargs) throws Exception {
-        Map<String, Object> params =
-            buildAndSanitizeParams(messages, tools, temperature, topP, model, maxTokens, stop, true, kwargs);
-
-        HttpResponse<InputStream> response = httpClient.send(buildJsonRequest("/v1/chat/completions", params, timeout),
-                HttpResponse.BodyHandlers.ofInputStream());
-        ensureSuccess(response.statusCode(), null);
-        return new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser);
-    }
-
-    /**
-     * generateImage.
-     * 
-     * @param messages messages
-     * @param model model
-     * @param size size
-     * @param negativePrompt negativePrompt
-     * @param n n
-     * @param promptExtend promptExtend
-     * @param watermark watermark
-     * @param seed seed
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+    Map<String, Object> buildAndSanitizeParams(
+            Object messages,
+            Object tools,
+            Number temperature,
+            Number topP,
+            String model,
+            Integer maxTokens,
+            String stop,
+            boolean stream,
+            String sessionId,
+            boolean enableCacheSharing,
             Map<String, Object> kwargs) {
-        throw new UnsupportedOperationException("Image generation is not supported by InferenceAffinityModelClient");
-    }
-
-    /**
-     * generateSpeech.
-     * 
-     * @param messages messages
-     * @param model model
-     * @param voice voice
-     * @param languageType languageType
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-            String languageType, Map<String, Object> kwargs) {
-        throw new UnsupportedOperationException("Speech generation is not supported by InferenceAffinityModelClient");
-    }
-
-    /**
-     * generateVideo.
-     * 
-     * @param messages messages
-     * @param imgUrl imgUrl
-     * @param audioUrl audioUrl
-     * @param model model
-     * @param size size
-     * @param resolution resolution
-     * @param duration duration
-     * @param promptExtend promptExtend
-     * @param watermark watermark
-     * @param negativePrompt negativePrompt
-     * @param seed seed
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
-            String negativePrompt, Integer seed, Map<String, Object> kwargs) {
-        throw new UnsupportedOperationException("Video generation is not supported by InferenceAffinityModelClient");
-    }
-
-    /**
-     * release.
-     * 
-     * @param sessionId sessionId
-     * @param messages messages
-     * @param messagesReleasedIndex messagesReleasedIndex
-     * @param tools tools
-     * @param toolsReleasedIndex toolsReleasedIndex
-     * @param model model
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public boolean release(String sessionId, Object messages, int messagesReleasedIndex, Object tools,
-            Integer toolsReleasedIndex, String model) throws Exception {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", resolveModelName(model, null));
-        body.put("cache_salt", sessionId);
-        body.put("cache_sharing", true);
-        body.put("messages", convertMessagesToDict(messages));
-        body.put("messages_released_index", messagesReleasedIndex);
-        if (tools != null) {
-            body.put("tools", convertToolsToDict(tools));
-        }
-        if (toolsReleasedIndex != null) {
-            body.put("tools_released_index", toolsReleasedIndex);
-        }
-
-        HttpResponse<String> response = httpClient.send(buildJsonRequest("/release_kv_cache", body, null),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return response.statusCode() >= 200 && response.statusCode() < 300;
-    }
-
-    /**
-     * buildAndSanitizeParams.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param maxTokens maxTokens
-     * @param stop stop
-     * @param stream stream
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> buildAndSanitizeParams(Object messages, Object tools, Float temperature, Float topP,
-            String model, Integer maxTokens, String stop, boolean stream, Map<String, Object> kwargs) {
-        Map<String, Object> remainingKwargs = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
-        Object sessionId = remainingKwargs.remove("session_id");
-        Object enableCacheSharing = remainingKwargs.remove("enable_cache_sharing");
-
-        Map<String, Object> params =
-            buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
-                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, stream, remainingKwargs);
-
+        Map<String, Object> params = buildRequestParams(
+                messages,
+                tools,
+                temperature,
+                topP,
+                model,
+                stop,
+                maxTokens,
+                stream,
+                kwargs
+        );
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> messageList = (List<Map<String, Object>>) params.get("messages");
-        params.put("messages", sanitizeToolCalls(messageList));
-
-        if (Boolean.TRUE.equals(enableCacheSharing) && sessionId != null) {
+        List<Map<String, Object>> messageParams = (List<Map<String, Object>>) params.get("messages");
+        params.put("messages", sanitizeToolCalls(messageParams));
+        if (enableCacheSharing && isPythonTruthy(sessionId)) {
             params.put("cache_sharing", true);
-            params.put("cache_salt", String.valueOf(sessionId));
+            params.put("cache_salt", sessionId);
         }
         return params;
     }
 
-    /**
-     * buildJsonRequest.
-     * 
-     * @param suffix suffix
-     * @param body body
-     * @param timeoutOverride timeoutOverride
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private HttpRequest buildJsonRequest(String suffix, Map<String, Object> body, Float timeoutOverride)
-            throws Exception {
-        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(normalizedApiBase() + suffix)).timeout(
-                resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
-        applyConfiguredHeaders(builder, true);
-        return builder
-                .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body), StandardCharsets.UTF_8))
+    @Override
+    public AssistantMessage invoke(Object messages,
+                                   Object tools,
+                                   Float temperature,
+                                   Float topP,
+                                   String model,
+                                   Integer maxTokens,
+                                   String stop,
+                                   BaseOutputParser outputParser,
+                                   Float timeout,
+                                   Map<String, Object> kwargs) {
+        Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        effectiveKwargs.remove("tracer_record_data");
+        String sessionId = asString(effectiveKwargs.remove("session_id"));
+        boolean enableCacheSharing = booleanValue(effectiveKwargs.remove("enable_cache_sharing"));
+        Map<String, Object> params = buildAndSanitizeParams(
+                messages,
+                tools,
+                temperature,
+                topP,
+                model,
+                maxTokens,
+                stop,
+                false,
+                sessionId,
+                enableCacheSharing,
+                effectiveKwargs
+        );
+
+        Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, false));
+        try {
+            Map<String, Object> responseData = makeAsyncRequest(params, timeout);
+            Loggers.LLM.info("InferenceAffinity API response received. {}", Map.of("response", responseData));
+            return parseResponse(responseData, outputParser);
+        } catch (Exception exception) {
+            Loggers.LLM.error("InferenceAffinity API async invoke error. {}", exception.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_CALL_FAILED,
+                    null,
+                    null,
+                    exception,
+                    Map.of("error_msg", "InferenceAffinity API async invoke error: " + exception.getMessage())
+            );
+        }
+    }
+
+    @Override
+    public Iterator<AssistantMessageChunk> stream(Object messages,
+                                                  Object tools,
+                                                  Float temperature,
+                                                  Float topP,
+                                                  String model,
+                                                  Integer maxTokens,
+                                                  String stop,
+                                                  BaseOutputParser outputParser,
+                                                  Float timeout,
+                                                  Map<String, Object> kwargs) {
+        Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        effectiveKwargs.remove("tracer_record_data");
+        String sessionId = asString(effectiveKwargs.remove("session_id"));
+        boolean enableCacheSharing = booleanValue(effectiveKwargs.remove("enable_cache_sharing"));
+        Map<String, Object> params = buildAndSanitizeParams(
+                messages,
+                tools,
+                temperature,
+                topP,
+                model,
+                maxTokens,
+                stop,
+                true,
+                sessionId,
+                enableCacheSharing,
+                effectiveKwargs
+        );
+
+        try {
+            if (outputParser != null) {
+                return streamWithParser(params, outputParser, timeout);
+            }
+            return streamResponse(params, timeout);
+        } catch (Exception exception) {
+            Loggers.LLM.error("InferenceAffinity API async stream error. {}", exception.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_CALL_FAILED,
+                    null,
+                    null,
+                    exception,
+                    Map.of("error_msg", "InferenceAffinity API async stream error: " + exception.getMessage())
+            );
+        }
+    }
+
+    @Override
+    public ImageGenerationResponse generateImage(List<UserMessage> messages,
+                                                 String model,
+                                                 String size,
+                                                 String negativePrompt,
+                                                 int n,
+                                                 boolean promptExtend,
+                                                 boolean watermark,
+                                                 int seed,
+                                                 Map<String, Object> kwargs) {
+        return null;
+    }
+
+    @Override
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
+                                                  String model,
+                                                  String voice,
+                                                  String languageType,
+                                                  Map<String, Object> kwargs) {
+        return null;
+    }
+
+    @Override
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
+                                                 String imgUrl,
+                                                 String audioUrl,
+                                                 String model,
+                                                 String size,
+                                                 String resolution,
+                                                 int duration,
+                                                 boolean promptExtend,
+                                                 boolean watermark,
+                                                 String negativePrompt,
+                                                 Integer seed,
+                                                 Map<String, Object> kwargs) {
+        return null;
+    }
+
+    public Boolean release(String sessionId,
+                           Object messages,
+                           int messagesReleasedIndex,
+                           Object tools,
+                           Integer toolsReleasedIndex,
+                           String model) throws Exception {
+        try {
+            List<Map<String, Object>> messagesDict = convertMessagesToDict(messages);
+            List<Map<String, Object>> toolsDict = convertToolsToDict(tools);
+            List<Map<String, Object>> sanitizedMessages = sanitizeToolCalls(messagesDict);
+            String resolvedModel = isPythonTruthy(model) ? model : modelConfig.getModelName();
+
+            Map<String, Object> releaseParams = new LinkedHashMap<>();
+            releaseParams.put("model", resolvedModel);
+            releaseParams.put("cache_salt", sessionId);
+            releaseParams.put("cache_sharing", true);
+            releaseParams.put("messages", sanitizedMessages);
+            releaseParams.put("messages_released_index", messagesReleasedIndex);
+            if (toolsDict != null && !toolsDict.isEmpty()) {
+                releaseParams.put("tools", toolsDict);
+            }
+            if (toolsReleasedIndex != null) {
+                releaseParams.put("tools_released_index", toolsReleasedIndex);
+            }
+
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("client_name", getClientName());
+            metadata.put("session_id", sessionId);
+            metadata.put("messages_released_index", messagesReleasedIndex);
+            metadata.put("tools_released_index", toolsReleasedIndex);
+            Loggers.LLM.info("Before release KV cache, release request params ready. {}", metadata);
+            HttpResult result = postJson(RELEASE_KV_CACHE_PATH, releaseParams, null);
+            if (result.statusCode() == 200) {
+                logReleaseSuccess(sessionId, result.body(), resolvedModel);
+                return true;
+            }
+            Loggers.LLM.error("KV cache release failed with status {}. {}",
+                    result.statusCode(),
+                    Map.of(
+                            "client_name", getClientName(),
+                            "session_id", sessionId,
+                            "status_code", result.statusCode(),
+                            "response_body", result.body()
+                    ));
+            return false;
+        } catch (BaseError exception) {
+            throw exception;
+        } catch (Exception exception) {
+            Loggers.LLM.error("KV cache release error: {}", exception.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_CALL_FAILED,
+                    null,
+                    null,
+                    exception,
+                    Map.of("error_msg", "Release error: " + exception.getMessage())
+            );
+        }
+    }
+
+    @Override
+    public boolean supportsKvCacheRelease() {
+        return true;
+    }
+
+    protected Map<String, Object> makeAsyncRequest(Map<String, Object> params, Float timeout) throws Exception {
+        Exception lastError = null;
+        int maxRetries = Math.max(0, modelClientConfig.getMaxRetries());
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                Loggers.LLM.debug("Non-stream request (attempt {}/{})", attempt + 1, maxRetries);
+                HttpResult result = postJson(CHAT_COMPLETIONS_PATH, params, timeout);
+                if (result.statusCode() != 200) {
+                    throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
+                }
+                return parseJsonObject(result.body());
+            } catch (Exception exception) {
+                lastError = exception;
+                Loggers.LLM.error("Request failed: {}", exception.getMessage());
+                if (attempt < maxRetries - 1) {
+                    sleepBeforeRetry(attempt);
+                }
+            }
+        }
+        throw new IOException("Request failed after " + maxRetries + " attempts: "
+                + (lastError == null ? "null" : lastError.getMessage()), lastError);
+    }
+
+    protected AssistantMessage parseResponse(Map<String, Object> response, BaseOutputParser parser) {
+        if (!isPythonTruthy(response.get("choices"))) {
+            throw new IllegalArgumentException("API did not return a valid response");
+        }
+
+        List<?> choices = asList(response.get("choices"));
+        Map<String, Object> choice = asObjectMap(choices.get(0));
+        Map<String, Object> message = asObjectMap(choice.getOrDefault("message", Map.of()));
+        String content = message.get("content") == null ? "" : String.valueOf(message.get("content"));
+        String reasoningContent = asString(message.get("reasoning_content"));
+        List<ToolCall> toolCalls = parseToolCalls(message.get("tool_calls"));
+        UsageMetadata usageMetadata = parseUsageMetadata(response.get("usage"), true);
+        Object parserContent = parseContent(parser, content);
+
+        return AssistantMessage.builder()
+                .content(content)
+                .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
+                .usageMetadata(usageMetadata)
+                .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
+                .reasoningContent(reasoningContent)
+                .parserContent(parserContent)
                 .build();
     }
 
-    /**
-     * normalizedApiBase.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private String normalizedApiBase() {
-        return modelClientConfig.getApiBase().replaceAll("/+$", "");
+    protected Iterator<AssistantMessageChunk> streamWithParser(
+            Map<String, Object> params,
+            BaseOutputParser outputParser,
+            Float timeout) throws Exception {
+        List<AssistantMessageChunk> parsedChunks = new ArrayList<>();
+        StringBuilder accumulatedContent = new StringBuilder();
+        Iterator<AssistantMessageChunk> iterator = streamResponse(params, timeout);
+        while (iterator.hasNext()) {
+            AssistantMessageChunk chunkItem = iterator.next();
+            if (isPythonTruthy(chunkItem.getContent())) {
+                accumulatedContent.append(chunkItem.getContent());
+            }
+
+            Object parserContent = null;
+            if (!accumulatedContent.isEmpty()) {
+                try {
+                    Object parsedResult = outputParser.<CompletableFuture<Object>>parse(
+                            accumulatedContent.toString()).join();
+                    if (parsedResult != null) {
+                        parserContent = parsedResult;
+                        accumulatedContent.setLength(0);
+                    }
+                } catch (RuntimeException exception) {
+                    Loggers.LLM.debug("Stream parser attempt error. {}", exception.getMessage());
+                }
+            }
+
+            parsedChunks.add(AssistantMessageChunk.builder()
+                    .content(chunkItem.getContent())
+                    .reasoningContent(chunkItem.getReasoningContent())
+                    .toolCalls(chunkItem.getToolCalls())
+                    .usageMetadata(chunkItem.getUsageMetadata())
+                    .finishReason(chunkItem.getFinishReason())
+                    .parserContent(parserContent)
+                    .build());
+        }
+        return parsedChunks.iterator();
     }
 
-    /**
-     * parseAssistantMessage.
-     * 
-     * @param responseMap responseMap
-     * @param resolvedModel resolvedModel
-     * @param outputParser outputParser
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private AssistantMessage parseAssistantMessage(Map<String, Object> responseMap, String resolvedModel,
-            BaseOutputParser outputParser) throws Exception {
-        List<Map<String, Object>> choices = asListOfMaps(responseMap.get("choices"));
-        if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("No choices in response: " + responseMap);
+    protected Iterator<AssistantMessageChunk> streamResponse(Map<String, Object> params, Float timeout)
+            throws Exception {
+        HttpStreamResult result = postStream(CHAT_COMPLETIONS_PATH, params, timeout);
+        if (result.statusCode() != 200) {
+            throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
         }
 
-        Map<String, Object> choice = choices.get(0);
-        Map<String, Object> message = asMap(choice.get("message"));
-        if (message == null) {
-            throw new RuntimeException("No message in response choice: " + choice);
+        List<AssistantMessageChunk> chunks = new ArrayList<>();
+        for (String line : result.lines()) {
+            if (line == null || line.strip().isEmpty()) {
+                continue;
+            }
+            AssistantMessageChunk chunk = parseStreamChunk(line.strip());
+            if (chunk != null) {
+                chunks.add(chunk);
+            }
         }
-
-        Object content = message.get("content");
-        if (content == null) {
-            content = "";
-        }
-        List<ToolCall> toolCalls = AssistantMessage.convertOpenAiToolCalls(asListOfMaps(message.get("tool_calls")));
-
-        return AssistantMessage.builder().content(content).toolCalls(toolCalls)
-                .usageMetadata(buildUsageMetadata(responseMap.get("usage"), resolvedModel))
-                .finishReason(resolveFinishReason(choice.get("finish_reason"), toolCalls))
-                .parserContent(parseWithOutputParser(content, outputParser))
-                .reasoningContent(asString(message.get("reasoning_content"))).build();
+        return chunks.iterator();
     }
 
-    /**
-     * parseStreamChunk.
-     * 
-     * @param event event
-     * @param resolvedModel resolvedModel
-     * @param outputParser outputParser
-     * @param parserBuffer parserBuffer
-     * @return the result
-     * @since 0.1.7
-     */
-    private AssistantMessageChunk parseStreamChunk(Map<String, Object> event, String resolvedModel,
-            BaseOutputParser outputParser, StringBuilder parserBuffer) {
-        List<Map<String, Object>> choices = asListOfMaps(event.get("choices"));
-        UsageMetadata usageMetadata = buildUsageMetadata(event.get("usage"), resolvedModel);
+    protected AssistantMessageChunk parseStreamChunk(String line) {
+        if (line == null || !line.startsWith("data: ")) {
+            return null;
+        }
 
-        if (choices == null || choices.isEmpty()) {
-            if (usageMetadata == null) {
+        String dataString = line.substring("data: ".length());
+        if ("[DONE]".equals(dataString.strip())) {
+            return null;
+        }
+
+        try {
+            Map<String, Object> chunkData = parseJsonObject(dataString);
+            if (!chunkData.containsKey("choices") || !isPythonTruthy(chunkData.get("choices"))) {
                 return null;
             }
-            return AssistantMessageChunk.builder().content("").usageMetadata(usageMetadata).finishReason("null")
-                    .build();
-        }
-
-        Map<String, Object> choice = choices.get(0);
-        Map<String, Object> delta = asMap(choice.get("delta"));
-        Object content = delta != null ? delta.get("content") : "";
-        List<ToolCall> toolCalls =
-            delta == null ? null : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
-        String reasoningContent = delta == null ? null : asString(delta.get("reasoning_content"));
-        String finishReason = asString(choice.get("finish_reason"));
-        String normalizedFinishReason = finishReason == null || finishReason.isBlank() ? "null" : finishReason;
-
-        if (isEmptyContent(content) && (toolCalls == null || toolCalls.isEmpty()) && reasoningContent == null
-                && usageMetadata == null && "null".equals(normalizedFinishReason)) {
-            return null;
-        }
-
-        return AssistantMessageChunk.builder().content(content == null ? "" : content).toolCalls(toolCalls)
-                .usageMetadata(usageMetadata).finishReason(normalizedFinishReason)
-                .parserContent(parseStreamingContent(content, outputParser, parserBuffer))
-                .reasoningContent(reasoningContent).build();
-    }
-
-    /**
-     * parseWithOutputParser.
-     * 
-     * @param content content
-     * @param outputParser outputParser
-     * @return the result
-     * @since 0.1.7
-     */
-    private Object parseWithOutputParser(Object content, BaseOutputParser outputParser) {
-        if (outputParser == null || isEmptyContent(content)) {
-            return null;
-        }
-        try {
-            return outputParser.parse(content instanceof String ? content : stringifyContent(content));
-        } catch (Exception e) {
-            LOG.warn("Failed to parse InferenceAffinity response with output parser", e);
-            return null;
-        }
-    }
-
-    /**
-     * parseStreamingContent.
-     * 
-     * @param content content
-     * @param outputParser outputParser
-     * @param parserBuffer parserBuffer
-     * @return the result
-     * @since 0.1.7
-     */
-    private Object parseStreamingContent(Object content, BaseOutputParser outputParser, StringBuilder parserBuffer) {
-        if (outputParser == null || isEmptyContent(content)) {
-            return null;
-        }
-        parserBuffer.append(stringifyContent(content));
-        try {
-            Object parsed = outputParser.parse(parserBuffer.toString());
-            if (parsed != null) {
-                parserBuffer.setLength(0);
+            Map<String, Object> choice = asObjectMap(asList(chunkData.get("choices")).get(0));
+            Map<String, Object> delta = asObjectMap(choice.getOrDefault("delta", Map.of()));
+            String content = delta.get("content") == null ? "" : String.valueOf(delta.get("content"));
+            String reasoningContent = asString(delta.get("reasoning_content"));
+            List<ToolCall> toolCalls = parseToolCalls(delta.get("tool_calls"));
+            UsageMetadata usageMetadata = parseUsageMetadata(chunkData.get("usage"), false);
+            if (!isPythonTruthy(content) && !isPythonTruthy(reasoningContent) && toolCalls.isEmpty()) {
+                return null;
             }
-            return parsed;
-        } catch (Exception ignored) {
+
+            return AssistantMessageChunk.builder()
+                    .content(content)
+                    .reasoningContent(reasoningContent)
+                    .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
+                    .usageMetadata(usageMetadata)
+                    .finishReason(isPythonTruthy(choice.get("finish_reason"))
+                            ? String.valueOf(choice.get("finish_reason"))
+                            : "null")
+                    .build();
+        } catch (JsonProcessingException | ClassCastException | IndexOutOfBoundsException exception) {
+            String preview = line.length() <= 200 ? line : line.substring(0, 200) + "...";
+            Loggers.LLM.warning("Error parsing stream chunk. {} {}", preview, exception.getMessage());
             return null;
         }
     }
 
-    /**
-     * sanitizeToolCalls.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> sanitizeToolCalls(List<Map<String, Object>> messages) {
+    protected HttpResult postJson(String path, Map<String, Object> payload, Float timeout) throws Exception {
+        HttpRequest request = requestBuilder(path, payload, timeout).build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        return new HttpResult(response.statusCode(), response.body());
+    }
+
+    protected HttpStreamResult postStream(String path, Map<String, Object> payload, Float timeout) throws Exception {
+        HttpResult result = postJson(path, payload, timeout);
+        List<String> lines = result.body() == null ? List.of() : result.body().lines().toList();
+        return new HttpStreamResult(result.statusCode(), lines, result.body());
+    }
+
+    protected void sleepBeforeRetry(int attempt) throws InterruptedException {
+        long waitMillis = (long) Math.pow(2, attempt) * 1000L;
+        Thread.sleep(waitMillis);
+    }
+
+    protected static List<Map<String, Object>> sanitizeToolCalls(List<Map<String, Object>> messages) {
         if (messages == null) {
             return List.of();
         }
-        List<Map<String, Object>> result = new java.util.ArrayList<>();
-        for (Map<String, Object> original : messages) {
-            Map<String, Object> message = new LinkedHashMap<>(original);
+        for (Map<String, Object> message : messages) {
             if (!"assistant".equals(message.get("role"))) {
-                result.add(message);
                 continue;
             }
-            Object rawToolCalls = message.get("tool_calls");
-            if (!(rawToolCalls instanceof List<?> list)) {
-                result.add(message);
+            Object toolCallsValue = message.get("tool_calls");
+            if (!(toolCallsValue instanceof List<?> toolCalls)) {
                 continue;
             }
-            List<Map<String, Object>> cleaned = new java.util.ArrayList<>();
-            for (Object item : list) {
-                Map<String, Object> toolCall = asMap(item);
-                if (toolCall == null) {
+
+            List<Map<String, Object>> cleaned = new ArrayList<>();
+            for (Object toolCallValue : toolCalls) {
+                if (!(toolCallValue instanceof Map<?, ?> rawToolCall)) {
                     continue;
                 }
-                Map<String, Object> function = asMap(toolCall.get("function"));
+                Map<String, Object> toolCall = toObjectMap(rawToolCall);
+                Map<String, Object> function = asObjectMap(toolCall.getOrDefault("function", Map.of()));
+
+                Map<String, Object> cleanedFunction = new LinkedHashMap<>();
+                cleanedFunction.put("name", stringOrEmpty(function.get("name")));
+                cleanedFunction.put("arguments", stringOrEmpty(function.get("arguments")));
+
                 Map<String, Object> cleanedToolCall = new LinkedHashMap<>();
-                cleanedToolCall.put("id", toolCall.getOrDefault("id", ""));
+                cleanedToolCall.put("id", stringOrEmpty(toolCall.get("id")));
                 cleanedToolCall.put("type", "function");
                 cleanedToolCall.put("index", toolCall.get("index"));
-                cleanedToolCall.put("function",
-                        Map.of("name", function != null ? String.valueOf(function.getOrDefault("name", "")) : "",
-                                "arguments",
-                                function != null ? String.valueOf(function.getOrDefault("arguments", "")) : ""));
+                cleanedToolCall.put("function", cleanedFunction);
                 cleaned.add(cleanedToolCall);
             }
             message.put("tool_calls", cleaned);
-            result.add(message);
         }
-        return result;
+        return messages;
     }
 
-    /**
-     * resolveModelName.
-     * 
-     * @param explicitModel explicitModel
-     * @param responseMap responseMap
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveModelName(String explicitModel, Map<String, Object> responseMap) {
-        if (explicitModel != null && !explicitModel.isBlank()) {
-            return explicitModel;
-        }
-        if (modelConfig != null && modelConfig.getModelName() != null && !modelConfig.getModelName().isBlank()) {
-            return modelConfig.getModelName();
-        }
-        return responseMap != null ? String.valueOf(responseMap.getOrDefault("model", "")) : "";
+    private HttpRequest.Builder requestBuilder(String path, Map<String, Object> payload, Float timeout)
+            throws JsonProcessingException {
+        Duration requestTimeout = timeoutDuration(timeout);
+        return HttpRequest.newBuilder()
+                .uri(URI.create(trimTrailingSlash(modelClientConfig.getApiBase()) + path))
+                .timeout(requestTimeout)
+                .header("Content-Type", CONTENT_TYPE)
+                .POST(HttpRequest.BodyPublishers.ofString(OBJECT_MAPPER.writeValueAsString(payload)));
     }
 
-    /**
-     * buildUsageMetadata.
-     * 
-     * @param usageObject usageObject
-     * @param modelName modelName
-     * @return the result
-     * @since 0.1.7
-     */
-    private UsageMetadata buildUsageMetadata(Object usageObject, String modelName) {
-        Map<String, Object> usage = asMap(usageObject);
-        if (usage == null && (modelName == null || modelName.isBlank())) {
-            return null;
-        }
-        int cacheTokens = 0;
-        Map<String, Object> promptTokenDetails = usage == null ? null : asMap(usage.get("prompt_tokens_details"));
-        if (promptTokenDetails != null) {
-            cacheTokens = toInt(promptTokenDetails.get("cached_tokens"));
-        }
-        return UsageMetadata.builder().modelName(modelName == null ? "" : modelName)
-                .inputTokens(usage == null ? 0 : toInt(usage.get("prompt_tokens")))
-                .outputTokens(usage == null ? 0 : toInt(usage.get("completion_tokens")))
-                .totalTokens(usage == null ? 0 : toInt(usage.get("total_tokens"))).cacheTokens(cacheTokens).build();
+    HttpClient httpClientForTesting() {
+        return httpClient;
     }
 
-    /**
-     * resolveFinishReason.
-     * 
-     * @param finishReason finishReason
-     * @param toolCalls toolCalls
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveFinishReason(Object finishReason, List<ToolCall> toolCalls) {
-        String value = asString(finishReason);
-        if (value != null && !value.isBlank()) {
-            return value;
-        }
-        return toolCalls != null && !toolCalls.isEmpty() ? "tool_calls" : "stop";
+    private HttpClient createHttpClient(ModelClientConfig clientConfig) {
+        return ModelHttpClients.builder(clientConfig, clientConfig.getApiBase())
+                .connectTimeout(timeoutDuration(null))
+                .build();
     }
 
-    /**
-     * stringifyContent.
-     * 
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String stringifyContent(Object content) {
-        if (content == null) {
-            return "";
-        }
-        if (content instanceof String s) {
-            return s;
-        }
-        try {
-            return MAPPER.writeValueAsString(content);
-        } catch (JsonProcessingException e) {
-            return String.valueOf(content);
-        }
-    }
-
-    /**
-     * isEmptyContent.
-     * 
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean isEmptyContent(Object content) {
-        if (content == null) {
-            return true;
-        }
-        if (content instanceof String s) {
-            return s.isBlank();
-        }
-        if (content instanceof List<?> list) {
-            return list.isEmpty();
-        }
-        return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * asMap.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> asMap(Object value) {
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * asListOfMaps.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<Map<String, Object>> asListOfMaps(Object value) {
-        return value instanceof List<?> list ? (List<Map<String, Object>>) list : null;
-    }
-
-    /**
-     * asString.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String asString(Object value) {
-        return value instanceof String s ? s : null;
-    }
-
-    /**
-     * toInt.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static int toInt(Object value) {
-        return value instanceof Number number ? number.intValue() : 0;
-    }
-
-    /**
-     * ensureSuccess.
-     * 
-     * @param statusCode statusCode
-     * @param body body
-     * @since 0.1.7
-     */
-    private static void ensureSuccess(int statusCode, String body) {
-        if (statusCode >= 200 && statusCode < 300) {
-            return;
-        }
-        throw new RuntimeException("HTTP " + statusCode + ": " + (body == null ? "" : body));
-    }
-
-    /**
-     * resolveTimeout.
-     * 
-     * @param seconds seconds
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Duration resolveTimeout(double seconds) {
-        long millis = Math.max(1_000L, Math.round(seconds * 1_000));
+    private Duration timeoutDuration(Float overrideTimeout) {
+        double seconds = overrideTimeout != null ? overrideTimeout.doubleValue() : modelClientConfig.getTimeout();
+        long millis = Math.max(1L, Math.round(seconds * 1000.0D));
         return Duration.ofMillis(millis);
     }
 
-    private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
-        private final BufferedReader reader;
-        private final String resolvedModel;
-        private final BaseOutputParser outputParser;
+    private Map<String, Object> requestLogMetadata(Map<String, Object> params, boolean stream) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("model_name", params.get("model"));
+        metadata.put("model_provider", modelClientConfig.getClientProvider());
+        metadata.put("messages", params.get("messages"));
+        metadata.put("tools", params.get("tools"));
+        metadata.put("temperature", params.get("temperature"));
+        metadata.put("top_p", params.get("top_p"));
+        metadata.put("max_tokens", params.get("max_tokens"));
+        metadata.put("is_stream", stream);
+        return metadata;
+    }
 
-        /**
-         * StringBuilder.
-         * 
-         * @since 0.1.7
-         */
-        private final StringBuilder parserBuffer = new StringBuilder();
-
-        private AssistantMessageChunk nextChunk;
-        private boolean finished;
-        private volatile boolean isClosed;
-
-        /**
-         * StreamingChunkIterator.
-         * 
-         * @param inputStream inputStream
-         * @param resolvedModel resolvedModel
-         * @param outputParser outputParser
-         * @since 0.1.7
-         */
-        private StreamingChunkIterator(InputStream inputStream, String resolvedModel, BaseOutputParser outputParser) {
-            this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-            this.resolvedModel = resolvedModel;
-            this.outputParser = outputParser;
+    private void logReleaseSuccess(String sessionId, String responseBody, String model) {
+        try {
+            Map<String, Object> response = parseJsonObject(responseBody);
+            Loggers.LLM.info("KV cache release successful. {}", Map.of(
+                    "client_name", getClientName(),
+                    "session_id", sessionId,
+                    "model_name", model,
+                    "response", response
+            ));
+        } catch (JsonProcessingException exception) {
+            Loggers.LLM.info("KV cache release successful (non-JSON response). {}", Map.of(
+                    "client_name", getClientName(),
+                    "session_id", sessionId,
+                    "model_name", model,
+                    "response_text", responseBody
+            ));
         }
+    }
 
-        /**
-         * hasNext.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public boolean hasNext() {
-            if (nextChunk != null) {
-                return true;
-            }
-            if (finished) {
-                return false;
-            }
-            nextChunk = readNextChunk();
-            if (nextChunk == null) {
-                finished = true;
-                closeQuietly();
-                return false;
-            }
-            return true;
+    private Object parseContent(BaseOutputParser parser, String content) {
+        if (parser == null || !isPythonTruthy(content)) {
+            return null;
         }
-
-        /**
-         * next.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public AssistantMessageChunk next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-            AssistantMessageChunk current = nextChunk;
-            nextChunk = null;
-            return current;
+        try {
+            return parser.<CompletableFuture<Object>>parse(content).join();
+        } catch (RuntimeException exception) {
+            Loggers.LLM.warning("Parser parse error. {}", exception.getMessage());
+            return null;
         }
+    }
 
-        /**
-         * readNextChunk.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        private AssistantMessageChunk readNextChunk() {
-            try {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String trimmed = line.trim();
-                    if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
-                        continue;
-                    }
-                    String data = trimmed.substring("data:".length()).trim();
-                    if ("[DONE]".equals(data)) {
-                        return null;
-                    }
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> event = MAPPER.readValue(data, Map.class);
-                    AssistantMessageChunk chunk = parseStreamChunk(event, resolvedModel, outputParser, parserBuffer);
-                    if (chunk != null) {
-                        return chunk;
-                    }
-                }
-                return null;
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to read InferenceAffinity stream response", e);
-            }
+    private List<ToolCall> parseToolCalls(Object rawToolCalls) {
+        if (!(rawToolCalls instanceof List<?> rawList)) {
+            return List.of();
         }
-
-        // 关闭底层 reader，解除阻塞在 readLine() 的线程（readLine 不响应 interrupt）。
-        /**
-         * close.
-         * 
-         * @since 0.1.7
-         */
-        @Override
-        public void close() {
-            if (isClosed) {
-                return;
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (int index = 0; index < rawList.size(); index++) {
+            Object item = rawList.get(index);
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                continue;
             }
-            isClosed = true;
-            finished = true;
-            closeQuietly();
+            Map<String, Object> toolCallMap = toObjectMap(rawMap);
+            Map<String, Object> function = asObjectMap(toolCallMap.getOrDefault("function", Map.of()));
+            Object indexValue = toolCallMap.get("index");
+            toolCalls.add(ToolCall.builder()
+                    .id(stringOrEmpty(toolCallMap.get("id")))
+                    .type("function")
+                    .name(stringOrEmpty(function.get("name")))
+                    .arguments(stringOrEmpty(function.get("arguments")))
+                    .index(indexValue instanceof Number number ? number.intValue() : index)
+                    .build());
         }
+        return toolCalls;
+    }
 
-        /**
-         * closeQuietly.
-         * 
-         * @since 0.1.7
-         */
-        private void closeQuietly() {
-            try {
-                reader.close();
-            } catch (IOException ignored) {
-
-                // Ignore.
-            }
+    private UsageMetadata parseUsageMetadata(Object usageValue, boolean includeCacheTokens) {
+        if (!(usageValue instanceof Map<?, ?> usageMap)) {
+            return null;
         }
+        Map<String, Object> usage = toObjectMap(usageMap);
+        int cacheTokens = 0;
+        if (includeCacheTokens && usage.get("prompt_tokens_details") instanceof Map<?, ?> promptDetails) {
+            cacheTokens = intValue(toObjectMap(promptDetails).get("cached_tokens"));
+        }
+        return UsageMetadata.builder()
+                .modelName(modelConfig.getModelName())
+                .inputTokens(intValue(usage.get("prompt_tokens")))
+                .outputTokens(intValue(usage.get("completion_tokens")))
+                .totalTokens(intValue(usage.get("total_tokens")))
+                .cacheTokens(cacheTokens)
+                .build();
+    }
+
+    private Map<String, Object> parseJsonObject(String json) throws JsonProcessingException {
+        if (json == null || json.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        return OBJECT_MAPPER.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() {
+        });
+    }
+
+    private static List<?> asList(Object value) {
+        return value instanceof List<?> list ? list : Collections.emptyList();
+    }
+
+    private static Map<String, Object> asObjectMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return toObjectMap(map);
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private static Map<String, Object> toObjectMap(Map<?, ?> rawMap) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static Map<String, Object> copyMap(Map<String, Object> values) {
+        return values == null ? new LinkedHashMap<>() : new LinkedHashMap<>(values);
+    }
+
+    private static String trimTrailingSlash(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int end = value.length();
+        while (end > 0 && value.charAt(end - 1) == '/') {
+            end--;
+        }
+        return value.substring(0, end);
+    }
+
+    private static String stringOrEmpty(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return 0;
+        }
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+    private static boolean booleanValue(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0D;
+        }
+        if (value instanceof CharSequence sequence) {
+            return !sequence.isEmpty();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    /**
+     * HTTP response snapshot used by the translated aiohttp request helpers.
+     *
+     * <p>Mirrors Python's aiohttp response object usage in
+     * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
+     */
+    protected record HttpResult(int statusCode, String body) {
+    }
+
+    /**
+     * HTTP streaming response snapshot used by the translated SSE helpers.
+     *
+     * <p>Mirrors Python's aiohttp streaming response iteration in
+     * {@code openjiuwen/core/foundation/llm/model_clients/inference_affinity_model_client.py}.</p>
+     */
+    protected record HttpStreamResult(int statusCode, List<String> lines, String body) {
     }
 }

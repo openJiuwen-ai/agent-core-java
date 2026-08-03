@@ -8,24 +8,19 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 /**
- * Simple operation metadata.
- * 
- * @since 0.1.7
+ * Simple metadata for migration operations.
+ *
+ * <p>Mirrors Python's {@code OperationMetadata} in
+ * {@code openjiuwen/core/memory/migration/operation/base_operation.py}.</p>
  */
 @Data
 @AllArgsConstructor
 public class OperationMetadata {
+
     private int schemaVersion;
     private String description;
 
-    /**
-     * OperationMetadata.
-     * 
-     * @param schemaVersion schemaVersion
-     * @since 0.1.7
-     */
     public OperationMetadata(int schemaVersion) {
-        this.schemaVersion = schemaVersion;
-        this.description = null;
+        this(schemaVersion, null);
     }
 }

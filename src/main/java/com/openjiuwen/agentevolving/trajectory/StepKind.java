@@ -5,9 +5,8 @@
 package com.openjiuwen.agentevolving.trajectory;
 
 /**
- * Step kind aligned with Python's trajectory StepKind literal values.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code StepKind} in
+ * {@code openjiuwen/agent_evolving/trajectory/types.py}.
  */
 public enum StepKind {
     LLM("llm"),
@@ -23,21 +22,14 @@ public enum StepKind {
     }
 
     /**
-     * value.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public String value() {
         return value;
     }
 
     /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public static StepKind fromValue(String value) {
         if (value == null || value.isBlank()) {

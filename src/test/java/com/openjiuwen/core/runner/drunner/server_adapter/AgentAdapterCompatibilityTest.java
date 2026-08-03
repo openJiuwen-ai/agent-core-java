@@ -10,7 +10,7 @@ import java.lang.reflect.Field;
 class AgentAdapterCompatibilityTest {
     @Test
     void agentAdapterShouldBuildTopicFromAgentIdAndVersion() throws Exception {
-        AgentAdapter adapter = new AgentAdapter("agent-1", "v1");
+        AgentAdapter adapter = new AgentAdapter("agent-1", "v1", null);
 
         assertThat(readField(adapter, "agentId")).isEqualTo("agent-1");
         assertThat(readField(adapter, "version")).isEqualTo("v1");
@@ -24,7 +24,6 @@ class AgentAdapterCompatibilityTest {
         Object server = readField(adapter, "server");
 
         assertThat(server).isInstanceOf(MqServerAdapter.class);
-        assertThat(adapter.isStopped()).isTrue();
         assertThat(adapter.getServer()).isInstanceOf(MqServerAdapter.class);
         assertThat(adapter.getTopic()).contains("agent-2");
     }

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.UploadFileStreamResult
+# com.openjiuwen.core.sys_operation.result.UploadFileStreamResult
 
 ## 类 UploadFileStreamResult
 

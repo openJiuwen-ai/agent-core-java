@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * System-level event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code SystemEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -23,22 +24,11 @@ public class SystemEvent extends BaseLogEvent {
     private Map<String, Object> systemConfig;
     private Map<String, Object> resourceUsage;
 
-    /**
-     * SystemEvent.
-     * 
-     * @since 0.1.7
-     */
     public SystemEvent() {
         super();
         setModuleType(ModuleType.SYSTEM);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "system_version", systemVersion);
@@ -46,3 +36,5 @@ public class SystemEvent extends BaseLogEvent {
         putIfNotNull(map, "resource_usage", resourceUsage);
     }
 }
+
+

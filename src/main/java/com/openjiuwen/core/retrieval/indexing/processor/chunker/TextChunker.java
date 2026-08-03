@@ -8,93 +8,144 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * Composite chunker with preprocessing.
- * 
- * @since 0.1.7
+ * Fixed-size text chunker with optional preprocessing and char/token chunk units.
+ * <p>
+ * Mirrors Python's {@code TextChunker} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/chunking.py}.
+ * </p>
  */
 public class TextChunker extends Chunker {
-    private final Chunker innerChunker;
+
+    private static final String CHAR_UNIT = "char";
+
     private final PreprocessingPipeline pipeline;
+    private final Chunker chunker;
+    private final String chunkUnit;
 
-    /**
-     * TextChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param chunkUnit chunkUnit
-     * @since 0.1.7
-     */
+    public TextChunker() {
+        this(512, 50);
+    }
+
+    public TextChunker(int chunkSize, int chunkOverlap) {
+        this(chunkSize, chunkOverlap, CHAR_UNIT, null, null);
+    }
+
     public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit) {
-        this(chunkSize, chunkOverlap, chunkUnit, null, "auto");
+        this(chunkSize, chunkOverlap, chunkUnit, null, null);
     }
 
-    /**
-     * TextChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param chunkUnit chunkUnit
-     * @param tokenizer tokenizer
-     * @param language language
-     * @since 0.1.7
-     */
-    public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit, Function<String, List<String>> tokenizer,
-            String language) {
-        this(chunkSize, chunkOverlap, chunkUnit, tokenizer, language, List.of());
+    public TextChunker(int chunkSize,
+                       int chunkOverlap,
+                       String chunkUnit,
+                       IndexSentenceSplitter.TokenCodec tokenizer,
+                       PreprocessOptions preprocessOptions) {
+        super(chunkSize, chunkOverlap, null);
+        this.chunkUnit = chunkUnit == null ? CHAR_UNIT : chunkUnit;
+        this.pipeline = buildPipeline(preprocessOptions == null ? PreprocessOptions.none() : preprocessOptions);
+        this.chunker = getChunker(chunkSize, chunkOverlap, this.chunkUnit, tokenizer);
     }
 
-    /**
-     * TextChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param chunkUnit chunkUnit
-     * @param tokenizer tokenizer
-     * @param language language
-     * @param preprocessors preprocessors
-     * @since 0.1.7
-     */
-    public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit, Function<String, List<String>> tokenizer,
-            String language, List<TextPreprocessor> preprocessors) {
-        super(chunkSize, chunkOverlap);
-        this.innerChunker = "char".equalsIgnoreCase(chunkUnit)
-                ? new CharChunker(chunkSize, chunkOverlap)
-                : new TokenizerChunker(chunkSize, chunkOverlap, tokenizer, language, null);
-        this.pipeline = new PreprocessingPipeline(preprocessors);
+    public Chunker getChunker(int chunkSize,
+                              int chunkOverlap,
+                              String chunkUnit,
+                              IndexSentenceSplitter.TokenCodec tokenizer) {
+        if (CHAR_UNIT.equals(chunkUnit)) {
+            return new CharChunker(chunkSize, chunkOverlap);
+        }
+        int adjustedChunkSize = chunkSize;
+        Integer maxTokenLength = tokenizer == null ? null : tokenizer.maxTokenLength();
+        if (maxTokenLength != null && maxTokenLength > 0 && chunkSize > maxTokenLength) {
+            adjustedChunkSize = maxTokenLength;
+        }
+        return new TokenizerChunker(adjustedChunkSize, chunkOverlap, tokenizer);
     }
 
-    /**
-     * chunkText.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public List<String> chunkText(String text) {
-        return innerChunker.chunkText(pipeline.process(text));
+        return chunker.chunkText(pipeline.process(text));
+    }
+
+    @Override
+    public List<TextChunk> chunkDocuments(List<Document> documents) {
+        List<TextChunk> chunks = new ArrayList<>();
+        for (Document document : documents) {
+            String docText = pipeline.process(document.getText());
+            List<String> texts = chunker.chunkText(docText);
+            for (int index = 0; index < texts.size(); index++) {
+                String uid = UUID.randomUUID().toString();
+                Map<String, Object> metadata = new LinkedHashMap<>(document.getMetadata());
+                metadata.put("chunk_index", index);
+                metadata.put("total_chunks", texts.size());
+                metadata.put("chunk_id", uid);
+                chunks.add(new TextChunk(uid, texts.get(index), document.getId_(), metadata));
+            }
+        }
+        return chunks;
+    }
+
+    public PreprocessingPipeline getPipeline() {
+        return pipeline;
+    }
+
+    public Chunker getInnerChunker() {
+        return chunker;
+    }
+
+    public String getChunkUnit() {
+        return chunkUnit;
+    }
+
+    private static PreprocessingPipeline buildPipeline(PreprocessOptions options) {
+        List<TextPreprocessor> preprocessors = new ArrayList<>();
+        if (options.isNormalizeWhitespace()) {
+            preprocessors.add(new WhitespaceNormalizer());
+        }
+        if (options.isRemoveUrlEmail()) {
+            preprocessors.add(new URLEmailRemover());
+        }
+        return new PreprocessingPipeline(preprocessors);
     }
 
     /**
-     * chunkDocuments.
-     * 
-     * @param documents documents
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code preprocess_options} dict in
+     * {@code openjiuwen/core/retrieval/indexing/processor/chunker/chunking.py}.
      */
-    @Override
-    public List<TextChunk> chunkDocuments(List<Document> documents) {
-        List<Document> normalized = new ArrayList<>();
-        if (documents != null) {
-            for (Document document : documents) {
-                normalized.add(
-                        new Document(document.getId(), pipeline.process(document.getText()), document.getMetadata()));
-            }
+    public static final class PreprocessOptions {
+
+        private final boolean normalizeWhitespace;
+        private final boolean removeUrlEmail;
+
+        public PreprocessOptions(boolean normalizeWhitespace, boolean removeUrlEmail) {
+            this.normalizeWhitespace = normalizeWhitespace;
+            this.removeUrlEmail = removeUrlEmail;
         }
-        return innerChunker.chunkDocuments(normalized);
+
+        public static PreprocessOptions none() {
+            return new PreprocessOptions(false, false);
+        }
+
+        public static PreprocessOptions fromKeywordArgs(Map<String, ?> preprocessOptions) {
+            if (preprocessOptions == null) {
+                return none();
+            }
+            return new PreprocessOptions(
+                    Boolean.TRUE.equals(preprocessOptions.get("normalize_whitespace")),
+                    Boolean.TRUE.equals(preprocessOptions.get("remove_url_email"))
+            );
+        }
+
+        public boolean isNormalizeWhitespace() {
+            return normalizeWhitespace;
+        }
+
+        public boolean isRemoveUrlEmail() {
+            return removeUrlEmail;
+        }
     }
 }

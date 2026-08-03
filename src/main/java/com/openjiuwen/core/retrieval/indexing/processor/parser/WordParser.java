@@ -1,20 +1,25 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.retrieval.common.Document;
-
 import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFPicture;
 import org.apache.poi.xwpf.usermodel.XWPFPictureData;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -23,142 +28,256 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
- * DOCX parser with optional image caption support.
- * 
- * @since 0.1.7
+ * Local file parser for DOCX/DOC word processor files.
+ *
+ * <p>Mirrors Python's {@code WordParser} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.</p>
  */
 public class WordParser extends Parser {
-    /**
-     * parse.
-     * 
-     * @param doc doc
-     * @param docId docId
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
-        try {
-            String content = parseContent(doc, llmClient, options);
-            if (content == null) {
-                return List.of();
-            }
-            return List.of(new Document(docId, content, Map.of()));
-        } catch (RuntimeException ex) {
-            return List.of();
-        }
-    }
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(WordParser.class);
 
     /**
-     * parseContent.
-     * 
-     * @param doc doc
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code WordParser._parse} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
      */
     @Override
-    protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        Path path = Path.of(doc);
-        if (!Files.exists(path)) {
-            return null;
-        }
-        try (InputStream inputStream = Files.newInputStream(path);
-                XWPFDocument document = new XWPFDocument(inputStream)) {
-            List<String> content = new ArrayList<>();
-            for (IBodyElement element : document.getBodyElements()) {
-                if (element instanceof XWPFParagraph paragraph) {
-                    String text = paragraph.getText();
-                    if (text != null && !text.trim().isBlank()) {
-                        content.add(text.trim());
+    protected CompletableFuture<String> parseContent(
+            String filePath,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        return CompletableFuture.supplyAsync(() -> readDocument(filePath))
+                .thenCompose(plan -> {
+                    if (plan == null) {
+                        return CompletableFuture.completedFuture(null);
                     }
-                } else if (element instanceof XWPFTable table) {
-                    String tableText = tableToText(table);
-                    if (!tableText.isBlank()) {
-                        content.add(tableText);
+                    ImageCaptioner imageCaptioner = createImageCaptioner(llmClient);
+                    CompletableFuture<List<String>> chain = CompletableFuture.completedFuture(new ArrayList<>());
+                    for (ContentBlock block : plan.blocks()) {
+                        chain = chain.thenCompose(content -> appendBlock(content, block, imageCaptioner));
                     }
-                } else {
-                    // no-op
-                }
-            }
-            if (llmClient != null) {
-                List<String> images = extractPictures(document, path.getFileName().toString());
-                if (!images.isEmpty()) {
-                    List<String> captions = new ImageCaptioner(llmClient).captionImages(images);
-                    for (String caption : captions) {
-                        if (caption != null && !caption.isBlank()) {
-                            content.add(caption);
-                        }
-                    }
-                }
-            }
-            String result = String.join("\n", content).trim();
-            return result.isBlank() ? null : result;
-        } catch (IOException ex) {
-            return null;
-        }
+                    return chain.thenApply(WordParser::joinContent);
+                })
+                .exceptionally(error -> {
+                    LOGGER.error("Failed to parse DOCX {}: {}", filePath, rootMessage(error));
+                    return null;
+                });
     }
 
-    /**
-     * supports.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean supports(String doc) {
-        return doc != null && doc.toLowerCase(Locale.ROOT).endsWith(".docx");
+        if (doc == null || doc.isBlank()) {
+            return false;
+        }
+        String fileName = Path.of(doc).getFileName().toString().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".docx") || fileName.endsWith(".doc");
     }
 
     /**
-     * tableToText.
-     * 
-     * @param table table
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code ImageCaptioner(llm_client=llm_client)} construction in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
      */
-    private static String tableToText(XWPFTable table) {
-        List<String> rows = new ArrayList<>();
+    protected ImageCaptioner createImageCaptioner(BaseModelClient llmClient) {
+        return new ImageCaptioner(llmClient);
+    }
+
+    protected String savedImageDir() {
+        return ImageCaptioner.SAVED_IMAGE_DIR;
+    }
+
+    private ParsedContentPlan readDocument(String filePath) {
+        try (InputStream inputStream = Files.newInputStream(Path.of(filePath));
+             XWPFDocument document = new XWPFDocument(inputStream)) {
+            List<ContentBlock> blocks = new ArrayList<>();
+            String fileName = Path.of(filePath).getFileName() == null
+                    ? filePath
+                    : Path.of(filePath).getFileName().toString();
+            int blockIndex = 0;
+            for (IBodyElement element : document.getBodyElements()) {
+                if (element instanceof XWPFParagraph paragraph) {
+                    List<String> textLines = new ArrayList<>();
+                    String paragraphText = paragraphToMarkdown(paragraph);
+                    if (!paragraphText.isBlank()) {
+                        textLines.add(paragraphText);
+                    }
+                    List<String> images = extractImagesFromParagraph(paragraph, blockIndex, fileName, savedImageDir());
+                    blocks.add(new ContentBlock(textLines, images));
+                } else if (element instanceof XWPFTable table) {
+                    String tableText = tableToMarkdown(table);
+                    blocks.add(new ContentBlock(tableText.isBlank() ? List.of() : List.of(tableText), List.of()));
+                }
+                blockIndex++;
+            }
+            return new ParsedContentPlan(blocks);
+        } catch (Exception exception) {
+            throw new CompletionException(exception);
+        }
+    }
+
+    private static CompletableFuture<List<String>> appendBlock(
+            List<String> content,
+            ContentBlock block,
+            ImageCaptioner imageCaptioner
+    ) {
+        content.addAll(block.textLines());
+        if (block.imagePaths().isEmpty()) {
+            return CompletableFuture.completedFuture(content);
+        }
+        return imageCaptioner.captionImages(block.imagePaths()).thenApply(captions -> {
+            if (captions != null) {
+                for (String caption : captions) {
+                    if (caption != null && !caption.isBlank()) {
+                        content.add(caption);
+                    }
+                }
+            }
+            return content;
+        });
+    }
+
+    /**
+     * Mirrors Python's module-level {@code _paragraph_to_markdown} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
+     */
+    static String paragraphToMarkdown(XWPFParagraph paragraph) {
+        String text = paragraph == null ? "" : paragraph.getText();
+        if (text == null || text.trim().isBlank()) {
+            return "";
+        }
+        String trimmedText = text.trim();
+        String style = paragraph.getStyle();
+        if (style == null || style.isBlank()) {
+            style = paragraph.getStyleID();
+        }
+        if (style == null) {
+            return trimmedText;
+        }
+        style = style.trim();
+        if ("Title".equals(style)) {
+            return "# " + trimmedText;
+        }
+        Integer headingLevel = headingLevel(style);
+        if (headingLevel != null && headingLevel >= 1 && headingLevel <= 9) {
+            return "#".repeat(headingLevel + 1) + " " + trimmedText;
+        }
+        return trimmedText;
+    }
+
+    /**
+     * Mirrors Python's module-level {@code _table_to_markdown} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
+     */
+    static String tableToMarkdown(XWPFTable table) {
+        if (table == null || table.getRows().isEmpty()) {
+            return "";
+        }
+        List<String> lines = new ArrayList<>();
         for (XWPFTableRow row : table.getRows()) {
             List<String> cells = new ArrayList<>();
             for (XWPFTableCell cell : row.getTableCells()) {
-                cells.add(cell.getText().trim());
+                String cellText = cell == null ? "" : cell.getText();
+                cells.add((cellText == null ? "" : cellText).trim().replace("|", "\\|"));
             }
-            rows.add(String.join("\t", cells));
+            lines.add("| " + String.join(" | ", cells) + " |");
+            if (lines.size() == 1) {
+                lines.add("| " + String.join(" | ", cells.stream().map(ignored -> "---").toList()) + " |");
+            }
         }
-        return String.join("\n", rows).trim();
+        lines.add("");
+        return String.join("\n", lines);
     }
 
     /**
-     * extractPictures.
-     * 
-     * @param document document
-     * @param fileName fileName
-     * @return the result
-     * @throws IOException IOException
-     * @since 0.1.7
+     * Mirrors Python's {@code WordParser._extract_images_from_paragraph} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
      */
-    private static List<String> extractPictures(XWPFDocument document, String fileName) throws IOException {
-        List<String> imagePaths = new ArrayList<>();
-        Path outputDir = Path.of(ImageCaptioner.SAVED_IMAGE_DIR);
-        Files.createDirectories(outputDir);
-        int pictureIndex = 0;
-        for (XWPFPictureData picture : document.getAllPictures()) {
-            String extension = picture.suggestFileExtension();
-            if (extension == null || extension.isBlank()) {
-                extension = "png";
-            }
-            Path output = outputDir.resolve(fileName + "__img_" + pictureIndex + "." + extension);
-            Files.write(output, picture.getData());
-            imagePaths.add(output.toString());
-            pictureIndex++;
+    static List<String> extractImagesFromParagraph(
+            XWPFParagraph paragraph,
+            int paragraphNum,
+            String filename,
+            String outputDir
+    ) throws IOException {
+        if (paragraph == null) {
+            return List.of();
         }
-        return imagePaths;
+        List<String> images = new ArrayList<>();
+        Path outputDirectory = Path.of(outputDir == null || outputDir.isBlank()
+                ? ImageCaptioner.SAVED_IMAGE_DIR
+                : outputDir);
+        int imageIndex = 0;
+        for (XWPFRun run : paragraph.getRuns()) {
+            for (XWPFPicture picture : run.getEmbeddedPictures()) {
+                XWPFPictureData pictureData = picture.getPictureData();
+                if (pictureData == null) {
+                    continue;
+                }
+                Files.createDirectories(outputDirectory);
+                Path imagePath = outputDirectory.resolve(filename + "__para_" + paragraphNum
+                        + "__img_" + imageIndex + ".png");
+                writePngImage(pictureData.getData(), imagePath);
+                images.add(imagePath.toString());
+                imageIndex++;
+            }
+        }
+        return images;
+    }
+
+    private static void writePngImage(byte[] imageBytes, Path imagePath) throws IOException {
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
+        if (image == null) {
+            Files.write(imagePath, imageBytes);
+            return;
+        }
+        ImageIO.write(image, "png", imagePath.toFile());
+    }
+
+    private static Integer headingLevel(String style) {
+        String normalized = style.replace(" ", "");
+        if (!normalized.startsWith("Heading")) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(normalized.substring("Heading".length()));
+        } catch (NumberFormatException exception) {
+            LOGGER.error("Error while parsing docx paragraph with style {}: {}", style, exception.toString());
+            return null;
+        }
+    }
+
+    private static String joinContent(List<String> content) {
+        if (content == null || content.isEmpty()) {
+            return null;
+        }
+        String joined = String.join("\n", content.stream()
+                .filter(line -> line != null && !line.isBlank())
+                .toList());
+        return joined.isBlank() ? null : joined;
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage();
+    }
+
+    /**
+     * Mirrors Python's per-block output from {@code WordParser._parse_block} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
+     */
+    private record ContentBlock(List<String> textLines, List<String> imagePaths) {
+    }
+
+    /**
+     * Mirrors Python's ordered {@code doc.iter_inner_content()} traversal in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/word_parser.py}.
+     */
+    private record ParsedContentPlan(List<ContentBlock> blocks) {
     }
 }

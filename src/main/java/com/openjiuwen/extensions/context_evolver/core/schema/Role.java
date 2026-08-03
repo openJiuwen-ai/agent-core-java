@@ -5,10 +5,8 @@
 package com.openjiuwen.extensions.context_evolver.core.schema;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.schema.message.Role}.
- * Message role enumeration.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Role} in
+ * {@code openjiuwen/extensions/context_evolver/core/schema/message.py}.
  */
 public enum Role {
     SYSTEM("system"),
@@ -22,23 +20,10 @@ public enum Role {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     public static Role fromValue(String value) {
         for (Role role : values()) {
             if (role.value.equalsIgnoreCase(value)) {
@@ -46,5 +31,10 @@ public enum Role {
             }
         }
         throw new IllegalArgumentException("Unknown role: " + value);
+    }
+
+    @Override
+    public String toString() {
+        return value;
     }
 }

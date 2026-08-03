@@ -4,16 +4,17 @@
 
 package com.openjiuwen.core.runner.base;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Strategy for updating resource tags.
- * <p>
- * Mirrors Python's {@code TagUpdateStrategy}.
- * 
- * @since 0.1.7
+ * Compatibility facade for the 0.1.12 runner-base tag update enum.
+ *
+ * <p>Mirrors Python's {@code TagUpdateStrategy} in
+ * {@code openjiuwen/core/runner/resources_manager/base.py}.</p>
  */
 public enum TagUpdateStrategy {
     MERGE("merge"),
-    /** Replace all existing tags with new tags. */
     REPLACE("isReplace");
 
     private final String value;
@@ -22,13 +23,28 @@ public enum TagUpdateStrategy {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
+    public String value() {
+        return value;
+    }
+
     public String getValue() {
         return value;
+    }
+
+    public com.openjiuwen.core.runner.resourcemanager.TagUpdateStrategy toResourceManagerStrategy() {
+        return this == REPLACE
+                ? com.openjiuwen.core.runner.resourcemanager.TagUpdateStrategy.REPLACE
+                : com.openjiuwen.core.runner.resourcemanager.TagUpdateStrategy.MERGE;
+    }
+
+    @JsonCreator
+    public static TagUpdateStrategy fromValue(String value) {
+        for (TagUpdateStrategy strategy : values()) {
+            if (strategy.value.equals(value)) {
+                return strategy;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported tag update strategy: " + value);
     }
 }

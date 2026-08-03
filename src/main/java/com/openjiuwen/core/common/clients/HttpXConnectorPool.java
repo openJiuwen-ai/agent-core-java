@@ -9,60 +9,56 @@ import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * HTTPX-style connector pool backed by JDK HttpClient.
- * 
- * @since 0.1.7
+ * HTTPX-style connector pool implementation.
+ *
+ * <p>Mirrors Python's {@code HttpXConnectorPool} in
+ * {@code openjiuwen/core/common/clients/llm_client.py}.</p>
  */
 public class HttpXConnectorPool extends ConnectorPool {
-    private final HttpClient client;
 
-    /**
-     * HttpXConnectorPool.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
+    private final HttpXConnectorPoolConfig httpxConfig;
+
     public HttpXConnectorPool(HttpXConnectorPoolConfig config) {
-        super(config);
-        HttpClient.Builder builder =
-            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).version(HttpClient.Version.HTTP_1_1);
-        if (config.getKeepaliveTimeout() != null) {
-            builder.connectTimeout(Duration.ofMillis(Math.max(1L, Math.round(config.getKeepaliveTimeout() * 1000))));
-        }
-        if (config.isSslVerify()) {
-            if (config.getSslCert() != null && !config.getSslCert().isBlank()) {
-                builder.sslContext(config.createSslContext());
-            }
-        } else {
-            builder.sslContext(config.createSslContext());
-        }
+        super(config == null ? new HttpXConnectorPoolConfig() : config);
+        this.httpxConfig = config == null ? new HttpXConnectorPoolConfig() : config;
+        this.conn = buildClient(this.httpxConfig);
+    }
+
+    @Override
+    public HttpClient getConn() {
+        return (HttpClient) conn;
+    }
+
+    public HttpXConnectorPoolConfig getHttpxConfig() {
+        return httpxConfig;
+    }
+
+    @Override
+    protected CompletableFuture<Void> doClose(Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private HttpClient buildClient(HttpXConnectorPoolConfig config) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .version(HttpClient.Version.HTTP_2);
         if (config.getProxy() != null && !config.getProxy().isBlank()) {
-            URI proxyUri = URI.create(config.getProxy());
-            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort())));
+            builder.proxy(proxySelector(config.getProxy()));
         }
-        this.client = builder.build();
+        return builder.build();
     }
 
-    /**
-     * doClose.
-     * 
-     * @since 0.1.7
-     */
-    @Override
-    protected void doClose() {
-        // JDK HttpClient does not expose an explicit close hook.
-    }
-
-    /**
-     * conn.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public HttpClient conn() {
-        return client;
+    private static ProxySelector proxySelector(String proxy) {
+        URI uri = proxy.contains("://") ? URI.create(proxy) : URI.create("http://" + proxy);
+        int port = uri.getPort();
+        if (port < 0) {
+            port = "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+        }
+        return ProxySelector.of(new InetSocketAddress(uri.getHost(), port));
     }
 }

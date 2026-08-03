@@ -1,256 +1,380 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.memory.manage.mem_model;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.openjiuwen.core.retrieval.common.SearchResult;
+import com.openjiuwen.core.foundation.store.BaseVectorStore;
+import com.openjiuwen.core.foundation.store.CollectionSchema;
+import com.openjiuwen.core.foundation.store.FieldSchema;
+import com.openjiuwen.core.foundation.store.VectorSearchResult;
+import com.openjiuwen.core.memory.migration.MigrationPlan;
+import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
-import com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore;
-import com.openjiuwen.core.retrieval.vector_store.VectorStore;
-import com.openjiuwen.spi.store.vector.CollectionSchema;
-
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Mirrors Python's old-framework semantic-store coverage in
+ * {@code tests/unit_tests/core/foundation/store/test_simple_memory_index.py}.
+ */
 class SemanticStoreTest {
-    @Test
-    void addDocsUsesBackendVectorFieldAndSupportsSemanticSearch() {
-        InMemoryVectorStore vectorStore = new InMemoryVectorStore("semantic_store_vector_field_test");
-        SemanticStore semanticStore = new SemanticStore(vectorStore, new KeywordEmbedding());
 
-        assertTrue(semanticStore.addDocs(List.of(Map.entry("name", "name memory"), Map.entry("age", "age memory")),
-                "semantic_store_vector_field_test"));
+    @BeforeEach
+    void resetVectorRegistry() {
+        MigrationPlan.getVectorRegistry().clear();
+    }
 
-        List<Map.Entry<String, Double>> results =
-            semanticStore.search("name query", "semantic_store_vector_field_test", 1);
-        assertEquals(1, results.size());
-        assertEquals("name", results.get(0).getKey());
+    @AfterEach
+    void clearVectorRegistry() {
+        MigrationPlan.getVectorRegistry().clear();
     }
 
     @Test
-    void addDocsCreatesCollectionMetadataAndUsesBackendFieldNames() {
-        RecordingVectorStore vectorStore = new RecordingVectorStore("default");
-        SemanticStore semanticStore = new SemanticStore(vectorStore, new FixedEmbedding());
+    void addDocsCreatesCollectionWithSchemaMetadataAndCache() {
+        MigrationPlan.getVectorRegistry().register("vector_profile", new TestOperation(2));
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+        SemanticStore semanticStore = new SemanticStore(vectorStore, new TestEmbedding());
 
-        boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")),
-                "uid_user_gid_scope_mtype_user_profile");
+        boolean firstWrite = semanticStore.addDocs(
+                List.of(Map.entry("m1", "alpha memory")),
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace"
+        ).join();
+        boolean secondWrite = semanticStore.addDocs(
+                List.of(Map.entry("m2", "beta memory")),
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace"
+        ).join();
 
-        assertTrue(stored);
-        assertTrue(vectorStore.collections.contains("uid_user_gid_scope_mtype_user_profile"));
-        assertEquals(Map.of("schema_version", 0), vectorStore.metadata.get("uid_user_gid_scope_mtype_user_profile"));
-        Map<String, Object> row = vectorStore.rows.get("uid_user_gid_scope_mtype_user_profile").get(0);
-        assertEquals("mem-1", row.get("id"));
-        assertTrue(row.containsKey("embedding"));
-        assertEquals("remember this", row.get("text"));
-        assertFalse(row.containsKey("vector"));
+        assertThat(firstWrite).isTrue();
+        assertThat(secondWrite).isTrue();
+        assertThat(vectorStore.createCalls).isEqualTo(1);
+        assertThat(vectorStore.collectionSchema("uid_alice_gid_workspace_mtype_user_profile").getFields())
+                .extracting(FieldSchema::getName)
+                .containsExactly("id", "embedding");
+        assertThat(vectorStore.metadataFor("uid_alice_gid_workspace_mtype_user_profile"))
+                .containsEntry("schema_version", 2);
+        assertThat(vectorStore.docsFor("uid_alice_gid_workspace_mtype_user_profile"))
+                .extracting(doc -> doc.get("id"))
+                .containsExactly("m1", "m2");
     }
 
     @Test
-    void searchAndDeleteReturnWithoutBackendCallWhenCollectionMissing() {
-        RecordingVectorStore vectorStore = new RecordingVectorStore("default");
-        SemanticStore semanticStore = new SemanticStore(vectorStore, new FixedEmbedding());
+    void searchReturnsIdScorePairsFromStoredEmbeddings() {
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+        SemanticStore semanticStore = new SemanticStore(vectorStore, new TestEmbedding());
+        semanticStore.addDocs(
+                List.of(
+                        Map.entry("m1", "alpha alpha"),
+                        Map.entry("m2", "beta beta")
+                ),
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace"
+        ).join();
 
-        assertEquals(List.of(), semanticStore.search("query", "missing", 5));
-        semanticStore.deleteDocs(List.of("mem-1"), "missing");
+        List<Map.Entry<String, Double>> results = semanticStore.search(
+                "alpha alpha",
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace",
+                2
+        ).join();
 
-        assertEquals(0, vectorStore.searchCalls);
-        assertEquals(0, vectorStore.deleteCalls);
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getKey()).isEqualTo("m1");
+        assertThat(results.get(0).getValue()).isGreaterThanOrEqualTo(results.get(1).getValue());
     }
 
-    private static final class FixedEmbedding implements Embedding {
+    @Test
+    void addDocsWithoutEmbeddingModelReturnsFalseAndSearchReturnsEmpty() {
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+        SemanticStore semanticStore = new SemanticStore(vectorStore);
+
+        boolean stored = semanticStore.addDocs(
+                List.of(Map.entry("m1", "alpha")),
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace"
+        ).join();
+        List<Map.Entry<String, Double>> results = semanticStore.search(
+                "alpha",
+                "uid_alice_gid_workspace_mtype_user_profile",
+                "workspace",
+                5
+        ).join();
+
+        assertThat(stored).isFalse();
+        assertThat(results).isEmpty();
+        assertThat(vectorStore.createCalls).isZero();
+    }
+
+    @Test
+    void deleteDocsAndDeleteTableFollowCollectionExistence() {
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+        SemanticStore semanticStore = new SemanticStore(vectorStore, new TestEmbedding());
+        String collectionName = "uid_alice_gid_workspace_mtype_user_profile";
+        semanticStore.addDocs(
+                List.of(
+                        Map.entry("m1", "alpha"),
+                        Map.entry("m2", "beta")
+                ),
+                collectionName,
+                "workspace"
+        ).join();
+
+        semanticStore.deleteDocs(List.of("m1"), collectionName).join();
+        semanticStore.deleteDocs(List.of("ghost"), "uid_alice_gid_workspace_mtype_summary").join();
+        semanticStore.deleteTable(collectionName).join();
+
+        assertThat(vectorStore.docsFor(collectionName)).isEmpty();
+        assertThat(vectorStore.deleteByIdCalls).isEqualTo(1);
+        assertThat(vectorStore.deleteCollectionCalls).isEqualTo(1);
+        assertThat(vectorStore.collectionExists(collectionName, Map.of()).join()).isFalse();
+    }
+
+    /**
+     * Mirrors Python's fake embedding used by semantic-store compatibility tests in
+     * {@code tests/unit_tests/core/foundation/store/test_simple_memory_index.py}.
+     */
+    private static final class TestEmbedding extends Embedding {
+
+        private static final int DIMENSION = 8;
+
         @Override
-        public List<Float> embedQuery(String text) {
-            return List.of(1.0f, 0.0f, 0.5f);
+        public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(embedForTest(text));
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
-            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
+        public CompletableFuture<List<List<Double>>> embedDocuments(
+                List<String> texts,
+                Integer batchSize,
+                Map<String, Object> kwargs
+        ) {
+            List<List<Double>> embeddings = new ArrayList<>();
+            for (String text : texts) {
+                embeddings.add(embedForTest(text));
+            }
+            return CompletableFuture.completedFuture(embeddings);
         }
 
         @Override
         public int getDimension() {
-            return 3;
+            return DIMENSION;
+        }
+
+        private List<Double> embedForTest(String text) {
+            double[] values = new double[DIMENSION];
+            String safeText = text == null ? "" : text;
+            for (int index = 0; index < safeText.length(); index++) {
+                values[index % DIMENSION] += safeText.charAt(index) * 0.01d;
+            }
+            double norm = 0.0d;
+            for (double value : values) {
+                norm += value * value;
+            }
+            norm = Math.sqrt(norm);
+            List<Double> embedding = new ArrayList<>(DIMENSION);
+            for (double value : values) {
+                embedding.add(norm == 0.0d ? value : value / norm);
+            }
+            return embedding;
         }
     }
 
-    private static final class KeywordEmbedding implements Embedding {
+    /**
+     * Mirrors Python's minimal in-memory vector store test seam in
+     * {@code tests/unit_tests/core/foundation/store/test_simple_memory_index.py}.
+     */
+    private static final class RecordingVectorStore extends BaseVectorStore {
+
+        private final Map<String, CollectionSchema> schemas = new LinkedHashMap<>();
+        private final Map<String, List<Map<String, Object>>> docs = new LinkedHashMap<>();
+        private final Map<String, Map<String, Object>> metadata = new LinkedHashMap<>();
+
+        private int createCalls;
+        private int deleteByIdCalls;
+        private int deleteCollectionCalls;
+
         @Override
-        public List<Float> embedQuery(String text) {
-            return text.contains("name") ? List.of(1.0F, 0.0F) : List.of(0.0F, 1.0F);
+        public CompletableFuture<Void> createCollection(String collectionName, Object schema, Map<String, Object> kwargs) {
+            createCalls++;
+            schemas.put(collectionName, (CollectionSchema) schema);
+            docs.computeIfAbsent(collectionName, ignored -> new ArrayList<>());
+            metadata.computeIfAbsent(collectionName, ignored -> new LinkedHashMap<>());
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
-            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
+        public CompletableFuture<Void> deleteCollection(String collectionName, Map<String, Object> kwargs) {
+            deleteCollectionCalls++;
+            schemas.remove(collectionName);
+            docs.remove(collectionName);
+            metadata.remove(collectionName);
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public int getDimension() {
-            return 2;
+        public CompletableFuture<Boolean> collectionExists(String collectionName, Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(schemas.containsKey(collectionName));
+        }
+
+        @Override
+        public CompletableFuture<CollectionSchema> getSchema(String collectionName, Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(schemas.get(collectionName));
+        }
+
+        @Override
+        public CompletableFuture<Void> addDocs(String collectionName, List<Map<String, Object>> docsToAdd, Map<String, Object> kwargs) {
+            List<Map<String, Object>> bucket = docs.computeIfAbsent(collectionName, ignored -> new ArrayList<>());
+            for (Map<String, Object> doc : docsToAdd) {
+                String id = String.valueOf(doc.get("id"));
+                int existingIndex = -1;
+                for (int index = 0; index < bucket.size(); index++) {
+                    if (Objects.equals(bucket.get(index).get("id"), id)) {
+                        existingIndex = index;
+                        break;
+                    }
+                }
+                if (existingIndex >= 0) {
+                    bucket.set(existingIndex, new LinkedHashMap<>(doc));
+                } else {
+                    bucket.add(new LinkedHashMap<>(doc));
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<List<VectorSearchResult>> search(
+                String collectionName,
+                List<Double> queryVector,
+                String vectorField,
+                int topK,
+                Map<String, Object> filters,
+                Map<String, Object> kwargs
+        ) {
+            List<VectorSearchResult> results = new ArrayList<>();
+            for (Map<String, Object> doc : docs.getOrDefault(collectionName, List.of())) {
+                if (filters != null && !filters.isEmpty()) {
+                    boolean match = true;
+                    for (Map.Entry<String, Object> filter : filters.entrySet()) {
+                        if (!Objects.equals(doc.get(filter.getKey()), filter.getValue())) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (!match) {
+                        continue;
+                    }
+                }
+                @SuppressWarnings("unchecked")
+                List<Double> embedding = (List<Double>) doc.getOrDefault(vectorField, List.of());
+                double score = cosine(queryVector, embedding);
+                Map<String, Object> fields = new LinkedHashMap<>(doc);
+                fields.remove(vectorField);
+                results.add(new VectorSearchResult(score, fields));
+            }
+            results.sort(Comparator.comparingDouble(VectorSearchResult::getScore).reversed());
+            if (results.size() > topK) {
+                results = new ArrayList<>(results.subList(0, topK));
+            }
+            return CompletableFuture.completedFuture(results);
+        }
+
+        @Override
+        public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
+            deleteByIdCalls++;
+            List<Map<String, Object>> bucket = docs.get(collectionName);
+            if (bucket != null) {
+                bucket.removeIf(doc -> ids.contains(String.valueOf(doc.get("id"))));
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> deleteDocsByFilters(
+                String collectionName,
+                Map<String, Object> filters,
+                Map<String, Object> kwargs
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<List<String>> listCollectionNames() {
+            return CompletableFuture.completedFuture(new ArrayList<>(schemas.keySet()));
+        }
+
+        @Override
+        public CompletableFuture<Void> updateSchema(
+                String collectionName,
+                List<BaseOperation> operations
+        ) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> updateCollectionMetadata(String collectionName, Map<String, Object> metadataUpdate) {
+            metadata.computeIfAbsent(collectionName, ignored -> new LinkedHashMap<>()).putAll(metadataUpdate);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> getCollectionMetadata(String collectionName) {
+            return CompletableFuture.completedFuture(metadataFor(collectionName));
+        }
+
+        private CollectionSchema collectionSchema(String collectionName) {
+            return schemas.get(collectionName);
+        }
+
+        private Map<String, Object> metadataFor(String collectionName) {
+            return new LinkedHashMap<>(metadata.getOrDefault(collectionName, Map.of()));
+        }
+
+        private List<Map<String, Object>> docsFor(String collectionName) {
+            return new ArrayList<>(docs.getOrDefault(collectionName, List.of()));
+        }
+
+        private static double cosine(List<Double> left, List<Double> right) {
+            double dot = 0.0d;
+            double leftNorm = 0.0d;
+            double rightNorm = 0.0d;
+            for (int index = 0; index < Math.min(left.size(), right.size()); index++) {
+                dot += left.get(index) * right.get(index);
+            }
+            for (double value : left) {
+                leftNorm += value * value;
+            }
+            for (double value : right) {
+                rightNorm += value * value;
+            }
+            if (leftNorm == 0.0d || rightNorm == 0.0d) {
+                return 0.0d;
+            }
+            return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
         }
     }
 
-    private static final class RecordingVectorStore implements SchemaMutableVectorStore {
-        private String collectionName;
-        private final List<String> collections;
-        private final Map<String, List<Map<String, Object>>> rows;
-        private final Map<String, Map<String, Object>> metadata;
-        private int searchCalls;
-        private int deleteCalls;
+    /**
+     * Mirrors Python's vector migration operation metadata used to seed schema versions in tests.
+     */
+    private static final class TestOperation extends BaseOperation {
 
-        private RecordingVectorStore(String collectionName) {
-            this(collectionName, new ArrayList<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
-        }
-
-        private RecordingVectorStore(String collectionName, List<String> collections,
-                Map<String, List<Map<String, Object>>> rows, Map<String, Map<String, Object>> metadata) {
-            this.collectionName = collectionName;
-            this.collections = collections;
-            this.rows = rows;
-            this.metadata = metadata;
-        }
-
-        @Override
-        public String getCollectionName() {
-            return collectionName;
-        }
-
-        @Override
-        public void setCollectionName(String collectionName) {
-            this.collectionName = collectionName;
-        }
-
-        @Override
-        public VectorStore withCollection(String collectionName) {
-            return new RecordingVectorStore(collectionName, collections, rows, metadata);
-        }
-
-        @Override
-        public void ensureCollection(String collectionName, String indexType, Integer dimension,
-                Map<String, Object> options) {
-            collections.add(collectionName);
-        }
-
-        @Override
-        public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
-            rows.computeIfAbsent(collectionName, key -> new ArrayList<>()).addAll(data);
-        }
-
-        @Override
-        public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
-                Map<String, Object> options) {
-            searchCalls++;
-            return List.of();
-        }
-
-        @Override
-        public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
-                Map<String, Object> options) {
-            return List.of();
-        }
-
-        @Override
-        public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
-                Map<String, Object> filters, Map<String, Object> options) {
-            return List.of();
-        }
-
-        @Override
-        public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
-            deleteCalls++;
-            return true;
-        }
-
-        @Override
-        public boolean tableExists(String tableName) {
-            return collections.contains(tableName);
-        }
-
-        @Override
-        public void deleteTable(String tableName) {
-            collections.remove(tableName);
-        }
-
-        @Override
-        public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
-            return List.of();
-        }
-
-        @Override
-        public long count(String tableName) {
-            return rows.getOrDefault(tableName, List.of()).size();
-        }
-
-        @Override
-        public List<String> listCollectionNames() {
-            return List.copyOf(collections);
-        }
-
-        @Override
-        public Map<String, Object> getCollectionMetadata(String collectionName) {
-            return metadata.getOrDefault(collectionName, Map.of());
-        }
-
-        @Override
-        public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
-            this.metadata.computeIfAbsent(collectionName, key -> new LinkedHashMap<>()).putAll(metadata);
-        }
-
-        @Override
-        public void updateSchema(String collectionName, List<?> operations) {
-        }
-
-        @Override
-        public CollectionSchema getSchema(String collectionName) {
-            return new CollectionSchema();
-        }
-
-        @Override
-        public String getDatabaseName() {
-            return "memory";
-        }
-
-        @Override
-        public String getDistanceMetric() {
-            return "cosine";
-        }
-
-        @Override
-        public String getIndexType() {
-            return "embedding";
-        }
-
-        @Override
-        public String getTextField() {
-            return "text";
-        }
-
-        @Override
-        public String getVectorField() {
-            return "embedding";
-        }
-
-        @Override
-        public String getSparseVectorField() {
-            return "sparse_embedding";
-        }
-
-        @Override
-        public String getMetadataField() {
-            return "metadata";
-        }
-
-        @Override
-        public String getDocIdField() {
-            return "id";
+        private TestOperation(int schemaVersion) {
+            super(new OperationMetadata(schemaVersion, "v" + schemaVersion));
         }
     }
 }

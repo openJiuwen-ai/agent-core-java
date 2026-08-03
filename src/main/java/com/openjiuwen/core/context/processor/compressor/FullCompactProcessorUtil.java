@@ -427,7 +427,8 @@ final class FullCompactProcessorUtil {
 
     static Session getSessionRef(ModelContext context) {
         if (context instanceof SessionModelContext sessionModelContext) {
-            return sessionModelContext.sessionRef();
+            Object ref = sessionModelContext.sessionRef();
+            return ref instanceof Session session ? session : null;
         }
         return null;
     }

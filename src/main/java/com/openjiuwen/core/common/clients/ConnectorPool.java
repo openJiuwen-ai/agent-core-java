@@ -8,65 +8,92 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Base connector pool with reference counting.
- * 
- * @since 0.1.7
+ * Base class for connector pools with reference counting.
+ * <p>
+ * Mirrors Python's {@code ConnectorPool} in
+ * {@code openjiuwen/core/common/clients/connector_pool.py}.
+ *
+ * <p>This class provides reference counting and lifecycle management for
+ * various types of connector pools.
  */
 public abstract class ConnectorPool extends RefCountedResource {
-    private final ConnectorPoolConfig config;
 
-    /**
-     * ConnectorPool.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
+    protected final ConnectorPoolConfig config;
+    protected Object conn;
+
     protected ConnectorPool(ConnectorPoolConfig config) {
+        super();
         this.config = config;
+        this.conn = null;
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public ConnectorPoolConfig getConfig() {
         return config;
     }
 
     /**
-     * conn.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the underlying connector instance.
+     *
+     * @return the connector instance
      */
-    public abstract Object conn();
+    public abstract Object getConn();
 
     /**
-     * isExpired.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Python-compatible alias for {@link #getConn()}.
+     *
+     * <p>Mirrors Python's {@code ConnectorPool.conn()}.</p>
+     *
+     * @return the connector instance
      */
-    public boolean isExpired() {
-        long now = System.currentTimeMillis();
-        if (config.getTtl() != null && (now - getCreatedAtMillis()) > config.getTtl() * 1000L) {
-            return true;
-        }
-        return config.getMaxIdleTime() != null && (now - getLastUsedMillis()) > config.getMaxIdleTime() * 1000L;
+    public Object conn() {
+        return getConn();
     }
 
     /**
-     * stat.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Check if the connector pool has expired.
+     *
+     * @return true if the pool has exceeded its TTL or max idle time
+     */
+    public boolean isExpired() {
+        double currentTime = System.currentTimeMillis() / 1000.0d;
+
+        if (config.getTtl() != null && (currentTime - getCreatedAt()) > config.getTtl()) {
+            return true;
+        }
+
+        if (config.getMaxIdleTime() != null && (currentTime - getLastUsed()) > config.getMaxIdleTime()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public int incrementRef() {
+        return super.incrementRef();
+    }
+
+    /**
+     * Get statistics for this connector pool.
+     *
+     * @return a map containing pool statistics
+     */
+    public Map<String, Object> getStat() {
+        Map<String, Object> stat = new LinkedHashMap<>();
+        stat.put("closed", isClosed());
+        stat.put("ref_detail", getStats());
+        stat.put("config_key", config.generateKey());
+        return stat;
+    }
+
+    /**
+     * Python-compatible alias for {@link #getStat()}.
+     *
+     * <p>Mirrors Python's {@code ConnectorPool.stat()}.</p>
+     *
+     * @return a map containing pool statistics
      */
     public Map<String, Object> stat() {
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("isClosed", isClosed());
-        stats.put("ref_detail", getStats());
-        return stats;
+        return getStat();
     }
 }

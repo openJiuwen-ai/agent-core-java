@@ -6,132 +6,126 @@ package com.openjiuwen.core.memory.lite;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Frontmatter utilities for coding memory.
- * 
- * @since 0.1.7
+ * Frontmatter helpers for coding memory files.
+ *
+ * <p>Mirrors Python's {@code openjiuwen/core/memory/lite/frontmatter.py}.</p>
  */
 public final class FrontmatterUtils {
-    /**
-     * VALID_TYPES.
-     * 
-     * @since 0.1.7
-     */
-    public static final Set<String> VALID_TYPES = Set.of("user", "feedback", "project", "reference");
 
-    /**
-     * FrontmatterUtils.
-     * 
-     * @since 0.1.7
-     */
+    private static final Set<String> VALID_TYPES = Set.of("user", "feedback", "project", "reference");
+
     private FrontmatterUtils() {
+        // Utility class
     }
 
     /**
-     * parseFrontmatter.
-     * 
-     * @param content content
-     * @return the result
-     * @since 0.1.7
+     * Parse frontmatter from the start of a content string.
+     *
+     * @param content source content
+     * @return parsed frontmatter map or null when no frontmatter exists
      */
     public static Map<String, String> parseFrontmatter(String content) {
-        String normalized = content == null ? "" : content.trim();
-        if (!normalized.startsWith("---")) {
-            return Map.of();
+        String text = content != null ? content.trim() : "";
+        if (!text.startsWith("---")) {
+            return null;
         }
-        int end = normalized.indexOf("---", 3);
-        if (end < 0) {
-            return Map.of();
+        int end = text.indexOf("---", 3);
+        if (end == -1) {
+            return null;
         }
         Map<String, String> result = new LinkedHashMap<>();
-        for (String line : normalized.substring(3, end).trim().split("\n")) {
-            int sep = line.indexOf(':');
-            if (sep > 0) {
-                result.put(line.substring(0, sep).trim(), line.substring(sep + 1).trim());
+        String body = text.substring(3, end).trim();
+        for (String line : body.split("\n")) {
+            int colonIdx = line.indexOf(':');
+            if (colonIdx >= 0) {
+                String key = line.substring(0, colonIdx).trim();
+                String value = line.substring(colonIdx + 1).trim();
+                result.put(key, value);
             }
         }
-        return result.isEmpty() ? Map.of() : result;
+        return result.isEmpty() ? null : result;
     }
 
     /**
-     * validateFrontmatter.
-     * 
-     * @param frontmatter frontmatter
-     * @return the result
-     * @since 0.1.7
+     * Validate required frontmatter fields.
+     *
+     * @param frontmatter parsed frontmatter
+     * @return validation result matching the Python boolean/message tuple
      */
-    public static Map.Entry<Boolean, String> validateFrontmatter(Map<String, String> frontmatter) {
-        for (String field : List.of("name", "description", "type")) {
-            if (frontmatter == null || !frontmatter.containsKey(field) || frontmatter.get(field).isBlank()) {
-                return Map.entry(false, "Missing required field: " + field);
+    public static ValidationResult validateFrontmatter(Map<String, String> frontmatter) {
+        for (String field : new String[]{"name", "description", "type"}) {
+            if (frontmatter == null || isBlank(frontmatter.get(field))) {
+                return new ValidationResult(false, "Missing required field: " + field);
             }
         }
         if (!VALID_TYPES.contains(frontmatter.get("type"))) {
-            return Map.entry(false, "type must be one of: " + VALID_TYPES);
+            return new ValidationResult(false, "type must be one of: ('user', 'feedback', 'project', 'reference')");
         }
-        return Map.entry(true, "");
+        return new ValidationResult(true, "");
     }
 
     /**
-     * enrichFrontmatter.
-     * 
-     * @param frontmatter frontmatter
-     * @param isEdit isEdit
-     * @return the result
-     * @since 0.1.7
+     * Fill created and updated timestamps.
+     *
+     * @param frontmatter parsed frontmatter
+     * @param isEdit whether this is an edit operation
+     * @return the same frontmatter map after mutation
      */
     public static Map<String, String> enrichFrontmatter(Map<String, String> frontmatter, boolean isEdit) {
-        Map<String, String> result = new LinkedHashMap<>(frontmatter);
         String today = LocalDate.now().toString();
         if (!isEdit) {
-            result.putIfAbsent("created_at", today);
+            frontmatter.putIfAbsent("created_at", today);
         }
-        result.put("updated_at", today);
-        return result;
+        frontmatter.put("updated_at", today);
+        return frontmatter;
     }
 
     /**
-     * rebuildContentWithFrontmatter.
-     * 
-     * @param content content
-     * @param frontmatter frontmatter
-     * @return the result
-     * @since 0.1.7
+     * Rebuild content with updated frontmatter and the preserved body.
+     *
+     * @param content original content
+     * @param frontmatter parsed frontmatter
+     * @return content with rebuilt frontmatter
      */
     public static String rebuildContentWithFrontmatter(String content, Map<String, String> frontmatter) {
         String body = extractBody(content);
-        StringBuilder builder = new StringBuilder();
-        builder.append("---\n");
+        StringBuilder builder = new StringBuilder("---");
         for (Map.Entry<String, String> entry : frontmatter.entrySet()) {
-            builder.append(entry.getKey()).append(": ").append(entry.getValue()).append('\n');
+            builder.append('\n').append(entry.getKey()).append(": ").append(entry.getValue());
         }
-        builder.append("---");
-        if (!body.isBlank()) {
+        builder.append('\n').append("---");
+        if (!body.isEmpty()) {
             builder.append("\n\n").append(body);
         }
         return builder.toString();
     }
 
-    /**
-     * extractBody.
-     * 
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    public static String extractBody(String content) {
-        String normalized = content == null ? "" : content.trim();
-        if (!normalized.startsWith("---")) {
-            return normalized;
+    private static String extractBody(String content) {
+        String text = content != null ? content.trim() : "";
+        if (!text.startsWith("---")) {
+            return text;
         }
-        int end = normalized.indexOf("---", 3);
-        if (end < 0) {
+        int end = text.indexOf("---", 3);
+        if (end == -1) {
             return "";
         }
-        return normalized.substring(end + 3).trim();
+        return text.substring(end + 3).trim();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    /**
+     * Boolean/message tuple matching the Python validator return shape.
+     *
+     * @param valid validation result
+     * @param message validation message
+     */
+    public record ValidationResult(boolean valid, String message) {
     }
 }

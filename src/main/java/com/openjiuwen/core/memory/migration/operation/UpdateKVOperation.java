@@ -4,37 +4,28 @@
 
 package com.openjiuwen.core.memory.migration.operation;
 
-import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
 
-import java.util.function.Consumer;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
- * Update a key-value pair via a provided callable.
- * 
- * @since 0.1.7
+ * <p>Mirrors Python's {@code UpdateKVOperation} in
+ * {@code openjiuwen/core/memory/migration/operation/operations.py}.</p>
  */
 public class UpdateKVOperation extends BaseOperation {
-    private final Consumer<BaseKVStore> updateFunc;
 
-    /**
-     * UpdateKVOperation.
-     * 
-     * @param metadata metadata
-     * @param updateFunc updateFunc
-     * @since 0.1.7
-     */
-    public UpdateKVOperation(OperationMetadata metadata, Consumer<BaseKVStore> updateFunc) {
+    private final Function<BaseKVStore, CompletableFuture<Void>> updateFunc;
+
+    public UpdateKVOperation(
+            OperationMetadata metadata,
+            Function<BaseKVStore, CompletableFuture<Void>> updateFunc
+    ) {
         super(metadata);
         this.updateFunc = updateFunc;
     }
 
-    /**
-     * getUpdateFunc.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Consumer<BaseKVStore> getUpdateFunc() {
+    public Function<BaseKVStore, CompletableFuture<Void>> getUpdateFunc() {
         return updateFunc;
     }
 }

@@ -6,83 +6,74 @@ package com.openjiuwen.core.common.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ValidationError;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
- * Schema utility class for handling JSON Schema validation, data formatting,
- * and default value population.
- * <p>
- * Java equivalent of Python's {@code SchemaUtils}. Uses Jackson for JSON
- * processing. Provides:
+ * Mirrors Python's {@code SchemaUtils} in
+ * {@code openjiuwen/core/common/utils/schema_utils.py}.
+ *
+ * <p>Schema utility class for handling JSON Schema validation, data formatting,
+ * and default value population. Uses Jackson for JSON processing. Provides:
  * <ul>
- * <li>{@link #formatWithSchema} — format data according to schema, filling defaults</li>
- * <li>{@link #validateWithSchema} — validate data against a JSON Schema</li>
- * <li>{@link #getSchemaDict} — extract schema from a class via Jackson</li>
+ *   <li>{@link #formatWithSchema} — format data according to schema, filling defaults</li>
+ *   <li>{@link #validateWithSchema} — validate data against a JSON Schema</li>
+ *   <li>{@link #getSchemaDict} — extract schema from a class via Jackson</li>
  * </ul>
- * 
- * @since 0.1.7
  */
 public final class SchemaUtils {
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * SchemaUtils.
-     * 
-     * @since 0.1.7
-     */
     private SchemaUtils() {
     }
 
     /**
      * Format data according to the provided JSON Schema, filling in default values
      * for missing properties.
-     * 
-     * @param data the data to format (may be null)
+     *
+     * @param data   the data to format (may be null)
      * @param schema JSON Schema dictionary
      * @return formatted data with defaults populated
-     * @since 0.1.7
+     * @throws ValidationError if data is null or cannot be formatted
      */
-    public static Map<String, Object> formatWithSchema(Map<String, Object> data, Map<String, Object> schema) {
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       Map<String, Object> schema) {
         return formatWithSchema(data, schema, false, false);
     }
 
     /**
      * Format data according to the provided JSON Schema, optionally skipping
      * validation while still applying defaults.
-     * 
-     * @param data data
-     * @param schema schema
-     * @param skipValidate skipValidate
-     * @return the result
-     * @since 0.1.7
      */
-    public static Map<String, Object> formatWithSchema(Map<String, Object> data, Map<String, Object> schema,
-            boolean skipValidate) {
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       Map<String, Object> schema,
+                                                       boolean skipValidate) {
         return formatWithSchema(data, schema, false, skipValidate);
     }
 
     /**
-     * formatWithSchema.
-     * 
-     * @param data data
-     * @param schema schema
-     * @param skipNoneValue skipNoneValue
-     * @param skipValidate skipValidate
-     * @return the result
-     * @since 0.1.7
+     * Format data according to the provided JSON Schema, optionally removing null
+     * values and/or skipping validation.
+     *
+     * @param data          the data to format
+     * @param schema        JSON Schema dictionary
+     * @param skipNoneValue if true, recursively remove null values before formatting
+     * @param skipValidate  if true, skip schema validation
+     * @return formatted data with defaults populated
      */
     @SuppressWarnings("unchecked")
-    public static Map<String, Object> formatWithSchema(Map<String, Object> data, Map<String, Object> schema,
-            boolean skipNoneValue, boolean skipValidate) {
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       Map<String, Object> schema,
+                                                       boolean skipNoneValue,
+                                                       boolean skipValidate) {
         if (data == null) {
-            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, null,
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, null,
                     Map.of("reason", "data is null", "data", "null"));
         }
 
@@ -98,47 +89,40 @@ public final class SchemaUtils {
         } catch (ValidationError e) {
             throw e;
         } catch (Exception e) {
-            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, e,
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, e,
                     Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
         }
     }
 
     /**
-     * validateWithSchema.
-     * 
-     * @param data data
-     * @param schema schema
-     * @since 0.1.7
+     * Validate data against a JSON Schema dictionary.
+     * <p>
+     * Performs basic structural validation: required fields, type checking,
+     * string constraints (minLength, maxLength), numeric constraints (minimum, maximum).
+     *
+     * @param data   the data to validate
+     * @param schema JSON Schema dictionary
+     * @throws ValidationError if validation fails
      */
     @SuppressWarnings("unchecked")
-    public static void validateWithSchema(Map<String, Object> data, Map<String, Object> schema) {
+    public static void validateWithSchema(Map<String, Object> data,
+                                          Map<String, Object> schema) {
         if (data == null) {
-            throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID, null, null, null,
+            throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                    null, null, null,
                     Map.of("reason", "data is null", "data", "null"));
         }
 
         try {
             Map<String, Object> properties = getMapOrEmpty(schema, "properties");
             List<String> required = getListOrEmpty(schema, "required");
-            Object additionalProperties = schema.get("additionalProperties");
-
-            // Check for extra fields not in schema
-            // Default to false when additionalProperties is not specified (matches Python behavior)
-            boolean hasPropertyConstraint = !properties.isEmpty();
-            boolean allowAdditional =
-                !hasPropertyConstraint || (additionalProperties instanceof Boolean && ((Boolean) additionalProperties));
-            if (!allowAdditional) {
-                for (String field : data.keySet()) {
-                    if (!properties.containsKey(field)) {
-                        throw new IllegalArgumentException("Unexpected keyword argument: " + field);
-                    }
-                }
-            }
 
             // Check required fields
             for (String field : required) {
                 if (!data.containsKey(field)) {
-                    throw new IllegalArgumentException("Missing required field: " + field);
+                    throw new IllegalArgumentException(
+                            "Missing required field: " + field);
                 }
             }
 
@@ -150,23 +134,26 @@ public final class SchemaUtils {
                 }
 
                 Object value = data.get(fieldName);
+                if (value == null && !required.contains(fieldName)) {
+                    continue;
+                }
                 Map<String, Object> fieldSchema = (Map<String, Object>) entry.getValue();
                 validateField(fieldName, value, fieldSchema);
             }
         } catch (ValidationError e) {
             throw e;
         } catch (Exception e) {
-            throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID, null, null, e,
+            throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                    null, null, e,
                     Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
         }
     }
 
     /**
      * Get a schema dictionary representation from a Java class using Jackson.
-     * 
+     *
      * @param clazz the class to introspect
      * @return JSON Schema-like dictionary
-     * @since 0.1.7
      */
     public static Map<String, Object> getSchemaDict(Class<?> clazz) {
         if (clazz == null) {
@@ -174,8 +161,9 @@ public final class SchemaUtils {
         }
 
         try {
-            JsonNode schemaNode =
-                MAPPER.valueToTree(MAPPER.getSerializationConfig().introspect(MAPPER.constructType(clazz)));
+            JsonNode schemaNode = MAPPER.valueToTree(
+                    MAPPER.getSerializationConfig()
+                            .introspect(MAPPER.constructType(clazz)));
             // Build a simple schema from the class fields
             return buildSchemaFromClass(clazz);
         } catch (Exception e) {
@@ -183,18 +171,187 @@ public final class SchemaUtils {
         }
     }
 
+    /**
+     * Convert a JSON Schema dictionary to a lightweight dynamic schema model.
+     *
+     * <p>Mirrors Python's {@code SchemaUtils.get_schema_class} in
+     * {@code openjiuwen/core/common/utils/schema_utils.py} for JSON object
+     * schemas used by the translated tests.</p>
+     *
+     * @param schema JSON Schema dictionary
+     * @return a dynamic schema model class, or null when schema is null
+     */
+    public static DynamicSchemaModelClass getSchemaClass(Map<String, Object> schema) {
+        if (schema == null) {
+            return null;
+        }
+        return new DynamicSchemaModelClass(schema);
+    }
+
+    /**
+     * Format data using a dynamic schema model, filling defaults and preserving
+     * original alias names in the returned map.
+     *
+     * @param data input values
+     * @param schema dynamic schema model class
+     * @return formatted map using schema aliases
+     */
+    public static Map<String, Object> formatWithSchema(Map<String, Object> data,
+                                                       DynamicSchemaModelClass schema) {
+        if (schema == null) {
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, null,
+                    Map.of("reason", "schema is null", "data", String.valueOf(data)));
+        }
+        try {
+            return schema.newInstance(data).modelDump(true);
+        } catch (ValidationError e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID,
+                    null, null, e,
+                    Map.of("reason", e.getMessage(), "data", String.valueOf(data)));
+        }
+    }
+
     // ==================== Internal helpers ====================
 
     /**
+     * Lightweight Java counterpart for a Python Pydantic model class generated
+     * from a JSON Schema dictionary.
+     */
+    public static final class DynamicSchemaModelClass {
+        private final Map<String, Object> schema;
+        private final Map<String, FieldSpec> fields;
+        private final boolean allowExtra;
+
+        private DynamicSchemaModelClass(Map<String, Object> schema) {
+            this.schema = deepCopyMap(schema);
+            this.fields = buildFieldSpecs(this.schema);
+            this.allowExtra = Boolean.TRUE.equals(this.schema.get("additionalProperties"));
+        }
+
+        public DynamicSchemaModel newInstance(Map<String, Object> data) {
+            Map<String, Object> input = data == null ? Collections.emptyMap() : data;
+            Map<String, Object> values = new LinkedHashMap<>();
+
+            for (FieldSpec field : fields.values()) {
+                Object value;
+                if (input.containsKey(field.alias())) {
+                    value = input.get(field.alias());
+                } else if (input.containsKey(field.name())) {
+                    value = input.get(field.name());
+                } else if (field.schema().containsKey("default")) {
+                    value = copyDefaultValue(field.schema().get("default"));
+                } else if (field.required()) {
+                    throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                            null, null, null,
+                            Map.of("reason", "Missing required field: " + field.alias(), "data", input.toString()));
+                } else {
+                    value = null;
+                }
+
+                if (value != null) {
+                    validateField(field.alias(), value, field.schema());
+                }
+                values.put(field.name(), value);
+            }
+
+            if (!allowExtra) {
+                for (String key : input.keySet()) {
+                    if (!isKnownField(key)) {
+                        throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID,
+                                null, null, null,
+                                Map.of("reason", "Extra field not permitted: " + key, "data", input.toString()));
+                    }
+                }
+            }
+
+            return new DynamicSchemaModel(fields, values);
+        }
+
+        public Map<String, Object> getOriginalSchema() {
+            return deepCopyMap(schema);
+        }
+
+        private boolean isKnownField(String key) {
+            for (FieldSpec field : fields.values()) {
+                if (field.name().equals(key) || field.alias().equals(key)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static Map<String, FieldSpec> buildFieldSpecs(Map<String, Object> schema) {
+            Map<String, Object> properties = getMapOrEmpty(schema, "properties");
+            List<String> required = getListOrEmpty(schema, "required");
+            Map<String, FieldSpec> specs = new LinkedHashMap<>();
+
+            for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                String alias = entry.getKey();
+                String name = sanitizeFieldName(alias, properties);
+                Map<String, Object> fieldSchema = entry.getValue() instanceof Map
+                        ? new LinkedHashMap<>((Map<String, Object>) entry.getValue())
+                        : new LinkedHashMap<>();
+                specs.put(name, new FieldSpec(name, alias, required.contains(alias), fieldSchema));
+            }
+
+            return specs;
+        }
+
+        private static String sanitizeFieldName(String fieldName, Map<String, Object> properties) {
+            if (!fieldName.startsWith("_")) {
+                return fieldName;
+            }
+            String sanitized = fieldName.replaceFirst("^_+", "");
+            if (sanitized.isEmpty() || properties.containsKey(sanitized)) {
+                return "field" + fieldName;
+            }
+            return sanitized;
+        }
+    }
+
+    /**
+     * Lightweight Java counterpart for a Python Pydantic model instance.
+     */
+    public static final class DynamicSchemaModel {
+        private final Map<String, FieldSpec> fields;
+        private final Map<String, Object> values;
+
+        private DynamicSchemaModel(Map<String, FieldSpec> fields, Map<String, Object> values) {
+            this.fields = new LinkedHashMap<>(fields);
+            this.values = new LinkedHashMap<>(values);
+        }
+
+        public Object get(String fieldName) {
+            return values.get(fieldName);
+        }
+
+        public Map<String, Object> modelDump() {
+            return modelDump(false);
+        }
+
+        public Map<String, Object> modelDump(boolean byAlias) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<String, FieldSpec> entry : fields.entrySet()) {
+                String outputName = byAlias ? entry.getValue().alias() : entry.getValue().name();
+                result.put(outputName, copyDefaultValue(values.get(entry.getKey())));
+            }
+            return result;
+        }
+    }
+
+    private record FieldSpec(String name, String alias, boolean required, Map<String, Object> schema) {
+    }
+
+    /**
      * Apply default values from schema to data for missing fields.
-     * 
-     * @param data data
-     * @param schema schema
-     * @return the result
-     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> applyDefaults(Map<String, Object> data, Map<String, Object> schema) {
+    private static Map<String, Object> applyDefaults(Map<String, Object> data,
+                                                     Map<String, Object> schema) {
         Map<String, Object> result = new LinkedHashMap<>(data);
         Map<String, Object> properties = getMapOrEmpty(schema, "properties");
 
@@ -204,109 +361,46 @@ public final class SchemaUtils {
 
             if (!result.containsKey(fieldName) && fieldSchema.containsKey("default")) {
                 Object defaultValue = fieldSchema.get("default");
-                String type = fieldSchema.get("type") instanceof String t ? t : null;
-                if (type != null && defaultValue != null) {
-                    validateDefaultValueType(fieldName, defaultValue, type, data);
-                }
-                if (defaultValue instanceof Map) {
-                    result.put(fieldName, new LinkedHashMap<>((Map<?, ?>) defaultValue));
-                } else if (defaultValue instanceof List) {
-                    result.put(fieldName, new ArrayList<>((List<?>) defaultValue));
-                } else {
-                    result.put(fieldName, defaultValue);
-                }
+                // Deep copy mutable defaults
+                result.put(fieldName, copyDefaultValue(defaultValue));
             }
         }
 
         return result;
     }
 
-    /**
-     * validateDefaultValueType.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @param expectedType expectedType
-     * @param data data
-     * @since 0.1.7
-     */
-    private static void validateDefaultValueType(String fieldName, Object value, String expectedType,
-            Map<String, Object> data) {
-        boolean typeMatch = switch (expectedType) {
-            case "string" -> value instanceof String;
-            case "integer" -> value instanceof Number;
-            case "number" -> value instanceof Number;
-            case "boolean" -> value instanceof Boolean;
-            case "array" -> value instanceof List;
-            case "object" -> value instanceof Map;
-            default -> true;
-        };
-
-        if (!typeMatch) {
-            String pydanticType = switch (expectedType) {
-                case "string" -> "string_type";
-                case "integer" -> "int_type";
-                case "number" -> "float_type";
-                case "boolean" -> "bool_type";
-                case "array" -> "list_type";
-                case "object" -> "dict_type";
-                default -> expectedType + "_type";
-            };
-            String inputType = pydanticInputType(value);
-            String inputValue = String.valueOf(value);
-            String reason =
-                "1 validation error for DynamicModel\n" + fieldName + "\n" + "  Input should be a valid " + expectedType
-                        + " [type=" + pydanticType + ", input_value=" + inputValue + ", input_type=" + inputType + "]";
-            throw new ValidationError(StatusCode.SCHEMA_VALIDATE_INVALID, null, null, null,
-                    Map.of("reason", reason, "data", String.valueOf(data)));
+    @SuppressWarnings("unchecked")
+    private static Object copyDefaultValue(Object defaultValue) {
+        if (defaultValue instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) defaultValue);
+        } else if (defaultValue instanceof List) {
+            return new ArrayList<>((List<?>) defaultValue);
         }
+        return defaultValue;
     }
 
-    /**
-     * pydanticInputType.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String pydanticInputType(Object value) {
-        if (value instanceof Integer) {
-            return "int";
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map) {
+                copy.put(entry.getKey(), deepCopyMap((Map<String, Object>) value));
+            } else if (value instanceof List) {
+                copy.put(entry.getKey(), new ArrayList<>((List<?>) value));
+            } else {
+                copy.put(entry.getKey(), value);
+            }
         }
-        if (value instanceof Long) {
-            return "int";
-        }
-        if (value instanceof Double) {
-            return "float";
-        }
-        if (value instanceof Float) {
-            return "float";
-        }
-        if (value instanceof String) {
-            return "str";
-        }
-        if (value instanceof Boolean) {
-            return "bool";
-        }
-        if (value instanceof List) {
-            return "list";
-        }
-        if (value instanceof Map) {
-            return "dict";
-        }
-        return value.getClass().getSimpleName();
+        return copy;
     }
 
     /**
      * Validate a single field value against its schema constraints.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @param fieldSchema fieldSchema
-     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    private static void validateField(String fieldName, Object value, Map<String, Object> fieldSchema) {
+    private static void validateField(String fieldName, Object value,
+                                      Map<String, Object> fieldSchema) {
         String type = (String) fieldSchema.get("type");
         if (type == null) {
             return;
@@ -356,82 +450,63 @@ public final class SchemaUtils {
                     throw new IllegalArgumentException("Input should be a valid object");
                 }
             }
-            default -> {/* no-op for unknown types */}
+            default -> { /* no-op for unknown types */ }
         }
     }
 
-    /**
-     * validateStringConstraints.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @param fieldSchema fieldSchema
-     * @since 0.1.7
-     */
-    private static void validateStringConstraints(String fieldName, String value, Map<String, Object> fieldSchema) {
+    private static void validateStringConstraints(String fieldName, String value,
+                                                  Map<String, Object> fieldSchema) {
         Integer minLength = getIntOrNull(fieldSchema, "minLength");
         Integer maxLength = getIntOrNull(fieldSchema, "maxLength");
 
         if (minLength != null && value.length() < minLength) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' length " + value.length() + " is less than minLength " + minLength);
+                    "Field '" + fieldName + "' length " + value.length() +
+                            " is less than minLength " + minLength);
         }
         if (maxLength != null && value.length() > maxLength) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' length " + value.length() + " exceeds maxLength " + maxLength);
+                    "Field '" + fieldName + "' length " + value.length() +
+                            " exceeds maxLength " + maxLength);
         }
     }
 
-    /**
-     * validateNumericConstraints.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @param fieldSchema fieldSchema
-     * @since 0.1.7
-     */
-    private static void validateNumericConstraints(String fieldName, double value, Map<String, Object> fieldSchema) {
+    private static void validateNumericConstraints(String fieldName, double value,
+                                                   Map<String, Object> fieldSchema) {
         Number minimum = (Number) fieldSchema.get("minimum");
         Number maximum = (Number) fieldSchema.get("maximum");
 
         if (minimum != null && value < minimum.doubleValue()) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' value " + value + " is less than minimum " + minimum);
+                    "Field '" + fieldName + "' value " + value +
+                            " is less than minimum " + minimum);
         }
         if (maximum != null && value > maximum.doubleValue()) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' value " + value + " exceeds maximum " + maximum);
+                    "Field '" + fieldName + "' value " + value +
+                            " exceeds maximum " + maximum);
         }
     }
 
-    /**
-     * validateArrayConstraints.
-     * 
-     * @param fieldName fieldName
-     * @param value value
-     * @param fieldSchema fieldSchema
-     * @since 0.1.7
-     */
-    private static void validateArrayConstraints(String fieldName, List<?> value, Map<String, Object> fieldSchema) {
+    private static void validateArrayConstraints(String fieldName, List<?> value,
+                                                 Map<String, Object> fieldSchema) {
         Integer minItems = getIntOrNull(fieldSchema, "minItems");
         Integer maxItems = getIntOrNull(fieldSchema, "maxItems");
 
         if (minItems != null && value.size() < minItems) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' size " + value.size() + " is less than minItems " + minItems);
+                    "Field '" + fieldName + "' size " + value.size() +
+                            " is less than minItems " + minItems);
         }
         if (maxItems != null && value.size() > maxItems) {
             throw new IllegalArgumentException(
-                    "Field '" + fieldName + "' size " + value.size() + " exceeds maxItems " + maxItems);
+                    "Field '" + fieldName + "' size " + value.size() +
+                            " exceeds maxItems " + maxItems);
         }
     }
 
     /**
      * Build a basic schema dictionary from class fields via reflection.
-     * 
-     * @param clazz clazz
-     * @return the result
-     * @since 0.1.7
      */
     private static Map<String, Object> buildSchemaFromClass(Class<?> clazz) {
         Map<String, Object> schema = new LinkedHashMap<>();
@@ -445,11 +520,11 @@ public final class SchemaUtils {
 
             if (fieldType == String.class) {
                 fieldSchema.put("type", "string");
-            } else if (fieldType == int.class || fieldType == Integer.class || fieldType == long.class
-                    || fieldType == Long.class) {
+            } else if (fieldType == int.class || fieldType == Integer.class
+                    || fieldType == long.class || fieldType == Long.class) {
                 fieldSchema.put("type", "integer");
-            } else if (fieldType == double.class || fieldType == Double.class || fieldType == float.class
-                    || fieldType == Float.class) {
+            } else if (fieldType == double.class || fieldType == Double.class
+                    || fieldType == float.class || fieldType == Float.class) {
                 fieldSchema.put("type", "number");
             } else if (fieldType == boolean.class || fieldType == Boolean.class) {
                 fieldSchema.put("type", "boolean");
@@ -469,14 +544,6 @@ public final class SchemaUtils {
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * getMapOrEmpty.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> getMapOrEmpty(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value instanceof Map) {
@@ -486,14 +553,6 @@ public final class SchemaUtils {
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * getListOrEmpty.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static List<String> getListOrEmpty(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value instanceof List) {
@@ -502,14 +561,6 @@ public final class SchemaUtils {
         return Collections.emptyList();
     }
 
-    /**
-     * getIntOrNull.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static Integer getIntOrNull(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value instanceof Number) {
@@ -521,11 +572,13 @@ public final class SchemaUtils {
     // ==================== Null-value cleaning ====================
 
     /**
-     * removeNoneValues.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
+     * Recursively remove null values from a data structure.
+     * <p>
+     * Traverses through maps and lists, removing any null values while
+     * preserving the structure for non-null values.
+     *
+     * @param data the input map to clean
+     * @return a new map without null values, or null if all values were null
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> removeNoneValues(Map<String, Object> data) {
@@ -544,10 +597,6 @@ public final class SchemaUtils {
 
     /**
      * Recursively clean a single value.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static Object removeNoneValue(Object value) {

@@ -4,28 +4,69 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Input data for BEFORE/AFTER_TOOL_CALL events.
- * 
- * @since 0.1.7
+ * Input data for before/after tool call events.
+ *
+ * <p>Mirrors Python's {@code ToolCallInputs} in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolCallInputs implements EventInputs {
-    private ToolCall toolCall;
-    @Builder.Default
+    @JsonProperty("tool_call")
+    private Object toolCall;
+
+    @JsonProperty("tool_name")
     private String toolName = "";
+
+    @JsonProperty("tool_args")
     private Object toolArgs;
+
+    @JsonProperty("tool_result")
     private Object toolResult;
-    private ToolMessage toolMsg;
+
+    @JsonProperty("tool_msg")
+    private Object toolMsg;
+
+    public Object getToolCall() {
+        return toolCall;
+    }
+
+    public void setToolCall(Object toolCall) {
+        this.toolCall = toolCall;
+    }
+
+    public String getToolName() {
+        return toolName;
+    }
+
+    public void setToolName(String toolName) {
+        this.toolName = toolName == null ? "" : toolName;
+    }
+
+    public Object getToolArgs() {
+        return toolArgs;
+    }
+
+    public void setToolArgs(Object toolArgs) {
+        this.toolArgs = toolArgs;
+    }
+
+    public Object getToolResult() {
+        return toolResult;
+    }
+
+    public void setToolResult(Object toolResult) {
+        this.toolResult = toolResult;
+    }
+
+    public Object getToolMsg() {
+        return toolMsg;
+    }
+
+    public void setToolMsg(Object toolMsg) {
+        this.toolMsg = toolMsg;
+    }
 }

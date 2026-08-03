@@ -6,126 +6,114 @@ package com.openjiuwen.core.memory.migration.migrator;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.memory.manage.mem_model.SupportMemoryType;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Vector store migrator.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code VectorMigrator} in
+ * {@code openjiuwen/core/memory/migration/migrator/vector_migrator.py}.
  */
 public class VectorMigrator {
-    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
-    private final SemanticStore semanticStore;
+    private static final String VECTOR_PREFIX = "vector_";
 
-    /**
-     * VectorMigrator.
-     * 
-     * @param semanticStore semanticStore
-     * @since 0.1.7
-     */
-    public VectorMigrator(SemanticStore semanticStore) {
-        this.semanticStore = semanticStore;
+    private final BaseVectorStore vectorStore;
+
+    public VectorMigrator(BaseVectorStore vectorStore) {
+        this.vectorStore = Objects.requireNonNull(vectorStore, "vectorStore");
     }
 
-    /**
-     * tryMigrate.
-     * 
-     * @param entityKey entityKey
-     * @param operations operations
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean tryMigrate(String entityKey, List<BaseOperation> operations) {
-        if (operations == null || operations.isEmpty()) {
-            return true;
-        }
-        try {
-            List<String> collectionNames = findCollections(entityKey);
-            for (String collectionName : collectionNames) {
-                Map<String, Object> metadata = semanticStore.getCollectionMetadata(collectionName);
-                int currentVersion = metadata.get("schema_version") instanceof Number number ? number.intValue() : 0;
-
-                List<BaseOperation> operationsToApply = new ArrayList<>();
-                for (BaseOperation operation : operations) {
-                    if (operation.getSchemaVersion() > currentVersion) {
-                        operationsToApply.add(operation);
+    public CompletableFuture<Boolean> tryMigrate(String entityKey, List<BaseOperation> operations) {
+        return findCollections(entityKey)
+                .thenCompose(collectionNames -> migrateCollections(collectionNames, operations))
+                .thenApply(ignored -> Boolean.TRUE)
+                .exceptionally(exception -> {
+                    Throwable cause = exception instanceof java.util.concurrent.CompletionException ce
+                            ? ce.getCause() : exception;
+                    if (cause instanceof UnsupportedOperationException) {
+                        return Boolean.FALSE;
                     }
-                }
-                if (operationsToApply.isEmpty()) {
-                    continue;
-                }
-
-                boolean updated = semanticStore.updateSchema(collectionName, operationsToApply);
-                if (!updated) {
-                    MEMORY_LOGGER.error(
-                            "[{}] Vector schema operations are not supported by current store, collection={}",
-                            LogEventType.MEMORY_INIT, collectionName);
-                    return false;
-                }
-
-                int maxVersion =
-                    operationsToApply.stream().mapToInt(BaseOperation::getSchemaVersion).max().orElse(currentVersion);
-                semanticStore.updateCollectionMetadata(collectionName, Map.of("schema_version", maxVersion));
-                MEMORY_LOGGER.info("[{}] Applied {} vector migration operations for collection {} -> schema_version={}",
-                        LogEventType.MEMORY_INIT, operationsToApply.size(), collectionName, maxVersion);
-            }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Vector migration failed for entity {}: {}", LogEventType.MEMORY_INIT, entityKey,
-                    e.getMessage());
-            return false;
-        }
-        return true;
+                    if (cause instanceof RuntimeException re) {
+                        throw re;
+                    }
+                    throw new RuntimeException(cause);
+                });
     }
 
-    /**
-     * findCollections.
-     * 
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> findCollections(String memType) {
-        String normalized =
-            memType != null && memType.startsWith("vector_") ? memType.substring("vector_".length()) : memType;
+    private CompletableFuture<Void> migrateCollections(List<String> collectionNames, List<BaseOperation> operations) {
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (String collectionName : collectionNames) {
+            chain = chain.thenCompose(ignored -> migrateCollection(collectionName, operations));
+        }
+        return chain;
+    }
+
+    private CompletableFuture<Void> migrateCollection(String collectionName, List<BaseOperation> operations) {
+        return vectorStore.getCollectionMetadata(collectionName)
+                .thenCompose(metadata -> {
+                    int currentVersion = readSchemaVersion(metadata);
+                    List<BaseOperation> operationsToApply = operations.stream()
+                            .filter(operation -> operation.getSchemaVersion() > currentVersion)
+                            .toList();
+                    if (operationsToApply.isEmpty()) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    int maxVersion = operationsToApply.stream()
+                            .mapToInt(BaseOperation::getSchemaVersion)
+                            .max()
+                            .orElse(currentVersion);
+                    return vectorStore.updateSchema(collectionName, operationsToApply)
+                            .thenCompose(ignored -> vectorStore.updateCollectionMetadata(
+                                    collectionName,
+                                    Map.of("schema_version", maxVersion)
+                            ));
+                });
+    }
+
+    private CompletableFuture<List<String>> findCollections(String memTypeStr) {
+        String normalized = normalizeMemoryType(memTypeStr);
         validateMemoryType(normalized);
-
-        List<String> allCollections = semanticStore.listCollectionNames();
         String suffix = "_" + normalized;
-        List<String> matched = new ArrayList<>();
-        for (String collectionName : allCollections) {
-            if (collectionName != null && collectionName.endsWith(suffix)) {
-                matched.add(collectionName);
-            }
-        }
-        return matched;
+        return vectorStore.listCollectionNames()
+                .thenApply(collectionNames -> collectionNames.stream()
+                        .filter(collectionName -> collectionName.endsWith(suffix))
+                        .toList());
     }
 
-    /**
-     * validateMemoryType.
-     * 
-     * @param memType memType
-     * @since 0.1.7
-     */
-    private void validateMemoryType(String memType) {
-        Set<String> supportedTypes = new LinkedHashSet<>();
-        for (SupportMemoryType type : SupportMemoryType.values()) {
-            supportedTypes.add(type.getValue());
+    private String normalizeMemoryType(String memTypeStr) {
+        if (memTypeStr != null && memTypeStr.startsWith(VECTOR_PREFIX)) {
+            return memTypeStr.substring(VECTOR_PREFIX.length());
         }
-        if (!supportedTypes.contains(memType)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR, "error_msg",
-                    "Unsupported memory type: '" + memType + "'. Supported types: " + supportedTypes);
+        return memTypeStr;
+    }
+
+    private void validateMemoryType(String memTypeStr) {
+        List<String> supportedTypes = Arrays.stream(SupportMemoryType.values())
+                .map(SupportMemoryType::getValue)
+                .sorted()
+                .toList();
+        if (!supportedTypes.contains(memTypeStr)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR,
+                    "error_msg",
+                    "Unsupported memory type: '" + memTypeStr + "'. Supported types: " + supportedTypes
+            );
         }
+    }
+
+    private int readSchemaVersion(Map<String, Object> metadata) {
+        Object schemaVersion = metadata == null ? 0 : metadata.getOrDefault("schema_version", 0);
+        if (schemaVersion instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
     }
 }

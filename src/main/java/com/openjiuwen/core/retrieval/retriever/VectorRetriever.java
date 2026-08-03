@@ -4,121 +4,178 @@
 
 package com.openjiuwen.core.retrieval.retriever;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
- * Pure vector retriever.
- * 
- * @since 0.1.7
+ * Vector retriever implementation backed by vector-store search.
+ * <p>
+ * Mirrors Python's {@code VectorRetriever} in
+ * {@code openjiuwen/core/retrieval/retriever/vector_retriever.py}.
+ * </p>
  */
-public class VectorRetriever extends AbstractStoreBackedRetriever {
-    /**
-     * VectorRetriever.
-     * 
-     * @param vectorStore vectorStore
-     * @param embedModel embedModel
-     * @since 0.1.7
-     */
+public class VectorRetriever implements Retriever {
+
+    private static final String MODE_VECTOR = "vector";
+
+    private final VectorStore vectorStore;
+    private final Embedding embedModel;
+
+    public VectorRetriever(VectorStore vectorStore) {
+        this(vectorStore, null);
+    }
+
     public VectorRetriever(VectorStore vectorStore, Embedding embedModel) {
-        super(vectorStore, embedModel);
+        this.vectorStore = vectorStore;
+        this.embedModel = embedModel;
     }
 
-    /**
-     * retrieve.
-     * 
-     * @param query query
-     * @param topK topK
-     * @param scoreThreshold scoreThreshold
-     * @param mode mode
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode,
-            Map<String, Object> options) {
-        if (!"vector".equals(mode)) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
-                    "VectorRetriever only supports 'vector' mode, got " + mode);
-        }
-        if (embedModel == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
-                    "embed_model is required for vector search");
-        }
-        List<Float> queryVector = embedModel.embedQuery(query);
-        Map<String, Object> filters = options == null ? null : castMap(options.get("filters"));
-        List<SearchResult> searchResults = vectorStore.search(queryVector, topK, filters, options);
-        if (searchResults.isEmpty()) {
-            searchResults = vectorStore.sparseSearch(query, topK, filters, options);
-        }
-        return toRetrievalResults(searchResults, scoreThreshold);
+    public Embedding getEmbedModel() {
+        return embedModel;
     }
 
-    /**
-     * retrieveSearchResults.
-     * 
-     * @param query query
-     * @param topK topK
-     * @param mode mode
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options) {
-        if (embedModel == null) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
-                    "embed_model is required for vector search");
+    public List<RetrievalResult> retrieve(
+            String query,
+            int topK,
+            Double scoreThreshold,
+            String mode,
+            Map<String, Object> options
+    ) {
+        String actualMode = normalizeMode(mode);
+        if (!MODE_VECTOR.equals(actualMode)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+                    "error_msg",
+                    "VectorRetriever only supports 'vector' mode, got " + actualMode
+            );
         }
-        Map<String, Object> filters = options == null ? null : castMap(options.get("filters"));
-        List<SearchResult> searchResults = vectorStore.search(embedModel.embedQuery(query), topK, filters, options);
+
+        List<RetrievalResult> searchResults = fetchVectorThenSparse(query, topK);
+        List<RetrievalResult> retrievalResults = new ArrayList<>();
+        for (RetrievalResult result : searchResults) {
+            if (scoreThreshold != null && result.getScore() < scoreThreshold) {
+                continue;
+            }
+            retrievalResults.add(toRetrievalResult(result));
+        }
+        return List.copyOf(retrievalResults);
+    }
+
+    @Override
+    public List<List<RetrievalResult>> batchRetrieve(
+            List<String> queries,
+            int topK,
+            String mode,
+            Map<String, Object> options
+    ) {
+        if (queries == null || queries.isEmpty()) {
+            return List.of();
+        }
+        List<List<RetrievalResult>> results = new ArrayList<>(queries.size());
+        for (String query : queries) {
+            results.add(retrieve(query, topK, null, mode, options));
+        }
+        return List.copyOf(results);
+    }
+
+    @Override
+    public List<SearchResult> retrieveSearchResults(
+            String query,
+            int topK,
+            String mode,
+            Map<String, Object> options
+    ) {
+        return fetchVectorThenSparse(query, topK).stream()
+                .map(VectorRetriever::toSearchResult)
+                .toList();
+    }
+
+    @Override
+    public boolean supportsMode(String mode) {
+        return MODE_VECTOR.equals(normalizeMode(mode));
+    }
+
+    @Override
+    public void close() {
+        if (vectorStore != null) {
+            vectorStore.close();
+        }
+    }
+
+    private List<RetrievalResult> fetchVectorThenSparse(String query, int topK) {
+        if (embedModel == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+                    "error_msg",
+                    "embed_model is required for vector search"
+            );
+        }
+
+        List<Double> queryVector = await(embedModel.embedQuery(query));
+        List<RetrievalResult> searchResults = await(vectorStore.search(
+                queryVector,
+                topK,
+                VectorStore.VectorStoreFilter.none(),
+                Map.of()
+        ));
         if (searchResults.isEmpty()) {
-            searchResults = vectorStore.sparseSearch(query, topK, filters, options);
+            return await(vectorStore.sparseSearch(query, topK, VectorStore.VectorStoreFilter.none(), Map.of()));
         }
         return searchResults;
     }
 
-    /**
-     * supportsMode.
-     * 
-     * @param mode mode
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean supportsMode(String mode) {
-        return "vector".equals(mode);
+    private static RetrievalResult toRetrievalResult(RetrievalResult searchResult) {
+        Map<String, Object> metadata = new LinkedHashMap<>(searchResult.getMetadata());
+        Object metadataDocId = metadata.get("doc_id");
+        Object metadataChunkId = metadata.get("chunk_id");
+        return new RetrievalResult(
+                searchResult.getText(),
+                searchResult.getScore(),
+                metadata,
+                metadataDocId == null ? null : String.valueOf(metadataDocId),
+                metadataChunkId == null ? null : String.valueOf(metadataChunkId)
+        );
     }
 
-    static List<RetrievalResult> toRetrievalResults(List<SearchResult> searchResults, Double scoreThreshold) {
-        List<RetrievalResult> results = new ArrayList<>();
-        for (SearchResult result : searchResults) {
-            if (scoreThreshold != null && result.getScore() < scoreThreshold) {
-                continue;
-            }
-            Map<String, Object> metadata = result.getMetadata();
-            results.add(new RetrievalResult(result.getText(), result.getScore(), metadata,
-                    metadata == null ? null : stringValue(metadata.get("doc_id")),
-                    metadata == null ? null : stringValue(metadata.get("chunk_id"))));
+    private static SearchResult toSearchResult(RetrievalResult result) {
+        String id = result.getChunkId();
+        if (id == null || id.isBlank()) {
+            id = result.getDocId();
         }
-        return results;
+        if (id == null || id.isBlank()) {
+            id = Integer.toHexString(result.getText().hashCode());
+        }
+        return new SearchResult(id, result.getText(), result.getScore(), result.getMetadata());
     }
 
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> castMap(Object value) {
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    private static String normalizeMode(String mode) {
+        return mode == null || mode.isBlank() ? MODE_VECTOR : mode;
     }
 
-    static String stringValue(Object value) {
-        return value == null ? null : String.valueOf(value);
+    private static <T> T await(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw exception;
+        }
     }
 }

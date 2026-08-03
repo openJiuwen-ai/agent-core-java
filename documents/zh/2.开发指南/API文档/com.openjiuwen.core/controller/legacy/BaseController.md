@@ -1,4 +1,4 @@
-# com.openjiuwen.core.controller.legacy.BaseController
+# com.openjiuwen.harness.tools.browser_move.controllers.BaseController
 
 ## abstract class BaseController
 

@@ -1,18 +1,20 @@
-
 package com.openjiuwen.extensions.message_queue;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-import com.openjiuwen.core.runner.MessageQueueConfig;
-import com.openjiuwen.core.runner.MessageQueueType;
 import com.openjiuwen.core.runner.PulsarConfig;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageQueueFactory;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DMessageType;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
+import com.openjiuwen.core.runner.MessageQueueConfig;
+import com.openjiuwen.core.runner.MessageQueueType;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
-
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarClient;
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarClientFactory;
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarConsumer;
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarConsumerType;
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarMessage;
+import com.openjiuwen.extensions.message_queue.MessageQueuePulsar.PulsarProducer;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -22,11 +24,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class MessageQueuePulsarCompatibilityTest {
+
     @Test
     void factoryShouldInstantiatePulsarExtensionByReflection() {
-        MessageQueueConfig config = MessageQueueConfig.builder().type(MessageQueueType.PULSAR.getValue())
-                .pulsarConfig(PulsarConfig.builder().url("pulsar://localhost:6650").build()).build();
+        MessageQueueConfig config = MessageQueueConfig.builder()
+                .type(MessageQueueType.PULSAR.getValue())
+                .pulsarConfig(PulsarConfig.builder().url("pulsar://localhost:6650").build())
+                .build();
 
         Object mq = MessageQueueFactory.create(config);
 
@@ -35,8 +42,8 @@ class MessageQueuePulsarCompatibilityTest {
 
     @Test
     void pulsarExtensionShouldDispatchSerializedDistributedMessages() throws Exception {
-        FakePulsarRuntime runtime = new FakePulsarRuntime();
-        MessageQueuePulsar mq = new MessageQueuePulsar(PulsarConfig.builder().url("pulsar://fake").build(), runtime);
+        FakePulsarClientFactory factory = new FakePulsarClientFactory();
+        MessageQueuePulsar mq = new MessageQueuePulsar(PulsarConfig.builder().url("pulsar://fake").build(), factory, 10);
         mq.start();
 
         SubscriptionBase subscription = mq.subscribe("reply-topic");
@@ -69,8 +76,8 @@ class MessageQueuePulsarCompatibilityTest {
 
     @Test
     void pulsarExtensionShouldRoundTripRequestMessages() throws Exception {
-        FakePulsarRuntime runtime = new FakePulsarRuntime();
-        MessageQueuePulsar mq = new MessageQueuePulsar(PulsarConfig.builder().url("pulsar://fake").build(), runtime);
+        FakePulsarClientFactory factory = new FakePulsarClientFactory();
+        MessageQueuePulsar mq = new MessageQueuePulsar(PulsarConfig.builder().url("pulsar://fake").build(), factory, 10);
         mq.start();
 
         SubscriptionBase subscription = mq.subscribe("agent-topic");
@@ -100,52 +107,55 @@ class MessageQueuePulsarCompatibilityTest {
         mq.stop();
     }
 
-    static final class FakePulsarRuntime implements MessageQueuePulsar.PulsarRuntime {
-        private final Map<String, BlockingQueue<MessageQueuePulsar.ReceivedMessage>> topics = new ConcurrentHashMap<>();
+    static final class FakePulsarClientFactory implements PulsarClientFactory {
+        private final Map<String, BlockingQueue<byte[]>> topics = new ConcurrentHashMap<>();
 
         @Override
-        public void start() {
-        }
-
-        @Override
-        public MessageQueuePulsar.PulsarProducer newProducer(String topic) {
-            BlockingQueue<MessageQueuePulsar.ReceivedMessage> queue =
-                topics.computeIfAbsent(topic, ignored -> new LinkedBlockingQueue<>());
-            return new MessageQueuePulsar.PulsarProducer() {
+        public PulsarClient create(String url) {
+            return new PulsarClient() {
                 @Override
-                public void send(String key, byte[] payload) {
-                    queue.add(new MessageQueuePulsar.ReceivedMessage(payload, key));
+                public PulsarConsumer subscribe(String topic, String subscriptionName, PulsarConsumerType consumerType) {
+                    BlockingQueue<byte[]> queue = topics.computeIfAbsent(topic, ignored -> new LinkedBlockingQueue<>());
+                    return new PulsarConsumer() {
+                        @Override
+                        public PulsarMessage receive(long timeoutMillis) throws Exception {
+                            byte[] data = queue.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+                            if (data == null) {
+                                throw new java.util.concurrent.TimeoutException("no message");
+                            }
+                            return () -> data;
+                        }
+
+                        @Override
+                        public void acknowledge(PulsarMessage message) {
+                        }
+
+                        @Override
+                        public void close() {
+                        }
+                    };
+                }
+
+                @Override
+                public PulsarProducer createProducer(String topic) {
+                    BlockingQueue<byte[]> queue = topics.computeIfAbsent(topic, ignored -> new LinkedBlockingQueue<>());
+                    return new PulsarProducer() {
+                        @Override
+                        public void send(byte[] content, String partitionKey) {
+                            queue.add(content);
+                        }
+
+                        @Override
+                        public void close() {
+                        }
+                    };
                 }
 
                 @Override
                 public void close() {
+                    topics.clear();
                 }
             };
-        }
-
-        @Override
-        public MessageQueuePulsar.PulsarConsumer newConsumer(String topic) {
-            BlockingQueue<MessageQueuePulsar.ReceivedMessage> queue =
-                topics.computeIfAbsent(topic, ignored -> new LinkedBlockingQueue<>());
-            return new MessageQueuePulsar.PulsarConsumer() {
-                @Override
-                public MessageQueuePulsar.ReceivedMessage receive(long timeoutMillis) throws Exception {
-                    return queue.poll(timeoutMillis, TimeUnit.MILLISECONDS);
-                }
-
-                @Override
-                public void acknowledge(MessageQueuePulsar.ReceivedMessage message) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        @Override
-        public void close() {
-            topics.clear();
         }
     }
 }

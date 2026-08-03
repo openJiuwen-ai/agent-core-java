@@ -11,84 +11,77 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * An executable graph that wraps the standard invoke/stream/collect/transform
- * with config extraction from the input map.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.base.ExecutableGraph}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ExecutableGraph} in
+ * {@code openjiuwen/core/graph/base.py}.
+ *
+ * @param <I> graph payload type stored under {@code inputs}
+ * @param <O> graph output type
  */
-public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
+public abstract class ExecutableGraph<I, O> extends Executable<Map<String, Object>, O> {
+
     /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
+     * Invoke this graph by extracting the Python envelope keys.
+     *
+     * @param inputs input envelope containing {@code inputs} and optionally {@code config}
+     * @param session execution session
+     * @return graph output
      */
     @SuppressWarnings("unchecked")
-    public O invoke(I inputs, BaseSession session) {
-        Map<String, Object> inputMap = (Map<String, Object>) inputs;
-        Object actualInputs = inputMap.get(Constant.INPUTS_KEY);
-        Object config = inputMap.get(Constant.CONFIG_KEY);
-        return doInvoke((I) actualInputs, session, config);
+    public O invoke(Map<String, Object> inputs, BaseSession session) {
+        I actualInputs = (I) inputs.get(Constant.INPUTS_KEY);
+        Object config = inputs.get(Constant.CONFIG_KEY);
+        return invokeInternal(actualInputs, session, config);
     }
 
     /**
-     * Stream the graph output.
-     * 
-     * @param inputs input data
+     * Python's {@code stream} pass body returns {@code None}.
+     *
+     * @param inputs input envelope
      * @param session execution session
-     * @return an iterator of output chunks
-     * @since 0.1.7
+     * @return null, matching Python's implicit {@code None}
      */
-    public Iterator<O> stream(I inputs, BaseSession session) {
+    public Iterator<O> stream(Map<String, Object> inputs, BaseSession session) {
         return null;
     }
 
     /**
-     * Collect from streaming inputs and produce a single output.
-     * 
-     * @param inputs streaming input iterator
+     * Python's {@code collect} pass body returns {@code None}.
+     *
+     * @param inputs streaming inputs
      * @param session execution session
-     * @return the collected output
-     * @since 0.1.7
+     * @return null, matching Python's implicit {@code None}
      */
     public O collect(Iterator<I> inputs, BaseSession session) {
         return null;
     }
 
     /**
-     * Transform streaming inputs to streaming outputs.
-     * 
-     * @param inputs streaming input iterator
+     * Python's {@code transform} pass body returns {@code None}.
+     *
+     * @param inputs streaming inputs
      * @param session execution session
-     * @return an iterator of transformed output chunks
-     * @since 0.1.7
+     * @return null, matching Python's implicit {@code None}
      */
     public Iterator<O> transform(Iterator<I> inputs, BaseSession session) {
         return null;
     }
 
     /**
-     * Handle interrupt messages.
-     * 
+     * Python's {@code interrupt} pass body has no visible result.
+     *
      * @param message interrupt message
-     * @since 0.1.7
      */
     public void interrupt(Map<String, Object> message) {
-        // Default no-op
+        // Matches Python's pass body.
     }
 
     /**
-     * Internal invoke implementation to be provided by subclasses.
-     * 
-     * @param inputs actual input data
+     * Mirrors Python's abstract {@code _invoke} method.
+     *
+     * @param inputs extracted graph payload
      * @param session execution session
-     * @param config optional configuration
-     * @return the output
-     * @since 0.1.7
+     * @param config optional graph config
+     * @return graph output
      */
-    protected abstract O doInvoke(I inputs, BaseSession session, Object config);
+    protected abstract O invokeInternal(I inputs, BaseSession session, Object config);
 }

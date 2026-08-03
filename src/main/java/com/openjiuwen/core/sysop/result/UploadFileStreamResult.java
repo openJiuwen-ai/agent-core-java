@@ -5,25 +5,12 @@
 package com.openjiuwen.core.sysop.result;
 
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
-/**
- * Result type for streaming upload file operation.
- * 
- * @since 0.1.7
- */
-@SuperBuilder
+/** Result type for streaming upload file operation. */
 @NoArgsConstructor
 public class UploadFileStreamResult extends BaseResult<UploadFileChunkData> {
     /**
-     * UploadFileStreamResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public UploadFileStreamResult(int code, String message, UploadFileChunkData data) {
-        super(code, message, data);
-    }
+    public UploadFileStreamResult(int code, String message, UploadFileChunkData data) { setCode(code); setMessage(message); setData(data); }
 }

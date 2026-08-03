@@ -4,96 +4,134 @@
 
 package com.openjiuwen.core.graph.store;
 
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.events.LogEventType;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Decorator around {@link Store} that adds logging for graph state operations.
+ * Logging decorator for graph-state persistence.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphStore}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code GraphStore} in
+ * {@code openjiuwen/core/graph/store/base.py}.
  */
 public class GraphStore implements Store {
-    private static final LoggerProtocol logger = Loggers.GRAPH;
 
-    private final Store delegate;
+    private static final LoggerProtocol GRAPH_LOGGER = Loggers.GRAPH;
 
-    /**
-     * GraphStore.
-     * 
-     * @param delegate delegate
-     * @since 0.1.7
-     */
-    public GraphStore(Store delegate) {
-        this.delegate = delegate;
+    private final Store saver;
+
+    public GraphStore(Store saver) {
+        this.saver = saver;
     }
 
-    /**
-     * get.
-     * 
-     * @param sessionId sessionId
-     * @param ns ns
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Optional<GraphStoreState> get(String sessionId, String ns) {
+    public CompletionStage<Optional<GraphStoreState>> get(String sessionId, String ns) {
         try {
-            Optional<GraphStoreState> state = delegate.get(sessionId, ns);
-            if (state.isEmpty()) {
-                logger.debug("Not found graph state for session, sessionId={}, ns={}", sessionId, ns);
-            }
-            return state;
-        } catch (Exception e) {
-            logger.error("Failed to get graph state, sessionId={}, ns={}", sessionId, ns, e);
-            throw e;
+            return saver.get(sessionId, ns).handle((state, error) -> {
+                if (error != null) {
+                    GRAPH_LOGGER.error(
+                            "Failed to get graph state, eventType={}, sessionId={}, graphId={}",
+                            LogEventType.GRAPH_STORE_GET.getValue(),
+                            sessionId,
+                            ns
+                    );
+                    throw propagate(error);
+                }
+                if (state == null || state.isEmpty()) {
+                    GRAPH_LOGGER.debug(
+                            "Not found graph state for session, eventType={}, sessionId={}, graphId={}",
+                            LogEventType.GRAPH_STORE_GET.getValue(),
+                            sessionId,
+                            ns
+                    );
+                    return Optional.empty();
+                }
+                return state;
+            });
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
         }
     }
 
-    /**
-     * save.
-     * 
-     * @param sessionId sessionId
-     * @param ns ns
-     * @param state state
-     * @since 0.1.7
-     */
     @Override
-    public void save(String sessionId, String ns, GraphStoreState state) {
-        logger.debug("Begin to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(), sessionId,
-                ns);
+    public CompletionStage<Void> save(String sessionId, String ns, GraphStoreState state) {
+        GRAPH_LOGGER.debug(
+                "Begin to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
+                state.getStep(),
+                LogEventType.GRAPH_STORE_SAVE.getValue(),
+                sessionId,
+                ns
+        );
         try {
-            delegate.save(sessionId, ns, state);
-            logger.debug("Succeed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
-                    sessionId, ns);
-        } catch (Exception e) {
-            logger.error("Failed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
-                    sessionId, ns, e);
-            throw e;
+            return saver.save(sessionId, ns, state).handle((ignored, error) -> {
+                if (error != null) {
+                    GRAPH_LOGGER.error(
+                            "Succeed to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
+                            state.getStep(),
+                            LogEventType.GRAPH_STORE_SAVE.getValue(),
+                            sessionId,
+                            ns
+                    );
+                    throw propagate(error);
+                }
+                GRAPH_LOGGER.debug(
+                        "Succeed to save graph state of super-step[{}], eventType={}, sessionId={}, graphId={}",
+                        state.getStep(),
+                        LogEventType.GRAPH_STORE_SAVE.getValue(),
+                        sessionId,
+                        ns
+                );
+                return null;
+            });
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
         }
     }
 
-    /**
-     * delete.
-     * 
-     * @param sessionId sessionId
-     * @param ns ns
-     * @since 0.1.7
-     */
     @Override
-    public void delete(String sessionId, String ns) {
-        logger.debug("Begin to delete {} graph states for session, sessionId={}", ns != null ? ns : "all", sessionId);
+    public CompletionStage<Void> delete(String sessionId, String ns) {
+        String graphId = ns != null ? ns : "all";
+        GRAPH_LOGGER.debug(
+                "Begin to delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
+                graphId,
+                LogEventType.GRAPH_STORE_DELETE.getValue(),
+                sessionId,
+                ns
+        );
         try {
-            delegate.delete(sessionId, ns);
-            logger.debug("Succeed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
-                    sessionId);
-        } catch (Exception e) {
-            logger.error("Failed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
-                    sessionId, e);
-            throw e;
+            return saver.delete(sessionId, ns).handle((ignored, error) -> {
+                if (error != null) {
+                    GRAPH_LOGGER.debug(
+                            "Failed delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
+                            graphId,
+                            LogEventType.GRAPH_STORE_DELETE.getValue(),
+                            sessionId,
+                            ns
+                    );
+                    throw propagate(error);
+                }
+                GRAPH_LOGGER.debug(
+                        "Succeed to delete {} graph states for session, eventType={}, sessionId={}, graphId={}",
+                        graphId,
+                        LogEventType.GRAPH_STORE_DELETE.getValue(),
+                        sessionId,
+                        ns
+                );
+                return null;
+            });
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
         }
+    }
+
+    private static CompletionException propagate(Throwable error) {
+        if (error instanceof CompletionException completionException) {
+            return completionException;
+        }
+        return new CompletionException(error);
     }
 }

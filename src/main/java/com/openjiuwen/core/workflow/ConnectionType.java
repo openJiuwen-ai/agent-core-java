@@ -6,11 +6,9 @@ package com.openjiuwen.core.workflow;
 
 /**
  * Type of workflow edge connection.
- * <p>
- * Mirrors Python's {@code ConnectionType} helper enum.
- * </p>
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code ConnectionType} helper enum in
+ * {@code openjiuwen/core/workflow/_workflow.py}.</p>
  */
 public enum ConnectionType {
     CONNECTION("connection"),
@@ -22,12 +20,6 @@ public enum ConnectionType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }

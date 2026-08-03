@@ -13,8 +13,9 @@ import java.util.Map;
 
 /**
  * LLM call related event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code LLMEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -39,22 +40,11 @@ public class LLMEvent extends BaseLogEvent {
     private String stop;
     private Integer maxRetries;
 
-    /**
-     * LLMEvent.
-     * 
-     * @since 0.1.7
-     */
     public LLMEvent() {
         super();
         setModuleType(ModuleType.LLM);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "model_name", modelName);
@@ -77,3 +67,5 @@ public class LLMEvent extends BaseLogEvent {
         putIfNotNull(map, "max_retries", maxRetries);
     }
 }
+
+

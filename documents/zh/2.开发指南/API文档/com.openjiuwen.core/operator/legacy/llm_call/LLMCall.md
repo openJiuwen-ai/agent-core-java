@@ -1,4 +1,4 @@
-# com.openjiuwen.core.operator.legacy.llm_call.LLMCall
+# com.openjiuwen.core.operator.llm_call.LLMCall
 
 ## class LLMCall
 

@@ -1,14 +1,9 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.systemtest;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.openjiuwen.core.sysop.BaseFsOperation;
-import com.openjiuwen.core.sysop.BaseShellOperation;
+import com.openjiuwen.core.sysop.BaseOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
@@ -22,6 +17,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Integration tests for the SysOp module (System Operations).
  * Tests file system and shell operations in LOCAL mode.
@@ -29,13 +27,17 @@ import java.nio.file.Path;
  */
 @Tag("system-test")
 class SysOpSystemTest {
+
     @TempDir
     Path tempDir;
 
     @Test
     @DisplayName("SysOperation creation in LOCAL mode")
     void testSysOperationCreation() {
-        SysOperationCard card = SysOperationCard.builder().id("test_sysop").mode(OperationMode.LOCAL).build();
+        SysOperationCard card = SysOperationCard.builder()
+                .id("test_sysop")
+                .mode(OperationMode.LOCAL)
+                .build();
 
         SysOperation sysOp = new SysOperation(card);
         assertNotNull(sysOp);
@@ -51,11 +53,14 @@ class SysOpSystemTest {
         Files.writeString(testFile, "Hello from integration test");
 
         LocalWorkConfig workConfig = new LocalWorkConfig();
-        SysOperationCard card =
-            SysOperationCard.builder().id("fs_test").mode(OperationMode.LOCAL).workConfig(workConfig).build();
+        SysOperationCard card = SysOperationCard.builder()
+                .id("fs_test")
+                .mode(OperationMode.LOCAL)
+                .workConfig(workConfig)
+                .build();
 
         SysOperation sysOp = new SysOperation(card);
-        BaseFsOperation fs = sysOp.fs();
+        BaseOperation fs = sysOp.fs();
         assertNotNull(fs, "FS operation should not be null");
         System.out.println("[SysOp FS] FS operation obtained: " + fs.getClass().getSimpleName());
     }
@@ -63,10 +68,13 @@ class SysOpSystemTest {
     @Test
     @DisplayName("SysOperation shell operation availability")
     void testSysOpShellOperation() {
-        SysOperationCard card = SysOperationCard.builder().id("shell_test").mode(OperationMode.LOCAL).build();
+        SysOperationCard card = SysOperationCard.builder()
+                .id("shell_test")
+                .mode(OperationMode.LOCAL)
+                .build();
 
         SysOperation sysOp = new SysOperation(card);
-        BaseShellOperation shell = sysOp.shell();
+        BaseOperation shell = sysOp.shell();
         assertNotNull(shell, "Shell operation should not be null");
         System.out.println("[SysOp Shell] Shell operation: " + shell.getClass().getSimpleName());
     }
@@ -75,11 +83,17 @@ class SysOpSystemTest {
     @DisplayName("SysOperationCard with LocalWorkConfig")
     void testSysOperationCardConfig() {
         LocalWorkConfig workConfig = new LocalWorkConfig();
-        SysOperationCard card = SysOperationCard.builder().id("config_test").name("Test SysOp")
-                .description("System operations for testing").mode(OperationMode.LOCAL).workConfig(workConfig).build();
+        SysOperationCard card = SysOperationCard.builder()
+                .id("config_test")
+                .name("Test SysOp")
+                .description("System operations for testing")
+                .mode(OperationMode.LOCAL)
+                .workConfig(workConfig)
+                .build();
 
         assertNotNull(card.getId());
         assertNotNull(card.getMode());
-        System.out.println("[SysOp Card] Id=" + card.getId() + ", Mode=" + card.getMode());
+        System.out.println("[SysOp Card] Id=" + card.getId()
+                + ", Mode=" + card.getMode());
     }
 }

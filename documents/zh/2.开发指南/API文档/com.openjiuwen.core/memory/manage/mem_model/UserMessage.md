@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.mem_model.UserMessage
+# com.openjiuwen.core.foundation.llm.schema.UserMessage
 
 ## 记录 UserMessage
 

@@ -4,96 +4,61 @@
 
 package com.openjiuwen.extensions.context_evolver.core.schema;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.schema.message.Message}.
- * Chat message with role, content, and optional metadata.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Message} in
+ * {@code openjiuwen/extensions/context_evolver/core/schema/message.py}.
  */
 public class Message {
-    private final Role role;
-    private final String content;
-    private final Map<String, Object> metadata;
 
-    /**
-     * Message.
-     * 
-     * @param role role
-     * @param content content
-     * @since 0.1.7
-     */
+    private Role role;
+    private String content;
+    private Map<String, Object> metadata;
+
     public Message(Role role, String content) {
-        this(role, content, new HashMap<>());
+        this(role, content, null);
     }
 
-    /**
-     * Message.
-     * 
-     * @param role role
-     * @param content content
-     * @param metadata metadata
-     * @since 0.1.7
-     */
     public Message(Role role, String content, Map<String, Object> metadata) {
         this.role = role;
         this.content = content;
-        this.metadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+        this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
     }
 
-    /**
-     * getRole.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Role getRole() {
         return role;
     }
 
-    /**
-     * getContent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setRole(Role role) {
+        this.role = role;
+    }
+
     public String getContent() {
         return content;
     }
 
-    /**
-     * getMetadata.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setContent(String content) {
+        this.content = content;
+    }
+
     public Map<String, Object> getMetadata() {
-        return new HashMap<>(metadata);
+        return metadata;
     }
 
-    /**
-     * Convert to dictionary.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
+    }
+
     public Map<String, Object> toDict() {
-        Map<String, Object> dict = new HashMap<>();
-        dict.put("role", role.getValue());
-        dict.put("content", content);
-        dict.put("metadata", metadata);
-        return dict;
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("role", role.getValue());
+        data.put("content", content);
+        data.put("metadata", new LinkedHashMap<>(metadata));
+        return data;
     }
 
-    /**
-     * Create from dictionary.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
     public static Message fromDict(Map<String, Object> data) {
         Role role = Role.fromValue((String) data.get("role"));
         String content = (String) data.get("content");
@@ -102,15 +67,11 @@ public class Message {
         return new Message(role, content, metadata);
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String toString() {
-        String preview = content != null && content.length() > 50 ? content.substring(0, 50) + "..." : content;
+        String preview = content != null && content.length() > 50
+            ? content.substring(0, 50) + "..."
+            : content;
         return "Message(role=" + role + ", content='" + preview + "')";
     }
 }

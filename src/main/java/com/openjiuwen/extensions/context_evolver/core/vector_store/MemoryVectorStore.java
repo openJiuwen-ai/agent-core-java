@@ -4,292 +4,174 @@
 
 package com.openjiuwen.extensions.context_evolver.core.vector_store;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
- * Mirrors Python's
- * {@code openjiuwen.extensions.context_evolver.core.vector_store.memory_vector_store.MemoryVectorStore}.
- * Simple in-memory vector store using cosine similarity for search.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code MemoryVectorStore} in
+ * {@code openjiuwen/extensions/context_evolver/core/vector_store/memory_vector_store.py}.
  */
 public class MemoryVectorStore {
-    private static final Logger log = LoggerFactory.getLogger(MemoryVectorStore.class);
 
-    private final Map<String, VectorNode> vectors;
+    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
 
-    /**
-     * MemoryVectorStore.
-     * 
-     * @since 0.1.7
-     */
+    private final Map<String, VectorNode> vectors = new LinkedHashMap<>();
+
     public MemoryVectorStore() {
-        this.vectors = new ConcurrentHashMap<>();
-        log.info("Initialized MemoryVectorStore");
+        LOGGER.info("Initialized MemoryVectorStore");
     }
 
-    /**
-     * Insert or update a vector node.
-     * 
-     * @param node VectorNode to store
-     * @return the result
-     * @since 0.1.7
-     */
     public CompletableFuture<Void> asyncUpsert(VectorNode node) {
         if (node.getEmbedding() == null) {
-            return CompletableFuture
-                    .failedFuture(new IllegalArgumentException("Node " + node.getId() + " has no embedding"));
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Node " + node.getId() + " has no embedding"));
         }
-
         vectors.put(node.getId(), node);
-        log.debug("Upserted vector: {}", node.getId());
+        LOGGER.debug("Upserted vector: %s", node.getId());
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * Search for similar vectors.
-     * 
-     * @param embedding query embedding
-     * @param topK number of results to return
-     * @param metadataFilter optional metadata filter
-     * @return list of most similar VectorNodes
-     * @since 0.1.7
-     */
-    public CompletableFuture<List<VectorNode>> asyncSearch(List<Double> embedding, int topK,
-            Map<String, Object> metadataFilter) {
+    public CompletableFuture<List<VectorNode>> asyncSearch(
+            List<Double> embedding,
+            int topK,
+            Map<String, Object> metadataFilter
+    ) {
         if (vectors.isEmpty()) {
-            log.debug("Vector store is empty");
-            return CompletableFuture.completedFuture(Collections.emptyList());
+            LOGGER.debug("Vector store is empty");
+            return CompletableFuture.completedFuture(List.of());
         }
 
-        // Filter vectors by metadata if provided
         List<VectorNode> candidates = new ArrayList<>(vectors.values());
         if (metadataFilter != null && !metadataFilter.isEmpty()) {
-            candidates = candidates.stream().filter(v -> matchesFilter(v, metadataFilter)).collect(Collectors.toList());
+            candidates = candidates.stream()
+                    .filter(node -> metadataMatches(node, metadataFilter))
+                    .toList();
         }
-
         if (candidates.isEmpty()) {
-            log.debug("No vectors match filter");
-            return CompletableFuture.completedFuture(Collections.emptyList());
+            LOGGER.debug("No vectors match filter");
+            return CompletableFuture.completedFuture(List.of());
         }
 
-        // Calculate cosine similarity
-        double[] queryVec = toDoubleArray(embedding);
-        double queryNorm = norm(queryVec);
-
-        List<Map.Entry<Double, VectorNode>> similarities = new ArrayList<>();
-        for (VectorNode node : candidates) {
-            if (node.getEmbedding() == null) {
+        double queryNorm = norm(embedding);
+        List<ScoredNode> scored = new ArrayList<>();
+        for (VectorNode candidate : candidates) {
+            if (candidate.getEmbedding() == null) {
                 continue;
             }
-
-            double[] vec = toDoubleArray(node.getEmbedding());
-            double vecNorm = norm(vec);
-
-            double similarity;
-            if (vecNorm == 0 || queryNorm == 0) {
-                similarity = 0.0;
-            } else {
-                similarity = dotProduct(queryVec, vec) / (queryNorm * vecNorm);
+            double candidateNorm = norm(candidate.getEmbedding());
+            double similarity = 0.0d;
+            if (queryNorm != 0.0d && candidateNorm != 0.0d) {
+                similarity = dot(embedding, candidate.getEmbedding()) / (queryNorm * candidateNorm);
             }
-
-            similarities.add(new AbstractMap.SimpleEntry<>(similarity, node));
+            scored.add(new ScoredNode(similarity, candidate));
         }
 
-        // Sort by similarity (highest first)
-        similarities.sort((a, b) -> Double.compare(b.getKey(), a.getKey()));
-
-        // Return topK results
-        List<VectorNode> results =
-            similarities.stream().limit(topK).map(Map.Entry::getValue).collect(Collectors.toList());
-
-        log.debug("Found {} similar vectors", results.size());
+        scored.sort(Comparator.comparingDouble(ScoredNode::score).reversed());
+        List<VectorNode> results = scored.stream()
+                .limit(topK)
+                .map(ScoredNode::node)
+                .toList();
+        LOGGER.debug("Found %s similar vectors", results.size());
         return CompletableFuture.completedFuture(results);
     }
 
-    /**
-     * Delete a vector node.
-     * 
-     * @param nodeId ID of node to delete
-     * @return true if deleted, false if not found
-     * @since 0.1.7
-     */
+    public CompletableFuture<List<VectorNode>> asyncSearch(List<Double> embedding, int topK) {
+        return asyncSearch(embedding, topK, null);
+    }
+
     public CompletableFuture<Boolean> asyncDelete(String nodeId) {
         if (vectors.containsKey(nodeId)) {
             vectors.remove(nodeId);
-            log.debug("Deleted vector: {}", nodeId);
+            LOGGER.debug("Deleted vector: %s", nodeId);
             return CompletableFuture.completedFuture(true);
         }
         return CompletableFuture.completedFuture(false);
     }
 
-    /**
-     * Clear all vectors.
-     * 
-     * @since 0.1.7
-     */
     public void clear() {
         vectors.clear();
-        log.info("Cleared all vectors");
+        LOGGER.info("Cleared all vectors");
     }
 
-    /**
-     * Get number of stored vectors.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int count() {
         return vectors.size();
     }
 
-    /**
-     * Get all stored vectors, optionally filtered by metadata.
-     * 
-     * @param metadataFilter metadataFilter
-     * @return the result
-     * @since 0.1.7
-     */
     public List<VectorNode> getAll(Map<String, Object> metadataFilter) {
         if (vectors.isEmpty()) {
-            return Collections.emptyList();
+            return List.of();
         }
-
-        if (metadataFilter != null && !metadataFilter.isEmpty()) {
-            return vectors.values().stream().filter(v -> matchesFilter(v, metadataFilter)).collect(Collectors.toList());
+        if (metadataFilter == null || metadataFilter.isEmpty()) {
+            return new ArrayList<>(vectors.values());
         }
-
-        return new ArrayList<>(vectors.values());
+        return vectors.values().stream()
+                .filter(node -> metadataMatches(node, metadataFilter))
+                .toList();
     }
 
-    /**
-     * Get all stored vectors without filter.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<VectorNode> getAll() {
         return getAll(null);
     }
 
-    /**
-     * Load a single vector node directly (for deserialization).
-     * 
-     * @param nodeId nodeId
-     * @param node node
-     * @since 0.1.7
-     */
     public void loadNode(String nodeId, VectorNode node) {
         vectors.put(nodeId, node);
     }
 
-    /**
-     * loadFromDict.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public CompletableFuture<Void> loadFromDict(Map<String, Map<String, Object>> data) {
         for (Map.Entry<String, Map<String, Object>> entry : data.entrySet()) {
-            String nodeId = entry.getKey();
-            Map<String, Object> nodeData = entry.getValue();
-            VectorNode node = VectorNode.fromDict(nodeData);
+            VectorNode node = VectorNode.fromDict(entry.getValue());
             if (node.getEmbedding() != null) {
-                vectors.put(nodeId, node);
-                log.debug("Loaded vector: {}", nodeId);
+                vectors.put(entry.getKey(), node);
+                LOGGER.debug("Loaded vector: %s", entry.getKey());
             }
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * matchesFilter.
-     * 
-     * @param node node
-     * @param filter filter
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean matchesFilter(VectorNode node, Map<String, Object> filter) {
-        Map<String, Object> metadata = node.getMetadata();
-        for (Map.Entry<String, Object> entry : filter.entrySet()) {
-            Object value = metadata.get(entry.getKey());
-            if (!Objects.equals(value, entry.getValue())) {
+    @Override
+    public String toString() {
+        return "MemoryVectorStore(count=" + vectors.size() + ")";
+    }
+
+    private static boolean metadataMatches(VectorNode node, Map<String, Object> metadataFilter) {
+        if (node.getMetadata() == null) {
+            return false;
+        }
+        for (Map.Entry<String, Object> entry : metadataFilter.entrySet()) {
+            if (!Objects.equals(node.getMetadata().get(entry.getKey()), entry.getValue())) {
                 return false;
             }
         }
         return true;
     }
 
-    /**
-     * toDoubleArray.
-     * 
-     * @param list list
-     * @return the result
-     * @since 0.1.7
-     */
-    private double[] toDoubleArray(List<Double> list) {
-        double[] arr = new double[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            arr[i] = list.get(i);
-        }
-        return arr;
-    }
-
-    /**
-     * dotProduct.
-     * 
-     * @param a a
-     * @param b b
-     * @return the result
-     * @since 0.1.7
-     */
-    private double dotProduct(double[] a, double[] b) {
-        double sum = 0;
-        for (int i = 0; i < Math.min(a.length, b.length); i++) {
-            sum += a[i] * b[i];
+    private static double dot(List<Double> left, List<Double> right) {
+        int size = Math.min(left.size(), right.size());
+        double sum = 0.0d;
+        for (int index = 0; index < size; index++) {
+            sum += left.get(index) * right.get(index);
         }
         return sum;
     }
 
-    /**
-     * norm.
-     * 
-     * @param v v
-     * @return the result
-     * @since 0.1.7
-     */
-    private double norm(double[] v) {
-        double sum = 0;
-        for (double d : v) {
-            sum += d * d;
+    private static double norm(List<Double> vector) {
+        double sum = 0.0d;
+        for (Double value : vector) {
+            if (value != null) {
+                sum += value * value;
+            }
         }
         return Math.sqrt(sum);
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String toString() {
-        return "MemoryVectorStore(count=" + vectors.size() + ")";
+    private record ScoredNode(double score, VectorNode node) {
     }
 }

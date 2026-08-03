@@ -4,226 +4,366 @@
 
 package com.openjiuwen.core.common.logging.defaults;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.common.logging.LoggingUtils;
-
+import com.openjiuwen.core.common.logging.loguru.LoguruConfigProvider;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.Locale;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Log configuration — resolves per-logger configs from a YAML file.
- * <p>
- * Java equivalent of Python's {@code LogConfig}.
- * 
- * @since 0.1.7
+ * Log configuration 鈥?resolves per-logger configs from YAML or in-memory maps.
+ *
+ * <p>Mirrors Python's default backend config helpers in
+ * {@code openjiuwen/core/common/logging/log_config.py}.</p>
  */
 public class LogConfig {
-    private static final Map<String, Integer> NAME_TO_LEVEL = Map.of("CRITICAL", 50, "FATAL", 50, "ERROR", 40,
-            "WARNING", 30, "WARN", 30, "INFO", 20, "DEBUG", 10, "NOTSET", 0);
+
+    private static final String[] BUILTIN_LOG_TYPES = {"common", "interface", "prompt_builder", "performance"};
+
+    private static final Map<String, LoggerBaseKeys> LOGGER_BASE_KEYS = Map.of(
+        "common", new LoggerBaseKeys("log_file", "run/jiuwen.log", "output", List.of("console", "file")),
+        "interface", new LoggerBaseKeys("interface_log_file", "interface/jiuwen_interface.log",
+            "interface_output", List.of("console", "file")),
+        "prompt_builder", new LoggerBaseKeys("prompt_builder_interface_log_file",
+            "interface/jiuwen_prompt_builder_interface.log", "interface_output", List.of("console", "file")),
+        "performance", new LoggerBaseKeys("performance_log_file", "performance/jiuwen_performance.log",
+            "performance_output", List.of("console", "file"))
+    );
+
+    private static final Set<String> DEFAULT_ALLOWED_ROOT_KEYS = Set.of(
+        "backend", "level", "structured_output_format", "backup_count", "max_bytes", "format", "log_path",
+        "log_file", "output", "interface_log_file", "interface_output", "prompt_builder_interface_log_file",
+        "performance_log_file", "performance_output", "log_file_pattern", "backup_file_pattern", "propagate",
+        "loggers"
+    );
+
+    private static final Set<String> DEFAULT_ALLOWED_LOGGER_KEYS = Set.of("level");
 
     private Map<String, Object> logConfig;
-    private String logPath;
 
-    /**
-     * LogConfig.
-     * 
-     * @since 0.1.7
-     */
     public LogConfig() {
         this(null);
     }
 
-    /**
-     * LogConfig.
-     * 
-     * @param configPath configPath
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
     public LogConfig(String configPath) {
         if (configPath == null) {
-            this.logConfig = new LinkedHashMap<>(DefaultLogConstants.defaultInnerLogConfig());
+            this.logConfig = normalizeLoadedConfig(DefaultLogConstants.defaultInnerLogConfig());
         } else {
             this.logConfig = loadConfig(configPath);
         }
-        this.logPath = resolveLogPath();
     }
 
-    /**
-     * reload.
-     * 
-     * @param configPath configPath
-     * @since 0.1.7
-     */
     public void reload(String configPath) {
         this.logConfig = loadConfig(configPath);
-        this.logPath = resolveLogPath();
+    }
+
+    public void loadFromDict(Map<String, Object> loggingConfig) {
+        this.logConfig = normalizeLoadedConfig(deepCopyMap(loggingConfig));
+    }
+
+    public Map<String, Object> getSnapshot() {
+        return deepCopyMap(logConfig);
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * loadConfig.
-     * 
-     * @param configPath configPath
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> loadConfig(String configPath) {
-        try (InputStream is = Files.newInputStream(Path.of(configPath))) {
-            Yaml yaml = new Yaml();
-            Map<String, Object> full = yaml.load(is);
-            if (!full.containsKey("logging")) {
-                throw new IllegalArgumentException("YAML configuration file is missing 'logging' section");
+        try {
+            String realPath = LoggingUtils.normalizeAndValidateLogPath(configPath);
+            try (InputStream is = Files.newInputStream(Path.of(realPath))) {
+                Yaml yaml = new Yaml();
+                Map<String, Object> full = yaml.load(is);
+                if (full == null || !full.containsKey("logging")) {
+                    throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                        "error_msg", "YAML configuration file is missing 'logging' section");
+                }
+                return normalizeLoadedConfig(asMap(full.get("logging")));
             }
-            return (Map<String, Object>) full.get("logging");
-        } catch (java.io.FileNotFoundException e) {
-            // Return safe defaults when file is not found
-            return safeDefaults();
+        } catch (java.nio.file.NoSuchFileException | java.io.FileNotFoundException e) {
+            return normalizeLoadedConfig(DefaultLogConstants.defaultInnerLogConfig());
+        } catch (org.yaml.snakeyaml.error.YAMLException e) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_PROCESS_ERROR,
+                "error_msg", "YAML configuration file format is incorrect: " + e);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load log config: " + e.getMessage(), e);
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_PROCESS_ERROR,
+                "error_msg", "failed to read configuration file: " + e);
         }
     }
 
-    /**
-     * safeDefaults.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> safeDefaults() {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("level", "WARNING");
-        m.put("output", "console");
-        m.put("log_path", "./logs/");
-        m.put("log_file", DefaultLogConstants.DEFAULT_LOG_FILE);
-        m.put("interface_log_file", DefaultLogConstants.DEFAULT_INTERFACE_LOG_FILE);
-        m.put("prompt_builder_interface_log_file", DefaultLogConstants.DEFAULT_PROMPT_BUILDER_LOG_FILE);
-        m.put("performance_log_file", DefaultLogConstants.DEFAULT_PERFORMANCE_LOG_FILE);
-        m.put("backup_count", DefaultLogConstants.DEFAULT_BACKUP_COUNT);
-        m.put("max_bytes", DefaultLogConstants.DEFAULT_MAX_BYTES);
-        m.put("format", DefaultLogConstants.DEFAULT_FORMAT);
-        return m;
+    private static Map<String, Object> normalizeLoadedConfig(Map<String, Object> loggingConfig) {
+        String backend = LogLevels.extractBackend(loggingConfig);
+        return switch (backend) {
+            case "default" -> loadDefaultBackendConfig(loggingConfig);
+            case "loguru" -> LoguruConfigProvider.loadLoguruBackendConfig(loggingConfig);
+            default -> throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                "error_msg", "unsupported logging backend '" + backend + "'");
+        };
     }
 
-    /**
-     * resolveLogPath.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveLogPath() {
-        return String.valueOf(logConfig.getOrDefault("log_path", "./logs/"));
+    public Map<String, Object> getLoggerConfig(String logType) {
+        return getLoggerConfig(logType, null);
     }
 
-    /**
-     * Build a base per-logger config for a given log file.
-     * 
-     * @param logFile logFile
-     * @param output output
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> getBaseConfig(String logFile, String output) {
-        String levelStr = String.valueOf(logConfig.getOrDefault("level", "INFO")).toUpperCase(Locale.ROOT);
-        int levelValue = NAME_TO_LEVEL.getOrDefault(levelStr, 20);
-
-        if (output == null) {
-            output = String.valueOf(logConfig.getOrDefault("output", "console,file"));
-        }
-
-        String fullLogFile =
-            logPath.endsWith("/") || logPath.endsWith("\\") ? logPath + logFile : logPath + "/" + logFile;
-
-        Map<String, Object> cfg = new HashMap<>();
-        cfg.put("log_file", fullLogFile);
-        cfg.put("output", output);
-        cfg.put("level", levelValue);
-        cfg.put("backup_count", logConfig.getOrDefault("backup_count", DefaultLogConstants.DEFAULT_BACKUP_COUNT));
-        cfg.put("max_bytes", LoggingUtils
-                .getLogMaxBytes(logConfig.getOrDefault("max_bytes", DefaultLogConstants.DEFAULT_MAX_BYTES)));
-        cfg.put("format", logConfig.getOrDefault("format", DefaultLogConstants.DEFAULT_FORMAT));
-        return cfg;
+    public Map<String, Object> getLoggerConfig(String logType, String backend) {
+        String resolvedBackend = backend != null && !backend.isBlank()
+            ? backend.trim().toLowerCase()
+            : getBackend();
+        return switch (resolvedBackend) {
+            case "default" -> buildDefaultLoggerConfig(logConfig, logType);
+            case "loguru" -> LoguruConfigProvider.buildLoguruLoggerConfig(logConfig, logType);
+            default -> throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                "error_msg", "unsupported logging backend '" + resolvedBackend + "'");
+        };
     }
 
-    /**
-     * getCommonConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getCommonConfig() {
-        return getBaseConfig(String.valueOf(logConfig.getOrDefault("log_file", DefaultLogConstants.DEFAULT_LOG_FILE)),
-                null);
+        return getCommonConfig(null);
     }
 
-    /**
-     * getInterfaceConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> getCommonConfig(String backend) {
+        return getLoggerConfig("common", backend);
+    }
+
     public Map<String, Object> getInterfaceConfig() {
-        return getBaseConfig(
-                String.valueOf(
-                        logConfig.getOrDefault("interface_log_file", DefaultLogConstants.DEFAULT_INTERFACE_LOG_FILE)),
-                String.valueOf(logConfig.getOrDefault("interface_output", "console,file")));
+        return getInterfaceConfig(null);
     }
 
-    /**
-     * getPromptBuilderConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> getInterfaceConfig(String backend) {
+        return getLoggerConfig("interface", backend);
+    }
+
     public Map<String, Object> getPromptBuilderConfig() {
-        return getBaseConfig(
-                String.valueOf(logConfig.getOrDefault("prompt_builder_interface_log_file",
-                        DefaultLogConstants.DEFAULT_PROMPT_BUILDER_LOG_FILE)),
-                String.valueOf(logConfig.getOrDefault("interface_output", "console,file")));
+        return getPromptBuilderConfig(null);
     }
 
-    /**
-     * getPerformanceConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> getPromptBuilderConfig(String backend) {
+        return getLoggerConfig("prompt_builder", backend);
+    }
+
     public Map<String, Object> getPerformanceConfig() {
-        return getBaseConfig(
-                String.valueOf(logConfig.getOrDefault("performance_log_file",
-                        DefaultLogConstants.DEFAULT_PERFORMANCE_LOG_FILE)),
-                String.valueOf(logConfig.getOrDefault("performance_output", "console,file")));
+        return getPerformanceConfig(null);
     }
 
-    /**
-     * getCustomConfig.
-     * 
-     * @param logType logType
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> getPerformanceConfig(String backend) {
+        return getLoggerConfig("performance", backend);
+    }
+
     public Map<String, Object> getCustomConfig(String logType) {
-        return getBaseConfig(logType + ".log", null);
+        return getCustomConfig(logType, null);
     }
 
-    /**
-     * Get all standard logger configurations.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> getCustomConfig(String logType, String backend) {
+        return getLoggerConfig(logType, backend);
+    }
+
+    public String getBackend() {
+        return LogLevels.extractBackend(logConfig);
+    }
+
     public Map<String, Map<String, Object>> getAllConfigs() {
+        return getAllConfigs(null);
+    }
+
+    public Map<String, Map<String, Object>> getAllConfigs(String backend) {
         Map<String, Map<String, Object>> all = new LinkedHashMap<>();
-        all.put("common", getCommonConfig());
-        all.put("interface", getInterfaceConfig());
-        all.put("prompt_builder", getPromptBuilderConfig());
-        all.put("performance", getPerformanceConfig());
+        for (String logType : BUILTIN_LOG_TYPES) {
+            all.put(logType, getLoggerConfig(logType, backend));
+        }
         return all;
     }
+
+    private static Map<String, Object> normalizeDefaultLoggingConfig(Map<String, Object> loggingConfig) {
+        Map<String, Object> normalized = deepCopyMap(loggingConfig);
+        normalized.put("backend", "default");
+        normalized.put("level", LogLevels.normalizeLogLevel(
+            normalized.getOrDefault("level", DefaultLogConstants.DEFAULT_LEVEL), LogLevels.WARNING));
+
+        Object loggersConfig = normalized.get("loggers");
+        if (loggersConfig == null) {
+            normalized.put("loggers", new LinkedHashMap<String, Object>());
+        } else if (loggersConfig instanceof Map<?, ?> loggerMap) {
+            Map<String, Object> normalizedLoggers = new LinkedHashMap<>();
+            loggerMap.forEach((loggerName, loggerConfig) ->
+                normalizedLoggers.put(String.valueOf(loggerName), normalizeDefaultLoggerConfig(loggerConfig)));
+            normalized.put("loggers", normalizedLoggers);
+        }
+        return normalized;
+    }
+
+    private static Object normalizeDefaultLoggerConfig(Object loggerConfig) {
+        Map<String, Object> normalized = asMapOrNull(loggerConfig);
+        if (normalized == null) {
+            return loggerConfig;
+        }
+        if (normalized.containsKey("level")) {
+            normalized.put("level", LogLevels.normalizeLogLevel(normalized.get("level"), LogLevels.WARNING));
+        }
+        return normalized;
+    }
+
+    private static void validateDefaultBackendConfig(Map<String, Object> loggingConfig) {
+        Set<String> unknownKeys = new LinkedHashSet<>(loggingConfig.keySet());
+        unknownKeys.removeAll(DEFAULT_ALLOWED_ROOT_KEYS);
+        if (!unknownKeys.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                "error_msg", "default backend config has unsupported keys: " + unknownKeys);
+        }
+
+        Object loggersConfig = loggingConfig.get("loggers");
+        if (loggersConfig == null) {
+            return;
+        }
+        if (!(loggersConfig instanceof Map<?, ?> loggerMap)) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                "error_msg", "default backend config 'loggers' must be a mapping");
+        }
+        loggerMap.forEach((loggerName, loggerConfig) -> {
+            Map<String, Object> typedLogger = asMapOrNull(loggerConfig);
+            if (typedLogger == null) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                    "error_msg", "default logger config for '" + loggerName + "' must be a mapping");
+            }
+            Set<String> unknownLoggerKeys = new LinkedHashSet<>(typedLogger.keySet());
+            unknownLoggerKeys.removeAll(DEFAULT_ALLOWED_LOGGER_KEYS);
+            if (!unknownLoggerKeys.isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                    "error_msg", "default logger '" + loggerName + "' has unsupported keys: " + unknownLoggerKeys);
+            }
+        });
+    }
+
+    private static Map<String, Object> loadDefaultBackendConfig(Map<String, Object> loggingConfig) {
+        Map<String, Object> normalized = normalizeDefaultLoggingConfig(loggingConfig);
+        validateDefaultBackendConfig(normalized);
+        return normalized;
+    }
+
+    private static Map<String, Object> buildDefaultLoggerConfig(Map<String, Object> loggingConfig, String logType) {
+        String logPath = getLogPath(loggingConfig);
+        LoggerBaseKeys loggerKeys = LOGGER_BASE_KEYS.get(logType);
+        String defaultLogFile = loggerKeys != null ? loggerKeys.defaultLogFile : logType + ".log";
+        Object defaultOutput = loggerKeys != null ? loggerKeys.defaultOutput
+            : DefaultLogConstants.defaultInnerLogConfig().get("output");
+        String logFileKey = loggerKeys != null ? loggerKeys.logFileKey : null;
+        String outputKey = loggerKeys != null ? loggerKeys.outputKey : "output";
+
+        Object configuredLogFile = logFileKey != null
+            ? loggingConfig.getOrDefault(logFileKey, defaultLogFile)
+            : defaultLogFile;
+        Object configuredOutput = loggingConfig.getOrDefault(outputKey, defaultOutput);
+
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("backend", "default");
+        config.put("log_file", resolveLogFile(logPath, String.valueOf(configuredLogFile)));
+        config.put("output", configuredOutput);
+        config.put("level", LogLevels.normalizeLogLevel(
+            loggingConfig.getOrDefault("level", DefaultLogConstants.DEFAULT_LEVEL), LogLevels.WARNING));
+        config.put("structured_output_format", loggingConfig.getOrDefault(
+            "structured_output_format", DefaultLogConstants.DEFAULT_STRUCTURED_OUTPUT_FORMAT));
+        config.put("backup_count", loggingConfig.getOrDefault("backup_count", DefaultLogConstants.DEFAULT_BACKUP_COUNT));
+        config.put("max_bytes", loggingConfig.getOrDefault("max_bytes", DefaultLogConstants.DEFAULT_MAX_BYTES));
+        config.put("format", loggingConfig.getOrDefault("format", DefaultLogConstants.DEFAULT_FORMAT));
+        config.put("log_file_pattern", loggingConfig.get("log_file_pattern"));
+        config.put("backup_file_pattern", loggingConfig.get("backup_file_pattern"));
+
+        Integer levelOverride = getLoggerLevelOverride(loggingConfig, logType);
+        if (levelOverride != null) {
+            config.put("level", levelOverride);
+        }
+        config.put("level", LogLevels.normalizeLogLevel(config.get("level"), LogLevels.WARNING));
+        config.put("log_file", resolveLogFile(logPath, String.valueOf(config.get("log_file"))));
+        return config;
+    }
+
+    private static String getLogPath(Map<String, Object> loggingConfig) {
+        Object logPath = loggingConfig.getOrDefault("log_path", DefaultLogConstants.DEFAULT_LOG_PATH);
+        return LoggingUtils.normalizeAndValidateLogPath(logPath);
+    }
+
+    private static String resolveLogFile(String logPath, String logFile) {
+        String expandedLogFile = expandUser(logFile);
+        Path logFilePath = Path.of(expandedLogFile);
+        String fullLogFile = logFilePath.isAbsolute()
+            ? logFilePath.normalize().toString()
+            : Path.of(logPath, logFile).normalize().toString();
+        return LoggingUtils.normalizeAndValidateLogPath(fullLogFile);
+    }
+
+    private static Integer getLoggerLevelOverride(Map<String, Object> loggingConfig, String logType) {
+        Map<String, Object> loggersConfig = asMapOrNull(loggingConfig.get("loggers"));
+        if (loggersConfig == null) {
+            return null;
+        }
+        Map<String, Object> loggerConfig = asMapOrNull(loggersConfig.get(logType));
+        if (loggerConfig == null || !loggerConfig.containsKey("level")) {
+            return null;
+        }
+        return LogLevels.normalizeLogLevel(loggerConfig.get("level"), LogLevels.WARNING);
+    }
+
+    private static Map<String, Object> asMap(Object value) {
+        Map<String, Object> result = asMapOrNull(value);
+        if (result == null) {
+            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_CONFIG_INVALID,
+                "error_msg", "logging config must be a mapping");
+        }
+        return result;
+    }
+
+    private static Map<String, Object> asMapOrNull(Object value) {
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        rawMap.forEach((key, mapValue) -> result.put(String.valueOf(key), deepCopy(mapValue)));
+        return result;
+    }
+
+    private static Map<String, Object> deepCopyMap(Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (source == null) {
+            return result;
+        }
+        source.forEach((key, value) -> result.put(key, deepCopy(value)));
+        return result;
+    }
+
+    private static Object deepCopy(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> copied = new LinkedHashMap<>();
+            rawMap.forEach((key, mapValue) -> copied.put(String.valueOf(key), deepCopy(mapValue)));
+            return copied;
+        }
+        if (value instanceof Iterable<?> iterable && !(value instanceof String)) {
+            java.util.List<Object> copied = new java.util.ArrayList<>();
+            iterable.forEach(item -> copied.add(deepCopy(item)));
+            return copied;
+        }
+        return value;
+    }
+
+    private static String expandUser(String path) {
+        if ("~".equals(path)) {
+            return System.getProperty("user.home");
+        }
+        if (path.startsWith("~/") || path.startsWith("~\\")) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
+        return path;
+    }
+
+    private record LoggerBaseKeys(String logFileKey, String defaultLogFile, String outputKey, Object defaultOutput) {
+    }
 }
+

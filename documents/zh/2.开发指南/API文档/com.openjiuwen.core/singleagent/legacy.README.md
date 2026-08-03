@@ -1,6 +1,6 @@
 # legacy
 
-`com.openjiuwen.core.singleagent.legacy` 提供单智能体旧版兼容层，覆盖旧配置模型、控制器包装、会话包装以及工作流提供器等保留接口。
+`com.openjiuwen.core.single_agent.legacy` 提供单智能体旧版兼容层，覆盖旧配置模型、控制器包装、会话包装以及工作流提供器等保留接口。
 
 ## 模块
 
@@ -25,4 +25,4 @@
 ## 说明
 
 - `LegacyApi`、`TaskSession` 与 `config.ReActAgentConfig` 主要服务于历史接口兼容；新代码应优先使用现代 `singleagent` API。
-- `LegacyReActAgent` 与 `ReActAgent` 的实际执行都会委托给 `com.openjiuwen.core.singleagent.agents.ReActAgent`。
+- `LegacyReActAgent` 与 `ReActAgent` 的实际执行都会委托给 `com.openjiuwen.core.single_agent.agents.ReActAgent`。

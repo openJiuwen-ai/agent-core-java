@@ -6,246 +6,267 @@ package com.openjiuwen.core.memory.manage.search;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.store.BaseMemoryIndex;
+import com.openjiuwen.core.foundation.store.MemoryDoc;
 import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
 import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.core.memory.manage.index.SummaryManager;
 import com.openjiuwen.core.memory.manage.index.VariableManager;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
 /**
- * Orchestrates memory search across different memory type managers.
- * 
- * @since 0.1.7
+ * Coordinates search and listing operations across memory managers.
+ *
+ * <p>Mirrors Python's {@code SearchManager} in
+ * {@code openjiuwen/core/memory/manage/search/search_manager.py}.</p>
  */
 public class SearchManager {
-    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+    private static final String MEMORY_TYPE_KEY = "memory_type";
+    private static final String ERROR_MSG_KEY = "error_msg";
+    private static final String MEM_TYPES_KEY = "mem_types";
+    private static final String SCORE_KEY = "score";
 
-    private static final List<String> USER_MEM_MANAGER_LIST = UserMemStore.FRAGMENT_MEMORY_TYPES;
-
-    /**
-     * Arrays.stream.
-     * 
-     * @since 0.1.7
-     */
-    private static final Set<String> ALL_MEM_MANAGER_LIST =
-        Arrays.stream(MemoryType.values()).map(MemoryType::getValue).collect(Collectors.toSet());
+    private static final Set<String> ALL_MEM_MANAGER_LIST = Arrays.stream(MemoryType.values())
+            .map(MemoryType::getValue)
+            .collect(Collectors.toUnmodifiableSet());
 
     private final Map<String, BaseMemoryManager> managers;
-    private final UserMemStore memStore;
     private final byte[] cryptoKey;
+    private final BaseMemoryIndex memoryIndex;
 
-    /**
-     * SearchManager.
-     * 
-     * @param managers managers
-     * @param memStore memStore
-     * @param cryptoKey cryptoKey
-     * @since 0.1.7
-     */
-    public SearchManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore, byte[] cryptoKey) {
-        this.managers = managers;
-        this.memStore = memStore;
-        this.cryptoKey = cryptoKey;
+    public SearchManager(Map<String, BaseMemoryManager> managers, byte[] cryptoKey, BaseMemoryIndex memoryIndex) {
+        this.managers = managers == null ? new LinkedHashMap<>() : managers;
+        this.cryptoKey = cryptoKey == null ? null : cryptoKey.clone();
+        this.memoryIndex = memoryIndex;
     }
 
-    /**
-     * search.
-     * 
-     * @param params params
-     * @param semanticStore semanticStore
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> search(SearchParams params, SemanticStore semanticStore) {
+    public CompletionStage<List<Map<String, Object>>> search(SearchParams params) {
+        return search(params, Map.of());
+    }
+
+    public CompletionStage<List<Map<String, Object>>> search(SearchParams params, Map<String, Object> kwargs) {
+        Objects.requireNonNull(params, "params");
         String userId = params.getUserId();
         String scopeId = params.getScopeId();
         String query = params.getQuery();
         int topK = params.getTopK();
         double threshold = params.getThreshold();
-        String searchType = params.getSearchType();
+        List<String> searchType = params.getSearchType();
 
-        if (searchType != null && !ALL_MEM_MANAGER_LIST.contains(searchType)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", searchType,
-                    "error_msg", searchType + " is not a valid search type");
-        }
-        if (searchType != null && !managers.containsKey(searchType)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", searchType,
-                    "error_msg", searchType + " memory manager not inited");
+        if (topK <= 0) {
+            return CompletableFuture.completedFuture(List.of());
         }
 
-        Map<String, Object> kwargs = new HashMap<>();
-        kwargs.put("semantic_store", semanticStore);
+        Map<String, Object> baseKwargs = copyKwargs(kwargs);
+        baseKwargs.put(MEM_TYPES_KEY, searchType);
 
-        List<Map<String, Object>> result = new ArrayList<>();
-
-        if (searchType == null) {
-            Set<BaseMemoryManager> traversedManagers = new LinkedHashSet<>(managers.values());
-            for (BaseMemoryManager manager : traversedManagers) {
-                List<Map<String, Object>> res = manager.search(userId, scopeId, query, topK, kwargs);
-                if (res != null) {
-                    result.addAll(res);
+        if (searchType != null) {
+            for (String type : searchType) {
+                if (!ALL_MEM_MANAGER_LIST.contains(type)) {
+                    throw memoryError(type, String.valueOf(type) + " is not a valid search type");
                 }
             }
+        }
+
+        CompletionStage<List<Map<String, Object>>> aggregate =
+                CompletableFuture.completedFuture(new ArrayList<>());
+        if (searchType == null) {
+            Set<BaseMemoryManager> uniqueManagers = new LinkedHashSet<>(managers.values());
+            for (BaseMemoryManager manager : uniqueManagers) {
+                Map<String, Object> callKwargs = copyKwargs(baseKwargs);
+                aggregate = appendSearchResults(aggregate, manager, userId, scopeId, query, topK, callKwargs);
+            }
         } else {
-            kwargs.put("mem_type", searchType);
-            List<Map<String, Object>> res = managers.get(searchType).search(userId, scopeId, query, topK, kwargs);
-            if (res != null) {
-                result = res;
+            Map<BaseMemoryManager, List<String>> usedTypes = new LinkedHashMap<>();
+            for (String type : searchType) {
+                if (type != null && !type.isEmpty() && (!managers.containsKey(type) || managers.get(type) == null)) {
+                    throw memoryError(type, type + " memory manager not inited");
+                }
+                BaseMemoryManager manager = managers.get(type);
+                usedTypes.computeIfAbsent(manager, ignored -> new ArrayList<>()).add(type);
+            }
+            for (Map.Entry<BaseMemoryManager, List<String>> entry : usedTypes.entrySet()) {
+                Map<String, Object> callKwargs = copyKwargs(baseKwargs);
+                callKwargs.put(MEM_TYPES_KEY, entry.getValue());
+                aggregate = appendSearchResults(aggregate, entry.getKey(), userId, scopeId, query, topK, callKwargs);
             }
         }
 
-        // Sort and truncate
+        return aggregate.thenApply(result -> filterByScoreAndLimit(result, threshold, topK));
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listUserMem(String userId,
+                                                                  String scopeId,
+                                                                  int nums,
+                                                                  int pages) {
+        return listUserMem(userId, scopeId, nums, pages, null);
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listUserMem(String userId,
+                                                                  String scopeId,
+                                                                  int nums,
+                                                                  int pages,
+                                                                  String memType) {
+        int start = nums * (pages - 1);
+        if (memoryIndex == null) {
+            throw memoryError("search_memory", "memory index not inited");
+        }
+        List<String> memTypes = memType == null || memType.isEmpty() ? null : List.of(memType);
+        return memoryIndex.listMemories(userId, scopeId, start, nums, memTypes)
+                .thenApply(memoryDocs -> {
+                    List<Map<String, Object>> result = new ArrayList<>();
+                    for (MemoryDoc memoryDoc : memoryDocs) {
+                        result.add(toUserMemoryMap(memoryDoc, userId, scopeId));
+                    }
+                    return result;
+                });
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listUserProfile(String userId, String scopeId) {
+        for (String fragmentType : FragmentMemoryManager.FRAGMENT_MEMORY_TYPE) {
+            if (!managers.containsKey(fragmentType)) {
+                throw memoryError("fragment_memory", "fragment memory manager not inited");
+            }
+        }
+        BaseMemoryManager manager = managers.get(MemoryType.USER_PROFILE.getValue());
+        if (!(manager instanceof FragmentMemoryManager fragmentMemoryManager)) {
+            throw memoryError("fragment_memory", "fragment memory manager class is not FragmentMemoryManager");
+        }
+        return fragmentMemoryManager.listFragmentMemories(userId, scopeId);
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listUserSummary(String userId, String scopeId) {
+        String memoryType = MemoryType.SUMMARY.getValue();
+        if (!managers.containsKey(memoryType)) {
+            throw memoryError(memoryType, memoryType + " memory manager not inited");
+        }
+        BaseMemoryManager manager = managers.get(memoryType);
+        if (!(manager instanceof SummaryManager summaryManager)) {
+            throw memoryError(memoryType, memoryType + " manager class is not SummaryManager");
+        }
+        return summaryManager.listUserSummary(userId, scopeId);
+    }
+
+    public CompletionStage<String> getUserVariable(String userId, String scopeId, String varName) {
+        String memoryType = MemoryType.VARIABLE.getValue();
+        if (!managers.containsKey(memoryType)) {
+            throw memoryError(memoryType, memoryType + " memory manager not inited");
+        }
+        BaseMemoryManager manager = managers.get(memoryType);
+        if (!(manager instanceof VariableManager variableManager)) {
+            throw memoryError(memoryType, memoryType + " manager class is not VariableManager");
+        }
+        return variableManager.queryVariable(userId, scopeId, varName)
+                .thenApply(result -> result == null || !result.containsKey(varName) ? null : result.get(varName));
+    }
+
+    public CompletionStage<Map<String, String>> getAllUserVariable(String userId, String scopeId) {
+        String memoryType = MemoryType.VARIABLE.getValue();
+        if (!managers.containsKey(memoryType)) {
+            throw memoryError(memoryType, memoryType + " memory manager not inited");
+        }
+        BaseMemoryManager manager = managers.get(memoryType);
+        if (!(manager instanceof VariableManager variableManager)) {
+            throw memoryError(memoryType, memoryType + " manager class is not VariableManager");
+        }
+        return variableManager.queryVariable(userId, scopeId);
+    }
+
+    public byte[] getCryptoKey() {
+        return cryptoKey == null ? null : cryptoKey.clone();
+    }
+
+    public BaseMemoryIndex getMemoryIndex() {
+        return memoryIndex;
+    }
+
+    private CompletionStage<List<Map<String, Object>>> appendSearchResults(
+            CompletionStage<List<Map<String, Object>>> aggregate,
+            BaseMemoryManager manager,
+            String userId,
+            String scopeId,
+            String query,
+            int topK,
+            Map<String, Object> kwargs) {
+        return aggregate.thenCompose(result -> manager.search(userId, scopeId, query, topK, kwargs)
+                .thenApply(searchResult -> {
+                    if (searchResult != null) {
+                        result.addAll(searchResult);
+                    }
+                    return result;
+                }));
+    }
+
+    private static List<Map<String, Object>> filterByScoreAndLimit(List<Map<String, Object>> result,
+                                                                   double threshold,
+                                                                   int topK) {
+        if (topK <= 0) {
+            return List.of();
+        }
         if (result.size() > topK) {
-            result.sort((a, b) -> Double.compare(((Number) b.getOrDefault("score", 0.0)).doubleValue(),
-                    ((Number) a.getOrDefault("score", 0.0)).doubleValue()));
+            result.sort(Comparator.comparingDouble(SearchManager::requiredScore).reversed());
         }
-
-        return result.stream().filter(item -> {
-            Object score = item.get("score");
-            double s = score instanceof Number ? ((Number) score).doubleValue() : 0.0;
-            return s >= threshold;
-        }).limit(topK).collect(Collectors.toList());
+        List<Map<String, Object>> filtered = new ArrayList<>();
+        for (Map<String, Object> item : result) {
+            if (requiredScore(item) >= threshold) {
+                filtered.add(item);
+            }
+        }
+        int end = pythonSliceEnd(filtered.size(), topK);
+        return new ArrayList<>(filtered.subList(0, end));
     }
 
-    /**
-     * listUserMem.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param nums nums
-     * @param pages pages
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> listUserMem(String userId, String scopeId, int nums, int pages, String memType) {
-        List<Map<String, Object>> listRes =
-            memStore.getInRange(userId, scopeId, nums * (pages - 1), nums * pages, memType);
-        if (listRes == null || listRes.isEmpty()) {
-            return listRes;
+    private static int pythonSliceEnd(int size, int topK) {
+        if (topK >= 0) {
+            return Math.min(size, topK);
         }
-        for (Map<String, Object> item : listRes) {
-            item.put("mem",
-                    BaseMemoryManager.decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
-        }
-        return listRes;
+        return Math.max(size + topK, 0);
     }
 
-    /**
-     * listUserProfile.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> listUserProfile(String userId, String scopeId, MemoryType memType) {
-        if (USER_MEM_MANAGER_LIST.stream().anyMatch(key -> !managers.containsKey(key))) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "fragment_memory",
-                    "error_msg", "fragment memory manager not inited");
+    private static double requiredScore(Map<String, Object> item) {
+        Object score = item.get(SCORE_KEY);
+        if (!(score instanceof Number number)) {
+            throw new ClassCastException("score is not numeric: " + score);
         }
-        BaseMemoryManager mgr = managers.get(MemoryType.USER_PROFILE.getValue());
-        if (!(mgr instanceof FragmentMemoryManager fragmentMgr)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "fragment_memory",
-                    "error_msg", "fragment memory manager class is not FragmentMemoryManager");
-        }
-        return fragmentMgr.listFragmentMemories(userId, scopeId, memType);
+        return number.doubleValue();
     }
 
-    /**
-     * listUserProfile.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> listUserProfile(String userId, String scopeId) {
-        return listUserProfile(userId, scopeId, null);
+    private static Map<String, Object> toUserMemoryMap(MemoryDoc memoryDoc, String userId, String scopeId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", memoryDoc.getId());
+        result.put("user_id", userId);
+        result.put("scope_id", scopeId);
+        result.put("mem", memoryDoc.getText());
+        result.put("mem_type", memoryDoc.getType());
+        result.put("timestamp", memoryDoc.getTimestamp());
+        result.putAll(memoryDoc.getFields());
+        return result;
     }
 
-    /**
-     * listUserSummary.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> listUserSummary(String userId, String scopeId) {
-        String key = MemoryType.SUMMARY.getValue();
-        if (!managers.containsKey(key)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " memory manager not inited");
-        }
-        BaseMemoryManager mgr = managers.get(key);
-        if (!(mgr instanceof SummaryManager summaryMgr)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " manager class is not SummaryManager");
-        }
-        return summaryMgr.listUserSummary(userId, scopeId);
+    private static Map<String, Object> copyKwargs(Map<String, Object> kwargs) {
+        return kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
     }
 
-    /**
-     * getUserVariable.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param varName varName
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getUserVariable(String userId, String scopeId, String varName) {
-        String key = MemoryType.VARIABLE.getValue();
-        if (!managers.containsKey(key)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " memory manager not inited");
-        }
-        BaseMemoryManager mgr = managers.get(key);
-        if (!(mgr instanceof VariableManager varMgr)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " manager class is not VariableManager");
-        }
-        Map<String, String> res = varMgr.queryVariable(userId, scopeId, varName, null);
-        if (res == null) {
-            return null;
-        }
-        return res.get(varName);
-    }
-
-    /**
-     * getAllUserVariable.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, String> getAllUserVariable(String userId, String scopeId) {
-        String key = MemoryType.VARIABLE.getValue();
-        if (!managers.containsKey(key)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " memory manager not inited");
-        }
-        BaseMemoryManager mgr = managers.get(key);
-        if (!(mgr instanceof VariableManager varMgr)) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", key, "error_msg",
-                    key + " manager class is not VariableManager");
-        }
-        return varMgr.queryVariable(userId, scopeId, null, null);
+    private static RuntimeException memoryError(String memoryType, String errorMsg) {
+        return ErrorHelper.buildError(
+                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                MEMORY_TYPE_KEY,
+                memoryType,
+                ERROR_MSG_KEY,
+                errorMsg
+        );
     }
 }

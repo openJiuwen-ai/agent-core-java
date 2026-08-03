@@ -7,6 +7,8 @@ package com.openjiuwen.harness.task_loop;
 import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.Event;
+import com.openjiuwen.core.controller.schema.FollowUpEvent;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
@@ -14,609 +16,401 @@ import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 
-import java.util.LinkedHashMap;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
- * Public class TaskLoopEventHandler used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Event handler used by the DeepAgent task-loop controller.
+ *
+ * <p>Mirrors Python's {@code TaskLoopEventHandler} in
+ * {@code openjiuwen/harness/task_loop/task_loop_event_handler.py}.</p>
  */
 public class TaskLoopEventHandler extends EventHandler {
-    private final TaskLoopController controller;
+
+    private final Object deepAgent;
+    private LoopQueues interactionQueues = new LoopQueues();
+    private Map<String, Object> lastResult;
+    private CompletableFuture<Map<String, Object>> currentFuture;
+    private int roundId;
+    private Object sessionToolkit;
 
     /**
-     * TaskLoopEventHandler.
-     * 
-     * @since 0.1.7
+     * Create an event handler with a deep agent reference.
+     *
+     * <p>Accepts either {@code com.openjiuwen.harness.DeepAgent} or
+     * {@code com.openjiuwen.harness.deep_agent.DeepAgent}.</p>
+     *
+     * @param deepAgent the deep agent
      */
-    public TaskLoopEventHandler() {
-        this(new TaskLoopController());
+    public TaskLoopEventHandler(Object deepAgent) {
+        this.deepAgent = deepAgent;
     }
 
     /**
-     * TaskLoopEventHandler.
-     * 
-     * @param interactionQueues interactionQueues
-     * @since 0.1.7
-     */
-    public TaskLoopEventHandler(LoopQueues interactionQueues) {
-        this(new TaskLoopController(interactionQueues));
-    }
-
-    /**
-     * TaskLoopEventHandler.
-     * 
-     * @param controller controller
-     * @since 0.1.7
+     * Create an event handler with a task loop controller.
+     *
+     * @param controller the task loop controller
      */
     public TaskLoopEventHandler(TaskLoopController controller) {
-        this.controller = controller == null ? new TaskLoopController() : controller;
+        this.deepAgent = null;
+    }
+
+    public Map<String, Object> getLastResult() {
+        return lastResult == null ? null : new LinkedHashMap<>(lastResult);
+    }
+
+    public LoopQueues getInteractionQueues() {
+        return interactionQueues;
+    }
+
+    public void setInteractionQueues(LoopQueues interactionQueues) {
+        this.interactionQueues = interactionQueues == null ? new LoopQueues() : interactionQueues;
+    }
+
+    public void setSessionToolkit(Object sessionToolkit) {
+        this.sessionToolkit = sessionToolkit;
+    }
+
+    public Object getSessionToolkit() {
+        return sessionToolkit;
+    }
+
+    @Override
+    public synchronized int prepareRound() {
+        if (currentFuture != null && !currentFuture.isDone()) {
+            currentFuture.cancel(false);
+        }
+        roundId += 1;
+        currentFuture = new CompletableFuture<>();
+        lastResult = null;
+        return roundId;
     }
 
     /**
-     * prepareRound.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Prepare a new round with session context.
+     *
+     * @param sessionId  the session id (ignored in this implementation)
+     * @param isFollowUp whether this is a follow-up round
+     * @return the new round id
      */
-    public int prepareRound() {
-        return controller.prepareRound();
+    public synchronized int prepareRound(String sessionId, boolean isFollowUp) {
+        return prepareRound();
     }
 
-    /**
-     * prepareRound.
-     * 
-     * @param sessionId sessionId
-     * @param isFollowUp isFollowUp
-     * @return the result
-     * @since 0.1.7
-     */
-    public int prepareRound(String sessionId, boolean isFollowUp) {
-        return controller.prepareRound(sessionId, isFollowUp);
-    }
-
-    /**
-     * handleInput.
-     * 
-     * @param query query
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> handleInput(String query) {
-        return handleInput(query, Map.of());
-    }
-
-    /**
-     * handleInput.
-     * 
-     * @param query query
-     * @param metadata metadata
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> handleInput(String query, Map<String, Object> metadata) {
-        Map<String, Object> safeMetadata = metadata == null ? Map.of() : metadata;
-        int currentRound = numberValue(safeMetadata.get("_handler_round_id"), controller.getRoundCounter());
-        String taskId = stringValue(safeMetadata.get("task_id"));
-        if (taskId == null || taskId.isBlank()) {
-            taskId = UUID.randomUUID().toString().replace("-", "");
+    @Override
+    public Map<String, Object> waitCompletion(Double timeout) {
+        CompletableFuture<Map<String, Object>> future = currentFuture;
+        if (future == null) {
+            lastResult = resultMap("error", "no active round");
+            return getLastResult();
         }
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "submitted");
-        result.put("task_id", taskId);
-        result.put("round", currentRound);
-        result.put("query", query);
-        result.put("is_follow_up", Boolean.TRUE.equals(safeMetadata.get("is_follow_up")));
-        controller.recordSubmission(result);
-        return result;
+        Map<String, Object> result;
+        try {
+            if (timeout == null) {
+                result = future.get();
+            } else {
+                long millis = Math.max(0L, Math.round(timeout * 1000.0d));
+                result = future.get(millis, TimeUnit.MILLISECONDS);
+            }
+        } catch (TimeoutException exception) {
+            future.cancel(false);
+            result = resultMap("error", "completion_timeout");
+        } catch (CancellationException exception) {
+            result = resultMap("error", "cancelled");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            result = resultMap("error", "interrupted");
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+            result = resultMap("error", cause.getMessage() == null ? cause.getClass().getName() : cause.getMessage());
+        }
+
+        lastResult = normalizeCompletionResult(result);
+        return getLastResult();
     }
 
-    /**
-     * handleInput.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> handleInput(EventHandlerInput inputs) {
-        InputEvent event = requireEvent(inputs, InputEvent.class, "input");
-        Map<String, Object> metadata = event.getMetadata() == null ? Map.of() : event.getMetadata();
-        String sessionId = sessionId(inputs, null);
-        int currentRound = numberValue(metadata.get("_handler_round_id"), controller.getRoundCounter(sessionId));
-        String controllerSessionId = resolveControllerSessionId(sessionId, currentRound);
+        Event event = inputs == null ? null : inputs.getEvent();
+        Map<String, Object> metadata = metadataOf(event);
+        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+
+        if (deepAgent == null || getLoopCoordinatorFromAgent() == null) {
+            resolveFuture(resultMap("error", "no LoopCoordinator"), currentRound);
+            return resultMap("status", "failed");
+        }
+
         String taskId = stringValue(metadata.get("task_id"));
+        boolean followUp = booleanValue(metadata.get("is_follow_up"));
         if (taskId == null || taskId.isBlank()) {
             taskId = UUID.randomUUID().toString().replace("-", "");
         }
-        Object query = extractQueryValue(event);
+
+        String sessionId = inputs == null || inputs.getSession() == null
+                ? "default"
+                : stringOrDefault(inputs.getSession().getSessionId(), "default");
         Map<String, Object> taskMetadata = new LinkedHashMap<>();
         taskMetadata.put("_handler_round_id", currentRound);
-        copyIfPresent(metadata, taskMetadata, "run_kind");
-        copyIfPresent(metadata, taskMetadata, "run_context");
-        copyIfPresent(metadata, taskMetadata, "collect_inner_stream");
-        copyIfPresent(metadata, taskMetadata, "loop_queues");
-        taskMetadata.put("is_follow_up", Boolean.TRUE.equals(metadata.get("is_follow_up")));
-
-        if (taskManager == null) {
-            Map<String, Object> failed = Map.of("error", "task_manager is null");
-            resolveCompletion(controllerSessionId, currentRound, failed);
-            return Map.of("status", "failed", "error", "task_manager is null");
-        }
+        taskMetadata.put("run_kind", metadata.get("run_kind"));
+        taskMetadata.put("run_context", metadata.get("run_context"));
+        taskMetadata.put("is_follow_up", followUp);
 
         try {
             Task task = new Task(sessionId, taskId, TaskLoopEventExecutor.DEEP_TASK_TYPE);
-            task.setDescription(stringValue(query));
+            task.setDescription(extractQuery(event));
             task.setStatus(TaskStatus.SUBMITTED);
             task.setMetadata(taskMetadata);
-            task.setInputs(List.of(event));
+            if (event instanceof InputEvent) {
+                task.setInputs(List.of(event));
+            }
+            if (taskManager == null) {
+                resolveFuture(resultMap("error", "task_manager is None"), currentRound);
+                return resultMap("status", "failed");
+            }
             taskManager.addTask(task);
-        } catch (RuntimeException ex) {
-            Map<String, Object> failed = Map.of("error", errorMessage(ex));
-            resolveCompletion(controllerSessionId, currentRound, failed);
-            return Map.of("status", "failed", "error", errorMessage(ex));
+        } catch (RuntimeException exception) {
+            resolveFuture(resultMap("error", exception.getMessage()), currentRound);
+            Map<String, Object> result = resultMap("status", "failed");
+            result.put("error", exception.getMessage());
+            return result;
         }
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "submitted");
+        Map<String, Object> result = resultMap("status", "submitted");
         result.put("task_id", taskId);
-        result.put("round", currentRound);
-        result.put("query", query);
-        result.put("is_follow_up", Boolean.TRUE.equals(metadata.get("is_follow_up")));
-        controller.recordSubmission(controllerSessionId, result);
         return result;
     }
 
-    /**
-     * handleTaskInteraction.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
-        TaskInteractionEvent event = requireEvent(inputs, TaskInteractionEvent.class, "task interaction");
-        String message = extractFirstText(event.getInteraction());
-        String sessionId = sessionId(inputs, event.getTask());
-        if (!message.isBlank()) {
-            controller.enqueueSteering(sessionId, message);
+        String message = "";
+        Event event = inputs == null ? null : inputs.getEvent();
+        if (event instanceof TaskInteractionEvent interactionEvent && !interactionEvent.getInteraction().isEmpty()) {
+            message = frameText(interactionEvent.getInteraction().get(0));
         }
-        int interactionRound = resolveRoundId(sessionId, event.getMetadata(), event.getTask());
-        String controllerSessionId = resolveControllerSessionId(sessionId, interactionRound);
-        List<com.openjiuwen.core.session.stream.OutputSchema> interactionState =
-            extractInteractionState(event.getInteraction());
-
-        Map<String, Object> interruptResult = new LinkedHashMap<>();
-        interruptResult.put("status", "steer_injected");
-        interruptResult.put("msg", message);
-        interruptResult.put("result_type", "interrupt");
-        interruptResult.put("output", "");
-        if (!message.isBlank()) {
-            interruptResult.put("message", message);
+        if (!message.isBlank() && interactionQueues != null) {
+            interactionQueues.pushSteer(message);
         }
-        if (!interactionState.isEmpty()) {
-            interruptResult.put("state", interactionState);
-        }
-        if (event.getInteraction() != null && !event.getInteraction().isEmpty()) {
-            interruptResult.put("interaction", event.getInteraction());
-        }
-        if (event.getTask() != null) {
-            interruptResult.put("task_id", event.getTask().getTaskId());
-        }
-        return resolveCompletion(controllerSessionId, interactionRound, interruptResult);
+        Map<String, Object> result = resultMap("status", "steer_injected");
+        result.put("msg", message);
+        return result;
     }
 
-    /**
-     * handleTaskCompletion.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> handleTaskCompletion(EventHandlerInput inputs) {
-        TaskCompletionEvent event = requireEvent(inputs, TaskCompletionEvent.class, "task completion");
-        String sessionId = sessionId(inputs, event.getTask());
-        int completedRound = resolveRoundId(sessionId, event.getMetadata(), event.getTask());
-        String controllerSessionId = resolveControllerSessionId(sessionId, completedRound);
-        Map<String, Object> result = extractResult(event.getTaskResult());
-        return resolveCompletion(controllerSessionId, completedRound, result);
+        Event event = inputs == null ? null : inputs.getEvent();
+        Map<String, Object> metadata = metadataOf(event);
+        String taskId = stringValue(metadata.get("task_id"));
+        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (event instanceof TaskCompletionEvent completionEvent) {
+            payload = extractCompletionResult(completionEvent.getTaskResult());
+        }
+        resolveFuture(payload, currentRound);
+
+        Map<String, Object> result = resultMap("status", "completed");
+        result.put("task_id", taskId);
+        return result;
     }
 
-    /**
-     * handleTaskFailed.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> handleTaskFailed(EventHandlerInput inputs) {
-        TaskFailedEvent event = requireEvent(inputs, TaskFailedEvent.class, "task failed");
-        String sessionId = sessionId(inputs, event.getTask());
-        int failedRound = resolveRoundId(sessionId, null, event.getTask());
-        String controllerSessionId = resolveControllerSessionId(sessionId, failedRound);
-        Map<String, Object> result =
-            Map.of("error", event.getErrorMessage() == null ? "unknown" : event.getErrorMessage());
-        return resolveCompletion(controllerSessionId, failedRound, result);
+        Event event = inputs == null ? null : inputs.getEvent();
+        Map<String, Object> metadata = metadataOf(event);
+        String taskId = stringValue(metadata.get("task_id"));
+        int currentRound = intValue(metadata.get("_handler_round_id"), roundId);
+        String errorMessage = "unknown";
+        if (event instanceof TaskFailedEvent failedEvent && failedEvent.getErrorMessage() != null) {
+            errorMessage = failedEvent.getErrorMessage();
+        }
+        resolveFuture(resultMap("error", errorMessage), currentRound);
+
+        Map<String, Object> result = resultMap("status", "failed");
+        result.put("task_id", taskId);
+        result.put("error", errorMessage);
+        return result;
     }
 
-    /**
-     * resolveCompletion.
-     * 
-     * @param completedRound completedRound
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> resolveCompletion(int completedRound, Map<String, Object> result) {
-        return controller.resolveCompletion(completedRound, result);
+    @Override
+    public Map<String, Object> handleFollowUp(EventHandlerInput inputs) {
+        String message = "";
+        Event event = inputs == null ? null : inputs.getEvent();
+        if (event instanceof FollowUpEvent followUpEvent) {
+            for (DataFrame frame : followUpEvent.getInputData()) {
+                message = frameText(frame);
+                if (!message.isBlank()) {
+                    break;
+                }
+            }
+        }
+        if (!message.isBlank() && interactionQueues != null) {
+            interactionQueues.pushFollowUp(message);
+        }
+        Map<String, Object> result = resultMap("status", "follow_up_queued");
+        result.put("msg", message);
+        return result;
     }
 
-    /**
-     * resolveCompletion.
-     * 
-     * @param sessionId sessionId
-     * @param completedRound completedRound
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> resolveCompletion(String sessionId, int completedRound, Map<String, Object> result) {
-        return controller.resolveCompletion(sessionId, completedRound, result);
+    public Map<String, Object> completeSessionSpawn(
+            String taskId,
+            Map<String, Object> inputs,
+            boolean error
+    ) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", "session_spawn");
+        result.put("task_id", taskId);
+        result.put("error", error);
+        result.put("inputs", inputs == null ? Map.of() : new LinkedHashMap<>(inputs));
+        interactionQueues.output().add(result);
+        lastResult = result;
+        return result;
     }
 
-    /**
-     * waitCompletion.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> waitCompletion() {
-        return controller.waitRoundCompletion();
+    @Override
+    public void onAbort() {
+        resolveFuture(resultMap("error", "aborted"), roundId);
     }
 
-    /**
-     * waitCompletion.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> waitCompletion(String sessionId) {
-        return controller.waitRoundCompletion(sessionId);
+    void resolveFuture(Map<String, Object> result, int targetRoundId) {
+        CompletableFuture<Map<String, Object>> future = currentFuture;
+        if (targetRoundId != roundId || future == null || future.isDone()) {
+            return;
+        }
+        future.complete(result == null ? new LinkedHashMap<>() : new LinkedHashMap<>(result));
     }
 
-    /**
-     * abort.
-     * 
-     * @param reason reason
-     * @since 0.1.7
-     */
-    public void abort(String reason) {
-        controller.abort(reason);
+    private static Map<String, Object> metadataOf(Event event) {
+        return event == null || event.getMetadata() == null ? Map.of() : event.getMetadata();
     }
 
-    /**
-     * abort.
-     * 
-     * @param sessionId sessionId
-     * @param reason reason
-     * @since 0.1.7
-     */
-    public void abort(String sessionId, String reason) {
-        controller.abort(sessionId, reason);
+    private static Map<String, Object> extractCompletionResult(List<DataFrame> taskResult) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (taskResult == null) {
+            return result;
+        }
+        for (DataFrame frame : taskResult) {
+            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
+                return new LinkedHashMap<>(jsonDataFrame.data());
+            }
+            String text = frameText(frame);
+            if (!text.isBlank()) {
+                result.put("output", text);
+            }
+        }
+        return result;
     }
 
-    /**
-     * getLastResult.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getLastResult() {
-        return controller.getLastResult();
+    private static String extractQuery(Event event) {
+        if (!(event instanceof InputEvent inputEvent)) {
+            return "";
+        }
+        for (DataFrame frame : inputEvent.getInputData()) {
+            if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null
+                    && !textDataFrame.text().isBlank()) {
+                return textDataFrame.text();
+            }
+            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
+                Object query = jsonDataFrame.data().get("query");
+                return query == null ? String.valueOf(jsonDataFrame.data()) : String.valueOf(query);
+            }
+        }
+        return "";
     }
 
-    /**
-     * getLastResult.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getLastResult(String sessionId) {
-        return controller.getLastResult(sessionId);
+    private static String frameText(DataFrame frame) {
+        if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null) {
+            return textDataFrame.text();
+        }
+        if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
+            return String.valueOf(jsonDataFrame.data());
+        }
+        return frame == null ? "" : String.valueOf(frame);
     }
 
-    /**
-     * getInteractionQueues.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopQueues getInteractionQueues() {
-        return controller.getInteractionQueues();
+    private static Map<String, Object> normalizeCompletionResult(Map<String, Object> result) {
+        if (result == null || result.isEmpty()) {
+            return resultMap("status", "completed");
+        }
+        return normalizeMap(result);
     }
 
-    /**
-     * getInteractionQueues.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopQueues getInteractionQueues(String sessionId) {
-        return controller.getInteractionQueues(sessionId);
+    private static Map<String, Object> normalizeMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 
-    /**
-     * getRoundId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int getRoundId() {
-        return controller.getRoundCounter();
+    private static Map<String, Object> resultMap(String key, Object value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put(key, value);
+        return result;
     }
 
-    /**
-     * getRoundId.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public int getRoundId(String sessionId) {
-        return controller.getRoundCounter(sessionId);
-    }
-
-    /**
-     * getController.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TaskLoopController getController() {
-        return controller;
-    }
-
-    /**
-     * numberValue.
-     * 
-     * @param value value
-     * @param fallback fallback
-     * @return the result
-     * @since 0.1.7
-     */
-    private static int numberValue(Object value, int fallback) {
-        return value instanceof Number number ? number.intValue() : fallback;
-    }
-
-    /**
-     * stringValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
-    /**
-     * copyIfPresent.
-     * 
-     * @param source source
-     * @param target target
-     * @param key key
-     * @since 0.1.7
-     */
-    private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
-        if (source.get(key) != null) {
-            target.put(key, source.get(key));
-        }
+    private static String stringOrDefault(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
-    /**
-     * resolveRoundId.
-     * 
-     * @param sessionId sessionId
-     * @param eventMetadata eventMetadata
-     * @param task task
-     * @return the result
-     * @since 0.1.7
-     */
-    private int resolveRoundId(String sessionId, Map<String, Object> eventMetadata, Task task) {
-        Map<String, Object> metadata = eventMetadata != null && !eventMetadata.isEmpty()
-                ? eventMetadata
-                : task != null ? task.getMetadata() : null;
-        return metadata == null
-                ? controller.getRoundCounter(sessionId)
-                : numberValue(metadata.get("_handler_round_id"), controller.getRoundCounter(sessionId));
+    private static boolean booleanValue(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
     }
 
-    /**
-     * resolveControllerSessionId.
-     * 
-     * @param sessionId sessionId
-     * @param roundId roundId
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveControllerSessionId(String sessionId, int roundId) {
-        if (roundId <= 0) {
-            return sessionId;
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
         }
-        if (sessionId == null || sessionId.isBlank() || TaskLoopController.DEFAULT_SESSION_ID.equals(sessionId)) {
-            return TaskLoopController.DEFAULT_SESSION_ID;
-        }
-        if (controller.getRoundCounter(sessionId) >= roundId) {
-            return sessionId;
-        }
-        if (controller.getRoundCounter() >= roundId) {
-            return TaskLoopController.DEFAULT_SESSION_ID;
-        }
-        return sessionId;
-    }
-
-    /**
-     * sessionId.
-     * 
-     * @param inputs inputs
-     * @param task task
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String sessionId(EventHandlerInput inputs, Task task) {
-        if (inputs != null && inputs.getSession() != null && inputs.getSession().getSessionId() != null) {
-            return inputs.getSession().getSessionId();
-        }
-        if (task != null && task.getSessionId() != null && !task.getSessionId().isBlank()) {
-            return task.getSessionId();
-        }
-        return TaskLoopController.DEFAULT_SESSION_ID;
-    }
-
-    /**
-     * extractQueryValue.
-     * 
-     * @param event event
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object extractQueryValue(InputEvent event) {
-        for (DataFrame frame : event.getInputData()) {
-            if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null) {
-                return textDataFrame.text();
-            }
-            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
-                Object queryPayload = jsonDataFrame.data().get("query_payload");
-                if (queryPayload instanceof com.openjiuwen.core.session.interaction.InteractiveInput) {
-                    return queryPayload;
-                }
-                Object query = jsonDataFrame.data().get("query");
-                return query == null ? jsonDataFrame.data() : query;
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return fallback;
             }
         }
-        return "";
+        return fallback;
     }
 
     /**
-     * extractResult.
-     * 
-     * @param frames frames
-     * @return the result
-     * @since 0.1.7
+     * Retrieve the LoopCoordinator from the deepAgent via reflection.
+     * Supports both {@code com.openjiuwen.harness.DeepAgent} (loopCoordinator())
+     * and {@code com.openjiuwen.harness.deep_agent.DeepAgent} (getLoopCoordinator()).
+     *
+     * @return the LoopCoordinator, or null if unavailable
      */
-    private static Map<String, Object> extractResult(List<DataFrame> frames) {
-        if (frames == null) {
-            return Map.of("status", "completed");
+    private Object getLoopCoordinatorFromAgent() {
+        if (deepAgent == null) {
+            return null;
         }
-        for (DataFrame frame : frames) {
-            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
-                return new LinkedHashMap<>(jsonDataFrame.data());
-            }
-            if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null) {
-                return Map.of("output", textDataFrame.text());
-            }
+        try {
+            // Try getLoopCoordinator() first (Lombok @Getter style)
+            Method getter = deepAgent.getClass().getMethod("getLoopCoordinator");
+            return getter.invoke(deepAgent);
+        } catch (NoSuchMethodException ignored) {
+            // fall through
+        } catch (Exception e) {
+            return null;
         }
-        return Map.of("status", "completed");
-    }
-
-    /**
-     * extractFirstText.
-     * 
-     * @param frames frames
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String extractFirstText(List<DataFrame> frames) {
-        if (frames == null) {
-            return "";
+        try {
+            // Try loopCoordinator() (hand-written accessor style)
+            Method accessor = deepAgent.getClass().getMethod("loopCoordinator");
+            return accessor.invoke(deepAgent);
+        } catch (Exception ignored) {
+            return null;
         }
-        for (DataFrame frame : frames) {
-            if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null) {
-                return textDataFrame.text();
-            }
-            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
-                Object message = jsonDataFrame.data().get("message");
-                if (message != null) {
-                    return String.valueOf(message);
-                }
-                Object payload = jsonDataFrame.data().get("payload");
-                if (payload != null) {
-                    return String.valueOf(payload);
-                }
-                return String.valueOf(jsonDataFrame.data());
-            }
-        }
-        return "";
-    }
-
-    /**
-     * extractInteractionState.
-     * 
-     * @param frames frames
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<com.openjiuwen.core.session.stream.OutputSchema> extractInteractionState(
-            List<DataFrame> frames) {
-        List<com.openjiuwen.core.session.stream.OutputSchema> state = new java.util.ArrayList<>();
-        if (frames == null) {
-            return state;
-        }
-        for (DataFrame frame : frames) {
-            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
-                Object type = jsonDataFrame.data().get("type");
-                if ("__interaction__".equals(String.valueOf(type))) {
-                    state.add(new com.openjiuwen.core.session.stream.OutputSchema(String.valueOf(type), 0,
-                            jsonDataFrame.data().get("payload")));
-                    continue;
-                }
-                Object stateValue = jsonDataFrame.data().get("state");
-                if (stateValue instanceof List<?> stateItems) {
-                    for (Object item : stateItems) {
-                        if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema) {
-                            state.add(outputSchema);
-                        }
-                    }
-                }
-            }
-        }
-        return state;
-    }
-
-    /**
-     * errorMessage.
-     * 
-     * @param ex ex
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String errorMessage(RuntimeException ex) {
-        return ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
-    }
-
-    /**
-     * requireEvent.
-     * 
-     * @param inputs inputs
-     * @param type type
-     * @param label label
-     * @return the result
-     * @since 0.1.7
-     */
-    private static <T> T requireEvent(EventHandlerInput inputs, Class<T> type, String label) {
-        if (type.isInstance(inputs.getEvent())) {
-            return type.cast(inputs.getEvent());
-        }
-        throw new IllegalArgumentException("Expected " + label + " event");
     }
 }

@@ -427,7 +427,7 @@ public final class SessionMemoryManager {
         }
         if (context != null && context.tokenCounter() != null) {
             try {
-                return context.tokenCounter().countMessages(messages);
+                return context.tokenCounter().countTokens(messages);
             } catch (IllegalArgumentException | IllegalStateException ignored) {
                 // Fall back to approximate token counting if the configured counter rejects the message shape.
             }

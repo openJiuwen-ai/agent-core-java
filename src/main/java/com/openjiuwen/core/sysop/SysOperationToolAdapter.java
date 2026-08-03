@@ -54,7 +54,8 @@ public final class SysOperationToolAdapter {
     public static List<ToolEntry> extractTools(SysOperationCard card, SysOperation instance) {
         List<ToolEntry> tools = new ArrayList<>();
 
-        for (String opType : OperationRegistry.getSupportedOperations(card.getMode())) {
+        for (String opType : OperationRegistry.getSupportedOperations(
+                com.openjiuwen.core.sysop.OperationMode.fromNewMode(card.getMode()))) {
             BaseOperation subOp = instance.getOperation(opType);
             if (subOp == null) {
                 continue;

@@ -6,56 +6,46 @@ package com.openjiuwen.core.common.clients;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Default JDK HttpClient-backed connector pool.
- * 
- * @since 0.1.7
+ * TCP connector pool implementation.
+ * <p>
+ * Provides a pool of TCP connections for HTTP client reuse.
+ * <p>
+ * Mirrors Python's {@code TcpConnectorPool} in
+ * {@code openjiuwen/core/common/clients/connector_pool.py}.
  */
 public class TcpConnectorPool extends ConnectorPool {
+
     private final HttpClient client;
 
-    /**
-     * TcpConnectorPool.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public TcpConnectorPool(ConnectorPoolConfig config) {
         super(config);
-        HttpClient.Builder builder =
-            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).version(HttpClient.Version.HTTP_1_1);
-        if (config.getKeepaliveTimeout() != null) {
-            builder.connectTimeout(Duration.ofMillis(Math.max(1L, Math.round(config.getKeepaliveTimeout() * 1000))));
-        }
-        if (config.isSslVerify()) {
-            if (config.getSslCert() != null && !config.getSslCert().isBlank()) {
-                builder.sslContext(config.createSslContext());
+        this.client = buildClient(config);
+    }
+
+    private HttpClient buildClient(ConnectorPoolConfig config) {
+        HttpClient.Builder builder = HttpClient.newBuilder();
+        builder.connectTimeout(Duration.ofSeconds(30));
+        if (config.getSslCert() != null || !config.isSslVerify()) {
+            Object sslContext = config.createSslContext();
+            if (sslContext instanceof javax.net.ssl.SSLContext context) {
+                builder.sslContext(context);
             }
-        } else {
-            builder.sslContext(config.createSslContext());
         }
-        this.client = builder.build();
+        return builder.build();
     }
 
-    /**
-     * doClose.
-     * 
-     * @since 0.1.7
-     */
     @Override
-    protected void doClose() {
-        // JDK HttpClient does not expose an explicit close hook.
-    }
-
-    /**
-     * conn.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public HttpClient conn() {
+    public Object getConn() {
         return client;
+    }
+
+    @Override
+    protected CompletableFuture<Void> doClose(Map<String, Object> kwargs) {
+        // HttpClient doesn't need explicit closing
+        return CompletableFuture.completedFuture(null);
     }
 }

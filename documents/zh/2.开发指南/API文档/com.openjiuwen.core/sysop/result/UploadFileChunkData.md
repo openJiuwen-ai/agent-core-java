@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.UploadFileChunkData
+# com.openjiuwen.core.sys_operation.result.UploadFileChunkData
 
 ## 类 UploadFileChunkData
 

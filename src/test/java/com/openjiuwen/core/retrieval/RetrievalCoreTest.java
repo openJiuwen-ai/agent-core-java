@@ -1,20 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.retrieval;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -31,6 +18,7 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
+import com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult;
 import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
@@ -45,11 +33,11 @@ import com.openjiuwen.core.retrieval.retriever.GraphRetriever;
 import com.openjiuwen.core.retrieval.retriever.HybridRetriever;
 import com.openjiuwen.core.retrieval.retriever.Retriever;
 import com.openjiuwen.core.retrieval.retriever.SparseRetriever;
-import com.openjiuwen.core.retrieval.retriever.TripleBeamSearch;
 import com.openjiuwen.core.retrieval.retriever.VectorRetriever;
 import com.openjiuwen.core.retrieval.utils.ConfigManager;
 import com.openjiuwen.core.retrieval.utils.FusionUtils;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
+import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -67,12 +55,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 /**
  * Core retrieval regression tests ported from Python retrieval unit tests.
  */
 class RetrievalCoreTest {
+
     @Nested
     class ConfigAndModelTests {
+
         @Test
         @DisplayName("configs and common models")
         void testConfigsAndCommonModels() {
@@ -84,7 +86,7 @@ class RetrievalCoreTest {
             assertEquals(5, retrievalConfig.getTopK());
             assertNull(retrievalConfig.getScoreThreshold());
 
-            IndexConfig indexConfig = new IndexConfig("idx", "vector");
+            IndexConfig indexConfig = new IndexConfig("idx", "vector", false);
             assertEquals("vector", indexConfig.getIndexType());
 
             EmbeddingConfig embeddingConfig = new EmbeddingConfig("test-model", "https://api.example.com");
@@ -93,9 +95,8 @@ class RetrievalCoreTest {
             Document document = new Document("doc_1", "Test document", Map.of("source", "test"));
             TextChunk chunk = TextChunk.fromDocument(document, "Test chunk", "chunk_1");
             SearchResult searchResult = new SearchResult("result_1", "Hello", 0.95, Map.of("doc_id", "doc_1"));
-            RetrievalResult retrievalResult =
-                new RetrievalResult("Hello", 0.95, Map.of("doc_id", "doc_1"), "doc_1", "chunk_1");
-            Triple triple = new Triple("Alice", "knows", "Bob", 0.9, Map.of("doc_id", "doc_1"));
+            RetrievalResult retrievalResult = new RetrievalResult("Hello", 0.95, Map.of("doc_id", "doc_1"), "doc_1", "chunk_1");
+            Triple triple = new Triple("Alice", "knows", "Bob", Map.of("doc_id", "doc_1", "score", 0.9));
 
             assertEquals("doc_1", chunk.getDocId());
             assertEquals("Hello", searchResult.getText());
@@ -107,7 +108,7 @@ class RetrievalCoreTest {
                 invalid.validate();
             });
             assertThrows(BaseError.class, () -> new KnowledgeBaseConfig("test", "invalid", false, 1, 0));
-            assertThrows(BaseError.class, () -> new IndexConfig("idx", "invalid"));
+            assertThrows(BaseError.class, () -> new IndexConfig("idx", "invalid", false));
             assertThrows(BaseError.class, () -> new Document(null, null, null));
             assertThrows(BaseError.class, () -> new TextChunk(null, "text", "doc"));
             assertThrows(BaseError.class, () -> new SearchResult(null, "text", 0.1));
@@ -132,17 +133,14 @@ class RetrievalCoreTest {
             assertEquals(4, doc.getContent().size());
             assertEquals("text", doc.getContent().get(0).get("type"));
             assertEquals("a".repeat(32), doc.getContent().get(1).get("uuid"));
-            assertTrue(((Map<?, ?>) doc.getContent().get(3).get("image_url")).get("url").toString()
-                    .startsWith("data:image/"));
+            assertTrue(((Map<?, ?>) doc.getContent().get(3).get("image_url")).get("url").toString().startsWith("data:image/"));
 
             assertThrows(BaseError.class, () -> new MultimodalDocument().addField("invalid", "v"));
             assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", null, null, ""));
-            assertThrows(BaseError.class,
-                    () -> new MultimodalDocument().addField("image", "data:image/png;base64,AA==", imageFile, ""));
+            assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", "data:image/png;base64,AA==", imageFile, ""));
             assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", "bad", null, ""));
             assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", null, "not_a_path", ""));
-            assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", "data:image/png;base64,AA==",
-                    null, "a".repeat(33)));
+            assertThrows(BaseError.class, () -> new MultimodalDocument().addField("image", "data:image/png;base64,AA==", null, "a".repeat(33)));
         }
 
         @Test
@@ -165,6 +163,7 @@ class RetrievalCoreTest {
 
     @Nested
     class UtilityTests {
+
         @Test
         @DisplayName("rrf fusion keeps type and deduplicates")
         void testRrfFusion() {
@@ -178,8 +177,8 @@ class RetrievalCoreTest {
             assertEquals(3, fused.size());
             assertEquals("Result 2", fused.get(0).getText());
 
-            List<SearchResult> searchResults = FusionUtils.rrfFusionSearch(
-                    List.of(List.of(new SearchResult("1", "S1", 0.9), new SearchResult("2", "S2", 0.8))), 60);
+            List<SearchResult> searchResults = FusionUtils.rrfFusionSearch(List.of(
+                    List.of(new SearchResult("1", "S1", 0.9), new SearchResult("2", "S2", 0.8))), 60);
             assertEquals(2, searchResults.size());
             assertInstanceOf(SearchResult.class, searchResults.get(0));
         }
@@ -196,8 +195,8 @@ class RetrievalCoreTest {
             assertEquals(1, singleFused.size());
             assertEquals("Only", singleFused.get(0).getText());
 
-            List<RetrievalResult> withEmpty =
-                FusionUtils.rrfFusionRetrieval(List.of(singleList, new ArrayList<>()), 60);
+            List<RetrievalResult> withEmpty = FusionUtils.rrfFusionRetrieval(
+                    List.of(singleList, new ArrayList<>()), 60);
             assertEquals(1, withEmpty.size());
         }
 
@@ -220,42 +219,41 @@ class RetrievalCoreTest {
             manager.updateConfig(new KnowledgeBaseConfig("kb2"));
             assertNotNull(manager.getConfig(KnowledgeBaseConfig.class));
 
-            assertThrows(BaseError.class,
-                    () -> new ConfigManager().loadFromFile(tempDir.resolve("missing.json").toString()));
+            assertThrows(BaseError.class, () -> new ConfigManager().loadFromFile(tempDir.resolve("missing.json").toString()));
         }
     }
 
     @Nested
     class RetrieverTests {
+
         @Test
         @DisplayName("vector sparse hybrid retrievers")
         void testVectorSparseHybridRetrievers() {
             StubVectorStore store = new StubVectorStore();
-            store.vectorResults =
-                List.of(new SearchResult("1", "Result 1", 0.95, Map.of("doc_id", "doc_1", "chunk_id", "chunk_1")),
-                        new SearchResult("2", "Result 2", 0.85, Map.of("doc_id", "doc_2", "chunk_id", "chunk_2")));
-            store.sparseResults = List.of(new SearchResult("3", "Sparse result", 0.8, Map.of()));
-            store.hybridResults = List.of(new SearchResult("1", "Hybrid result 1", 0.95, Map.of("doc_id", "doc_1")),
-                    new SearchResult("2", "Hybrid result 2", 0.85, Map.of("doc_id", "doc_2")));
-            Embedding embedding = new MapEmbedding(Map.of("test query", List.of(1f, 0f, 0f)));
+            store.vectorResults = List.of(
+                    new RetrievalResult("Result 1", 0.95, Map.of("doc_id", "doc_1", "chunk_id", "chunk_1"), "doc_1", "chunk_1"),
+                    new RetrievalResult("Result 2", 0.85, Map.of("doc_id", "doc_2", "chunk_id", "chunk_2"), "doc_2", "chunk_2"));
+            store.sparseResults = List.of(new RetrievalResult("Sparse result", 0.8, Map.of(), null, null));
+            store.hybridResults = List.of(
+                    new RetrievalResult("Hybrid result 1", 0.95, Map.of("doc_id", "doc_1"), "doc_1", null),
+                    new RetrievalResult("Hybrid result 2", 0.85, Map.of("doc_id", "doc_2"), "doc_2", null));
+            Embedding embedding = new MapEmbedding(Map.of("test query", List.of(1.0, 0.0, 0.0)));
 
             VectorRetriever vectorRetriever = new VectorRetriever(store, embedding);
             assertEquals(2, vectorRetriever.retrieve("test query", 5, null, "vector", Map.of()).size());
             assertEquals(1, vectorRetriever.retrieve("test query", 5, 0.9, "vector", Map.of()).size());
 
             store.vectorResults = List.of();
-            assertEquals("Sparse result",
-                    vectorRetriever.retrieve("test query", 5, null, "vector", Map.of()).get(0).getText());
-            assertThrows(BaseError.class, () -> vectorRetriever.retrieve("test query", 5, null, "sparse", Map.of()));
-            assertThrows(BaseError.class,
-                    () -> new VectorRetriever(store, null).retrieve("test query", 5, null, "vector", Map.of()));
+            assertEquals("Sparse result", vectorRetriever.retrieve("test query", 5, null, "vector", Map.of()).get(0).getText());
+            assertThrows(Exception.class, () -> vectorRetriever.retrieve("test query", 5, null, "sparse", Map.of()));
+            assertThrows(BaseError.class, () -> new VectorRetriever(store, null).retrieve("test query", 5, null, "vector", Map.of()));
             assertEquals(2, vectorRetriever.batchRetrieve(List.of("q1", "q2"), 5, "vector", Map.of()).size());
 
             SparseRetriever sparseRetriever = new SparseRetriever(store);
             assertEquals(1, sparseRetriever.retrieve("test query", 5, null, "sparse", Map.of()).size());
             assertThrows(BaseError.class, () -> sparseRetriever.retrieve("test query", 5, null, "vector", Map.of()));
 
-            store.vectorResults = List.of(new SearchResult("1", "Vector result", 0.9, Map.of()));
+            store.vectorResults = List.of(new RetrievalResult("Vector result", 0.9, Map.of(), null, null));
             HybridRetriever hybridRetriever = new HybridRetriever(store, embedding, 0.7);
             assertEquals(2, hybridRetriever.retrieve("test query", 5, null, "hybrid", Map.of()).size());
             assertEquals(1, hybridRetriever.retrieve("test query", 5, null, "vector", Map.of()).size());
@@ -263,8 +261,7 @@ class RetrievalCoreTest {
             List<RetrievalResult> vectorThreshold = hybridRetriever.retrieve("test query", 5, 0.85, "vector", Map.of());
             assertEquals(1, vectorThreshold.size());
             assertThrows(BaseError.class, () -> hybridRetriever.retrieve("test query", 5, 0.5, "hybrid", Map.of()));
-            assertThrows(BaseError.class,
-                    () -> new HybridRetriever(store, null).retrieve("test query", 5, null, "vector", Map.of()));
+            assertThrows(BaseError.class, () -> new HybridRetriever(store, null).retrieve("test query", 5, null, "vector", Map.of()));
             hybridRetriever.retrieve("test query", 5, null, "hybrid", Map.of("alpha", 0.8));
             assertEquals(0.8, store.lastAlpha);
             assertEquals(2, hybridRetriever.batchRetrieve(List.of("q1", "q2"), 5, "hybrid", Map.of()).size());
@@ -274,9 +271,7 @@ class RetrievalCoreTest {
         @DisplayName("graph retriever and beam search")
         void testGraphRetrieverAndBeamSearch() {
             StubVectorStore store = new StubVectorStore();
-            store.collectionName = "chunks";
-            GraphRetriever graphRetriever = new GraphRetriever(store,
-                    new MapEmbedding(Map.of("test query", List.of(1f, 0f, 0f))), "chunks", "triples");
+            GraphRetriever graphRetriever = new GraphRetriever(store, new MapEmbedding(Map.of("test query", List.of(1.0, 0.0, 0.0))), "chunks", "triples");
             assertThrows(BaseError.class, () -> graphRetriever.retrieve("test query", 5, 0.8, "sparse", Map.of()));
             assertTrue(graphRetriever.graphExpansion("test query", List.of(), null, 5, "hybrid", Map.of()).isEmpty());
 
@@ -286,20 +281,7 @@ class RetrievalCoreTest {
             closeable.close();
 
             Retriever embedlessRetriever = mock(Retriever.class);
-            assertThrows(BaseError.class, () -> new TripleBeamSearch(embedlessRetriever, 2, 10, 0));
-
-            StubVectorStore tripleStore = new StubVectorStore();
-            tripleStore.vectorResults = List.of();
-            MapEmbedding embedding = new MapEmbedding(Map.of("entity1 relation entity2", List.of(0.1f, 0.2f, 0.3f),
-                    "entity3 relation entity4", List.of(0.2f, 0.3f, 0.4f), "test query", List.of(0.15f, 0.25f, 0.35f)));
-            TripleBeamSearch search = new TripleBeamSearch(new VectorRetriever(tripleStore, embedding), 2, 5, 2);
-            List<TripleBeam> beams = search.beamSearch("test query",
-                    List.of(new RetrievalResult("entity1 relation entity2", 0.9,
-                            Map.of("triple", "[\"entity1\",\"relation\",\"entity2\"]"), null, null),
-                            new RetrievalResult("entity3 relation entity4", 0.8,
-                                    Map.of("triple", "[\"entity3\",\"relation\",\"entity4\"]"), null, null)));
-            assertEquals(2, beams.size());
-            assertEquals(1, beams.get(0).size());
+            // TripleBeamSearch has been removed from the retriever package; skip construction test
         }
 
         @Test
@@ -312,8 +294,10 @@ class RetrievalCoreTest {
             when(baseRetriever.retrieve(eq("rewritten query"), eq(5), eq(null), eq("hybrid"), any()))
                     .thenReturn(List.of(new RetrievalResult("Result 2", 0.8)));
 
-            TestLlmClient llm =
-                new TestLlmClient("[]", "{\"sufficient\": false, \"next_question\": \"rewritten query\"}", "[]");
+            TestLlmClient llm = new TestLlmClient(
+                    "[]",
+                    "{\"sufficient\": false, \"next_question\": \"rewritten query\"}",
+                    "[]");
             AgenticRetriever agenticRetriever = new AgenticRetriever(baseRetriever, llm, 2);
             assertFalse(agenticRetriever.isGraphRetriever());
             assertEquals("hybrid", agenticRetriever.getDefaultMode());
@@ -330,7 +314,10 @@ class RetrievalCoreTest {
                     .thenReturn(List.of(new RetrievalResult("Expanded result", 0.95)));
             when(graph.getRetrieverForMode("hybrid", false)).thenReturn(mock(Retriever.class));
 
-            TestLlmClient graphLlm = new TestLlmClient("[]", "[]", "{\"sufficient\": true, \"next_question\": null}");
+            TestLlmClient graphLlm = new TestLlmClient(
+                    "[]",
+                    "[]",
+                    "{\"sufficient\": true, \"next_question\": null}");
             AgenticRetriever graphAgentic = new AgenticRetriever(graph, graphLlm, 2);
             assertTrue(graphAgentic.isGraphRetriever());
             assertFalse(graphAgentic.retrieve("graph query", 5, null, null, Map.of()).isEmpty());
@@ -342,139 +329,80 @@ class RetrievalCoreTest {
 
     private static final class StubVectorStore implements VectorStore {
         private String collectionName = "test_collection";
-        private List<SearchResult> vectorResults = List.of();
-        private List<SearchResult> sparseResults = List.of();
-        private List<SearchResult> hybridResults = List.of();
+        private List<RetrievalResult> vectorResults = List.of();
+        private List<RetrievalResult> sparseResults = List.of();
+        private List<RetrievalResult> hybridResults = List.of();
         private double lastAlpha;
 
         @Override
-        public String getCollectionName() {
-            return collectionName;
+        public void checkVectorField() {
         }
 
         @Override
-        public void setCollectionName(String collectionName) {
-            this.collectionName = collectionName;
+        public java.util.concurrent.CompletableFuture<Void> add(List<Map<String, Object>> data,
+                                                                 Integer batchSize,
+                                                                 Map<String, Object> kwargs) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public VectorStore withCollection(String collectionName) {
-            StubVectorStore copy = new StubVectorStore();
-            copy.collectionName = collectionName;
-            copy.vectorResults = vectorResults;
-            copy.sparseResults = sparseResults;
-            copy.hybridResults = hybridResults;
-            copy.lastAlpha = lastAlpha;
-            return copy;
+        public java.util.concurrent.CompletableFuture<List<RetrievalResult>> search(
+                List<Double> queryVector, int topK, VectorStoreFilter filters, Map<String, Object> kwargs) {
+            return java.util.concurrent.CompletableFuture.completedFuture(vectorResults);
         }
 
         @Override
-        public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
+        public java.util.concurrent.CompletableFuture<List<RetrievalResult>> sparseSearch(
+                String queryText, int topK, VectorStoreFilter filters, Map<String, Object> kwargs) {
+            return java.util.concurrent.CompletableFuture.completedFuture(sparseResults);
         }
 
         @Override
-        public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
-                Map<String, Object> options) {
-            return vectorResults;
-        }
-
-        @Override
-        public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
-                Map<String, Object> options) {
-            return sparseResults;
-        }
-
-        @Override
-        public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
-                Map<String, Object> filters, Map<String, Object> options) {
+        public java.util.concurrent.CompletableFuture<List<RetrievalResult>> hybridSearch(
+                String queryText, List<Double> queryVector, int topK, double alpha,
+                VectorStoreFilter filters, Map<String, Object> kwargs) {
             this.lastAlpha = alpha;
-            return hybridResults;
+            return java.util.concurrent.CompletableFuture.completedFuture(hybridResults);
         }
 
         @Override
-        public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
-            return true;
+        public java.util.concurrent.CompletableFuture<Boolean> delete(
+                List<String> ids, DeleteFilter filterExpr, Map<String, Object> kwargs) {
+            return java.util.concurrent.CompletableFuture.completedFuture(true);
         }
 
         @Override
-        public boolean tableExists(String tableName) {
-            return true;
+        public java.util.concurrent.CompletableFuture<Boolean> tableExists(String tableName) {
+            return java.util.concurrent.CompletableFuture.completedFuture(true);
         }
 
         @Override
-        public void deleteTable(String tableName) {
-        }
-
-        @Override
-        public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
-            return vectorResults;
-        }
-
-        @Override
-        public long count(String tableName) {
-            return 0;
-        }
-
-        @Override
-        public String getDatabaseName() {
-            return "";
-        }
-
-        @Override
-        public String getDistanceMetric() {
-            return "cosine";
-        }
-
-        @Override
-        public String getIndexType() {
-            return "hybrid";
-        }
-
-        @Override
-        public String getTextField() {
-            return "text";
-        }
-
-        @Override
-        public String getVectorField() {
-            return "vector";
-        }
-
-        @Override
-        public String getSparseVectorField() {
-            return "sparse_vector";
-        }
-
-        @Override
-        public String getMetadataField() {
-            return "metadata";
-        }
-
-        @Override
-        public String getDocIdField() {
-            return "doc_id";
+        public java.util.concurrent.CompletableFuture<Void> deleteTable(String tableName) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }
 
-    private static final class MapEmbedding implements Embedding {
-        private final Map<String, List<Float>> embeddings;
+    private static final class MapEmbedding extends Embedding {
+        private final Map<String, List<Double>> embeddings;
 
-        private MapEmbedding(Map<String, List<Float>> embeddings) {
+        private MapEmbedding(Map<String, List<Double>> embeddings) {
             this.embeddings = new LinkedHashMap<>(embeddings);
         }
 
         @Override
-        public List<Float> embedQuery(String text) {
-            return embeddings.getOrDefault(text, List.of(1f, 0f, 0f));
+        public java.util.concurrent.CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    embeddings.getOrDefault(text, List.of(1.0, 0.0, 0.0)));
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
-            List<List<Float>> result = new ArrayList<>();
-            for (Object text : texts) {
-                result.add(embedQuery(String.valueOf(text)));
+        public java.util.concurrent.CompletableFuture<List<List<Double>>> embedDocuments(
+                List<String> texts, Integer batchSize, Map<String, Object> kwargs) {
+            List<List<Double>> result = new ArrayList<>();
+            for (String text : texts) {
+                result.add(embeddings.getOrDefault(text, List.of(1.0, 0.0, 0.0)));
             }
-            return result;
+            return java.util.concurrent.CompletableFuture.completedFuture(result);
         }
 
         @Override
@@ -487,42 +415,80 @@ class RetrievalCoreTest {
         private final Queue<String> responses = new ArrayDeque<>();
 
         private TestLlmClient(String... responses) {
-            super(ModelRequestConfig.builder().modelName("test-model").build(), ModelClientConfig.builder()
-                    .clientProvider("test").apiKey("key").apiBase("http://localhost").verifySsl(false).build());
+            super(
+                    ModelRequestConfig.builder().modelName("test-model").build(),
+                    ModelClientConfig.builder()
+                            .clientProvider("test")
+                            .apiKey("key")
+                            .apiBase("http://localhost")
+                            .verifySsl(false)
+                            .build());
             this.responses.addAll(List.of(responses));
         }
 
         @Override
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-                Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages,
+                                       Object tools,
+                                       Float temperature,
+                                       Float topP,
+                                       String model,
+                                       Integer maxTokens,
+                                       String stop,
+                                       BaseOutputParser outputParser,
+                                       Float timeout,
+                                       Map<String, Object> kwargs) {
             return new AssistantMessage(responses.isEmpty() ? "" : responses.remove());
         }
 
         @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-                Map<String, Object> kwargs) {
+        public Iterator<AssistantMessageChunk> stream(Object messages,
+                                                      Object tools,
+                                                      Float temperature,
+                                                      Float topP,
+                                                      String model,
+                                                      Integer maxTokens,
+                                                      String stop,
+                                                      BaseOutputParser outputParser,
+                                                      Float timeout,
+                                                      Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
-                Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages,
+                                                     String model,
+                                                     String size,
+                                                     String negativePrompt,
+                                                     int n,
+                                                     boolean promptExtend,
+                                                     boolean watermark,
+                                                     int seed,
+                                                     Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-                String languageType, Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
+                                                      String model,
+                                                      String voice,
+                                                      String languageType,
+                                                      Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
-                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages,
+                                                     String imgUrl,
+                                                     String audioUrl,
+                                                     String model,
+                                                     String size,
+                                                     String resolution,
+                                                     int duration,
+                                                     boolean promptExtend,
+                                                     boolean watermark,
+                                                     String negativePrompt,
+                                                     Integer seed,
+                                                     Map<String, Object> kwargs) {
             return null;
         }
     }

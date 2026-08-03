@@ -6,48 +6,66 @@ package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.graph.Executable;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 /**
- * Component that breaks out of the current loop when invoked.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopBreakComponent}.
- * 
- * @since 0.1.7
+ * Component that delegates break requests to the active loop controller.
+ *
+ * <p>Mirrors Python's {@code LoopBreakComponent} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
-public class LoopBreakComponent extends WorkflowComponent {
+public class LoopBreakComponent extends WorkflowComponent<Object, Object> {
+
     private LoopController loopController;
 
-    /**
-     * setController.
-     * 
-     * @param loopController loopController
-     * @since 0.1.7
-     */
     public void setController(LoopController loopController) {
         this.loopController = loopController;
     }
 
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
+    public LoopController getController() {
+        return loopController;
+    }
+
+    public void breakLoop() {
         if (loopController == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_BREAK_EXECUTION_ERROR, "reason",
-                    "failed to initialize loop controller", "comp", session.getComponentId());
+            throw new IllegalStateException("failed to initialize loop controller");
         }
         loopController.breakLoop();
-        return new HashMap<>();
+    }
+
+    @Override
+    public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+        if (loopController == null) {
+            if (!LoopRuntime.requestBreak(session)) {
+                String componentId = WorkflowSessionSupport.componentId(session);
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_BREAK_EXECUTION_ERROR,
+                        "reason", "failed to initialize loop controller",
+                        "comp", componentId);
+            }
+        } else {
+            loopController.breakLoop();
+        }
+        return new LinkedHashMap<String, Object>();
+    }
+
+    @Override
+    public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
+    }
+
+    /**
+     * Python-compatible snake_case bridge for reflected callers.
+     *
+     * @return executable loop-break component
+     */
+    public Executable<?, ?> to_executable() {
+        return toExecutable();
     }
 }

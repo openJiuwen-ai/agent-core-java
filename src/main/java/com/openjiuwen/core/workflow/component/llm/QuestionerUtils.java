@@ -5,8 +5,8 @@
 package com.openjiuwen.core.workflow.component.llm;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,28 +14,18 @@ import java.util.regex.Pattern;
 /**
  * Utility methods for the Questioner component.
  * <p>
- * Mirrors Python's {@code QuestionerUtils}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code QuestionerUtils} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public final class QuestionerUtils {
+
     private static final Pattern SUB_PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^}]*)\\}\\}");
 
-    /**
-     * QuestionerUtils.
-     * 
-     * @since 0.1.7
-     */
     private QuestionerUtils() {
     }
 
     /**
      * Format a template string replacing {{key}} placeholders with values from userFields.
-     * 
-     * @param template template
-     * @param userFields userFields
-     * @return the result
-     * @since 0.1.7
      */
     public static String formatTemplate(String template, Map<String, Object> userFields) {
         if (template == null || userFields == null) {
@@ -47,7 +37,7 @@ public final class QuestionerUtils {
             while (matcher.find()) {
                 String key = matcher.group(1);
                 Object value = userFields.get(key);
-                matcher.appendReplacement(sb, Matcher.quoteReplacement(String.valueOf(value)));
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(value == null ? "None" : String.valueOf(value)));
             }
             matcher.appendTail(sb);
             return sb.toString();
@@ -58,18 +48,12 @@ public final class QuestionerUtils {
 
     /**
      * Build the "continue asking" question text for non-extracted required fields.
-     * 
-     * @param nonExtractedKeyFields nonExtractedKeyFields
-     * @param acceptLanguage acceptLanguage
-     * @return the result
-     * @since 0.1.7
      */
     public static String formatContinueAskQuestion(List<FieldInfo> nonExtractedKeyFields, String acceptLanguage) {
         List<String> names = new ArrayList<>();
         for (FieldInfo param : nonExtractedKeyFields) {
             String name = (param.getCnFieldName() != null && !param.getCnFieldName().isEmpty())
-                    ? param.getCnFieldName()
-                    : param.getDescription();
+                    ? param.getCnFieldName() : param.getDescription();
             names.add(name);
         }
         String joined = String.join(", ", names);
@@ -81,10 +65,6 @@ public final class QuestionerUtils {
 
     /**
      * Build the questioner output map from an OutputCache.
-     * 
-     * @param outputCache outputCache
-     * @return the result
-     * @since 0.1.7
      */
     public static Map<String, Object> formatQuestionerOutput(OutputCache outputCache) {
         QuestionerOutput output = QuestionerOutput.fromFields(outputCache.getKeyFields());
@@ -94,26 +74,22 @@ public final class QuestionerUtils {
     }
 
     /**
-     * validateInputs.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
+     * Validate inputs into a QuestionerInput.
      */
     @SuppressWarnings("unchecked")
     public static QuestionerInput validateInputs(Object inputs) {
         if (inputs instanceof Map) {
             return QuestionerInput.fromMap((Map<String, Object>) inputs);
         }
-        return new QuestionerInput();
+        throw com.openjiuwen.core.common.exception.ErrorHelper.buildError(
+                com.openjiuwen.core.common.exception.StatusCode.COMPONENT_QUESTIONER_INPUT_PARAM_ERROR,
+                "error_msg",
+                "inputs must be a mapping"
+        );
     }
 
     /**
      * Check if a value is considered "valid" (non-null, non-empty, not "null"/"none").
-     * 
-     * @param inputValue inputValue
-     * @return the result
-     * @since 0.1.7
      */
     public static boolean isValidValue(Object inputValue) {
         if (inputValue == null) {
@@ -124,7 +100,7 @@ public final class QuestionerUtils {
             return false;
         }
         if (inputValue instanceof String s) {
-            String trimmed = s.strip().toLowerCase(Locale.ROOT);
+            String trimmed = s.strip().toLowerCase();
             return !"null".equals(trimmed) && !"none".equals(trimmed);
         }
         return true;
@@ -132,11 +108,8 @@ public final class QuestionerUtils {
 
     /**
      * Validate and convert a value to the expected field type.
-     * 
-     * @param value value
-     * @param expectedType expectedType
+     *
      * @return a two-element Object array: [convertedValue, Boolean isValid]
-     * @since 0.1.7
      */
     public static Object[] validateAndConvertType(Object value, String expectedType) {
         if (value == null) {
@@ -155,13 +128,6 @@ public final class QuestionerUtils {
         }
     }
 
-    /**
-     * convertToInteger.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object[] convertToInteger(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{null, false};
@@ -170,7 +136,7 @@ public final class QuestionerUtils {
             return new Object[]{value, true};
         }
         if (value instanceof Long l) {
-            return new Object[]{l.intValue(), true};
+            return new Object[]{l, true};
         }
         if (value instanceof Double d) {
             if (d == Math.floor(d)) {
@@ -184,13 +150,6 @@ public final class QuestionerUtils {
         return new Object[]{null, false};
     }
 
-    /**
-     * convertToNumber.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object[] convertToNumber(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{null, false};
@@ -204,19 +163,12 @@ public final class QuestionerUtils {
         return new Object[]{null, false};
     }
 
-    /**
-     * convertToBoolean.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object[] convertToBoolean(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{value, true};
         }
         if (value instanceof String s) {
-            String cleaned = s.strip().toLowerCase(Locale.ROOT);
+            String cleaned = s.strip().toLowerCase();
             if ("true".equals(cleaned)) {
                 return new Object[]{true, true};
             }
@@ -225,5 +177,30 @@ public final class QuestionerUtils {
             }
         }
         return new Object[]{null, false};
+    }
+
+    /**
+     * Python truthiness used by questioner state updates.
+     */
+    public static boolean isTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof String string) {
+            return !string.isEmpty();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 }

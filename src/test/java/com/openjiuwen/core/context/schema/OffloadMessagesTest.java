@@ -70,6 +70,6 @@ class OffloadMessagesTest {
         assertTrue(msg instanceof OffloadMixin);
 
         OffloadMixin offload = (OffloadMixin) msg;
-        assertNotNull(offload.getMetadata());
+        assertNotNull(offload.modelDump());
     }
 }

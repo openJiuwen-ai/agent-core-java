@@ -4,166 +4,145 @@
 
 package com.openjiuwen.core.graph.pregel;
 
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
+import com.openjiuwen.core.runner.callback.WorkflowEvents;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
 /**
- * Pregel graph execution engine implementing the BSP (Bulk Synchronous Parallel) model.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.engine.Pregel}.
- * 
- * @since 0.1.7
+ * Pregel graph engine.
+ *
+ * <p>Mirrors Python's {@code Pregel} in
+ * {@code openjiuwen/core/graph/pregel/engine.py}.</p>
  */
 public class Pregel {
-    private static final LoggerProtocol logger = Loggers.GRAPH;
+
+    private static DecoratorFramework callbackFramework;
 
     private final Map<String, PregelNode> nodes;
+    private final Store store;
     private final List<Channel> channels;
     private final String initial;
-    private final Store store;
     private final Consumer<PregelLoop> afterStep;
 
-    /**
-     * Creates a Pregel engine with default initial node.
-     * 
-     * @param nodes map of node names to PregelNode instances
-     * @param channels list of channels for message passing
-     * @param store state store for persistence
-     * @param afterStep callback invoked after each super-step
-     * @since 0.1.7
-     */
-    public Pregel(Map<String, PregelNode> nodes, List<Channel> channels, Store store, Consumer<PregelLoop> afterStep) {
-        this(nodes, channels, PregelConstants.START, store, afterStep);
+    public Pregel(Map<String, PregelNode> nodes, List<Channel> channels) {
+        this(nodes, channels, PregelConstants.START, null, null);
     }
 
-    /**
-     * Creates a Pregel engine with a specified initial node.
-     * 
-     * @param nodes map of node names to PregelNode instances
-     * @param channels list of channels for message passing
-     * @param initial the initial node name
-     * @param store state store for persistence
-     * @param afterStep callback invoked after each super-step
-     * @since 0.1.7
-     */
-    public Pregel(Map<String, PregelNode> nodes, List<Channel> channels, String initial, Store store,
-            Consumer<PregelLoop> afterStep) {
-        this.nodes = nodes;
-        this.channels = channels;
-        this.initial = initial;
+    public Pregel(Map<String, PregelNode> nodes, List<Channel> channels, String initial) {
+        this(nodes, channels, initial, null, null);
+    }
+
+    public Pregel(
+            Map<String, PregelNode> nodes,
+            List<Channel> channels,
+            String initial,
+            Store store,
+            Consumer<PregelLoop> afterStep
+    ) {
+        this.nodes = nodes != null ? new LinkedHashMap<>(nodes) : new LinkedHashMap<>();
+        this.channels = channels != null ? new ArrayList<>(channels) : new ArrayList<>();
+        this.initial = initial != null ? initial : PregelConstants.START;
         this.store = store;
         this.afterStep = afterStep;
     }
 
+    public static void setCallbackFramework(DecoratorFramework framework) {
+        callbackFramework = framework;
+    }
+
+    public static void clearCallbackFramework() {
+        callbackFramework = null;
+    }
+
     /**
-     * Execute the Pregel graph computation.
-     * 
-     * @param config execution configuration
-     * @return execution result map, or interrupt info
-     * @throws Exception on execution failure
-     * @since 0.1.7
+     * Run this Pregel graph with default config.
+     *
+     * @return empty result on normal completion or interrupt payload for top-level interrupts
+     * @throws Exception for non-interrupt failures or subgraph interrupts
+     */
+    public Map<String, Object> run() throws Exception {
+        return run(null);
+    }
+
+    /**
+     * Run this Pregel graph.
+     *
+     * @param config optional pregel config
+     * @return empty result on normal completion or interrupt payload for top-level interrupts
+     * @throws Exception for non-interrupt failures or subgraph interrupts
      */
     public Map<String, Object> run(PregelConfig config) throws Exception {
         PregelConfig innerConfig = PregelConfig.createInnerConfig(config != null ? config : PregelConfig.DEFAULT);
-
-        boolean isTopLevel = innerConfig.getParentNs() == null;
-        if (isTopLevel && innerConfig.getNs() != null) {
+        boolean isTopLevel = !hasText(innerConfig.getParentNs());
+        if (isTopLevel && hasText(innerConfig.getNs())) {
             innerConfig.setParentNs(innerConfig.getNs());
         }
 
-        logger.info("Pregel graph engine execution started, ns={}, sessionId={}, isTopLevel={}", innerConfig.getNs(),
-                innerConfig.getSessionId(), isTopLevel);
+        Loggers.GRAPH.info("Pregel graph engine execution started");
 
         PregelLoop loop = new PregelLoop(this, innerConfig);
         try {
             loop.init();
-            throwIfInterrupted();
+            triggerLoopEvent(WorkflowEvents.LOOP_STARTED, innerConfig, null, false);
             while (loop.runStep()) {
-                throwIfInterrupted();
+                // Python keeps running super-steps until run_step returns False.
             }
-            logger.info("Pregel graph engine execution completed, ns={}, sessionId={}, totalSteps={}",
-                    innerConfig.getNs(), innerConfig.getSessionId(), loop.getStep());
-            return new HashMap<>();
-        } catch (GraphInterrupt e) {
-            logger.info("Pregel graph engine execution interrupted, ns={}, sessionId={}, totalSteps={}",
-                    innerConfig.getNs(), innerConfig.getSessionId(), loop.getStep());
+            triggerLoopEvent(WorkflowEvents.LOOP_FINISHED, innerConfig, loop.getStep(), true);
+            Loggers.GRAPH.info("Pregel graph engine execution completed");
+            return new LinkedHashMap<>();
+        } catch (GraphInterrupt interrupt) {
+            triggerLoopEvent(WorkflowEvents.LOOP_FINISHED, innerConfig, loop.getStep(), true);
+            Loggers.GRAPH.info("Pregel graph engine execution interrupted");
             if (isTopLevel) {
-                Map<String, Object> result = new HashMap<>();
-                result.put(PregelConstants.TASK_STATUS_INTERRUPT, e.getValue());
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put(PregelConstants.TASK_STATUS_INTERRUPT, interrupt.getValue());
                 return result;
-            } else {
-                throw e;
             }
-        } catch (CancellationException e) {
-            throw e;
+            throw interrupt;
         }
     }
 
-    /**
-     * Gets the nodes in this Pregel graph.
-     * 
-     * @return map of node names to PregelNode instances
-     * @since 0.1.7
-     */
     public Map<String, PregelNode> getNodes() {
-        return nodes;
+        return new LinkedHashMap<>(nodes);
     }
 
-    /**
-     * Gets the channels in this Pregel graph.
-     * 
-     * @return list of channels
-     * @since 0.1.7
-     */
-    public List<Channel> getChannels() {
-        return channels;
-    }
-
-    /**
-     * Gets the initial node name.
-     * 
-     * @return the initial node name
-     * @since 0.1.7
-     */
-    public String getInitial() {
-        return initial;
-    }
-
-    /**
-     * Gets the state store.
-     * 
-     * @return the store, or null
-     * @since 0.1.7
-     */
     public Store getStore() {
         return store;
     }
 
-    /**
-     * Gets the after-step callback.
-     * 
-     * @return the callback, or null
-     * @since 0.1.7
-     */
+    public List<Channel> getChannels() {
+        return new ArrayList<>(channels);
+    }
+
+    public String getInitial() {
+        return initial;
+    }
+
     public Consumer<PregelLoop> getAfterStep() {
         return afterStep;
     }
 
-    /**
-     * throwIfInterrupted.
-     * 
-     * @since 0.1.7
-     */
-    private static void throwIfInterrupted() {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new CancellationException("Pregel execution cancelled");
+    private static void triggerLoopEvent(String event, PregelConfig config, Integer totalSteps, boolean includeSteps) {
+        DecoratorFramework framework = callbackFramework;
+        if (framework == null) {
+            return;
         }
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("graph_id", config != null ? config.getNs() : null);
+        if (includeSteps) {
+            kwargs.put("total_steps", totalSteps);
+        }
+        framework.trigger(event, new Object[0], kwargs);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

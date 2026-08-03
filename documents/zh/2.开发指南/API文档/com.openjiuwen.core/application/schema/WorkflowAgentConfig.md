@@ -1,4 +1,4 @@
-# com.openjiuwen.core.application.schema.WorkflowAgentConfig
+# com.openjiuwen.core.single_agent.legacy.config.WorkflowAgentConfig
 
 ## class WorkflowAgentConfig
 

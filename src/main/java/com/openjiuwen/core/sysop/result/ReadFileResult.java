@@ -4,26 +4,14 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
-
 /**
- * Result type for read file operation.
- * 
- * @since 0.1.7
+ * Backward-compatible read-file result for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code ReadFileResult} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.ReadFileResult}.
  */
-@SuperBuilder
-@NoArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class ReadFileResult extends BaseResult<ReadFileData> {
-    /**
-     * ReadFileResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
-     */
-    public ReadFileResult(int code, String message, ReadFileData data) {
-        super(code, message, data);
-    }
 }

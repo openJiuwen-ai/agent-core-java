@@ -6,8 +6,9 @@ package com.openjiuwen.core.workflow.component.llm;
 
 /**
  * Questioner event types for state transitions.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code QuestionerEvent} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public enum QuestionerEvent {
     START_EVENT("start"),
@@ -20,12 +21,6 @@ public enum QuestionerEvent {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }

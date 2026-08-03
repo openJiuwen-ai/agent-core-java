@@ -4,13 +4,8 @@
 
 package com.openjiuwen.core.memory.migration;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
 import com.openjiuwen.core.memory.manage.mem_model.DbModel;
-import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
 import com.openjiuwen.core.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.core.memory.migration.operation.AddColumnOperation;
@@ -18,15 +13,16 @@ import com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.memory.migration.operation.UpdateKVOperation;
-import com.openjiuwen.core.memory.support.TestDbStore;
+import com.openjiuwen.spi.store.BaseDbStore;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
 import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
-
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -36,9 +32,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.sql.DataSource;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RunMigrationsTest {
+
     private Map<String, List<BaseOperation>> sqlBackup;
     private Map<String, List<BaseOperation>> vectorBackup;
     private Map<String, List<BaseOperation>> kvBackup;
@@ -67,78 +65,162 @@ class RunMigrationsTest {
 
     @Test
     void runSqlMigrationsHandlesEmptyRegistry() {
-        TestDbStore dbStore = new TestDbStore(createDataSource());
-        DbModel.createTables(dbStore);
+        DataSource dataSource = createDataSource();
+        BaseDbStore<DataSource> spiDbStore = createDbStore(dataSource);
+        DbModel.createTables(spiDbStore);
 
-        assertTrue(RunMigrations.runSqlMigrations(new SqlDbStore(dbStore)));
+        RunMigrations.runSqlMigrations(new SqlDbStore(createFoundationDbStore(dataSource))).join();
     }
 
     @Test
     void runSqlMigrationsAppliesRegisteredOperations() throws Exception {
-        TestDbStore dbStore = new TestDbStore(createDataSource());
-        DbModel.createTables(dbStore);
-        MigrationPlan.getSqlRegistry().register(DbModel.USER_MESSAGE_TABLE,
-                new AddColumnOperation(new OperationMetadata(2, "add runner column"), DbModel.USER_MESSAGE_TABLE,
-                        "runner_source", "STRING", true, null));
+        DataSource dataSource = createDataSource();
+        BaseDbStore<DataSource> spiDbStore = createDbStore(dataSource);
+        DbModel.createTables(spiDbStore);
+        MigrationPlan.getSqlRegistry().register(DbModel.USER_MESSAGE_TABLE, new AddColumnOperation(
+                new OperationMetadata(2, "add runner column"),
+                DbModel.USER_MESSAGE_TABLE,
+                "runner_source",
+                "STRING",
+                true,
+                null));
 
-        assertTrue(RunMigrations.runSqlMigrations(new SqlDbStore(dbStore)));
-        assertTrue(columnExists(dbStore.getEngine(), DbModel.USER_MESSAGE_TABLE, "runner_source"));
-        assertEquals("2", readSchemaVersion(dbStore.getEngine(), DbModel.USER_MESSAGE_TABLE));
+        RunMigrations.runSqlMigrations(new SqlDbStore(createFoundationDbStore(dataSource))).join();
+        assertTrue(columnExists(dataSource, DbModel.USER_MESSAGE_TABLE, "runner_source"));
+        assertEquals("2", readSchemaVersion(dataSource, DbModel.USER_MESSAGE_TABLE));
     }
 
     @Test
     void runSqlMigrationsReturnsFalseOnFailedEntity() {
-        TestDbStore dbStore = new TestDbStore(createDataSource());
-        DbModel.createTables(dbStore);
+        DataSource dataSource = createDataSource();
+        BaseDbStore<DataSource> spiDbStore = createDbStore(dataSource);
+        DbModel.createTables(spiDbStore);
         MigrationPlan.getSqlRegistry().register("bad_table", new AddColumnOperation(
-                new OperationMetadata(1, "bad table"), "bad_table", "source", "TEXT", true, null));
+                new OperationMetadata(1, "bad table"),
+                "bad_table",
+                "source",
+                "TEXT",
+                true,
+                null));
 
-        assertFalse(RunMigrations.runSqlMigrations(new SqlDbStore(dbStore)));
+        boolean failed = false;
+        try {
+            RunMigrations.runSqlMigrations(new SqlDbStore(createFoundationDbStore(dataSource))).join();
+        } catch (Exception e) {
+            failed = true;
+        }
+        assertTrue(failed);
     }
 
     @Test
     void runKvMigrationsAppliesRegisteredOperations() {
-        TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
-        kvStore.set("user_message:1", "old");
-        MigrationPlan.getKvRegistry().register(KvMigrator.KV_ENTITY_KEY, new UpdateKVOperation(
-                new OperationMetadata(3, "update kv"), store -> store.set("user_message:1", "new")));
+        TestInMemoryKVStore spiKvStore = new TestInMemoryKVStore();
+        spiKvStore.set("user_message:1", "old");
+        BaseKVStore kvStore = new BaseKVStore() {
+            @Override
+            public java.util.concurrent.CompletableFuture<Void> set(String key, Object value) {
+                spiKvStore.set(key, value);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
 
-        assertTrue(RunMigrations.runKvMigrations(kvStore));
-        assertEquals("new", kvStore.get("user_message:1"));
-        assertEquals("3", kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
+            @Override
+            public java.util.concurrent.CompletableFuture<Boolean> exclusiveSet(String key, Object value, Integer expiry) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.exclusiveSet(key, value, expiry));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<Object> get(String key) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.get(key));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<Boolean> exists(String key) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.isExists(key));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<Void> delete(String key) {
+                spiKvStore.delete(key);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<java.util.Map<String, Object>> getByPrefix(String prefix) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.getByPrefix(prefix));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<Void> deleteByPrefix(String prefix, Integer batchSize) {
+                spiKvStore.deleteByPrefix(prefix, batchSize);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<java.util.List<Object>> mget(java.util.List<String> keys) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.mget(keys));
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<Integer> batchDelete(java.util.List<String> keys, Integer batchSize) {
+                return java.util.concurrent.CompletableFuture.completedFuture(spiKvStore.batchDelete(keys, batchSize));
+            }
+
+            @Override
+            public com.openjiuwen.core.foundation.store.BasedKVStorePipeline pipeline() {
+                return null;
+            }
+        };
+        MigrationPlan.getKvRegistry().register(KvMigrator.KV_ENTITY_KEY, new UpdateKVOperation(
+                new OperationMetadata(3, "update kv"),
+                store -> store.set("user_message:1", "new")));
+
+        RunMigrations.runKvMigrations(kvStore).join();
+        assertEquals("new", spiKvStore.get("user_message:1"));
+        assertEquals("3", spiKvStore.get(KvMigrator.KV_SCHEMA_VERSION));
     }
 
     @Test
     void runVectorMigrationsAppliesRegisteredOperations() {
         InMemoryVectorStore vectorStore = new InMemoryVectorStore("vector_user_profile");
-        SemanticStore semanticStore = new SemanticStore(vectorStore);
         String collectionName = "runner_scope_user_profile";
-        semanticStore.createCollection(collectionName, 3, Map.of());
-        semanticStore.updateCollectionMetadata(collectionName, Map.of("schema_version", 0));
-        vectorStore.withCollection(collectionName)
-                .add(List.of(Map.of("id", "1", "text", "hello", "vector", List.of(1.0f, 2.0f, 3.0f))), null, Map.of());
+        vectorStore.createCollection(collectionName, 3, Map.of()).join();
+        vectorStore.updateCollectionMetadata(collectionName, Map.of("schema_version", 0)).join();
+        vectorStore.withCollection(collectionName).add(List.of(Map.of(
+                "id", "1",
+                "text", "hello",
+                "vector", List.of(1.0f, 2.0f, 3.0f)
+        )), null, Map.of()).join();
         MigrationPlan.getVectorRegistry().register("vector_user_profile", new AddScalarFieldOperation(
-                new OperationMetadata(2, "add runner field"), "user_profile", "runner_field", "string", "value"));
+                new OperationMetadata(2, "add runner field"),
+                "user_profile",
+                "runner_field",
+                "string",
+                "value"));
 
-        assertTrue(RunMigrations.runVectorMigrations(semanticStore));
-        assertEquals(2, semanticStore.getCollectionMetadata(collectionName).get("schema_version"));
-        assertEquals("value", vectorStore.withCollection(collectionName)
-                .queryByFilters(Map.of("runner_field", "value"), 10).get(0).getMetadata().get("runner_field"));
+        RunMigrations.runVectorMigrations(vectorStore).join();
+        var metadata = vectorStore.getCollectionMetadata(collectionName).join();
+        assertEquals(2, metadata.get("schema_version"));
+        var results = vectorStore.withCollection(collectionName)
+                .queryByFilters(Map.of("runner_field", "value"), 10);
+        assertEquals("value", results.get(0).getMetadata().get("runner_field"));
     }
 
     private static String readSchemaVersion(DataSource dataSource, String tableName) throws Exception {
         try (Connection connection = dataSource.getConnection();
-                Statement statement = connection.createStatement();
-                ResultSet resultSet = statement.executeQuery(
-                        "SELECT schema_version FROM memory_meta WHERE table_name = '" + tableName + "'")) {
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT schema_version FROM memory_meta WHERE table_name = '" + tableName + "'")) {
             return resultSet.next() ? resultSet.getString(1) : null;
         }
     }
 
     private static boolean columnExists(DataSource dataSource, String tableName, String columnName) throws Exception {
         try (Connection connection = dataSource.getConnection();
-                ResultSet resultSet = connection.getMetaData().getColumns(null, null, tableName.toUpperCase(),
-                        columnName.toUpperCase())) {
+             ResultSet resultSet = connection.getMetaData().getColumns(
+                     null,
+                     null,
+                     tableName.toUpperCase(),
+                     columnName.toUpperCase())) {
             return resultSet.next();
         }
     }
@@ -149,6 +231,24 @@ class RunMigrationsTest {
         dataSource.setUser("sa");
         dataSource.setPassword("sa");
         return dataSource;
+    }
+
+    private static BaseDbStore<DataSource> createDbStore(DataSource ds) {
+        return new BaseDbStore<>() {
+            @Override
+            public DataSource getEngine() {
+                return ds;
+            }
+        };
+    }
+
+    private static com.openjiuwen.core.foundation.store.BaseDbStore<DataSource> createFoundationDbStore(DataSource ds) {
+        return new com.openjiuwen.core.foundation.store.BaseDbStore<>() {
+            @Override
+            public DataSource getAsyncEngine() {
+                return ds;
+            }
+        };
     }
 
     private static Map<String, List<BaseOperation>> copyOperations(Map<String, List<BaseOperation>> source) {

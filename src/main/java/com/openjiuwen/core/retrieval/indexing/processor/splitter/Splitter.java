@@ -1,131 +1,157 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.splitter;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
-import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 import com.openjiuwen.core.retrieval.indexing.processor.Processor;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
- * Text splitter abstraction.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Splitter} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/splitter/splitter.py}.
  */
-public abstract class Splitter implements Processor<List<Document>, List<TextChunk>> {
-    /**
-     * chunkSize.
-     * 
-     * @since 0.1.7
-     */
+public abstract class Splitter implements Processor<List<TextChunk>> {
+
     protected final int chunkSize;
-
-    /**
-     * chunkOverlap.
-     * 
-     * @since 0.1.7
-     */
     protected final int chunkOverlap;
+    protected final Object tokenizer;
+    protected final Function<String, Object> tokenizerEnc;
+    protected final Function<Object, String> tokenizerDec;
 
-    /**
-     * Splitter.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @since 0.1.7
-     */
-    protected Splitter(int chunkSize, int chunkOverlap) {
-        RetrievalValidation.requirePositive(chunkSize, "chunk_size", StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
-        RetrievalValidation.requireNonNegative(chunkOverlap, "chunk_overlap",
-                StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
-        if (chunkOverlap >= chunkSize) {
-            throw com.openjiuwen.core.retrieval.common.RetrievalExceptions.error(
+    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
+
+    protected Splitter() {
+        this(null, 512, 50);
+    }
+
+    protected Splitter(Object tokenizer, int chunkSize, int chunkOverlap) {
+        if (chunkSize <= 0) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID,
+                    "error_msg",
+                    "chunk_size must be greater than 0, current value: " + chunkSize
+            );
+        }
+        if (chunkOverlap < 0) {
+            throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID,
-                    "chunk_overlap must be smaller than chunk_size");
+                    "error_msg",
+                    "chunk_overlap must be greater than or equal to 0, current value: " + chunkOverlap
+            );
+        }
+        if (chunkOverlap >= chunkSize) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID,
+                    "error_msg",
+                    "chunk_overlap (" + chunkOverlap + ") must be less than chunk_size (" + chunkSize + ")"
+            );
         }
         this.chunkSize = chunkSize;
         this.chunkOverlap = chunkOverlap;
+        validateTokenizer(tokenizer);
+        this.tokenizer = tokenizer;
+        if (tokenizer instanceof TokenizerAdapter adapter) {
+            this.tokenizerEnc = adapter::encode;
+            this.tokenizerDec = adapter::decode;
+        } else if (tokenizer instanceof Function<?, ?> function) {
+            @SuppressWarnings("unchecked")
+            Function<String, Object> encoder = (Function<String, Object>) function;
+            this.tokenizerEnc = encoder;
+            this.tokenizerDec = null;
+        } else {
+            this.tokenizerEnc = null;
+            this.tokenizerDec = null;
+        }
     }
 
-    /**
-     * splitText.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    public abstract List<String> splitText(String text);
-
-    /**
-     * splitSpans.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<SplitSpan> splitSpans(String text) {
-        List<String> chunks = splitText(text);
-        List<SplitSpan> spans = new ArrayList<>(chunks.size());
-        int cursor = 0;
-        for (String chunk : chunks) {
-            int start = text == null ? -1 : text.indexOf(chunk, cursor);
-            if (start < 0) {
-                start = cursor;
-            }
-            int end = start + (chunk != null ? chunk.length() : 0);
-            spans.add(new SplitSpan(chunk, start, end));
-            cursor = Math.max(cursor, end);
+    protected void validateTokenizer(Object tokenizer) {
+        if (tokenizer == null) {
+            return;
         }
-        return spans;
+        if (!(tokenizer instanceof TokenizerAdapter) && !(tokenizer instanceof Function<?, ?>)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_INDEXING_TOKENIZER_PROCESS_ERROR,
+                    "error_msg",
+                    "Tokenizer must have encode method or be callable"
+            );
+        }
     }
 
-    /**
-     * getNodesFromDocuments.
-     * 
-     * @param documents documents
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<TextChunk> getNodesFromDocuments(List<Document> documents) {
-        List<TextChunk> result = new ArrayList<>();
-        if (documents == null) {
-            return result;
+    public abstract List<SplitChunk> split(String doc);
+
+    public List<TextChunk> getNodesFromDocuments(List<Document> docs) {
+        List<TextChunk> returnedNodes = new ArrayList<>();
+        if (docs == null) {
+            return returnedNodes;
         }
-        for (Document document : documents) {
-            if (document == null || document.getText() == null || document.getText().isBlank()) {
+        for (Document doc : docs) {
+            if (doc == null || doc.getText() == null || doc.getText().isBlank()) {
+                LOGGER.warning("Skipping empty document: {}", doc);
                 continue;
             }
-            List<SplitSpan> parts = splitSpans(document.getText());
-            for (int i = 0; i < parts.size(); i++) {
-                TextChunk chunk = TextChunk.fromDocument(document, parts.get(i).text());
-                chunk.getMetadata().put("chunk_index", i);
-                chunk.getMetadata().put("total_chunks", parts.size());
-                chunk.getMetadata().put("chunk_id", chunk.getId());
-                chunk.getMetadata().put("start_index", parts.get(i).start());
-                chunk.getMetadata().put("end_index", parts.get(i).end());
-                result.add(chunk);
+            List<SplitChunk> chunkTuples = split(doc.getText());
+            for (SplitChunk chunk : chunkTuples) {
+                returnedNodes.add(TextChunk.fromDocument(doc, chunk.text()));
             }
         }
-        return result;
+        LOGGER.info("Generated {} text chunks from {} documents", returnedNodes.size(), docs.size());
+        return returnedNodes;
     }
 
-    /**
-     * process.
-     * 
-     * @param input input
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
+    public List<String> splitText(String text) {
+        List<SplitChunk> chunks = split(text);
+        List<String> values = new ArrayList<>(chunks.size());
+        for (SplitChunk chunk : chunks) {
+            values.add(chunk.text());
+        }
+        return values;
+    }
+
+    protected int getTokenCount(String text) {
+        if (tokenizerEnc != null) {
+            Object tokens = tokenizerEnc.apply(text);
+            if (tokens instanceof Collection<?> collection) {
+                return collection.size();
+            }
+            if (tokens instanceof Object[] array) {
+                return array.length;
+            }
+            return String.valueOf(tokens).length();
+        }
+        return text.length();
+    }
+
+    public CompletableFuture<List<TextChunk>> process(List<Document> docs) {
+        return CompletableFuture.completedFuture(getNodesFromDocuments(docs));
+    }
+
     @Override
-    public List<TextChunk> process(List<Document> input, Map<String, Object> options) {
-        return getNodesFromDocuments(input);
+    public CompletableFuture<List<TextChunk>> process(Object... args) {
+        @SuppressWarnings("unchecked")
+        List<Document> docs = (List<Document>) args[0];
+        return process(docs);
+    }
+
+    public interface TokenizerAdapter {
+        Object encode(String text);
+
+        default String decode(Object tokens) {
+            return String.valueOf(tokens);
+        }
+    }
+
+    public record SplitChunk(String text, int startIdx, int endIdx) {
     }
 }

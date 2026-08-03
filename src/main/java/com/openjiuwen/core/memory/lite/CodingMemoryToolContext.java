@@ -4,50 +4,40 @@
 
 package com.openjiuwen.core.memory.lite;
 
-import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
-import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.harness.workspace.Workspace;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Runtime context for coding lite memory tools.
- * 
- * @since 0.1.7
+ * Holds state for coding_memory tools on the coding_memory node.
+ *
+ * <p>Mirrors Python's {@code CodingMemoryToolContext} in
+ * {@code openjiuwen/core/memory/lite/coding_memory_tool_context.py}.</p>
  */
 public class CodingMemoryToolContext extends LiteMemoryToolContextBase {
-    private final String codingMemoryDir;
 
-    /**
-     * CodingMemoryToolContext.
-     * 
-     * @param workspace workspace
-     * @param settings settings
-     * @param agentId agentId
-     * @param embeddingConfig embeddingConfig
-     * @param sysOperation sysOperation
-     * @param manager manager
-     * @param codingMemoryDir codingMemoryDir
-     * @since 0.1.7
-     */
-    public CodingMemoryToolContext(Workspace workspace, MemorySettings settings, String agentId,
-            EmbeddingConfig embeddingConfig, SysOperation sysOperation, MemoryIndexManager manager,
-            String codingMemoryDir) {
-        this.workspace = workspace;
-        this.settings = settings;
-        this.agentId = agentId;
-        this.embeddingConfig = embeddingConfig;
-        this.sysOperation = sysOperation;
-        this.manager = manager;
-        this.nodeName = "coding_memory";
+    public static final String DEFAULT_NODE_NAME = "coding_memory";
+
+    @JsonProperty("coding_memory_dir")
+    private String codingMemoryDir = "";
+
+    public CodingMemoryToolContext() {
+        setNodeName(DEFAULT_NODE_NAME);
+    }
+
+    public CodingMemoryToolContext(String codingMemoryDir) {
+        this();
         this.codingMemoryDir = codingMemoryDir;
     }
 
-    /**
-     * getCodingMemoryDir.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public CodingMemoryToolContext(String codingMemoryDir, String nodeName) {
+        this.codingMemoryDir = codingMemoryDir;
+        setNodeName(nodeName);
+    }
+
     public String getCodingMemoryDir() {
         return codingMemoryDir;
+    }
+
+    public void setCodingMemoryDir(String codingMemoryDir) {
+        this.codingMemoryDir = codingMemoryDir;
     }
 }

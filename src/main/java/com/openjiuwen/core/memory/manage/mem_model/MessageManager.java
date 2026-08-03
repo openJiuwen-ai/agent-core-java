@@ -7,195 +7,148 @@ package com.openjiuwen.core.memory.manage.mem_model;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
+import com.openjiuwen.core.foundation.store.BaseMessageStore;
+import com.openjiuwen.core.foundation.store.MessageMetadata;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
- * DB-based message management.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code MessageManager} in
+ * {@code openjiuwen/core/memory/manage/mem_model/message_manager.py}.
  */
 public class MessageManager {
-    private final SqlDbStore sqlDb;
-    private final DataIdManager dataId;
-    private final byte[] cryptoKey;
-    private static final String MESSAGE_TABLE = "user_message";
+    private static final String MEMORY_TYPE = "message";
+    private static final String TIMESTAMP_FIELD = "timestamp";
+    private static final String ORDER_DESC = "desc";
 
-    /**
-     * Result of getting a message: the BaseMessage and its timestamp.
-     * 
-     * @since 0.1.7
-     */
-    public record MessageRecord(BaseMessage message, OffsetDateTime timestamp) {
+    private final BaseMessageStore store;
+
+    public MessageManager(BaseMessageStore store) {
+        this.store = store;
     }
 
-    /**
-     * MessageManager.
-     * 
-     * @param sqlDb sqlDb
-     * @param dataId dataId
-     * @param cryptoKey cryptoKey
-     * @since 0.1.7
-     */
-    public MessageManager(SqlDbStore sqlDb, DataIdManager dataId, byte[] cryptoKey) {
-        this.sqlDb = sqlDb;
-        this.dataId = dataId;
-        this.cryptoKey = cryptoKey;
+    public BaseMessageStore getStore() {
+        return store;
     }
 
-    /**
-     * add.
-     * 
-     * @param req req
-     * @return the result
-     * @since 0.1.7
-     */
-    public String add(MessageAddRequest req) {
-        if (req.getUserId() == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
-                    "error_msg", "must provide user_id for add message");
+    public CompletableFuture<String> add(MessageAddRequest request) {
+        if (request.getUserId() == null) {
+            throw messageError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "must provide user_id for add message");
         }
-        if (req.getScopeId() == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
-                    "error_msg", "must provide scope_id for add message");
+        if (request.getScopeId() == null) {
+            throw messageError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "must provide scope_id for add message");
         }
-        if (req.getContent() == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
-                    "error_msg", "must provide content for add message");
+        if (request.getContent() == null) {
+            throw messageError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "must provide content for add message");
+        }
+        if (request.getRole() == null) {
+            throw new IllegalArgumentException("role must not be null");
         }
 
-        String messageId = dataId.generateNextId(req.getUserId());
-        OffsetDateTime time = req.getTimestamp() != null ? req.getTimestamp() : OffsetDateTime.now(ZoneOffset.UTC);
-        String encryptedContent = BaseMemoryManager.encryptMemoryIfNeeded(cryptoKey, req.getContent());
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("message_id", messageId);
-        data.put("user_id", req.getUserId() != null ? req.getUserId() : "");
-        data.put("session_id", req.getSessionId() != null ? req.getSessionId() : "");
-        data.put("scope_id", req.getScopeId() != null ? req.getScopeId() : "");
-        data.put("role", req.getRole() != null ? req.getRole() : "");
-        data.put("content", encryptedContent);
-        data.put("timestamp", time.toString());
-
-        sqlDb.write(MESSAGE_TABLE, data);
-        return messageId;
+        Map<String, Object> messageAdd = new LinkedHashMap<>();
+        messageAdd.put("message", new BaseMessage(request.getRole(), request.getContent()));
+        messageAdd.put("user_id", request.getUserId());
+        messageAdd.put("scope_id", request.getScopeId());
+        messageAdd.put("session_id", request.getSessionId());
+        messageAdd.put("timestamp", request.getTimestamp());
+        return store.addMessage(messageAdd);
     }
 
-    /**
-     * get.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param sessionId sessionId
-     * @param messageLen messageLen
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<MessageRecord> get(String userId, String scopeId, String sessionId, int messageLen) {
-        Map<String, Object> filters = new LinkedHashMap<>();
-        if (userId != null) {
-            filters.put("user_id", userId);
-        }
-        if (scopeId != null) {
-            filters.put("scope_id", scopeId);
-        }
-        if (sessionId != null) {
-            filters.put("session_id", sessionId);
-        }
+    public CompletableFuture<List<Map.Entry<BaseMessage, ZonedDateTime>>> get() {
+        return get(null, null, null, 10);
+    }
+
+    public CompletableFuture<List<Map.Entry<BaseMessage, ZonedDateTime>>> get(String userId,
+                                                                              String scopeId,
+                                                                              String sessionId) {
+        return get(userId, scopeId, sessionId, 10);
+    }
+
+    public CompletableFuture<List<Map.Entry<BaseMessage, ZonedDateTime>>> get(String userId,
+                                                                              String scopeId,
+                                                                              String sessionId,
+                                                                              int messageLen) {
         if (messageLen <= 0) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "message",
-                    "error_msg", "message length must be bigger than zero for get message");
+            throw messageError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                    "message length Must bigger than zero for get message");
         }
-        List<Map<String, Object>> messages = sqlDb.getWithSort(MESSAGE_TABLE, filters, "timestamp", "DESC", messageLen);
 
-        // Reverse to get chronological order
-        List<Map<String, Object>> reversed = new ArrayList<>(messages);
-        Collections.reverse(reversed);
+        Map<String, Object> messageFilter = new LinkedHashMap<>();
+        messageFilter.put("user_id", userId);
+        messageFilter.put("scope_id", scopeId);
+        messageFilter.put("session_id", sessionId);
+        return store.getMessages(messageFilter, messageLen, TIMESTAMP_FIELD, ORDER_DESC)
+                .thenApply(MessageManager::toChronologicalRows);
+    }
 
-        List<MessageRecord> result = new ArrayList<>();
-        for (Map<String, Object> msg : reversed) {
-            BaseMessage baseMsg = toBaseMessage(msg);
-            baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(cryptoKey, baseMsg.getContentAsString()));
-            OffsetDateTime ts = parseTimestamp(msg.get("timestamp"));
-            result.add(new MessageRecord(baseMsg, ts));
+    public CompletableFuture<Map.Entry<BaseMessage, ZonedDateTime>> getById(String messageId) {
+        try {
+            return store.getMessageById(messageId).handle((row, throwable) -> {
+                if (throwable != null) {
+                    Throwable cause = unwrapCompletionException(throwable);
+                    if (cause instanceof IllegalArgumentException) {
+                        return null;
+                    }
+                    if (cause instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    throw new CompletionException(cause);
+                }
+                return toMessageTimestampEntry(row);
+            });
+        } catch (IllegalArgumentException ignored) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public CompletableFuture<Boolean> deleteByUserAndScope(String userId, String scopeId) {
+        Map<String, Object> messageFilter = new LinkedHashMap<>();
+        messageFilter.put("user_id", userId);
+        messageFilter.put("scope_id", scopeId);
+        return store.deleteMessages(messageFilter).thenApply(count -> count > 0);
+    }
+
+    private static List<Map.Entry<BaseMessage, ZonedDateTime>> toChronologicalRows(
+            List<Map.Entry<BaseMessage, MessageMetadata>> messagesWithMetadata) {
+        List<Map.Entry<BaseMessage, MessageMetadata>> copy = new ArrayList<>(messagesWithMetadata);
+        Collections.reverse(copy);
+
+        List<Map.Entry<BaseMessage, ZonedDateTime>> result = new ArrayList<>(copy.size());
+        for (Map.Entry<BaseMessage, MessageMetadata> row : copy) {
+            result.add(toMessageTimestampEntry(row));
         }
         return result;
     }
 
-    /**
-     * getById.
-     * 
-     * @param msgId msgId
-     * @return the result
-     * @since 0.1.7
-     */
-    public MessageRecord getById(String msgId) {
-        Map<String, List<Object>> conditions = new LinkedHashMap<>();
-        conditions.put("message_id", new ArrayList<>(List.of(msgId)));
-        List<Map<String, Object>> messages = sqlDb.conditionGet(MESSAGE_TABLE, conditions, null);
-        if (messages == null || messages.isEmpty()) {
+    private static Map.Entry<BaseMessage, ZonedDateTime> toMessageTimestampEntry(
+            Map.Entry<BaseMessage, MessageMetadata> row) {
+        if (row == null) {
             return null;
         }
-        Map<String, Object> msg = messages.get(0);
-        BaseMessage baseMsg = toBaseMessage(msg);
-        baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(cryptoKey, baseMsg.getContentAsString()));
-        OffsetDateTime ts = parseTimestamp(msg.get("timestamp"));
-        return new MessageRecord(baseMsg, ts);
+        MessageMetadata metadata = row.getValue();
+        ZonedDateTime timestamp = metadata == null ? null : metadata.getTimestamp();
+        return new AbstractMap.SimpleImmutableEntry<>(row.getKey(), timestamp);
     }
 
-    /**
-     * deleteByUserAndScope.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean deleteByUserAndScope(String userId, String scopeId) {
-        Map<String, Object> conditions = new LinkedHashMap<>();
-        conditions.put("user_id", userId);
-        conditions.put("scope_id", scopeId);
-        return sqlDb.delete(MESSAGE_TABLE, conditions);
+    private static RuntimeException messageError(StatusCode status, String errorMsg) {
+        return ErrorHelper.buildError(status,
+                "memory_type", MEMORY_TYPE,
+                "error_msg", errorMsg);
     }
 
-    /**
-     * toBaseMessage.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    private BaseMessage toBaseMessage(Map<String, Object> data) {
-        BaseMessage msg = BaseMessage.builder().role(data.getOrDefault("role", "").toString())
-                .content(data.getOrDefault("content", "").toString()).build();
-        if (data.containsKey("name")) {
-            msg.setName(data.get("name").toString());
+    private static Throwable unwrapCompletionException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
         }
-        return msg;
-    }
-
-    /**
-     * parseTimestamp.
-     * 
-     * @param tsObj tsObj
-     * @return the result
-     * @since 0.1.7
-     */
-    private OffsetDateTime parseTimestamp(Object tsObj) {
-        if (tsObj == null) {
-            return OffsetDateTime.now(ZoneOffset.UTC);
-        }
-        try {
-            return OffsetDateTime.parse(tsObj.toString());
-        } catch (Exception e) {
-            return OffsetDateTime.now(ZoneOffset.UTC);
-        }
+        return current;
     }
 }

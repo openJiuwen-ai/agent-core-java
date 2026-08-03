@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.LegacyApi
+# com.openjiuwen.core.single_agent.legacy.LegacyApi
 
 ## 类 LegacyApi
 

@@ -11,27 +11,15 @@ import java.util.Map;
 
 /**
  * Input model for the Questioner component.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code QuestionerInput} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 @Data
 public class QuestionerInput {
     private Object query = "";
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 
-    /**
-     * fromMap.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     public static QuestionerInput fromMap(Map<String, Object> inputs) {
         QuestionerInput input = new QuestionerInput();
         if (inputs == null) {
@@ -46,12 +34,6 @@ public class QuestionerInput {
         return input;
     }
 
-    /**
-     * toMap.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>(extraFields);
         result.put("query", query);

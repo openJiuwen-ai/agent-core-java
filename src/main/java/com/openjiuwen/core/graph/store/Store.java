@@ -5,41 +5,19 @@
 package com.openjiuwen.core.graph.store;
 
 import java.util.Optional;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Abstract interface for graph state persistence.
+ * Async graph-state storage abstraction.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.store.base.Store}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Store} in
+ * {@code openjiuwen/core/graph/store/base.py}.
  */
 public interface Store {
-    /**
-     * get.
-     * 
-     * @param sessionId sessionId
-     * @param ns ns
-     * @return the result
-     * @since 0.1.7
-     */
-    Optional<GraphStoreState> get(String sessionId, String ns);
 
-    /**
-     * Save graph state.
-     * 
-     * @param sessionId the session identifier
-     * @param ns the namespace
-     * @param state the graph state to save
-     * @since 0.1.7
-     */
-    void save(String sessionId, String ns, GraphStoreState state);
+    CompletionStage<Optional<GraphStoreState>> get(String sessionId, String ns);
 
-    /**
-     * Delete graph state.
-     * 
-     * @param sessionId the session identifier
-     * @param ns the namespace to delete, or null to delete all namespaces
-     * @since 0.1.7
-     */
-    void delete(String sessionId, String ns);
+    CompletionStage<Void> save(String sessionId, String ns, GraphStoreState state);
+
+    CompletionStage<Void> delete(String sessionId, String ns);
 }

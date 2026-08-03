@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.rail.EventInputs
+# com.openjiuwen.core.single_agent.rail.EventInputs
 
 ## 接口 EventInputs
 

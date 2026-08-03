@@ -34,8 +34,14 @@ class SingleAgentSystemTest extends SystemTestSupport {
 
         AtomicBoolean beforeInvokeTriggered = new AtomicBoolean(false);
         AtomicBoolean afterInvokeTriggered = new AtomicBoolean(false);
-        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> beforeInvokeTriggered.set(true), 10);
-        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> afterInvokeTriggered.set(true), 10);
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
+            beforeInvokeTriggered.set(true);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }, 10);
+        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> {
+            afterInvokeTriggered.set(true);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }, 10);
 
         InvocationCapture capture = invokeAgent(agent,
                 Map.of("query", "Reply with the exact token ASTRA_ACK.", "conversation_id", sessionId), sessionId);

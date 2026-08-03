@@ -5,46 +5,40 @@
 package com.openjiuwen.core.singleagent.interrupt;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
+
+import java.util.Objects;
+import java.util.Optional;
 
 /**
- * Runtime exception used to signal a tool interruption inside the ReAct loop.
- * 
- * @since 0.1.7
+ * Exception raised when a tool requires user confirmation.
+ *
+ * <p>Mirrors Python's {@code ToolInterruptException} in
+ * {@code openjiuwen/core/single_agent/interrupt/exception.py}.</p>
  */
-public class ToolInterruptException extends RuntimeException {
+public class ToolInterruptException extends AgentInterrupt {
     private final InterruptRequest request;
     private final ToolCall toolCall;
 
-    /**
-     * Create a tool interruption exception.
-     * 
-     * @param request interruption request payload
-     * @param toolCall interrupted tool call
-     * @since 0.1.7
-     */
+    public ToolInterruptException(InterruptRequest request) {
+        this(request, null);
+    }
+
     public ToolInterruptException(InterruptRequest request, ToolCall toolCall) {
-        super(request != null ? request.getMessage() : "Tool execution interrupted");
+        super(messageOf(request));
         this.request = request;
         this.toolCall = toolCall;
     }
 
-    /**
-     * Return the interruption request.
-     * 
-     * @return interruption request
-     * @since 0.1.7
-     */
+    private static String messageOf(InterruptRequest request) {
+        return String.valueOf(Objects.requireNonNull(request, "request").getMessage());
+    }
+
     public InterruptRequest getRequest() {
         return request;
     }
 
-    /**
-     * Return the interrupted tool call.
-     * 
-     * @return interrupted tool call
-     * @since 0.1.7
-     */
-    public ToolCall getToolCall() {
-        return toolCall;
+    public Optional<ToolCall> getToolCall() {
+        return Optional.ofNullable(toolCall);
     }
 }

@@ -4,11 +4,13 @@
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
-import com.openjiuwen.core.common.security.SslUtils;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -17,66 +19,49 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolCallArgumentUtils;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.time.Duration;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * LLM Model Client abstract base class.
- * <p>
- * All Model Client implementations must inherit from this class and implement
- * invoke, stream, generateImage, generateSpeech, generateVideo.
- * <p>
- * Mirrors Python's {@code BaseModelClient} ABC.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code BaseModelClient} in
+ * {@code openjiuwen/core/foundation/llm/model_clients/base_model_client.py}.</p>
  */
-public abstract class BaseModelClient {
-    private static final Logger LOG = LoggerFactory.getLogger(BaseModelClient.class);
+public abstract class BaseModelClient implements Model.ModelClient {
 
-    /**
-     * ObjectMapper.
-     * 
-     * @since 0.1.7
-     */
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    protected static final String __client_name__ = null;
+    public static final String __client_type__ = "llm";
+    public static final String CLIENT_TYPE = __client_type__;
 
-    /**
-     * modelConfig.
-     * 
-     * @since 0.1.7
-     */
+    private static final Set<String> INTERNAL_REQUEST_PARAMS = Set.of("parser", "output_parser");
+    private static final Set<String> DECIMAL_REQUEST_PARAMS = Set.of("temperature", "top_p");
+
     protected final ModelRequestConfig modelConfig;
-
-    /**
-     * modelClientConfig.
-     * 
-     * @since 0.1.7
-     */
     protected final ModelClientConfig modelClientConfig;
 
     /**
-     * Initialize the model client.
-     * 
-     * @param modelConfig model parameter configuration (temperature, top_p, model_name, etc.)
-     * @param modelClientConfig client configuration (api_key, api_base, timeout, etc.)
-     * @since 0.1.7
+     * Initialize Model Client.
+     *
+     * @param modelConfig model parameter configuration
+     * @param modelClientConfig client connection configuration
      */
     protected BaseModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this.modelConfig = modelConfig;
@@ -85,208 +70,257 @@ public abstract class BaseModelClient {
     }
 
     /**
+     * Java equivalent of Python subclass registration. Java has no
+     * {@code __init_subclass__} hook, so subclasses call this from static
+     * initializers when they need registry parity.
+     *
+     * @param clientClass model client class
+     */
+    protected static void registerClientClass(Class<? extends BaseModelClient> clientClass) {
+        ClientRegistry.getClientRegistry().registerClass(clientClass);
+    }
+
+    /**
+     * Extract cost information from response or chunk usage objects.
+     *
+     * @param obj response or usage object
+     * @return input, output, and total costs
+     */
+    protected static CostInfo extractCostInfo(Object obj) {
+        double inputCost = 0.0D;
+        double outputCost = 0.0D;
+        double totalCost = 0.0D;
+        Object costInfo = firstTruthy(attribute(obj, "cost"), attribute(obj, "usage_cost", "usageCost"));
+        Object costDetails = attribute(obj, "cost_details", "costDetails");
+
+        if (isPythonTruthy(costInfo)) {
+            if (costInfo instanceof Number number) {
+                totalCost = number.doubleValue();
+            } else {
+                inputCost = doubleValue(firstTruthy(
+                        attribute(costInfo, "input_cost", "inputCost"),
+                        attribute(costInfo, "prompt_cost", "promptCost")));
+                outputCost = doubleValue(firstTruthy(
+                        attribute(costInfo, "output_cost", "outputCost"),
+                        attribute(costInfo, "completion_cost", "completionCost")));
+                totalCost = doubleValue(attribute(costInfo, "total_cost", "totalCost"));
+                if (totalCost == 0.0D) {
+                    totalCost = inputCost + outputCost;
+                }
+            }
+        }
+
+        if (isPythonTruthy(costDetails) && inputCost == 0.0D && outputCost == 0.0D) {
+            inputCost = doubleValue(attribute(
+                    costDetails,
+                    "upstream_inference_prompt_cost",
+                    "upstreamInferencePromptCost"));
+            outputCost = doubleValue(attribute(
+                    costDetails,
+                    "upstream_inference_completions_cost",
+                    "upstreamInferenceCompletionsCost"));
+            double detailTotal = doubleValue(attribute(
+                    costDetails,
+                    "upstream_inference_cost",
+                    "upstreamInferenceCost"));
+            if (totalCost == 0.0D) {
+                totalCost = detailTotal != 0.0D ? detailTotal : inputCost + outputCost;
+            }
+        }
+
+        return new CostInfo(inputCost, outputCost, totalCost);
+    }
+
+    /**
      * Get client name for error messages. Subclasses can override.
-     * 
-     * @return the result
-     * @since 0.1.7
+     *
+     * @return simple class name by default
      */
     protected String getClientName() {
         return getClass().getSimpleName();
     }
 
     /**
-     * Validate configuration parameters. Subclasses can override for custom validation.
-     * 
-     * @since 0.1.7
+     * Validate configuration parameters. Subclasses can override.
      */
     protected void validateConfig() {
         String clientName = getClientName();
-
-        if (modelClientConfig.getApiKey() == null || modelClientConfig.getApiKey().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+        if (modelClientConfig == null || isBlank(modelClientConfig.getApiKey())) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "error_msg",
                     "model client config api_key is required for " + clientName + ".");
         }
-        if (modelClientConfig.getApiBase() == null || modelClientConfig.getApiBase().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+        if (isBlank(modelClientConfig.getApiBase())) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "rror_msg",
                     "model client config api_base is required for " + clientName + ".");
         }
     }
 
     /**
-     * buildHttpClient.
-     * 
-     * @param timeoutSeconds timeoutSeconds
-     * @return the result
-     * @since 0.1.7
-     */
-    protected HttpClient buildHttpClient(double timeoutSeconds) {
-        HttpClient.Builder builder = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofMillis(Math.max(1_000L, Math.round(timeoutSeconds * 1_000))));
-        SslUtils.configureHttpClientSsl(builder, modelClientConfig.getApiBase(), modelClientConfig.isVerifySsl(),
-                modelClientConfig.getSslCert());
-        JdkHttpClientProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
-        return builder.build();
-    }
-
-    /**
-     * applyConfiguredHeaders.
-     * 
-     * @param builder builder
-     * @param includeJsonContentType includeJsonContentType
-     * @since 0.1.7
-     */
-    protected void applyConfiguredHeaders(HttpRequest.Builder builder, boolean includeJsonContentType) {
-        if (includeJsonContentType) {
-            builder.setHeader("Content-Type", "application/json");
-        }
-        if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
-            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey().strip());
-        }
-        for (Map.Entry<String, String> entry : modelClientConfig.getHeaders().entrySet()) {
-            if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
-                continue;
-            }
-            builder.setHeader(entry.getKey(), entry.getValue());
-        }
-    }
-
-    // ==================== Message / Tool Conversion ====================
-
-    /**
-     * convertMessagesToDict.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
+     * Convert messages to OpenAI-compatible maps.
+     *
+     * @param messages string, list of messages, or list of maps
+     * @return converted message maps
      */
     @SuppressWarnings("unchecked")
-    protected List<Map<String, Object>> convertMessagesToDict(Object messages) {
-        if (messages == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+    protected static List<Map<String, Object>> convertMessagesToDict(Object messages) {
+        if (!isPythonTruthy(messages)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_INVOKE_PARAM_ERROR,
+                    "error_msg",
                     "The message sent to the llm cannot be empty.");
         }
-        if (messages instanceof String s) {
-            return List.of(Map.of("role", "user", "content", s));
+        if (messages instanceof String text) {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("role", "user");
+            message.put("content", text);
+            return List.of(message);
         }
-        if (messages instanceof List<?> list) {
-            if (list.isEmpty()) {
-                throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
-                        "The message sent to the llm cannot be empty.");
-            }
-            if (list.get(0) instanceof Map) {
-                return (List<Map<String, Object>>) messages;
-            }
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Object item : list) {
-                BaseMessage msg = (BaseMessage) item;
-                Map<String, Object> dict = new LinkedHashMap<>();
-                dict.put("role", msg.getRole());
-                dict.put("content", msg.getContent());
+        if (!(messages instanceof List<?> list)) {
+            throw new ClassCastException("Unsupported message type: " + messages.getClass().getName());
+        }
+        if (list.stream().allMatch(Map.class::isInstance)) {
+            return normalizeMapList((List<Map<?, ?>>) messages);
+        }
 
-                if (msg instanceof AssistantMessage am && am.getToolCalls() != null && !am.getToolCalls().isEmpty()) {
-                    List<Map<String, Object>> toolCallsList = new ArrayList<>();
-                    for (var tc : am.getToolCalls()) {
-                        toolCallsList.add(Map.of("id", tc.getId(), "type", tc.getType(), "function",
-                                Map.of("name", tc.getName(), "arguments", tc.getArguments())));
-                    }
-                    dict.put("tool_calls", toolCallsList);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            BaseMessage msg = (BaseMessage) item;
+            Map<String, Object> msgDict = new LinkedHashMap<>();
+            msgDict.put("role", msg.getRole());
+            msgDict.put("content", msg.getContent());
+
+            if (msg instanceof AssistantMessage assistantMessage
+                    && assistantMessage.getToolCalls() != null
+                    && !assistantMessage.getToolCalls().isEmpty()) {
+                List<Map<String, Object>> toolCallsList = new ArrayList<>();
+                for (ToolCall toolCall : assistantMessage.getToolCalls()) {
+                    Map<String, Object> function = new LinkedHashMap<>();
+                    function.put("name", toolCall.getName());
+                    function.put("arguments", toolCall.getArguments());
+
+                    Map<String, Object> toolCallMap = new LinkedHashMap<>();
+                    toolCallMap.put("id", toolCall.getId());
+                    toolCallMap.put("type", toolCall.getType());
+                    toolCallMap.put("function", function);
+                    toolCallsList.add(toolCallMap);
                 }
-                if (msg instanceof ToolMessage tm) {
-                    dict.put("tool_call_id", tm.getToolCallId());
+                msgDict.put("tool_calls", toolCallsList);
+                if (isPythonTruthy(assistantMessage.getReasoningContent())) {
+                    msgDict.put("reasoning_content", assistantMessage.getReasoningContent());
                 }
-                result.add(dict);
             }
-            return result;
+
+            if (msg instanceof ToolMessage toolMessage) {
+                msgDict.put("tool_call_id", toolMessage.getToolCallId());
+            }
+            result.add(msgDict);
         }
-        throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
-                "Unsupported message type: " + messages.getClass());
+        return result;
     }
 
     /**
-     * convertToolsToDict.
-     * 
-     * @param tools tools
-     * @return the result
-     * @since 0.1.7
+     * Convert tool descriptors to OpenAI-compatible maps.
+     *
+     * @param tools list of ToolInfo or list of maps
+     * @return converted tool maps, or null when tools is empty
      */
     @SuppressWarnings("unchecked")
-    protected List<Map<String, Object>> convertToolsToDict(Object tools) {
-        if (tools == null) {
+    protected static List<Map<String, Object>> convertToolsToDict(Object tools) {
+        if (!isPythonTruthy(tools)) {
             return null;
         }
-        if (tools instanceof List<?> list) {
-            if (list.isEmpty()) {
-                return null;
-            }
-            if (list.get(0) instanceof Map) {
-                return (List<Map<String, Object>>) tools;
-            }
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Object item : list) {
-                ToolInfo tool = (ToolInfo) item;
-                result.add(Map.of("type", tool.getType(), "function",
-                        Map.of("name", tool.getName(), "description",
-                                tool.getDescription() != null ? tool.getDescription() : "", "parameters",
-                                tool.getParameters() != null ? tool.getParameters() : Map.of())));
-            }
-            return result;
+        if (!(tools instanceof List<?> list)) {
+            return null;
         }
-        return null;
+        if (list.stream().allMatch(Map.class::isInstance)) {
+            return normalizeMapList((List<Map<?, ?>>) tools);
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            ToolInfo tool = (ToolInfo) item;
+            Map<String, Object> function = new LinkedHashMap<>();
+            function.put("name", tool.getName());
+            function.put("description", tool.getDescription());
+            function.put("parameters", modelDumpIfPresent(tool.getParameters()));
+
+            Map<String, Object> toolDict = new LinkedHashMap<>();
+            toolDict.put("type", tool.getType());
+            toolDict.put("function", function);
+            result.add(toolDict);
+        }
+        return result;
     }
 
     /**
-     * Build OpenAI-compatible request parameters.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param stop stop
-     * @param maxTokens maxTokens
-     * @param stream stream
-     * @param extraKwargs extraKwargs
-     * @return the result
-     * @since 0.1.7
+     * Build OpenAI-compatible chat completion request parameters.
+     *
+     * @param messages input messages
+     * @param tools available tools
+     * @param temperature temperature override
+     * @param topP top-p override
+     * @param model model override
+     * @param stop stop override
+     * @param maxTokens max tokens override
+     * @param stream whether streaming is requested
+     * @param kwargs extra request keyword arguments
+     * @return request parameter map
      */
-    protected Map<String, Object> buildRequestParams(Object messages, Object tools, Double temperature, Double topP,
-            String model, String stop, Integer maxTokens, boolean stream, Map<String, Object> extraKwargs) {
-        String resolvedModel = model != null ? model : (modelConfig != null ? modelConfig.getModelName() : null);
-        if (resolvedModel == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CONFIG_ERROR, "error_msg", "The model cannot be None.");
+    protected Map<String, Object> buildRequestParams(
+            Object messages,
+            Object tools,
+            Number temperature,
+            Number topP,
+            String model,
+            String stop,
+            Integer maxTokens,
+            boolean stream,
+            Map<String, Object> kwargs) {
+        if (model == null && (modelConfig == null || modelConfig.getModelName() == null)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_CONFIG_ERROR,
+                    "error_msg",
+                    "The model cannot be None.");
         }
 
-        List<Map<String, Object>> messagesDict = convertMessagesToDict(messages);
+        List<Map<String, Object>> messagesDict =
+                fallbackInvalidToolCallArguments(convertMessagesToDict(messages));
+        String resolvedModel = isPythonTruthy(model)
+                ? model
+                : modelConfig == null ? null : modelConfig.getModelName();
 
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("model", resolvedModel);
         params.put("messages", messagesDict);
         params.put("stream", stream);
 
-        double finalTemp = temperature != null
-                ? temperature
-                : (modelConfig != null && modelConfig.getTemperature() != null ? modelConfig.getTemperature() : 0.95);
-        params.put("temperature", finalTemp);
+        Number finalTemperature = normalizeDecimalNumber(temperature != null ? temperature : modelConfig.getTemperature());
+        if (finalTemperature != null) {
+            params.put("temperature", finalTemperature);
+        }
 
-        double finalTopP =
-            topP != null ? topP : (modelConfig != null && modelConfig.getTopP() != null ? modelConfig.getTopP() : 0.1);
-        params.put("top_p", finalTopP);
+        Number finalTopP = normalizeDecimalNumber(topP != null ? topP : modelConfig.getTopP());
+        if (finalTopP != null) {
+            params.put("top_p", finalTopP);
+        }
 
-        Integer finalMaxTokens =
-            maxTokens != null ? maxTokens : (modelConfig != null ? modelConfig.getMaxTokens() : null);
+        Integer finalMaxTokens = maxTokens != null ? maxTokens : modelConfig.getMaxTokens();
         if (finalMaxTokens != null) {
             params.put("max_tokens", finalMaxTokens);
         }
 
-        if (modelConfig != null && modelConfig.getUser() != null) {
+        if (modelConfig.getUser() != null) {
             params.put("user", modelConfig.getUser());
         }
-
-        if (modelConfig != null && modelConfig.getSeed() != null) {
+        if (modelConfig.getSeed() != null) {
             params.put("seed", modelConfig.getSeed());
         }
 
-        String finalStop = stop != null ? stop : (modelConfig != null ? modelConfig.getStop() : null);
+        String finalStop = stop != null ? stop : modelConfig.getStop();
         if (finalStop != null) {
             params.put("stop", finalStop);
         }
@@ -297,145 +331,481 @@ public abstract class BaseModelClient {
             params.put("tool_choice", "auto");
         }
 
-        // Log LLM request params (Python parity)
-        String clientName = modelClientConfig != null ? modelClientConfig.getClientProvider() : "unknown";
-        String toolsJson = null;
-        String messagesJson = null;
-        try {
-            if (toolsDict != null) {
-                toolsJson = JSON_MAPPER.writeValueAsString(toolsDict);
-            }
-            messagesJson = JSON_MAPPER.writeValueAsString(messagesDict);
-        } catch (JsonProcessingException ignored) {
-            toolsJson = String.valueOf(toolsDict);
-            messagesJson = String.valueOf(messagesDict);
-        }
-        com.openjiuwen.core.common.logging.Loggers.LLM.info(
-                "Before request chat model, LLM request params ready. "
-                        + "model_name={}, model_provider={}, messages={}, tools={}, "
-                        + "temperature={}, top_p={}, max_tokens={}, is_stream={}",
-                resolvedModel, clientName, messagesJson, toolsJson, finalTemp, finalTopP, finalMaxTokens, stream);
-
-        if (modelConfig != null && modelConfig.getExtraFields() != null) {
-            for (var entry : modelConfig.getExtraFields().entrySet()) {
+        if (modelConfig.getExtraFields() != null) {
+            for (Map.Entry<String, Object> entry : modelConfig.getExtraFields().entrySet()) {
                 if (entry.getValue() != null) {
-                    params.put(entry.getKey(), entry.getValue());
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
 
-        // Add extra kwargs (excluding internal params)
-        Set<String> internalParams = Set.of("parser", "output_parser");
-        if (extraKwargs != null) {
-            for (var entry : extraKwargs.entrySet()) {
-                if (!internalParams.contains(entry.getKey())) {
-                    params.put(entry.getKey(), entry.getValue());
+        if (kwargs != null) {
+            for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
+                if (!INTERNAL_REQUEST_PARAMS.contains(entry.getKey())) {
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
 
+        logRequestParams(resolvedModel, messagesDict, toolsDict, finalTemperature, finalTopP, finalMaxTokens,
+                finalStop, stream, modelConfig.getExtraFields());
         return params;
     }
 
-    // ==================== Abstract Methods ====================
+    private void logRequestParams(
+            String model,
+            List<Map<String, Object>> messages,
+            List<Map<String, Object>> tools,
+            Number temperature,
+            Number topP,
+            Integer maxTokens,
+            String stop,
+            boolean stream,
+            Map<String, Object> extraParams) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("client_name", getClientName());
+        metadata.put("model_name", model);
+        metadata.put("model_provider", modelClientConfig.getClientProvider());
+        metadata.put("temperature", temperature);
+        metadata.put("top_p", topP);
+        metadata.put("max_tokens", maxTokens);
+        metadata.put("is_stream", stream);
+        metadata.put("extra_params", extraParams);
+        if (UserConfig.isSensitive()) {
+            metadata.put("stop", stop);
+        } else {
+            metadata.put("messages", messages);
+            metadata.put("tools", tools);
+        }
+        Loggers.LLM.info("Before request chat model, LLM request params ready. {}", metadata);
+    }
+
+    public abstract AssistantMessage invoke(Object messages,
+                                            Object tools,
+                                            Float temperature,
+                                            Float topP,
+                                            String model,
+                                            Integer maxTokens,
+                                            String stop,
+                                            BaseOutputParser outputParser,
+                                            Float timeout,
+                                            Map<String, Object> kwargs);
+
+    @Override
+    public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+        ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
+        return CompletableFuture.completedFuture(invoke(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        ));
+    }
+
+    public abstract Iterator<AssistantMessageChunk> stream(Object messages,
+                                                           Object tools,
+                                                           Float temperature,
+                                                           Float topP,
+                                                           String model,
+                                                           Integer maxTokens,
+                                                           String stop,
+                                                           BaseOutputParser outputParser,
+                                                           Float timeout,
+                                                           Map<String, Object> kwargs);
+
+    @Override
+    public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+        ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
+        return stream(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        );
+    }
 
     /**
-     * invoke.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param maxTokens maxTokens
-     * @param stop stop
-     * @param outputParser outputParser
-     * @param timeout timeout
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * Returns provider-specific keyword arguments for one invocation.
+     *
+     * <p>The default implementation returns a mutable copy so providers can add private values
+     * without changing caller-owned options.</p>
      */
-    public abstract AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
-            throws Exception;
+    protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+        if (!options.getRequestHeaders().isEmpty()) {
+            throw new UnsupportedOperationException(
+                    getClass().getSimpleName() + " does not support request-level headers");
+        }
+        Map<String, Object> extraFields = options.getExtraFields();
+        return extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
+    }
+
+    public abstract ImageGenerationResponse generateImage(List<UserMessage> messages,
+                                                          String model,
+                                                          String size,
+                                                          String negativePrompt,
+                                                          int n,
+                                                          boolean promptExtend,
+                                                          boolean watermark,
+                                                          int seed,
+                                                          Map<String, Object> kwargs) throws Exception;
+
+    @Override
+    public CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages,
+                                                                  Model.ImageGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateImage(
+                    messages,
+                    options.model(),
+                    options.size(),
+                    options.negativePrompt(),
+                    options.n(),
+                    options.promptExtend(),
+                    options.watermark(),
+                    options.seed(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages,
+                                                           String model,
+                                                           String voice,
+                                                           String languageType,
+                                                           Map<String, Object> kwargs) throws Exception;
+
+    @Override
+    public CompletionStage<AudioGenerationResponse> generateSpeech(List<UserMessage> messages,
+                                                                   Model.SpeechGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateSpeech(
+                    messages,
+                    options.model(),
+                    options.voice(),
+                    options.languageType(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages,
+                                                          String imgUrl,
+                                                          String audioUrl,
+                                                          String model,
+                                                          String size,
+                                                          String resolution,
+                                                          int duration,
+                                                          boolean promptExtend,
+                                                          boolean watermark,
+                                                          String negativePrompt,
+                                                          Integer seed,
+                                                          Map<String, Object> kwargs) throws Exception;
+
+    @Override
+    public CompletionStage<VideoGenerationResponse> generateVideo(List<UserMessage> messages,
+                                                                  Model.VideoGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateVideo(
+                    messages,
+                    options.imgUrl(),
+                    options.audioUrl(),
+                    options.model(),
+                    options.size(),
+                    options.resolution(),
+                    options.duration(),
+                    options.promptExtend(),
+                    options.watermark(),
+                    options.negativePrompt(),
+                    options.seed(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public Boolean release(String sessionId,
+                           Object messages,
+                           int messagesReleasedIndex,
+                           Object tools,
+                           Integer toolsReleasedIndex,
+                           String model) throws Exception {
+        return false;
+    }
+
+    @Override
+    public CompletionStage<Boolean> release(String sessionId,
+                                            List<BaseMessage> messages,
+                                            Integer messagesReleasedIndex,
+                                            List<ToolInfo> tools,
+                                            Integer toolsReleasedIndex) {
+        try {
+            return CompletableFuture.completedFuture(Boolean.TRUE.equals(release(
+                    sessionId,
+                    messages,
+                    messagesReleasedIndex == null ? 0 : messagesReleasedIndex,
+                    tools,
+                    toolsReleasedIndex,
+                    null
+            )));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public boolean supportsKvCacheRelease() {
+        return false;
+    }
+
+    private static Object modelDumpIfPresent(Object value) {
+        if (value == null) {
+            return null;
+        }
+        for (String methodName : List.of("modelDump", "model_dump")) {
+            Method method = findMethod(value.getClass(), methodName);
+            if (method != null && method.getParameterCount() == 0) {
+                try {
+                    method.setAccessible(true);
+                    return method.invoke(value);
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return value;
+    }
+
+    private static List<Map<String, Object>> normalizeMapList(List<Map<?, ?>> rawMaps) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<?, ?> rawMap : rawMaps) {
+            result.add(stringObjectMap(rawMap));
+        }
+        return result;
+    }
 
     /**
-     * stream.
-     * 
-     * @param messages messages
-     * @param tools tools
-     * @param temperature temperature
-     * @param topP topP
-     * @param model model
-     * @param maxTokens maxTokens
-     * @param stop stop
-     * @param outputParser outputParser
-     * @param timeout timeout
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * 模型请求出口兜底：只在请求副本中把非法 tool call arguments 替换成 "{}"，
+     * 避免非法历史参数导致模型接口拒绝请求，同时不反向污染上下文历史或调用方传入的消息对象。
      */
-    public abstract Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-            Map<String, Object> kwargs) throws Exception;
+    private static List<Map<String, Object>> fallbackInvalidToolCallArguments(List<Map<String, Object>> messages) {
+        List<Map<String, Object>> requestMessages = new ArrayList<>();
+        for (Map<String, Object> message : messages) {
+            Map<String, Object> requestMessage = message;
+            Object toolCalls = message.get("tool_calls");
+            if (toolCalls instanceof List<?> toolCallList) {
+                List<Object> requestToolCalls = null;
+                for (int index = 0; index < toolCallList.size(); index++) {
+                    Object requestToolCall = toolCallList.get(index);
+                    if (requestToolCall instanceof Map<?, ?> toolCallMap) {
+                        Object function = toolCallMap.get("function");
+                        if (function instanceof Map<?, ?> functionMap) {
+                            Object originalArguments = functionMap.get("arguments");
+                            String requestArguments = ToolCallArgumentUtils.fallbackJsonObject(originalArguments);
+                            if (!Objects.equals(requestArguments, originalArguments)) {
+                                Map<String, Object> functionCopy = stringObjectMap(functionMap);
+                                functionCopy.put("arguments", requestArguments);
+                                Map<String, Object> toolCallCopy = stringObjectMap(toolCallMap);
+                                toolCallCopy.put("function", functionCopy);
+                                requestToolCall = toolCallCopy;
+                            }
+                        }
+                    }
+                    if (requestToolCalls != null) {
+                        requestToolCalls.add(requestToolCall);
+                    } else if (requestToolCall != toolCallList.get(index)) {
+                        requestToolCalls = new ArrayList<>(toolCallList.subList(0, index));
+                        requestToolCalls.add(requestToolCall);
+                    }
+                }
+                if (requestToolCalls != null) {
+                    requestMessage = new LinkedHashMap<>(message);
+                    requestMessage.put("tool_calls", requestToolCalls);
+                }
+            }
+            requestMessages.add(requestMessage);
+        }
+        return List.copyOf(requestMessages);
+    }
+
+    private static Map<String, Object> stringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static Object firstTruthy(Object... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Object value : values) {
+            if (isPythonTruthy(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static Object attribute(Object target, String... names) {
+        if (target == null || names == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            for (String name : names) {
+                if (map.containsKey(name)) {
+                    return map.get(name);
+                }
+            }
+            return null;
+        }
+
+        for (String name : names) {
+            Method method = findMethod(target.getClass(), accessorName("get", name));
+            if (method == null) {
+                method = findMethod(target.getClass(), accessorName("is", name));
+            }
+            if (method != null && method.getParameterCount() == 0) {
+                try {
+                    method.setAccessible(true);
+                    return method.invoke(target);
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+
+            Field field = findField(target.getClass(), name);
+            if (field != null) {
+                try {
+                    field.setAccessible(true);
+                    return field.get(target);
+                } catch (IllegalAccessException ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Method findMethod(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(name);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private static Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private static String accessorName(String prefix, String name) {
+        String camel = snakeToCamel(name);
+        return prefix + Character.toUpperCase(camel.charAt(0)) + camel.substring(1);
+    }
+
+    private static String snakeToCamel(String value) {
+        StringBuilder builder = new StringBuilder(value.length());
+        boolean upperNext = false;
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (current == '_') {
+                upperNext = true;
+                continue;
+            }
+            builder.append(upperNext ? Character.toUpperCase(current) : current);
+            upperNext = false;
+        }
+        return builder.toString();
+    }
+
+    private static boolean isPythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0D;
+        }
+        if (value instanceof CharSequence sequence) {
+            return !sequence.isEmpty();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isEmpty();
+    }
+
+    private static double doubleValue(Object value) {
+        Object resolved = firstTruthy(value);
+        if (resolved == null) {
+            return 0.0D;
+        }
+        if (resolved instanceof Number number) {
+            return number.doubleValue();
+        }
+        return Double.parseDouble(String.valueOf(resolved));
+    }
+
+    private static Object normalizeDecimalRequestParam(String key, Object value) {
+        if (!DECIMAL_REQUEST_PARAMS.contains(key) || !(value instanceof Number number)) {
+            return value;
+        }
+        return normalizeDecimalNumber(number);
+    }
+
+    private static Number normalizeDecimalNumber(Number value) {
+        if (value instanceof Float floatValue) {
+            return Double.valueOf(Float.toString(floatValue));
+        }
+        if (value instanceof Double doubleValue) {
+            float narrowed = doubleValue.floatValue();
+            if (Double.compare((double) narrowed, doubleValue) == 0) {
+                return Double.valueOf(Float.toString(narrowed));
+            }
+        }
+        return value;
+    }
 
     /**
-     * generateImage.
-     * 
-     * @param messages messages
-     * @param model model
-     * @param size size
-     * @param negativePrompt negativePrompt
-     * @param n n
-     * @param promptExtend promptExtend
-     * @param watermark watermark
-     * @param seed seed
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * Mirrors Python's tuple return from {@code BaseModelClient._extract_cost_info} in
+     * {@code openjiuwen/core/foundation/llm/model_clients/base_model_client.py}.
+     *
+     * @param inputCost prompt/input cost
+     * @param outputCost completion/output cost
+     * @param totalCost total cost
      */
-    public abstract ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs)
-            throws Exception;
-
-    /**
-     * generateSpeech.
-     * 
-     * @param messages messages
-     * @param model model
-     * @param voice voice
-     * @param languageType languageType
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-            String languageType, Map<String, Object> kwargs) throws Exception;
-
-    /**
-     * generateVideo.
-     * 
-     * @param messages messages
-     * @param imgUrl imgUrl
-     * @param audioUrl audioUrl
-     * @param model model
-     * @param size size
-     * @param resolution resolution
-     * @param duration duration
-     * @param promptExtend promptExtend
-     * @param watermark watermark
-     * @param negativePrompt negativePrompt
-     * @param seed seed
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
-            String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception;
+    public record CostInfo(double inputCost, double outputCost, double totalCost) {
+    }
 }

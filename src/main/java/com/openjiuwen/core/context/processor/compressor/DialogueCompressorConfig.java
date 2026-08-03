@@ -7,80 +7,103 @@ package com.openjiuwen.core.context.processor.compressor;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 /**
- * Configuration for the {@link DialogueCompressor} ContextProcessor.
- * <p>
- * Mirrors Python's {@code DialogueCompressorConfig}.
- * 
- * @since 0.1.7
+ * Backward-compatible config DTO for the pre-0.1.14 compressor package.
+ *
+ * <p>Mirrors Python's {@code DialogueCompressorConfig} in
+ * {@code openjiuwen/core/context_engine/processor/compressor/dialogue_compressor.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class DialogueCompressorConfig {
-    private Integer messagesThreshold;
+public class DialogueCompressorConfig
+        extends com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressorConfig {
+    public DialogueCompressorConfig() {
+    }
 
-    /**
-     * Maximum accumulated token count before compression is triggered.
-     */
-    @Builder.Default
-    private int tokensThreshold = 10000;
+    public DialogueCompressorConfig(Integer messagesThreshold, int tokensThreshold, Integer messagesToKeep,
+                                    boolean keepLastRound, int compressionTargetTokens,
+                                    String customCompressionPrompt, ModelRequestConfig model,
+                                    ModelClientConfig modelClient) {
+        setMessagesThreshold(messagesThreshold);
+        setTokensThreshold(tokensThreshold);
+        setMessagesToKeep(messagesToKeep);
+        setKeepLastRound(keepLastRound);
+        setCompressionTargetTokens(compressionTargetTokens);
+        setCustomCompressionPrompt(customCompressionPrompt);
+        setModel(model);
+        setModelClient(modelClient);
+    }
 
-    /**
-     * Number of most-recent messages to retain regardless of thresholds.
-     */
-    private Integer messagesToKeep;
+    public static Builder builder() {
+        return new Builder();
+    }
 
-    /**
-     * If true, the most recent user-assistant round is always preserved.
-     */
-    @Builder.Default
-    private boolean keepLastRound = true;
-
-    /**
-     * Per-block summary size hint used in the compression prompt.
-     */
-    @Builder.Default
-    private int compressionTargetTokens = 1800;
-
-    /**
-     * User-supplied prompt for the compression step.
-     */
-    private String customCompressionPrompt;
-
-    /**
-     * Model request configuration.
-     */
-    private ModelRequestConfig model;
-
-    /**
-     * Optional client-level configuration for the model.
-     */
-    private ModelClientConfig modelClient;
-
-    /**
-     * Validate configuration constraints matching Python Pydantic rules.
-     * 
-     * @since 0.1.7
-     */
     public void validate() {
-        if (messagesThreshold != null && messagesThreshold <= 0) {
-            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
+        setMessagesThreshold(getMessagesThreshold());
+        setTokensThreshold(getTokensThreshold());
+        setMessagesToKeep(getMessagesToKeep());
+        setCompressionTargetTokens(getCompressionTargetTokens());
+    }
+
+    public static final class Builder {
+        private Integer messagesThreshold;
+        private int tokensThreshold = 10000;
+        private Integer messagesToKeep;
+        private boolean keepLastRound = true;
+        private int compressionTargetTokens = 1800;
+        private String customCompressionPrompt;
+        private ModelRequestConfig model;
+        private ModelClientConfig modelClient;
+
+        private Builder() {
         }
-        if (tokensThreshold <= 0) {
-            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+
+        public Builder messagesThreshold(Integer messagesThreshold) {
+            this.messagesThreshold = messagesThreshold;
+            return this;
         }
-        if (messagesToKeep != null && messagesToKeep <= 0) {
-            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+
+        public Builder tokensThreshold(int tokensThreshold) {
+            this.tokensThreshold = tokensThreshold;
+            return this;
         }
-        if (compressionTargetTokens <= 0) {
-            throw new IllegalArgumentException("compressionTargetTokens must be > 0, got " + compressionTargetTokens);
+
+        public Builder messagesToKeep(Integer messagesToKeep) {
+            this.messagesToKeep = messagesToKeep;
+            return this;
+        }
+
+        public Builder keepLastRound(boolean keepLastRound) {
+            this.keepLastRound = keepLastRound;
+            return this;
+        }
+
+        public Builder compressionTargetTokens(int compressionTargetTokens) {
+            this.compressionTargetTokens = compressionTargetTokens;
+            return this;
+        }
+
+        public Builder compressionTokenLimit(int compressionTokenLimit) {
+            this.compressionTargetTokens = compressionTokenLimit;
+            return this;
+        }
+
+        public Builder customCompressionPrompt(String customCompressionPrompt) {
+            this.customCompressionPrompt = customCompressionPrompt;
+            return this;
+        }
+
+        public Builder model(ModelRequestConfig model) {
+            this.model = model;
+            return this;
+        }
+
+        public Builder modelClient(ModelClientConfig modelClient) {
+            this.modelClient = modelClient;
+            return this;
+        }
+
+        public DialogueCompressorConfig build() {
+            return new DialogueCompressorConfig(messagesThreshold, tokensThreshold, messagesToKeep,
+                    keepLastRound, compressionTargetTokens, customCompressionPrompt, model, modelClient);
         }
     }
 }

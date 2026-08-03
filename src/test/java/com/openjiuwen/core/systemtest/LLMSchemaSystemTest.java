@@ -318,7 +318,7 @@ class LLMSchemaSystemTest {
             String text = "Here's the JSON:\n```json\n{\"name\":\"test\",\"value\":42}\n```\nDone.";
 
             AssistantMessage msg = AssistantMessage.builder().content(text).build();
-            Object result = parser.parse(msg);
+            Object result = parser.parse(msg).join();
 
             assertNotNull(result);
             @SuppressWarnings("unchecked")
@@ -332,7 +332,7 @@ class LLMSchemaSystemTest {
         void testParsePlainJson() {
             JsonOutputParser parser = new JsonOutputParser();
 
-            Object result = parser.parse("{\"status\":\"ok\"}");
+            Object result = parser.parse("{\"status\":\"ok\"}").join();
 
             assertNotNull(result);
             @SuppressWarnings("unchecked")
@@ -344,7 +344,7 @@ class LLMSchemaSystemTest {
         @DisplayName("Parse returns null for invalid JSON")
         void testParseInvalidJson() {
             JsonOutputParser parser = new JsonOutputParser();
-            Object result = parser.parse("This is not JSON at all");
+            Object result = parser.parse("This is not JSON at all").join();
             assertNull(result);
         }
 

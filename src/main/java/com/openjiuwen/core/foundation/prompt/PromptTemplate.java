@@ -9,307 +9,267 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.prompt.assemble.PromptAssembler;
 
+import lombok.Builder;
+import lombok.Data;
+
 import java.util.ArrayList;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Interpolatable text prompt template with configurable placeholders.
- * Supports both String and {@code List<BaseMessage>} as content.
- * Mirrors Python's {@code PromptTemplate}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code PromptTemplate} in
+ * {@code openjiuwen/core/foundation/prompt/template.py}.</p>
  */
+@Data
+@Builder
 public class PromptTemplate {
-    /**
-     * PromptTemplate.
-     * 
-     * @param name name
-     * @param content content
-     * @param placeholderPrefix placeholderPrefix
-     * @param placeholderSuffix placeholderSuffix
-     * @since 0.1.7
-     */
-    public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
-        this.name = name;
-        this.content = content;
-        this.placeholderPrefix = placeholderPrefix;
-        this.placeholderSuffix = placeholderSuffix;
-    }
 
-    /** Template name. */
+    @Builder.Default
     private String name = "";
 
-    /** Template content - either a plain String or a List<BaseMessage>. */
+    @Builder.Default
     private Object content = "";
 
-    /** Left delimiter for placeholders. */
+    @Builder.Default
     private String placeholderPrefix = "{{";
 
-    /** Right delimiter for placeholders. */
+    @Builder.Default
     private String placeholderSuffix = "}}";
 
-    /**
-     * getName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getName() {
-        return name;
+    public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
+        this.name = name == null ? "" : name;
+        this.content = content == null ? "" : content;
+        this.placeholderPrefix = placeholderPrefix == null ? "{{" : placeholderPrefix;
+        this.placeholderSuffix = placeholderSuffix == null ? "}}" : placeholderSuffix;
     }
 
     /**
-     * setName.
-     * 
-     * @param name name
-     * @since 0.1.7
+     * Convert template content to message list using Python's wrapping rules.
+     *
+     * @return copied message list
      */
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    /**
-     * getContent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getContent() {
-        return content;
-    }
-
-    /**
-     * setContent.
-     * 
-     * @param content content
-     * @since 0.1.7
-     */
-    public void setContent(Object content) {
-        this.content = content;
-    }
-
-    /**
-     * getPlaceholderPrefix.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getPlaceholderPrefix() {
-        return placeholderPrefix;
-    }
-
-    /**
-     * setPlaceholderPrefix.
-     * 
-     * @param placeholderPrefix placeholderPrefix
-     * @since 0.1.7
-     */
-    public void setPlaceholderPrefix(String placeholderPrefix) {
-        this.placeholderPrefix = placeholderPrefix;
-    }
-
-    /**
-     * getPlaceholderSuffix.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getPlaceholderSuffix() {
-        return placeholderSuffix;
-    }
-
-    /**
-     * setPlaceholderSuffix.
-     * 
-     * @param placeholderSuffix placeholderSuffix
-     * @since 0.1.7
-     */
-    public void setPlaceholderSuffix(String placeholderSuffix) {
-        this.placeholderSuffix = placeholderSuffix;
-    }
-
-    /**
-     * toMessages.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
     public List<BaseMessage> toMessages() {
-        if (content == null || (content instanceof String s && s.isEmpty())) {
+        if (content == null || (content instanceof String text && text.isEmpty())) {
             return List.of();
         }
-        if (content instanceof String s) {
-            return List.of(UserMessage.builder().content(s).build());
+        if (content instanceof String text) {
+            return List.of(UserMessage.builder().content(text).build());
         }
-        if (content instanceof List<?> list) {
-            for (Object item : list) {
-                if (!(item instanceof BaseMessage)) {
-                    throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
-                            "prompt template type must be in str or list[BaseMessage]");
-                }
-            }
-            List<BaseMessage> result = new ArrayList<>();
-            for (Object msg : list) {
-                result.add(copyMessage((BaseMessage) msg));
-            }
-            return result;
+        if (!(content instanceof List<?> items)) {
+            throw invalidPromptTemplateType();
         }
-        throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
-                "prompt template type must be in str or list[BaseMessage]");
+        List<BaseMessage> result = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof BaseMessage baseMessage)) {
+                throw invalidPromptTemplateType();
+            }
+            result.add(copyMessage(baseMessage));
+        }
+        return result;
     }
 
     /**
-     * format.
-     * 
-     * @param keywords keywords
-     * @return the result
-     * @since 0.1.7
+     * Format placeholders and return a new PromptTemplate instance.
+     *
+     * @param keywords substitutions
+     * @return formatted prompt template copy
      */
-    @SuppressWarnings("unchecked")
     public PromptTemplate format(Map<String, Object> keywords) {
         if (keywords == null || keywords.isEmpty()) {
-            return PromptTemplate.builder().name(name).content(content).placeholderPrefix(placeholderPrefix)
-                    .placeholderSuffix(placeholderSuffix).build();
+            return PromptTemplate.builder()
+                    .name(name)
+                    .content(copyContent(content))
+                    .placeholderPrefix(placeholderPrefix)
+                    .placeholderSuffix(placeholderSuffix)
+                    .build();
         }
 
-        Object contentCopy;
-        if (content instanceof String) {
-            contentCopy = content;
-        } else if (content instanceof List<?> list) {
-            List<BaseMessage> copy = new ArrayList<>();
-            for (Object item : list) {
-                copy.add(copyMessage((BaseMessage) item));
-            }
-            contentCopy = copy;
-        } else {
-            contentCopy = content;
-        }
-
+        Object contentCopy = copyContent(content);
         PromptAssembler assembler = new PromptAssembler(contentCopy, placeholderPrefix, placeholderSuffix);
         List<String> inputKeys = assembler.getInputKeys();
-
         Map<String, Object> validKeywords = new java.util.LinkedHashMap<>();
         for (String key : inputKeys) {
             if (keywords.containsKey(key)) {
                 validKeywords.put(key, keywords.get(key));
             }
         }
-
-        Object assembled = assembler.promptAssemble(validKeywords);
-
-        return PromptTemplate.builder().name(name).content(assembled).placeholderPrefix(placeholderPrefix)
-                .placeholderSuffix(placeholderSuffix).build();
+        Object formattedContent = assembler.promptAssemble(validKeywords);
+        return PromptTemplate.builder()
+                .name(name)
+                .content(formattedContent)
+                .placeholderPrefix(placeholderPrefix)
+                .placeholderSuffix(placeholderSuffix)
+                .build();
     }
 
-    /**
-     * Copy a BaseMessage preserving its original subtype.
-     * 
-     * @param bm bm
-     * @return the result
-     * @since 0.1.7
-     */
-    private static BaseMessage copyMessage(BaseMessage bm) {
-        if (bm instanceof AssistantMessage am) {
-            return AssistantMessage.builder().role(am.getRole()).content(am.getContent()).name(am.getName())
-                    .toolCalls(am.getToolCalls()).usageMetadata(am.getUsageMetadata())
-                    .finishReason(am.getFinishReason()).parserContent(am.getParserContent())
-                    .reasoningContent(am.getReasoningContent()).build();
-        } else if (bm instanceof UserMessage) {
-            return UserMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
-        } else if (bm instanceof SystemMessage) {
-            return SystemMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
-        } else if (bm instanceof ToolMessage tm) {
-            return ToolMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName())
-                    .toolCallId(tm.getToolCallId()).build();
-        } else {
-            return BaseMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
+    private static Object copyContent(Object source) {
+        if (source instanceof List<?> items) {
+            List<Object> copy = new ArrayList<>();
+            for (Object item : items) {
+                if (item instanceof BaseMessage baseMessage) {
+                    copy.add(copyMessage(baseMessage));
+                } else {
+                    copy.add(deepCopyObject(item));
+                }
+            }
+            return copy;
         }
+        return deepCopyObject(source);
     }
 
-    /**
-     * builder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Builder builder() {
-        return new Builder();
+    private static BaseMessage copyMessage(BaseMessage message) {
+        if (message instanceof AssistantMessage assistant) {
+            return AssistantMessage.builder()
+                    .role(assistant.getRole())
+                    .content(deepCopyObject(assistant.getContent()))
+                    .name(assistant.getName())
+                    .toolCalls(copyToolCalls(assistant.getToolCalls()))
+                    .usageMetadata(copyUsageMetadata(assistant.getUsageMetadata()))
+                    .finishReason(assistant.getFinishReason())
+                    .parserContent(deepCopyObject(assistant.getParserContent()))
+                    .reasoningContent(assistant.getReasoningContent())
+                    .promptTokenIds(copyIntegerList(assistant.getPromptTokenIds()))
+                    .completionTokenIds(copyIntegerList(assistant.getCompletionTokenIds()))
+                    .logprobs(deepCopyObject(assistant.getLogprobs()))
+                    .metadata(copyStringObjectMap(assistant.getMetadata()))
+                    .build();
+        }
+        if (message instanceof UserMessage) {
+            return UserMessage.builder()
+                    .role(message.getRole())
+                    .content(deepCopyObject(message.getContent()))
+                    .name(message.getName())
+                    .metadata(copyStringObjectMap(message.getMetadata()))
+                    .build();
+        }
+        if (message instanceof SystemMessage) {
+            return SystemMessage.builder()
+                    .role(message.getRole())
+                    .content(deepCopyObject(message.getContent()))
+                    .name(message.getName())
+                    .metadata(copyStringObjectMap(message.getMetadata()))
+                    .build();
+        }
+        if (message instanceof ToolMessage toolMessage) {
+            return ToolMessage.builder()
+                    .role(message.getRole())
+                    .content(deepCopyObject(message.getContent()))
+                    .name(message.getName())
+                    .metadata(copyStringObjectMap(message.getMetadata()))
+                    .toolCallId(toolMessage.getToolCallId())
+                    .build();
+        }
+        return BaseMessage.builder()
+                .role(message.getRole())
+                .content(deepCopyObject(message.getContent()))
+                .name(message.getName())
+                .metadata(copyStringObjectMap(message.getMetadata()))
+                .build();
     }
 
-    /**
-     * Builder.
-     * 
-     * @since 0.1.7
-     */
-    public static class Builder {
-        private String name = "";
-        private Object content = "";
-        private String placeholderPrefix = "{{";
-        private String placeholderSuffix = "}}";
-
-        /**
-         * name.
-         * 
-         * @param name name
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder name(String name) {
-            this.name = name;
-            return this;
+    private static Map<String, Object> copyStringObjectMap(Map<String, Object> source) {
+        if (source == null) {
+            return null;
         }
-
-        /**
-         * content.
-         * 
-         * @param content content
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder content(Object content) {
-            this.content = content;
-            return this;
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            copy.put(entry.getKey(), deepCopyObject(entry.getValue()));
         }
+        return copy;
+    }
 
-        /**
-         * placeholderPrefix.
-         * 
-         * @param placeholderPrefix placeholderPrefix
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder placeholderPrefix(String placeholderPrefix) {
-            this.placeholderPrefix = placeholderPrefix;
-            return this;
+    private static Object deepCopyObject(Object source) {
+        if (source instanceof BaseMessage message) {
+            return copyMessage(message);
         }
+        if (source instanceof ToolCall toolCall) {
+            return copyToolCall(toolCall);
+        }
+        if (source instanceof UsageMetadata usageMetadata) {
+            return copyUsageMetadata(usageMetadata);
+        }
+        if (source instanceof Map<?, ?> map) {
+            Map<Object, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                copy.put(entry.getKey(), deepCopyObject(entry.getValue()));
+            }
+            return copy;
+        }
+        if (source instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>();
+            for (Object item : list) {
+                copy.add(deepCopyObject(item));
+            }
+            return copy;
+        }
+        return source;
+    }
 
-        /**
-         * placeholderSuffix.
-         * 
-         * @param placeholderSuffix placeholderSuffix
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder placeholderSuffix(String placeholderSuffix) {
-            this.placeholderSuffix = placeholderSuffix;
-            return this;
+    private static List<ToolCall> copyToolCalls(List<ToolCall> source) {
+        if (source == null) {
+            return null;
         }
+        List<ToolCall> copy = new ArrayList<>();
+        for (ToolCall toolCall : source) {
+            copy.add(copyToolCall(toolCall));
+        }
+        return copy;
+    }
 
-        /**
-         * build.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public PromptTemplate build() {
-            return new PromptTemplate(name, content, placeholderPrefix, placeholderSuffix);
+    private static ToolCall copyToolCall(ToolCall source) {
+        if (source == null) {
+            return null;
         }
+        return ToolCall.builder()
+                .id(source.getId())
+                .type(source.getType())
+                .name(source.getName())
+                .arguments(source.getArguments())
+                .index(source.getIndex())
+                .build();
+    }
+
+    private static UsageMetadata copyUsageMetadata(UsageMetadata source) {
+        if (source == null) {
+            return null;
+        }
+        return UsageMetadata.builder()
+                .code(source.getCode())
+                .errMsg(source.getErrMsg())
+                .prompt(source.getPrompt())
+                .taskId(source.getTaskId())
+                .modelName(source.getModelName())
+                .totalLatency(source.getTotalLatency())
+                .firstTokenTime(source.getFirstTokenTime())
+                .requestStartTime(source.getRequestStartTime())
+                .inputTokens(source.getInputTokens())
+                .outputTokens(source.getOutputTokens())
+                .totalTokens(source.getTotalTokens())
+                .cacheTokens(source.getCacheTokens())
+                .inputCost(source.getInputCost())
+                .outputCost(source.getOutputCost())
+                .totalCost(source.getTotalCost())
+                .build();
+    }
+
+    private static List<Integer> copyIntegerList(List<Integer> source) {
+        return source == null ? null : new ArrayList<>(source);
+    }
+
+    private static RuntimeException invalidPromptTemplateType() {
+        return ErrorHelper.buildError(
+                StatusCode.PROMPT_TEMPLATE_INVALID,
+                "error_msg",
+                "prompt template type must be in str or list[BaseMessage]"
+        );
     }
 }

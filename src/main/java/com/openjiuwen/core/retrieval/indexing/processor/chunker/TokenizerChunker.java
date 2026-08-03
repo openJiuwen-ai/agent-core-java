@@ -4,108 +4,72 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import com.openjiuwen.core.retrieval.indexing.processor.splitter.SentenceSplitter;
+import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.TextChunk;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
- * Token-aware chunker backed by {@link SentenceSplitter}.
- * 
- * @since 0.1.7
+ * Fixed-size chunker based on tokenizer-aware sentence splitting.
+ * <p>
+ * Mirrors Python's {@code TokenizerChunker} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/tokenizer_chunker.py}.
+ * </p>
  */
 public class TokenizerChunker extends Chunker {
-    private final SentenceSplitter splitter;
-    private final Function<String, List<String>> tokenizer;
+
+    private final IndexSentenceSplitter.TokenCodec tokenizer;
+    private final IndexSentenceSplitter splitter;
     private final String language;
     private final Map<String, Object> splitterConfig;
 
-    /**
-     * TokenizerChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @since 0.1.7
-     */
-    public TokenizerChunker(int chunkSize, int chunkOverlap) {
-        this(chunkSize, chunkOverlap, null, "auto", null);
-    }
-
-    /**
-     * TokenizerChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param tokenizer tokenizer
-     * @since 0.1.7
-     */
-    public TokenizerChunker(int chunkSize, int chunkOverlap, Function<String, List<String>> tokenizer) {
+    public TokenizerChunker(int chunkSize, int chunkOverlap, IndexSentenceSplitter.TokenCodec tokenizer) {
         this(chunkSize, chunkOverlap, tokenizer, "auto", null);
     }
 
-    /**
-     * TokenizerChunker.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param tokenizer tokenizer
-     * @param language language
-     * @param splitterConfig splitterConfig
-     * @since 0.1.7
-     */
-    public TokenizerChunker(int chunkSize, int chunkOverlap, Function<String, List<String>> tokenizer, String language,
-            Map<String, Object> splitterConfig) {
-        super(chunkSize, chunkOverlap);
+    public TokenizerChunker(int chunkSize,
+                            int chunkOverlap,
+                            IndexSentenceSplitter.TokenCodec tokenizer,
+                            String language,
+                            Map<String, Object> splitterConfig) {
+        super(chunkSize, chunkOverlap, null);
         this.tokenizer = tokenizer;
         this.language = language == null ? "auto" : language;
         this.splitterConfig = splitterConfig == null ? Map.of() : Map.copyOf(splitterConfig);
-        @SuppressWarnings("unchecked")
-        Function<List<String>, String> decoder =
-            this.splitterConfig.get("tokenizer_dec") instanceof Function<?, ?> function
-                    ? (Function<List<String>, String>) function
-                    : null;
-        this.splitter = new SentenceSplitter(chunkSize, chunkOverlap, tokenizer, this.language, decoder);
+        this.splitter = new IndexSentenceSplitter(
+                this.tokenizer,
+                getChunkSize(),
+                getChunkOverlap(),
+                this.splitterConfig,
+                this.language
+        );
     }
 
-    /**
-     * chunkText.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public List<String> chunkText(String text) {
-        return splitter.splitText(text);
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        Document document = new Document(null, text, new LinkedHashMap<>());
+        return splitter.split(document).stream()
+                .map(TextChunk::getText)
+                .toList();
     }
 
-    /**
-     * getTokenizer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Function<String, List<String>> getTokenizer() {
+    public IndexSentenceSplitter.TokenCodec getTokenizer() {
         return tokenizer;
     }
 
-    /**
-     * getLanguage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public IndexSentenceSplitter getSplitter() {
+        return splitter;
+    }
+
     public String getLanguage() {
         return language;
     }
 
-    /**
-     * getSplitterConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getSplitterConfig() {
         return splitterConfig;
     }

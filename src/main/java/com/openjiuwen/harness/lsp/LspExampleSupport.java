@@ -69,7 +69,13 @@ public final class LspExampleSupport {
      */
     public static LSPServerManager newManager(Path workspace) {
         LSPServerManager manager = new LSPServerManager();
-        manager.setWorkspaceRoot(workspace.toAbsolutePath().normalize().toString());
+        try {
+            java.lang.reflect.Field field = LSPServerManager.class.getDeclaredField("workspaceRoot");
+            field.setAccessible(true);
+            field.set(manager, workspace.toAbsolutePath().normalize().toString());
+        } catch (ReflectiveOperationException ignored) {
+            // Fall back – the workspace root will remain empty.
+        }
         return manager;
     }
 

@@ -11,140 +11,87 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Channel for N→1 fan-in barrier synchronization.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.BarrierChannel}.
- * The channel becomes ready only when all expected senders have sent a message.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BarrierChannel} in
+ * {@code openjiuwen/core/graph/pregel/channels.py}.
  */
 public class BarrierChannel extends Channel {
-    private final String nodeName;
-    private final Set<String> expected;
 
-    /**
-     * HashSet<>.
-     * 
-     * @since 0.1.7
-     */
+    private final List<Set<String>> expectedGroups;
     private final Set<String> received = new HashSet<>();
     private final String routerKey;
 
-    /**
-     * BarrierChannel.
-     * 
-     * @param nodeName nodeName
-     * @param expected expected
-     * @since 0.1.7
-     */
-    public BarrierChannel(String nodeName, Set<String> expected) {
+    public BarrierChannel(String nodeName, List<Set<String>> expectedGroups) {
         super(nodeName);
-        this.nodeName = nodeName;
-        this.expected = new HashSet<>(expected);
-        this.routerKey = makeRouterKey(nodeName, expected);
+        this.expectedGroups = normalizeGroups(expectedGroups);
+        this.routerKey = makeRouterKey(nodeName, this.expectedGroups);
     }
 
-    /**
-     * getKey.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public BarrierChannel(String nodeName, Set<String> expected) {
+        this(nodeName, expected.stream().sorted().map(Set::of).toList());
+    }
+
     @Override
     public String getKey() {
         return routerKey;
     }
 
-    /**
-     * getNodeName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getNodeName() {
-        return nodeName;
-    }
-
-    /**
-     * isReady.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean isReady() {
-        return received.equals(expected);
-    }
-
-    /**
-     * accept.
-     * 
-     * @param msg msg
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean accept(Message msg) {
-        if (msg instanceof BarrierMessage barrierMsg) {
-            if (!received.contains(barrierMsg.getSender())) {
-                received.add(barrierMsg.getSender());
-                return true;
+        if (received.isEmpty()) {
+            return false;
+        }
+        for (Set<String> group : expectedGroups) {
+            if (group.stream().noneMatch(received::contains)) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
-    /**
-     * consume.
-     * 
-     * @since 0.1.7
-     */
     @Override
-    public void consume() {
-        received.clear();
+    public void accept(Message msg) {
+        if (msg instanceof BarrierMessage barrierMessage && !received.contains(barrierMessage.getSender())) {
+            received.add(barrierMessage.getSender());
+        }
     }
 
-    /**
-     * snapshot.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    public Object consume() {
+        received.clear();
+        return null;
+    }
+
     @Override
     public Object snapshot() {
         return new ArrayList<>(received);
     }
 
-    /**
-     * restore.
-     * 
-     * @param snapshotData snapshotData
-     * @since 0.1.7
-     */
     @Override
-    @SuppressWarnings("unchecked")
-    public void restore(Object snapshotData) {
-        if (snapshotData instanceof List<?> list) {
+    public void restore(Object snapshot) {
+        if (snapshot instanceof List<?> list) {
             received.clear();
             for (Object item : list) {
-                if (item instanceof String s) {
-                    received.add(s);
+                if (item instanceof String sender) {
+                    received.add(sender);
                 }
             }
         }
     }
 
-    /**
-     * makeRouterKey.
-     * 
-     * @param name name
-     * @param expected expected
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String makeRouterKey(String name, Set<String> expected) {
-        String senders = expected.stream().sorted().collect(Collectors.joining("|"));
-        return "barrier:" + senders + "->" + name;
+    private static List<Set<String>> normalizeGroups(List<Set<String>> groups) {
+        List<Set<String>> normalized = new ArrayList<>();
+        for (Set<String> group : groups) {
+            normalized.add(new HashSet<>(group));
+        }
+        return normalized;
+    }
+
+    private static String makeRouterKey(String nodeName, List<Set<String>> groups) {
+        List<String> parts = new ArrayList<>();
+        for (Set<String> group : groups) {
+            String joined = group.stream().sorted().collect(Collectors.joining("|"));
+            parts.add(group.size() == 1 ? joined : "(" + joined + ")");
+        }
+        return "barrier:" + String.join("&", parts) + "->" + nodeName;
     }
 }

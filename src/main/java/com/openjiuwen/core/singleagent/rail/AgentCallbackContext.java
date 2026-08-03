@@ -4,208 +4,173 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.BaseAgent;
 
-import lombok.Builder;
-import lombok.Data;
-
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 
 /**
- * Unified context object isPassed to rail/callback hooks.
- * <p>
- * Attributes:
- * <ul>
- * <li>agent: Reference to the BaseAgent instance</li>
- * <li>event: Current callback event (set by fire())</li>
- * <li>inputs: Current event input data (changes per event)</li>
- * <li>config: Runtime configuration</li>
- * <li>session: Current Session object</li>
- * <li>context: Current ModelContext</li>
- * <li>extra: Cross-rail communication dict</li>
- * <li>exception: Exception object (set on error events)</li>
- * <li>retryAttempt: Current failed-attempt index</li>
- * </ul>
- * 
- * @since 0.1.7
+ * Unified context object passed to rail/callback hooks.
+ *
+ * <p>Mirrors Python's {@code AgentCallbackContext} in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
-@Data
-@Builder
 public class AgentCallbackContext {
-    private Object agent;
+    private BaseAgent agent;
     private AgentCallbackEvent event;
-    @Builder.Default
-    private EventInputs inputs = null;
+    private Object inputs = new LinkedHashMap<String, Object>();
     private Object config;
-    private Session session;
+    private AgentSessionApi session;
     private ModelContext context;
-    @Builder.Default
-    /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private Map<String, Object> extra = new HashMap<>();
+    private Map<String, Object> extra = new LinkedHashMap<>();
     private Exception exception;
-    @Builder.Default
-    private int retryAttempt = 0;
+    private int retryAttempt;
     private RetryRequest retryRequest;
     private ForceFinishRequest forceFinishRequest;
-    private SteeringQueue steeringQueue;
+    private Queue<String> steeringQueue;
 
-    /**
-     * Trigger all registered callbacks for an event.
-     * 
-     * @param event the event to fire
-     * @since 0.1.7
-     */
+    public AgentCallbackContext() {
+    }
+
+    public AgentCallbackContext(BaseAgent agent) {
+        this.agent = agent;
+    }
+
     public void fire(AgentCallbackEvent event) {
         this.event = event;
-        // Delegate to the agent's callback manager
-        if (agent instanceof AgentCallbackFirer firer) {
-            firer.fireCallbackEvent(event, this);
+        if (agent != null && agent.getAgentCallbackManager() != null) {
+            agent.getAgentCallbackManager().execute(event, this).toCompletableFuture().join();
         }
     }
 
-    /**
-     * Request the wrapped rail method to retry once more.
-     * 
-     * @param delaySeconds sleep duration before next attempt
-     * @since 0.1.7
-     */
     public void requestRetry(double delaySeconds) {
-        if (delaySeconds < 0) {
-            delaySeconds = 0.0;
-        }
-        this.retryRequest = RetryRequest.builder().delaySeconds(delaySeconds).build();
+        retryRequest = new RetryRequest(delaySeconds);
     }
 
-    /**
-     * Read and clear pending retry request.
-     * 
-     * @return the pending retry request, or null
-     * @since 0.1.7
-     */
     public RetryRequest consumeRetryRequest() {
-        RetryRequest request = this.retryRequest;
-        this.retryRequest = null;
+        RetryRequest request = retryRequest;
+        retryRequest = null;
         return request;
     }
 
-    /**
-     * Request that the enclosing agent loop terminate immediately and return the provided result.
-     * 
-     * @param result terminal result payload
-     * @since 0.1.7
-     */
     public void requestForceFinish(Map<String, Object> result) {
-        this.forceFinishRequest = ForceFinishRequest.builder().result(result).build();
+        forceFinishRequest = new ForceFinishRequest(result);
     }
 
-    /**
-     * Read and clear the pending force-finish request.
-     * 
-     * @return the pending force-finish request, or null
-     * @since 0.1.7
-     */
     public ForceFinishRequest consumeForceFinish() {
-        ForceFinishRequest request = this.forceFinishRequest;
-        this.forceFinishRequest = null;
+        ForceFinishRequest request = forceFinishRequest;
+        forceFinishRequest = null;
         return request;
     }
 
-    /**
-     * Check whether a force-finish request is pending.
-     * 
-     * @return true when force-finish has been requested
-     * @since 0.1.7
-     */
     public boolean hasForceFinishRequest() {
-        return this.forceFinishRequest != null;
+        return forceFinishRequest != null;
     }
 
-    /**
-     * Bind the steering queue shared by invoke/model/tool lifecycle hooks.
-     * 
-     * @param queue queue to bind; null clears the binding
-     * @since 0.1.7
-     */
-    public void bindSteeringQueue(SteeringQueue queue) {
-        this.steeringQueue = queue;
+    public void bindSteeringQueue(Queue<String> queue) {
+        steeringQueue = queue;
     }
 
-    /**
-     * Push a steering instruction to the bound queue.
-     * 
-     * @param message steering text
-     * @since 0.1.7
-     */
     public void pushSteering(String message) {
         if (steeringQueue != null) {
-            steeringQueue.pushSteering(message);
+            steeringQueue.offer(message);
         }
     }
 
-    /**
-     * Drain all pending steering instructions from the bound queue.
-     * 
-     * @return drained steering instructions, or empty list when no queue is bound
-     * @since 0.1.7
-     */
     public List<String> drainSteering() {
         if (steeringQueue == null) {
             return List.of();
         }
-        return steeringQueue.drainSteering();
-    }
-
-    /**
-     * Whether the context is bound to a steering queue.
-     * 
-     * @return true when a queue is bound
-     * @since 0.1.7
-     */
-    public boolean hasSteeringQueue() {
-        return steeringQueue != null;
-    }
-
-    /**
-     * Execute a block of code wrapped in before/after lifecycle events.
-     * <p>
-     * Fires {@code before} on entry, then executes the body,
-     * and fires {@code after} in the finally block (always).
-     * Automatically saves and restores {@code inputs} so that
-     * inner steps (model_call, tool_call) can freely overwrite
-     * it without affecting the after event.
-     * </p>
-     * 
-     * @param before event to fire on entry
-     * @param after event to fire on exit (always)
-     * @param body the code to execute between the events
-     * @since 0.1.7
-     */
-    public void lifecycle(AgentCallbackEvent before, AgentCallbackEvent after, Runnable body) {
-        EventInputs savedInputs = this.inputs;
-        fire(before);
-        try {
-            body.run();
-        } finally {
-            this.inputs = savedInputs;
-            fire(after);
+        List<String> messages = new ArrayList<>();
+        String message;
+        while ((message = steeringQueue.poll()) != null) {
+            messages.add(message);
         }
+        return messages;
     }
 
-    /**
-     * ForceFinishRequest.
-     * 
-     * @since 0.1.7
-     */
-    @Data
-    @Builder
-    public static class ForceFinishRequest {
-        private Map<String, Object> result;
+    public boolean hasPendingSteering() {
+        return steeringQueue != null && !steeringQueue.isEmpty();
+    }
+
+    public BaseAgent getAgent() {
+        return agent;
+    }
+
+    public void setAgent(BaseAgent agent) {
+        this.agent = agent;
+    }
+
+    public AgentCallbackEvent getEvent() {
+        return event;
+    }
+
+    public void setEvent(AgentCallbackEvent event) {
+        this.event = event;
+    }
+
+    public Object getInputs() {
+        return inputs;
+    }
+
+    public void setInputs(Object inputs) {
+        this.inputs = inputs == null ? new LinkedHashMap<String, Object>() : inputs;
+    }
+
+    public Object getConfig() {
+        return config;
+    }
+
+    public void setConfig(Object config) {
+        this.config = config;
+    }
+
+    public AgentSessionApi getSession() {
+        return session;
+    }
+
+    public void setSession(AgentSessionApi session) {
+        this.session = session;
+    }
+
+    public ModelContext getContext() {
+        return context;
+    }
+
+    public void setContext(ModelContext context) {
+        this.context = context;
+    }
+
+    public Map<String, Object> getExtra() {
+        return extra;
+    }
+
+    public void setExtra(Map<String, Object> extra) {
+        this.extra = extra == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extra);
+    }
+
+    public Exception getException() {
+        return exception;
+    }
+
+    public void setException(Exception exception) {
+        this.exception = exception;
+    }
+
+    public int getRetryAttempt() {
+        return retryAttempt;
+    }
+
+    public void setRetryAttempt(int retryAttempt) {
+        this.retryAttempt = retryAttempt;
+    }
+
+    public Queue<String> getSteeringQueue() {
+        return steeringQueue;
     }
 }

@@ -1,186 +1,158 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.vector_store;
 
-import com.openjiuwen.core.retrieval.common.SearchResult;
-import com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.store.query.QueryExpr;
+import com.openjiuwen.core.retrieval.common.RetrievalResult;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Unified vector store abstraction.
- * 
- * @since 0.1.7
+ * Unified vector-store abstraction.
+ * <p>
+ * Mirrors Python's {@code VectorStore} in
+ * {@code openjiuwen/core/retrieval/vector_store/base.py}.
+ * </p>
  */
-public interface VectorStore extends IndexBackendConfig, AutoCloseable {
-    /**
-     * getCollectionName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    String getCollectionName();
+public interface VectorStore extends AutoCloseable {
 
-    /**
-     * setCollectionName.
-     * 
-     * @param collectionName collectionName
-     * @since 0.1.7
-     */
-    void setCollectionName(String collectionName);
-
-    /**
-     * withCollection.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    VectorStore withCollection(String collectionName);
-
-    /**
-     * Check if vector field configuration is consistent with actual database.
-     * Corresponds to Python {@code VectorStore.check_vector_field()}.
-     * 
-     * @since 0.1.7
-     */
-    default void checkVectorField() {
-        // Default no-op; concrete implementations should override if applicable
+    static void checkConfigsMatching(Map<String, ?> configured, Map<String, ?> actual) {
+        Map<String, Object> matches = new LinkedHashMap<>();
+        Map<String, Map<String, String>> mismatches = new LinkedHashMap<>();
+        for (Map.Entry<String, ?> entry : configured.entrySet()) {
+            String attr = entry.getKey();
+            if ("efSearchFactor".equals(attr)) {
+                continue;
+            }
+            Object expected = entry.getValue();
+            String expectedValue = pythonCaseFold(expected);
+            String actualValue = pythonCaseFold(actual.get(attr));
+            boolean valid = actualValue.equals(expectedValue);
+            if (!valid && expected instanceof Number && isPythonNumeric(actualValue)) {
+                valid = isClose(Double.parseDouble(actualValue), Double.parseDouble(expectedValue), 1e-2, 1e-3);
+            }
+            if (valid) {
+                matches.put(attr, expected);
+            } else {
+                mismatches.put(attr, Map.of("settings", expectedValue, "actual", actualValue));
+            }
+        }
+        if (!mismatches.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "error_msg",
+                    "database actual config differs from current knowledge base, "
+                            + "\nmatches=" + matches + "\nmismatches=" + mismatches
+            );
+        }
     }
 
-    /**
-     * ensureCollection.
-     * 
-     * @param collectionName collectionName
-     * @param indexType indexType
-     * @param dimension dimension
-     * @since 0.1.7
-     */
-    default void ensureCollection(String collectionName, String indexType, Integer dimension) {
-        ensureCollection(collectionName, indexType, dimension, Map.of());
+    void checkVectorField();
+
+    CompletableFuture<Void> add(List<Map<String, Object>> data,
+                                Integer batchSize,
+                                Map<String, Object> kwargs);
+
+    default CompletableFuture<Void> add(Map<String, Object> data,
+                                        Integer batchSize,
+                                        Map<String, Object> kwargs) {
+        return add(List.of(data), batchSize, kwargs);
     }
 
-    /**
-     * ensureCollection.
-     * 
-     * @param collectionName collectionName
-     * @param indexType indexType
-     * @param dimension dimension
-     * @param options options
-     * @since 0.1.7
-     */
-    default void ensureCollection(String collectionName, String indexType, Integer dimension,
-            Map<String, Object> options) {
-        // Default no-op; concrete implementations should override if applicable
-    }
+    CompletableFuture<List<RetrievalResult>> search(List<Double> queryVector,
+                                                    int topK,
+                                                    VectorStoreFilter filters,
+                                                    Map<String, Object> kwargs);
 
-    /**
-     * add.
-     * 
-     * @param data data
-     * @param batchSize batchSize
-     * @param options options
-     * @since 0.1.7
-     */
-    void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options);
+    CompletableFuture<List<RetrievalResult>> sparseSearch(String queryText,
+                                                          int topK,
+                                                          VectorStoreFilter filters,
+                                                          Map<String, Object> kwargs);
 
-    /**
-     * search.
-     * 
-     * @param queryVector queryVector
-     * @param topK topK
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
-            Map<String, Object> options);
+    CompletableFuture<List<RetrievalResult>> hybridSearch(String queryText,
+                                                          List<Double> queryVector,
+                                                          int topK,
+                                                          double alpha,
+                                                          VectorStoreFilter filters,
+                                                          Map<String, Object> kwargs);
 
-    /**
-     * sparseSearch.
-     * 
-     * @param queryText queryText
-     * @param topK topK
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
-            Map<String, Object> options);
+    CompletableFuture<Boolean> delete(List<String> ids,
+                                      DeleteFilter filterExpr,
+                                      Map<String, Object> kwargs);
 
-    /**
-     * hybridSearch.
-     * 
-     * @param queryText queryText
-     * @param queryVector queryVector
-     * @param topK topK
-     * @param alpha alpha
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
-            Map<String, Object> filters, Map<String, Object> options);
+    CompletableFuture<Boolean> tableExists(String tableName);
 
-    /**
-     * delete.
-     * 
-     * @param ids ids
-     * @param filterExpr filterExpr
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options);
-
-    /**
-     * tableExists.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean tableExists(String tableName);
-
-    /**
-     * deleteTable.
-     * 
-     * @param tableName tableName
-     * @since 0.1.7
-     */
-    void deleteTable(String tableName);
-
-    /**
-     * queryByFilters.
-     * 
-     * @param filters filters
-     * @param limit limit
-     * @return the result
-     * @since 0.1.7
-     */
-    List<SearchResult> queryByFilters(Map<String, Object> filters, int limit);
-
-    /**
-     * count.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    long count(String tableName);
+    CompletableFuture<Void> deleteTable(String tableName);
 
     @Override
-    /**
-     * close.
-     * 
-     * @since 0.1.7
-     */
     default void close() {
+    }
+
+    private static boolean isPythonNumeric(String value) {
+        String cleaned = value.replace(".", "");
+        if (cleaned.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < cleaned.length(); index++) {
+            if (!Character.isDigit(cleaned.charAt(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isClose(double left, double right, double relTol, double absTol) {
+        double diff = Math.abs(left - right);
+        return diff <= Math.max(relTol * Math.max(Math.abs(left), Math.abs(right)), absTol);
+    }
+
+    private static String pythonCaseFold(Object value) {
+        if (value == null) {
+            return "none";
+        }
+        return String.valueOf(value).toLowerCase(Locale.ROOT);
+    }
+
+    @FunctionalInterface
+    interface ClientFactory<C> {
+        C createClient(String databaseName, String pathOrUri, String token, Map<String, Object> kwargs);
+    }
+
+    record VectorStoreFilter(Map<String, Object> mapping, QueryExpr queryExpr) {
+
+        public static VectorStoreFilter none() {
+            return new VectorStoreFilter(null, null);
+        }
+
+        public static VectorStoreFilter ofMap(Map<String, Object> mapping) {
+            return new VectorStoreFilter(mapping == null ? null : new LinkedHashMap<>(mapping), null);
+        }
+
+        public static VectorStoreFilter ofQuery(QueryExpr queryExpr) {
+            return new VectorStoreFilter(null, queryExpr);
+        }
+    }
+
+    record DeleteFilter(String expression, QueryExpr queryExpr) {
+
+        public static DeleteFilter none() {
+            return new DeleteFilter(null, null);
+        }
+
+        public static DeleteFilter ofExpression(String expression) {
+            return new DeleteFilter(expression, null);
+        }
+
+        public static DeleteFilter ofQuery(QueryExpr queryExpr) {
+            return new DeleteFilter(null, queryExpr);
+        }
     }
 }

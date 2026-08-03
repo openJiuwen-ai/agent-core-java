@@ -4,70 +4,58 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
 /**
- * Generic base class for resource managers that use provider-based registration.
- * <p>
- * Mirrors Python's {@code AbstractManager} in {@code resources_manager/abstract_manager.py}.
- * 
- * @since 0.1.7
+ * Generic resource-provider registry.
+ *
+ * <p>Mirrors Python's {@code AbstractManager} in
+ * {@code openjiuwen/core/runner/resources_manager/abstract_manager.py}.</p>
+ *
+ * @param <T> resource type
  */
-public abstract class AbstractManager<T> {
-    /**
-     * providers.
-     * 
-     * @since 0.1.7
-     */
-    protected final ConcurrentHashMap<String, Supplier<? extends T>> providers = new ConcurrentHashMap<>();
+public class AbstractManager<T> {
 
-    /**
-     * registerResourceProvider.
-     * 
-     * @param resourceId resourceId
-     * @param resource resource
-     * @since 0.1.7
-     */
-    protected void registerResourceProvider(String resourceId, Supplier<? extends T> resource) {
-        if (providers.containsKey(resourceId)) {
+    private final ThreadSafeDict<String, Supplier<?>> providers = new ThreadSafeDict<>();
+
+    protected void registerResourceProvider(String resourceId, Supplier<?> resource) {
+        if (providers.get(resourceId) != null) {
             throw new IllegalArgumentException("add resource failed, " + resourceId + " is already exist");
         }
         providers.put(resourceId, resource);
     }
 
-    /**
-     * getResource.
-     * 
-     * @param resourceId resourceId
-     * @return the result
-     * @since 0.1.7
-     */
-    protected T getResource(String resourceId) {
-        Supplier<? extends T> provider = providers.get(resourceId);
+    @SuppressWarnings("unchecked")
+    protected CompletionStage<T> getResource(String resourceId) {
+        Supplier<?> provider = providers.get(resourceId);
         if (provider == null) {
-            return null;
+            return CompletableFuture.completedFuture(null);
         }
-        return provider.get();
+        Object value = provider.get();
+        if (value instanceof CompletionStage<?> stage) {
+            return stage.thenApply(item -> (T) item);
+        }
+        return CompletableFuture.completedFuture((T) value);
     }
 
-    /**
-     * unregisterResourceProvider.
-     * 
-     * @param resourceId resourceId
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Supplier<? extends T> unregisterResourceProvider(String resourceId) {
-        return providers.remove(resourceId);
+    @SuppressWarnings("unchecked")
+    protected Supplier<?> unregisterResourceProvider(String resourceId) {
+        return providers.pop(resourceId, null);
     }
 
-    /**
-     * Clear all registered providers.
-     * 
-     * @since 0.1.7
-     */
-    protected void clearProviders() {
-        providers.clear();
+    public void put(String resourceId, Object resource) {
+        registerResourceProvider(resourceId, () -> resource);
     }
+
+    public boolean contains(String resourceId) {
+        return providers.get(resourceId) != null;
+    }
+
+    public int size() {
+        return providers.size();
+    }
+
 }

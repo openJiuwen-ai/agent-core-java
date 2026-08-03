@@ -22,38 +22,38 @@ import java.util.Map;
  * Configuration for LLM workflow component.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.LLMCompConfig}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class LLMCompConfig extends ComponentConfig {
+
     private String modelId;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfig;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Map<String, Object>> templateContent = new ArrayList<>();
     private SystemMessage systemPromptTemplate;
     private UserMessage userPromptTemplate;
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> responseFormat = new LinkedHashMap<>();
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> outputConfig = new LinkedHashMap<>();
     private boolean enableHistory = false;
     private boolean cacheStream = false;
+
+    public void setTemplateContent(List<? extends Map<String, ?>> templateContent) {
+        this.templateContent = copyTemplateContent(templateContent);
+    }
+
+    private static List<Map<String, Object>> copyTemplateContent(List<? extends Map<String, ?>> source) {
+        List<Map<String, Object>> copy = new ArrayList<>();
+        if (source != null) {
+            for (Map<String, ?> item : source) {
+                Map<String, Object> prompt = new LinkedHashMap<>();
+                if (item != null) {
+                    prompt.putAll(item);
+                }
+                copy.add(prompt);
+            }
+        }
+        return copy;
+    }
 }

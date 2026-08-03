@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
 
 import java.util.Map;
 
@@ -32,7 +32,6 @@ public class PersistenceCheckpointerProvider implements CheckpointerProvider {
      * @return the result
      * @since 0.1.7
      */
-    @Override
     public String typeName() {
         return "persistence";
     }

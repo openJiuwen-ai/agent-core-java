@@ -1,6 +1,6 @@
 # schema
 
-`com.openjiuwen.core.multiagent.schema` 定义新版分组身份卡片与事件驱动卡片，是 `BaseGroup` 新 Card + Config 模式的核心数据模型。
+`com.openjiuwen.core.multi_agent.schema` 定义新版分组身份卡片与事件驱动卡片，是 `BaseGroup` 新 Card + Config 模式的核心数据模型。
 
 ## Types
 

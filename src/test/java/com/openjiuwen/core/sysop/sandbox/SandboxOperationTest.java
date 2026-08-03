@@ -17,6 +17,7 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,6 +30,7 @@ import java.util.Map;
 /**
  * Tests for sandbox fallback operations.
  */
+@Tag("system-test")
 class SandboxOperationTest {
     @TempDir
     Path tempDir;
@@ -127,7 +129,7 @@ class SandboxOperationTest {
         var write = op.writeFile("nested/out.txt", "payload", "text", false, false, true, "644", "utf-8", null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), read.getCode());
-        assertEquals("hello sandbox", read.getData().getContentAsString());
+        assertEquals("hello sandbox", String.valueOf(read.getData().getContent()));
         assertEquals(StatusCode.SUCCESS.getCode(), write.getCode());
         assertTrue(Files.exists(tempDir.resolve("nested/out.txt")));
     }

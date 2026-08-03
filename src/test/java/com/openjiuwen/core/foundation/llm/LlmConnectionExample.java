@@ -1,7 +1,6 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.foundation.llm;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -11,6 +10,7 @@ import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -36,15 +36,16 @@ import java.util.Map;
 
 /**
  * 大模型连接测试示例。
+ *
  * <h2>使用方法（任选其一，优先级从高到低）</h2>
  * <ol>
- * <li>命令行参数：{@code --api-key=... --api-base=... --model=... --provider=OpenAI}</li>
- * <li>环境变量：{@code API_KEY}、{@code API_BASE}、{@code MODEL_NAME}、{@code MODEL_PROVIDER}</li>
- * <li>JVM 系统属性：{@code -DAPI_KEY=... -DAPI_BASE=...} 等</li>
- * <li>配置文件：{@code apiconfig.json}（可通过 {@code -Dagent.config.path=} 或 {@code AGENT_API_CONFIG} 指定路径）</li>
+ *   <li>命令行参数：{@code --api-key=... --api-base=... --model=... --provider=OpenAI}</li>
+ *   <li>环境变量：{@code API_KEY}、{@code API_BASE}、{@code MODEL_NAME}、{@code MODEL_PROVIDER}</li>
+ *   <li>JVM 系统属性：{@code -DAPI_KEY=... -DAPI_BASE=...} 等</li>
+ *   <li>配置文件：{@code apiconfig.json}（可通过 {@code -Dagent.config.path=} 或 {@code AGENT_API_CONFIG} 指定路径）</li>
  * </ol>
+ *
  * <h3>示例</h3>
- * 
  * <pre>{@code
  * # 环境变量
  * set API_KEY=sk-xxx
@@ -62,10 +63,11 @@ import java.util.Map;
  * java -cp ... com.openjiuwen.core.foundation.llm.LlmConnectionExample \
  *      --api-key=sk-xxx --api-base=https://api.siliconflow.cn/v1 --model=gpt-4o-mini
  * }</pre>
- * <p>
- * 支持所有兼容 OpenAI Chat Completions API 的服务，包括 OpenAI、SiliconFlow、DashScope 兼容模式、DeepSeek 等。
+ *
+ * <p>支持所有兼容 OpenAI Chat Completions API 的服务，包括 OpenAI、SiliconFlow、DashScope 兼容模式、DeepSeek 等。
  */
 public class LlmConnectionExample {
+
     private static final String PLACEHOLDER_KEY = "your-api-key-here";
     private static final double DEFAULT_TEMPERATURE = 0.7;
     private static final double DEFAULT_TIMEOUT = 30.0;
@@ -79,17 +81,25 @@ public class LlmConnectionExample {
         System.out.println("============================================");
         System.out.println();
 
-        if (config.apiKey() == null || config.apiKey().isBlank() || PLACEHOLDER_KEY.equals(config.apiKey())) {
+        if (config.apiKey() == null || config.apiKey().isBlank()
+                || PLACEHOLDER_KEY.equals(config.apiKey())) {
             printMissingConfigHelp();
             return;
         }
 
         // 1. 构建配置
-        ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider(config.provider())
-                .apiKey(config.apiKey()).apiBase(config.apiBase()).timeout(config.timeout()).verifySsl(false).build();
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(config.provider())
+                .apiKey(config.apiKey())
+                .apiBase(config.apiBase())
+                .timeout(config.timeout())
+                .verifySsl(false)
+                .build();
 
-        ModelRequestConfig requestConfig =
-            ModelRequestConfig.builder().modelName(config.modelName()).temperature(config.temperature()).build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
+                .modelName(config.modelName())
+                .temperature(config.temperature())
+                .build();
 
         System.out.println("📋 配置信息:");
         System.out.println("   Provider:  " + config.provider());
@@ -109,16 +119,21 @@ public class LlmConnectionExample {
 
             // ---- 测试 1: 简单对话 ----
             System.out.println("---- 测试 1: 简单对话 ----");
-            List<Object> messages = List.of(new SystemMessage("你是一个友好的助手，回答尽量简洁。"), new UserMessage("你好！请用一句话介绍你自己。"));
+            List<BaseMessage> messages = List.of(
+                    new SystemMessage("你是一个友好的助手，回答尽量简洁。"),
+                    new UserMessage("你好！请用一句话介绍你自己。")
+            );
 
             long start = System.currentTimeMillis();
-            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+            AssistantMessage response = model.invoke(
+                    messages, null, null, null, null, null, null, null, null, null);
             long elapsed = System.currentTimeMillis() - start;
 
             System.out.println("🤖 回复: " + response.getContentAsString());
             if (response.getUsageMetadata() != null) {
                 UsageMetadata usage = response.getUsageMetadata();
-                System.out.println("📊 Token 用量: 输入=" + usage.getInputTokens() + ", 输出=" + usage.getOutputTokens()
+                System.out.println("📊 Token 用量: 输入=" + usage.getInputTokens()
+                        + ", 输出=" + usage.getOutputTokens()
                         + ", 总计=" + usage.getTotalTokens());
             }
             System.out.println("⏱  耗时: " + elapsed + " ms");
@@ -126,12 +141,16 @@ public class LlmConnectionExample {
 
             // ---- 测试 2: 多轮对话 ----
             System.out.println("---- 测试 2: 多轮对话 ----");
-            List<Object> multiTurnMessages = List.of(new SystemMessage("你是一个数学老师。"), new UserMessage("1+1等于几？"),
-                    AssistantMessage.builder().content("1+1=2。").build(), new UserMessage("那2+3呢？"));
+            List<BaseMessage> multiTurnMessages = List.of(
+                    new SystemMessage("你是一个数学老师。"),
+                    new UserMessage("1+1等于几？"),
+                    AssistantMessage.builder().content("1+1=2。").build(),
+                    new UserMessage("那2+3呢？")
+            );
 
             start = System.currentTimeMillis();
-            AssistantMessage response2 =
-                model.invoke(multiTurnMessages, null, null, null, null, null, null, null, null, null);
+            AssistantMessage response2 = model.invoke(
+                    multiTurnMessages, null, null, null, null, null, null, null, null, null);
             elapsed = System.currentTimeMillis() - start;
 
             System.out.println("🤖 回复: " + response2.getContentAsString());
@@ -140,12 +159,13 @@ public class LlmConnectionExample {
 
             // ---- 测试 3: 流式输出 ----
             System.out.println("---- 测试 3: 流式输出 ----");
-            List<Object> streamMessages = List.of(new UserMessage("请用3句话描述春天。"));
+            List<BaseMessage> streamMessages = List.of(
+                    new UserMessage("请用3句话描述春天。")
+            );
 
             System.out.print("🤖 回复: ");
             start = System.currentTimeMillis();
-            Iterator<AssistantMessageChunk> chunks =
-                model.stream(streamMessages, null, null, null, null, null, null, null, null, null);
+            Iterator<AssistantMessageChunk> chunks = model.stream(streamMessages);
 
             while (chunks.hasNext()) {
                 AssistantMessageChunk chunk = chunks.next();
@@ -161,6 +181,7 @@ public class LlmConnectionExample {
             System.out.println("============================================");
             System.out.println("  🎉 所有测试通过！大模型连接正常！");
             System.out.println("============================================");
+
         } catch (Exception e) {
             System.err.println();
             System.err.println("❌ 连接失败！错误信息:");
@@ -172,7 +193,6 @@ public class LlmConnectionExample {
             System.err.println("  3. MODEL_NAME 不存在或不可用");
             System.err.println("  4. 网络无法访问 API 地址（检查代理设置）");
             System.err.println();
-            e.printStackTrace();
         }
     }
 
@@ -197,27 +217,44 @@ public class LlmConnectionExample {
      * 简易 OpenAI 兼容客户端工厂。
      * 注册为名为 PROVIDER 的工厂，匹配 clientConfig.clientProvider。
      */
-    record LlmExampleConfig(String apiKey, String apiBase, String modelName, String provider, double temperature,
-            double timeout, String source) {
+    record LlmExampleConfig(
+            String apiKey,
+            String apiBase,
+            String modelName,
+            String provider,
+            double temperature,
+            double timeout,
+            String source
+    ) {
         private static final ObjectMapper MAPPER = new ObjectMapper();
 
         static LlmExampleConfig resolve(String[] args) {
             Map<String, String> cli = parseCliArgs(args);
             Map<String, String> file = loadConfigFile();
 
-            String apiKey = firstNonBlank(cli.get("api-key"), cli.get("api_key"), env("API_KEY"), prop("API_KEY"),
-                    file.get("API_KEY"));
-            String apiBase = firstNonBlank(cli.get("api-base"), cli.get("api_base"), env("API_BASE"), prop("API_BASE"),
-                    file.get("API_BASE"), "https://api.siliconflow.cn/v1");
-            String modelName = firstNonBlank(cli.get("model"), cli.get("model-name"), cli.get("model_name"),
-                    env("MODEL_NAME"), prop("MODEL_NAME"), file.get("MODEL_NAME"), "gpt-4o-mini");
-            String provider = firstNonBlank(cli.get("provider"), env("MODEL_PROVIDER"), prop("MODEL_PROVIDER"),
+            String apiKey = firstNonBlank(
+                    cli.get("api-key"), cli.get("api_key"),
+                    env("API_KEY"), prop("API_KEY"), file.get("API_KEY"));
+            String apiBase = firstNonBlank(
+                    cli.get("api-base"), cli.get("api_base"),
+                    env("API_BASE"), prop("API_BASE"), file.get("API_BASE"),
+                    "https://api.siliconflow.cn/v1");
+            String modelName = firstNonBlank(
+                    cli.get("model"), cli.get("model-name"), cli.get("model_name"),
+                    env("MODEL_NAME"), prop("MODEL_NAME"), file.get("MODEL_NAME"),
+                    "gpt-4o-mini");
+            String provider = firstNonBlank(
+                    cli.get("provider"),
+                    env("MODEL_PROVIDER"), prop("MODEL_PROVIDER"),
                     file.get("MODEL_PROVIDER"), DEFAULT_PROVIDER);
-            double temperature = parseDouble(firstNonBlank(cli.get("temperature"), env("LLM_TEMPERATURE"),
-                    prop("LLM_TEMPERATURE"), file.get("LLM_TEMPERATURE")), DEFAULT_TEMPERATURE);
-            double timeout = parseDouble(
-                    firstNonBlank(cli.get("timeout"), env("LLM_TIMEOUT"), prop("LLM_TIMEOUT"), file.get("LLM_TIMEOUT")),
-                    DEFAULT_TIMEOUT);
+            double temperature = parseDouble(firstNonBlank(
+                    cli.get("temperature"),
+                    env("LLM_TEMPERATURE"), prop("LLM_TEMPERATURE"),
+                    file.get("LLM_TEMPERATURE")), DEFAULT_TEMPERATURE);
+            double timeout = parseDouble(firstNonBlank(
+                    cli.get("timeout"),
+                    env("LLM_TIMEOUT"), prop("LLM_TIMEOUT"),
+                    file.get("LLM_TIMEOUT")), DEFAULT_TIMEOUT);
 
             String source = detectSource(cli, file, apiKey);
             return new LlmExampleConfig(apiKey, apiBase, modelName, provider, temperature, timeout, source);
@@ -285,19 +322,18 @@ public class LlmConnectionExample {
                     continue;
                 }
                 try (InputStream in = Files.newInputStream(normalized)) {
-                    Map<String, String> loaded = MAPPER.readValue(in, new TypeReference<>() {
-                    });
+                    Map<String, String> loaded = MAPPER.readValue(in, new TypeReference<>() {});
                     System.out.println("[LlmConnectionExample] 使用配置文件: " + normalized);
                     return loaded;
                 } catch (IOException e) {
                     throw new IllegalStateException("Failed to read config: " + normalized, e);
                 }
             }
-            try (InputStream in = LlmConnectionExample.class.getClassLoader().getResourceAsStream("apiconfig.json")) {
+            try (InputStream in = LlmConnectionExample.class.getClassLoader()
+                    .getResourceAsStream("apiconfig.json")) {
                 if (in != null) {
                     System.out.println("[LlmConnectionExample] 使用 classpath:apiconfig.json");
-                    return MAPPER.readValue(in, new TypeReference<>() {
-                    });
+                    return MAPPER.readValue(in, new TypeReference<>() {});
                 }
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to read classpath apiconfig.json", e);
@@ -381,8 +417,9 @@ public class LlmConnectionExample {
 
         SimpleOpenAiClient(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
             super(modelConfig, clientConfig);
-            this.httpClient =
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds((long) clientConfig.getTimeout())).build();
+            this.httpClient = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds((long) clientConfig.getTimeout()))
+                    .build();
         }
 
         @Override
@@ -398,123 +435,160 @@ public class LlmConnectionExample {
 
         @Override
         @SuppressWarnings("unchecked")
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-                Map<String, Object> kwargs) throws Exception {
-            Map<String, Object> params =
-                buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
-                        topP != null ? topP.doubleValue() : null, model, stop, maxTokens, false, kwargs);
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature,
+                                       Float topP, String model, Integer maxTokens, String stop,
+                                       BaseOutputParser outputParser, Float timeout,
+                                       Map<String, Object> kwargs) {
+            try {
+                Map<String, Object> params = buildRequestParams(
+                        messages, tools,
+                        temperature != null ? temperature.doubleValue() : null,
+                        topP != null ? topP.doubleValue() : null,
+                        model, stop, maxTokens, false, kwargs);
 
-            String jsonBody = MAPPER.writeValueAsString(params);
-            String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
+                String jsonBody = MAPPER.writeValueAsString(params);
+                String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
 
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
-                    .timeout(Duration
-                            .ofSeconds(timeout != null ? timeout.longValue() : (long) modelClientConfig.getTimeout()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
+                                : (long) modelClientConfig.getTimeout()))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
 
-            HttpResponse<String> httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> httpResponse = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
 
-            if (httpResponse.statusCode() != 200) {
-                throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                if (httpResponse.statusCode() != 200) {
+                    throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                }
+
+                Map<String, Object> responseMap = MAPPER.readValue(httpResponse.body(), Map.class);
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+                if (choices == null || choices.isEmpty()) {
+                    throw new RuntimeException("No choices in response: " + httpResponse.body());
+                }
+
+                Map<String, Object> firstChoice = choices.get(0);
+                Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
+                String content = (String) message.getOrDefault("content", "");
+                String finishReason = (String) firstChoice.getOrDefault("finish_reason", "");
+
+                // 解析 usage
+                UsageMetadata.UsageMetadataBuilder usageBuilder = UsageMetadata.builder()
+                        .modelName(model != null ? model : modelConfig.getModelName());
+                Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
+                if (usage != null) {
+                    usageBuilder
+                            .inputTokens(toInt(usage.get("prompt_tokens")))
+                            .outputTokens(toInt(usage.get("completion_tokens")))
+                            .totalTokens(toInt(usage.get("total_tokens")));
+                }
+
+                return AssistantMessage.builder()
+                        .content(content)
+                        .finishReason(finishReason)
+                        .usageMetadata(usageBuilder.build())
+                        .build();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-
-            Map<String, Object> responseMap = MAPPER.readValue(httpResponse.body(), Map.class);
-            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
-            if (choices == null || choices.isEmpty()) {
-                throw new RuntimeException("No choices in response: " + httpResponse.body());
-            }
-
-            Map<String, Object> firstChoice = choices.get(0);
-            Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
-            String content = (String) message.getOrDefault("content", "");
-            String finishReason = (String) firstChoice.getOrDefault("finish_reason", "");
-
-            // 解析 usage
-            UsageMetadata.UsageMetadataBuilder usageBuilder =
-                UsageMetadata.builder().modelName(model != null ? model : modelConfig.getModelName());
-            Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
-            if (usage != null) {
-                usageBuilder.inputTokens(toInt(usage.get("prompt_tokens")))
-                        .outputTokens(toInt(usage.get("completion_tokens")))
-                        .totalTokens(toInt(usage.get("total_tokens")));
-            }
-
-            return AssistantMessage.builder().content(content).finishReason(finishReason)
-                    .usageMetadata(usageBuilder.build()).build();
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
-                Map<String, Object> kwargs) throws Exception {
-            Map<String, Object> params =
-                buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
-                        topP != null ? topP.doubleValue() : null, model, stop, maxTokens, true, kwargs);
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools,
+                                                      Float temperature, Float topP, String model,
+                                                      Integer maxTokens, String stop,
+                                                      BaseOutputParser outputParser, Float timeout,
+                                                      Map<String, Object> kwargs) {
+            try {
+                Map<String, Object> params = buildRequestParams(
+                        messages, tools,
+                        temperature != null ? temperature.doubleValue() : null,
+                        topP != null ? topP.doubleValue() : null,
+                        model, stop, maxTokens, true, kwargs);
 
-            String jsonBody = MAPPER.writeValueAsString(params);
-            String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
+                String jsonBody = MAPPER.writeValueAsString(params);
+                String url = modelClientConfig.getApiBase().replaceAll("/+$", "") + "/chat/completions";
 
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
-                    .timeout(Duration
-                            .ofSeconds(timeout != null ? timeout.longValue() : (long) modelClientConfig.getTimeout()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(timeout != null ? timeout.longValue()
+                                : (long) modelClientConfig.getTimeout()))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
 
-            HttpResponse<String> httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> httpResponse = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofString());
 
-            if (httpResponse.statusCode() != 200) {
-                throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
-            }
+                if (httpResponse.statusCode() != 200) {
+                    throw new RuntimeException("HTTP " + httpResponse.statusCode() + ": " + httpResponse.body());
+                }
 
-            // 解析 SSE (Server-Sent Events) 格式
-            String[] lines = httpResponse.body().split("\n");
-            List<AssistantMessageChunk> chunkList = new java.util.ArrayList<>();
-            for (String line : lines) {
-                String trimmed = line.trim();
-                if (trimmed.startsWith("data: ") && !trimmed.equals("data: [DONE]")) {
-                    String data = trimmed.substring(6);
-                    try {
-                        Map<String, Object> event = MAPPER.readValue(data, Map.class);
-                        List<Map<String, Object>> choices = (List<Map<String, Object>>) event.get("choices");
-                        if (choices != null && !choices.isEmpty()) {
-                            Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
-                            if (delta != null) {
-                                String deltaContent = (String) delta.getOrDefault("content", "");
-                                if (deltaContent != null && !deltaContent.isEmpty()) {
-                                    chunkList.add(AssistantMessageChunk.builder().content(deltaContent).build());
+                // 解析 SSE (Server-Sent Events) 格式
+                String[] lines = httpResponse.body().split("\n");
+                List<AssistantMessageChunk> chunkList = new java.util.ArrayList<>();
+                for (String line : lines) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("data: ") && !trimmed.equals("data: [DONE]")) {
+                        String data = trimmed.substring(6);
+                        try {
+                            Map<String, Object> event = MAPPER.readValue(data, Map.class);
+                            List<Map<String, Object>> choices =
+                                    (List<Map<String, Object>>) event.get("choices");
+                            if (choices != null && !choices.isEmpty()) {
+                                Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
+                                if (delta != null) {
+                                    String deltaContent = (String) delta.getOrDefault("content", "");
+                                    if (deltaContent != null && !deltaContent.isEmpty()) {
+                                        chunkList.add(AssistantMessageChunk.builder()
+                                                .content(deltaContent)
+                                                .build());
+                                    }
                                 }
                             }
+                        } catch (Exception ignored) {
+                            // skip parse errors in SSE lines
                         }
-                    } catch (Exception ignored) {
-                        // skip parse errors in SSE lines
                     }
                 }
+                return chunkList.iterator();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-            return chunkList.iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
-                Map<String, Object> kwargs) throws Exception {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model,
+                                                     String size, String negativePrompt, int n,
+                                                     boolean promptExtend, boolean watermark, int seed,
+                                                     Map<String, Object> kwargs) throws UnsupportedOperationException {
             throw new UnsupportedOperationException("本示例不支持图片生成");
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-                String languageType, Map<String, Object> kwargs) throws Exception {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model,
+                                                      String voice, String languageType,
+                                                      Map<String, Object> kwargs) throws UnsupportedOperationException {
             throw new UnsupportedOperationException("本示例不支持语音生成");
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
-                String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl,
+                                                     String audioUrl, String model, String size,
+                                                     String resolution, int duration,
+                                                     boolean promptExtend, boolean watermark,
+                                                     String negativePrompt, Integer seed,
+                                                     Map<String, Object> kwargs) throws UnsupportedOperationException {
             throw new UnsupportedOperationException("本示例不支持视频生成");
         }
 

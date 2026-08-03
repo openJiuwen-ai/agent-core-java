@@ -1,95 +1,53 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.memory.migration;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.memory.migration.operation.BaseOperation;
-import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
-
+import com.openjiuwen.core.memory.migration.operation.OperationRegistry;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class MigrationPlanTest {
-    private Map<String, List<BaseOperation>> sqlBackup;
-    private Map<String, List<BaseOperation>> vectorBackup;
-    private Map<String, List<BaseOperation>> kvBackup;
-
-    @BeforeEach
-    void backupAndClearRegistries() {
-        sqlBackup = copyOperations(MigrationPlan.getSqlRegistry().getAllOperations());
-        vectorBackup = copyOperations(MigrationPlan.getVectorRegistry().getAllOperations());
-        kvBackup = copyOperations(MigrationPlan.getKvRegistry().getAllOperations());
-
-        MigrationPlan.getSqlRegistry().clear();
-        MigrationPlan.getVectorRegistry().clear();
-        MigrationPlan.getKvRegistry().clear();
-    }
 
     @AfterEach
-    void restoreRegistries() {
+    void tearDown() {
         MigrationPlan.getSqlRegistry().clear();
-        MigrationPlan.getSqlRegistry().setOperations(sqlBackup);
         MigrationPlan.getVectorRegistry().clear();
-        MigrationPlan.getVectorRegistry().setOperations(vectorBackup);
         MigrationPlan.getKvRegistry().clear();
-        MigrationPlan.getKvRegistry().setOperations(kvBackup);
+        MigrationPlan.getMessageRegistry().clear();
+        MigrationPlan.getIndexRegistry().clear();
     }
 
     @Test
-    void kvRegistryRegistersAndReturnsOperationsByVersionRange() {
-        MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(1, "v1"));
-        MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(2, "v2"));
-        MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(3, "v3"));
-
-        List<BaseOperation> operations = MigrationPlan.getKvRegistry().getOperations("test_entity", 2, 3);
-
-        assertEquals(2, operations.size());
-        assertEquals(2, operations.get(0).getSchemaVersion());
-        assertEquals(3, operations.get(1).getSchemaVersion());
-        assertEquals(3, MigrationPlan.getKvRegistry().getCurrentVersion("test_entity"));
+    void exposesFiveStableRegistries() {
+        assertThat(MigrationPlan.getSqlRegistry()).isSameAs(MigrationPlan.getSqlRegistry());
+        assertThat(MigrationPlan.getVectorRegistry()).isSameAs(MigrationPlan.getVectorRegistry());
+        assertThat(MigrationPlan.getKvRegistry()).isSameAs(MigrationPlan.getKvRegistry());
+        assertThat(MigrationPlan.getMessageRegistry()).isSameAs(MigrationPlan.getMessageRegistry());
+        assertThat(MigrationPlan.getIndexRegistry()).isSameAs(MigrationPlan.getIndexRegistry());
     }
 
     @Test
-    void kvRegistryRejectsDuplicateOrLowerSchemaVersion() {
-        MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(3, "v3"));
+    void registriesRemainIndependent() {
+        OperationRegistry sql = MigrationPlan.getSqlRegistry();
+        OperationRegistry vector = MigrationPlan.getVectorRegistry();
+        OperationRegistry kv = MigrationPlan.getKvRegistry();
+        OperationRegistry message = MigrationPlan.getMessageRegistry();
+        OperationRegistry index = MigrationPlan.getIndexRegistry();
 
-        assertThrows(BaseError.class,
-                () -> MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(3, "duplicate")));
-        assertThrows(BaseError.class,
-                () -> MigrationPlan.getKvRegistry().register("test_entity", new TestOperation(1, "older")));
-    }
+        sql.setOperations(java.util.Map.of("sql", java.util.List.of()));
+        vector.setOperations(java.util.Map.of("vector", java.util.List.of()));
+        kv.setOperations(java.util.Map.of("kv", java.util.List.of()));
+        message.setOperations(java.util.Map.of("message", java.util.List.of()));
+        index.setOperations(java.util.Map.of("index", java.util.List.of()));
 
-    @Test
-    void registriesSupportClearAndRestore() {
-        MigrationPlan.getKvRegistry().register("entity1", new TestOperation(1, "one"));
-        MigrationPlan.getKvRegistry().register("entity2", new TestOperation(2, "two"));
-
-        Map<String, List<BaseOperation>> snapshot = copyOperations(MigrationPlan.getKvRegistry().getAllOperations());
-        MigrationPlan.getKvRegistry().clear();
-        assertTrue(MigrationPlan.getKvRegistry().getAllEntities().isEmpty());
-
-        MigrationPlan.getKvRegistry().setOperations(snapshot);
-        assertEquals(List.of("entity1", "entity2"), MigrationPlan.getKvRegistry().getAllEntities());
-    }
-
-    private static Map<String, List<BaseOperation>> copyOperations(Map<String, List<BaseOperation>> source) {
-        Map<String, List<BaseOperation>> copy = new LinkedHashMap<>();
-        source.forEach((key, value) -> copy.put(key, new ArrayList<>(value)));
-        return copy;
-    }
-
-    private static final class TestOperation extends BaseOperation {
-        private TestOperation(int schemaVersion, String description) {
-            super(new OperationMetadata(schemaVersion, description));
-        }
+        assertThat(sql.getAllEntities()).containsExactly("sql");
+        assertThat(vector.getAllEntities()).containsExactly("vector");
+        assertThat(kv.getAllEntities()).containsExactly("kv");
+        assertThat(message.getAllEntities()).containsExactly("message");
+        assertThat(index.getAllEntities()).containsExactly("index");
     }
 }

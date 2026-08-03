@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.tool.service_api.parser.JsonResponseParser
+# com.openjiuwen.core.foundation.tool.service_api.JsonResponseParser
 
 ## class JsonResponseParser
 

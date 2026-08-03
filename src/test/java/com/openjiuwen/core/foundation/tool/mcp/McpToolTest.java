@@ -4,248 +4,283 @@
 
 package com.openjiuwen.core.foundation.tool.mcp;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.McpToolInfo;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.openjiuwen.core.runner.callback.CallbackInfo;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
+import com.openjiuwen.core.runner.callback.EventFilter;
+import com.openjiuwen.core.runner.callback.ToolCallEvents;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Tests for McpTool, McpToolCard, and McpServerConfig.
- * Ported from Python: tests/unit_tests/core/foundation/tool/test_streamable_http_client.py
+ * Mirrors Python's MCP base behavior in
+ * {@code openjiuwen/core/foundation/tool/mcp/base.py}.
  */
 class McpToolTest {
-    // ============================== McpServerConfig tests ==============================
-    @Nested
-    @DisplayName("McpServerConfig tests")
-    class McpServerConfigTests {
-        @Test
-        @DisplayName("Default clientType is 'sse'")
-        void testDefaultClientType() {
-            McpServerConfig config =
-                McpServerConfig.builder().serverName("test-server").serverPath("http://127.0.0.1:8930/mcp").build();
-            assertEquals("sse", config.getClientType());
+
+    @AfterEach
+    void clearFramework() {
+        Tool.clearCallbackFramework();
+    }
+
+    @Test
+    void serverConfigDefaultsMatchPythonModel() {
+        McpServerConfig config = McpServerConfig.builder()
+                .serverName("demo")
+                .serverPath("http://127.0.0.1:8930/mcp")
+                .build();
+
+        assertThat(config.getServerId()).isNotBlank();
+        assertThat(config.getServerId()).doesNotContain("-");
+        assertThat(config.getClientType()).isEqualTo("sse");
+        assertThat(config.getParams()).isEmpty();
+        assertThat(config.getAuthHeaders()).isEmpty();
+        assertThat(config.getAuthQueryParams()).isEmpty();
+        assertThat(McpServerConfig.NO_TIMEOUT).isEqualTo(-1.0f);
+    }
+
+    @Test
+    void toolCardBuildsMcpToolInfo() {
+        McpToolCard card = McpToolCard.builder()
+                .id("server.tool")
+                .name("lookup")
+                .description("Lookup")
+                .inputParams(Map.of("type", "object"))
+                .serverName("demo-server")
+                .serverId("server-1")
+                .build();
+
+        McpToolInfo info = card.toolInfo();
+
+        assertThat(info.getName()).isEqualTo("lookup");
+        assertThat(info.getDescription()).isEqualTo("Lookup");
+        assertThat(info.getParameters()).containsEntry("type", "object");
+        assertThat(info.getServerName()).isEqualTo("demo-server");
+        assertThat(card.getServerId()).isEqualTo("server-1");
+    }
+
+    @Test
+    void extractMcpToolResultContentHandlesTextDataImageAndDump() {
+        assertThat(McpBase.extractMcpToolResultContent(Map.of("content", List.of()))).isNull();
+        assertThat(McpBase.extractMcpToolResultContent(Map.of(
+                "content", List.of(Map.of("text", "hello"))
+        ))).isEqualTo("hello");
+        assertThat(McpBase.extractMcpToolResultContent(Map.of(
+                "content", List.of(Map.of("mimeType", "image/png", "data", "abcd"))
+        ))).isEqualTo("[image content: image/png, 4 base64 chars]");
+        assertThat(McpBase.extractMcpToolResultContent(Map.of(
+                "content", List.of(Map.of("mime_type", "application/json", "data", Map.of("ok", true)))
+        ))).isEqualTo(Map.of("ok", true));
+        assertThat(McpBase.extractMcpToolResultContent(Map.of(
+                "content", List.of(new DumpableContent())
+        ))).isEqualTo(Map.of("type", "custom"));
+    }
+
+    @Test
+    void constructorRejectsNullClient() {
+        McpToolCard card = basicCard();
+
+        assertThatThrownBy(() -> new McpTool(null, card))
+                .isInstanceOf(BaseError.class)
+                .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED));
+    }
+
+    @Test
+    void invokeFormatsArgumentsEmitsParseCallbacksAndCallsClient() throws Exception {
+        RecordingFramework framework = new RecordingFramework();
+        Tool.setCallbackFramework(framework);
+        FakeMcpClient client = new FakeMcpClient("ok");
+        McpTool tool = new McpTool(client, cardWithSchema());
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("path", "readme.md");
+        inputs.put("optional", null);
+
+        Object result = tool.invoke(inputs);
+
+        assertThat(result).isEqualTo(Map.of("result", "ok"));
+        assertThat(client.lastToolName).isEqualTo("lookup");
+        assertThat(client.lastArguments).containsEntry("path", "readme.md").containsEntry("mode", "text");
+        assertThat(client.lastArguments).doesNotContainKey("optional");
+        assertThat(framework.triggered(ToolCallEvents.TOOL_PARSE_STARTED).kwargs())
+                .containsEntry("tool_name", "lookup")
+                .containsEntry("tool_id", "mcp.lookup");
+        assertThat(framework.triggered(ToolCallEvents.TOOL_PARSE_FINISHED).kwargs().get("formatted_inputs"))
+                .isEqualTo(client.lastArguments);
+    }
+
+    @Test
+    void invokeCanPreserveNullArgumentsWhenSkipNoneValueFalse() throws Exception {
+        FakeMcpClient client = new FakeMcpClient("ok");
+        McpTool tool = new McpTool(client, cardWithSchema());
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("path", "readme.md");
+        inputs.put("optional", null);
+
+        Object result = tool.invoke(inputs, Map.of("skip_none_value", false));
+
+        assertThat(result).isEqualTo(Map.of("result", "ok"));
+        assertThat(client.lastArguments).containsEntry("optional", null);
+    }
+
+    @Test
+    void invokeAwaitsCompletionStageResult() throws Exception {
+        FakeMcpClient client = new FakeMcpClient(CompletableFuture.completedFuture("async-ok"));
+        McpTool tool = new McpTool(client, basicCard());
+
+        assertThat(tool.invoke(Map.of())).isEqualTo(Map.of("result", "async-ok"));
+    }
+
+    @Test
+    void invokePassesConfiguredOperationTimeoutToThreeArgumentClient() throws Exception {
+        TimeoutAwareMcpClient client = new TimeoutAwareMcpClient("ok");
+        McpTool tool = new McpTool(client, basicCard(), 2.5F);
+
+        assertThat(tool.invoke(Map.of())).isEqualTo(Map.of("result", "ok"));
+
+        assertThat(client.lastToolName).isEqualTo("lookup");
+        assertThat(client.lastTimeout).isEqualTo(2.5F);
+    }
+
+    @Test
+    void invokeWrapsClientErrorsAsMcpExecutionError() {
+        FakeMcpClient client = new FakeMcpClient(new IllegalStateException("boom"));
+        McpTool tool = new McpTool(client, basicCard());
+
+        assertThatThrownBy(() -> tool.invoke(Map.of()))
+                .isInstanceOf(BaseError.class)
+                .satisfies(error -> {
+                    BaseError baseError = (BaseError) error;
+                    assertThat(baseError.getStatus()).isEqualTo(StatusCode.TOOL_MCP_EXECUTION_ERROR);
+                    assertThat(baseError.getParams()).containsEntry("method", "invoke");
+                });
+    }
+
+    @Test
+    void streamIsNotSupported() {
+        McpTool tool = new McpTool(new FakeMcpClient("unused"), basicCard());
+
+        assertThatThrownBy(() -> tool.stream(Map.of()))
+                .isInstanceOf(BaseError.class)
+                .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.TOOL_STREAM_NOT_SUPPORTED));
+    }
+
+    private static McpToolCard basicCard() {
+        return McpToolCard.builder()
+                .id("mcp.lookup")
+                .name("lookup")
+                .description("Lookup")
+                .serverName("demo-server")
+                .inputParams(null)
+                .build();
+    }
+
+    private static McpToolCard cardWithSchema() {
+        return McpToolCard.builder()
+                .id("mcp.lookup")
+                .name("lookup")
+                .description("Lookup")
+                .serverName("demo-server")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "path", Map.of("type", "string"),
+                                "mode", Map.of("type", "string", "default", "text"),
+                                "optional", Map.of("type", "string")
+                        ),
+                        "required", List.of("path")
+                ))
+                .build();
+    }
+
+    public static final class FakeMcpClient {
+        private final Object response;
+        private String lastToolName;
+        private Map<String, Object> lastArguments;
+
+        FakeMcpClient(Object response) {
+            this.response = response;
         }
 
-        @Test
-        @DisplayName("Auto-generates serverId when not provided")
-        void testAutoGeneratedServerId() {
-            McpServerConfig config =
-                McpServerConfig.builder().serverName("test-server").serverPath("http://127.0.0.1:8930/mcp").build();
-            assertNotNull(config.getServerId());
-            assertFalse(config.getServerId().isEmpty());
-        }
-
-        @Test
-        @DisplayName("Custom values are accepted")
-        void testCustomValues() {
-            McpServerConfig config =
-                McpServerConfig.builder().serverName("my-server").serverPath("http://localhost:3000/mcp")
-                        .clientType("streamable-http").authHeaders(Map.of("Authorization", "Bearer token"))
-                        .authQueryParams(Map.of("ak", "demo-ak")).params(Map.of("key", "value")).build();
-
-            assertEquals("my-server", config.getServerName());
-            assertEquals("http://localhost:3000/mcp", config.getServerPath());
-            assertEquals("streamable-http", config.getClientType());
-            assertEquals("Bearer token", config.getAuthHeaders().get("Authorization"));
-            assertEquals("demo-ak", config.getAuthQueryParams().get("ak"));
-            assertEquals("value", config.getParams().get("key"));
-        }
-
-        @Test
-        @DisplayName("NO_TIMEOUT constant is -1")
-        void testNoTimeoutConstant() {
-            assertEquals(-1, McpServerConfig.NO_TIMEOUT);
-        }
-
-        @Test
-        @DisplayName("Default authHeaders and authQueryParams are empty maps")
-        void testDefaultEmptyMaps() {
-            McpServerConfig config =
-                McpServerConfig.builder().serverName("test").serverPath("http://localhost").build();
-
-            assertNotNull(config.getAuthHeaders());
-            assertTrue(config.getAuthHeaders().isEmpty());
-            assertNotNull(config.getAuthQueryParams());
-            assertTrue(config.getAuthQueryParams().isEmpty());
-            assertNotNull(config.getParams());
-            assertTrue(config.getParams().isEmpty());
+        public Object callTool(String toolName, Map<String, Object> arguments) {
+            this.lastToolName = toolName;
+            this.lastArguments = new LinkedHashMap<>(arguments);
+            if (response instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            return response;
         }
     }
 
-    // ============================== McpToolCard tests ==============================
+    public static final class TimeoutAwareMcpClient {
+        private final Object response;
+        private String lastToolName;
+        private float lastTimeout = McpServerConfig.NO_TIMEOUT;
 
-    @Nested
-    @DisplayName("McpToolCard tests")
-    class McpToolCardTests {
-        @Test
-        @DisplayName("McpToolCard stores serverName")
-        void testServerName() {
-            McpToolCard card = McpToolCard.builder().name("browser_navigate").description("Navigate to URL")
-                    .serverName("streamable-server").inputParams(Map.of("type", "object", "properties",
-                            Map.of("url", Map.of("type", "string")), "required", new String[]{"url"}))
-                    .build();
-
-            assertEquals("browser_navigate", card.getName());
-            assertEquals("Navigate to URL", card.getDescription());
-            assertEquals("streamable-server", card.getServerName());
+        TimeoutAwareMcpClient(Object response) {
+            this.response = response;
         }
 
-        @Test
-        @DisplayName("McpToolCard default serverId is empty string")
-        void testDefaultServerId() {
-            McpToolCard card = McpToolCard.builder().name("test").description("test").serverName("server").build();
-
-            assertEquals("", card.getServerId());
-        }
-
-        @Test
-        @DisplayName("toolInfo returns McpToolInfo with serverName")
-        void testToolInfoReturnsMcpToolInfo() {
-            McpToolCard card = McpToolCard.builder().name("browser_extract_text").description("Extract page text")
-                    .serverName("mcp-server").inputParams(Map.of("type", "object")).build();
-
-            McpToolInfo info = card.toolInfo();
-            assertNotNull(info);
-            assertEquals("browser_extract_text", info.getName());
-            assertEquals("Extract page text", info.getDescription());
-            assertEquals("mcp-server", info.getServerName());
-            assertEquals(Map.of("type", "object"), info.getParameters());
-        }
-
-        @Test
-        @DisplayName("Auto-generates id for McpToolCard")
-        void testAutoGeneratedId() {
-            McpToolCard card = McpToolCard.builder().name("test").description("test").serverName("server").build();
-            assertNotNull(card.getId());
-            assertFalse(card.getId().isEmpty());
+        public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            this.lastToolName = toolName;
+            this.lastTimeout = timeout;
+            return response;
         }
     }
 
-    // ============================== McpTool tests ==============================
+    public static final class DumpableContent {
+        public Map<String, Object> model_dump() {
+            return Map.of("type", "custom", "data", "secret");
+        }
+    }
 
-    @Nested
-    @DisplayName("McpTool tests")
-    class McpToolTests {
-        /**
-         * Simple mock MCP client for testing.
-         */
-        private static class MockMcpClient implements McpClient {
-            private final Map<String, Object> callResults = new HashMap<>();
-            private String lastCalledTool;
-            private Map<String, Object> lastArguments;
+    private record RecordedCall(String event, Object[] args, Map<String, Object> kwargs) {
+    }
 
-            void setCallResult(String toolName, Object result) {
-                callResults.put(toolName, result);
-            }
+    private static final class RecordingFramework implements DecoratorFramework {
+        private final List<RecordedCall> calls = new ArrayList<>();
 
-            @Override
-            public boolean connect(int retryTimes, float timeout) {
-                return true;
-            }
-
-            @Override
-            public boolean disconnect(float timeout) {
-                return true;
-            }
-
-            @Override
-            public List<Object> listTools(float timeout) {
-                return List.of();
-            }
-
-            @Override
-            public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
-                lastCalledTool = toolName;
-                lastArguments = arguments;
-                return callResults.getOrDefault(toolName, "ok:" + toolName);
-            }
-
-            @Override
-            public Optional<Object> getToolInfo(String toolName, float timeout) {
-                return Optional.empty();
-            }
-
-            @Override
-            public String getServerPath() {
-                return "http://127.0.0.1:8930/mcp";
-            }
+        @Override
+        public CallbackInfo registerSync(String event, Function<Map<String, Object>, Object> callback, int priority,
+                                         boolean once, String namespace, Set<String> tags, List<EventFilter> filters,
+                                         Function<Map<String, Object>, Object> rollbackHandler,
+                                         Function<Map<String, Object>, Object> errorHandler, int maxRetries,
+                                         double retryDelay, Double timeout, String callbackType) {
+            return null;
         }
 
-        @Test
-        @DisplayName("McpTool invoke delegates to mcpClient.callTool")
-        void testInvokeDelegatesToClient() throws Exception {
-            MockMcpClient client = new MockMcpClient();
-            client.setCallResult("browser_navigate", "navigation completed");
-
-            McpToolCard card = McpToolCard.builder().name("browser_navigate").description("Navigate to URL")
-                    .serverName("test-server").build();
-
-            McpTool tool = new McpTool(client, card);
-            Object result = tool.invoke(Map.of("url", "https://example.com"));
-
-            assertNotNull(result);
-            assertInstanceOf(Map.class, result);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> resultMap = (Map<String, Object>) result;
-            assertEquals("navigation completed", resultMap.get("result"));
-            assertEquals("browser_navigate", client.lastCalledTool);
-            assertEquals("https://example.com", client.lastArguments.get("url"));
+        @Override
+        public void trigger(String event, Object[] args, Map<String, Object> kwargs) {
+            calls.add(new RecordedCall(event, args, new LinkedHashMap<>(kwargs)));
         }
 
-        @Test
-        @DisplayName("McpTool invoke with null inputs uses empty map")
-        void testInvokeNullInputs() throws Exception {
-            MockMcpClient client = new MockMcpClient();
-            client.setCallResult("test_tool", "ok");
-
-            McpToolCard card = McpToolCard.builder().name("test_tool").description("test").serverName("server").build();
-
-            McpTool tool = new McpTool(client, card);
-            Object result = tool.invoke(null);
-
-            assertNotNull(result);
-            assertNotNull(client.lastArguments);
-            assertTrue(client.lastArguments.isEmpty());
+        @Override
+        public Object triggerTransform(String event, Object[] args, Map<String, Object> kwargs) {
+            return null;
         }
 
-        @Test
-        @DisplayName("McpTool stream throws not supported error")
-        void testStreamThrowsNotSupported() {
-            MockMcpClient client = new MockMcpClient();
-
-            McpToolCard card = McpToolCard.builder().name("test_tool").description("test").serverName("server").build();
-
-            McpTool tool = new McpTool(client, card);
-            assertThrows(Throwable.class, () -> tool.stream(Map.of()));
+        @Override
+        public Map<String, List<CallbackInfo>> getCallbacks() {
+            return Map.of();
         }
 
-        @Test
-        @DisplayName("McpTool constructor with null client throws exception")
-        void testNullClientThrows() {
-            McpToolCard card = McpToolCard.builder().name("test").description("test").serverName("server").build();
-
-            assertThrows(Throwable.class, () -> new McpTool(null, card));
-        }
-
-        @Test
-        @DisplayName("McpTool getCard returns the card")
-        void testGetCard() {
-            MockMcpClient client = new MockMcpClient();
-
-            McpToolCard card = McpToolCard.builder().name("browser_navigate").description("Navigate page")
-                    .serverName("streamable-server").build();
-
-            McpTool tool = new McpTool(client, card);
-            assertEquals("browser_navigate", tool.getCard().getName());
-            assertEquals("Navigate page", tool.getCard().getDescription());
+        private RecordedCall triggered(String event) {
+            return calls.stream().filter(call -> call.event().equals(event)).findFirst().orElseThrow();
         }
     }
 }

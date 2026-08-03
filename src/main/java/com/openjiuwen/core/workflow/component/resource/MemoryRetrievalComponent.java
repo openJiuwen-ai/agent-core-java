@@ -9,46 +9,28 @@ import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.workflow.ComponentComposable;
 
 /**
- * Memory Retrieval workflow component (composable wrapper).
- * <p>
- * Creates a {@link MemoryRetrievalExecutable} for graph execution.
- * <p>
- * Mirrors Python's {@code MemoryRetrievalComponent}.
- * 
- * @since 0.1.7
+ * Composable long-term memory retrieval workflow component.
+ *
+ * <p>Mirrors Python's {@code MemoryRetrievalComponent} in
+ * {@code openjiuwen/core/workflow/components/resource/memory_retrieval_comp.py}.</p>
  */
 public class MemoryRetrievalComponent implements ComponentComposable {
+
     private final MemoryRetrievalCompConfig config;
 
-    /**
-     * Create a MemoryRetrievalComponent with the given configuration.
-     * 
-     * @param config the component configuration
-     * @since 0.1.7
-     */
+    public MemoryRetrievalComponent() {
+        this(null);
+    }
+
     public MemoryRetrievalComponent(MemoryRetrievalCompConfig config) {
         this.config = config;
     }
 
-    /**
-     * addComponent.
-     * 
-     * @param graph graph
-     * @param nodeId nodeId
-     * @param isWaitForAll isWaitForAll
-     * @since 0.1.7
-     */
     @Override
-    public void addComponent(Graph graph, String nodeId, boolean isWaitForAll) {
-        graph.addNode(nodeId, toExecutable(), isWaitForAll);
+    public void addComponent(Graph graph, String nodeId, boolean waitForAll) {
+        graph.addNode(nodeId, toExecutable(), waitForAll);
     }
 
-    /**
-     * toExecutable.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Executable<?, ?> toExecutable() {
         return new MemoryRetrievalExecutable(config);

@@ -3,764 +3,1134 @@
  */
 
 package com.openjiuwen.core.graph;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
-import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.ExecutionError;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
-import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.stream_actor.StreamConsumer;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.callback.CallbackDecorators;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
+import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.constants.SessionConstants;
-import com.openjiuwen.core.session.internal.NodeSession;
-import com.openjiuwen.core.session.interaction.WorkflowInteraction;
-import com.openjiuwen.core.session.state.WorkflowStateCollection;
+import com.openjiuwen.core.session.state.CommitStateLike;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
-import com.openjiuwen.core.session.stream.StreamSchema;
-import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
-import com.openjiuwen.core.workflow.component.NodeConfig;
-import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
- * Vertex is the execution wrapper for a graph node. It manages node initialization,
- * execution lifecycle (invoke/stream/collect/transform abilities), stream coordination,
- * tracing, and end-node handling.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.vertex.Vertex}.
- * In Java, async patterns use Virtual Threads and CompletableFuture instead of asyncio.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Vertex} and module helpers in
+ * {@code openjiuwen/core/graph/vertex.py}.
  */
-public class Vertex extends AtomicNode implements StreamConsumer {
-    private static final LoggerProtocol LOGGER = Loggers.GRAPH;
-    private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
+public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
+    public static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
+    public static final String INTERACTIVE_INPUT = Constant.INTERACTIVE_INPUT;
+    public static final String END_NODE_STREAM = Constant.END_NODE_STREAM;
+    public static final String INPUTS_KEY = "inputs";
+    public static final String CONFIG_KEY = "config";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(Vertex.class);
+    private static final Boolean STREAM_DONE_SUCCESS = Boolean.TRUE;
+    private static final Map<String, Object> PYTHON_NONE_MAP = null;
+    private static final VertexActorManager PYTHON_NONE_ACTOR_MANAGER = null;
+    private static final VertexStreamWriterManager PYTHON_NONE_STREAM_WRITER_MANAGER = null;
+    private static final VertexTraceSink PYTHON_NONE_TRACE_SINK = null;
+    private static final ErrorRecoveryHandler PYTHON_NONE_ERROR_RECOVERY_HANDLER = null;
+    private static final VertexEventSink PYTHON_NONE_EVENT_SINK = null;
+    private static final Executor STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
 
     private final String nodeId;
-    private final Executable<Object, Object> executable;
-
+    private final Executable<Map<String, Object>, Object> executable;
+    private final Executor executor;
+    private VertexSession session;
     private Object context;
-    private NodeSession session;
-    private int streamCalledTimeout = 10;
-    private CompletableFuture<Object> streamDone;
-    private int callCount = 0;
-    private int streamCallCount = 0;
-    private boolean isEndNode = false;
-    private volatile boolean isStarted = false;
-    private volatile boolean isCallStarted = false;
-    private NodeConfig nodeConfig;
-    private List<ComponentAbility> componentAbility;
-    private boolean hasStreamCall = false;
-    private boolean hasCall = false;
+    private int streamCallTimeoutSeconds = 10;
+    private CompletableFuture<Object> streamDone = new CompletableFuture<>();
+    private int callCount;
+    private int streamCallCount;
+    private boolean endNode;
+    private boolean started;
+    private boolean callStarted;
+    private VertexNodeConfig nodeConfig = new VertexNodeConfig();
+    private List<ComponentAbility> componentAbilities = List.of(ComponentAbility.INVOKE);
+    private boolean hasStreamCall;
+    private boolean hasCall = true;
+    private boolean firstInit = true;
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private List<String> sourceId = new ArrayList<>();
-
-    /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private Map<String, Object> logMessage = new HashMap<>();
-    private boolean isFirstInit = true;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
-
-    /**
-     * Vertex.
-     * 
-     * @param nodeId nodeId
-     * @param executable executable
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public Vertex(String nodeId, Executable<?, ?> executable) {
-        this.nodeId = nodeId;
-        this.executable = (Executable<Object, Object>) executable;
-        this.streamDone = new CompletableFuture<>();
+    public Vertex(String nodeId, Executable<Map<String, Object>, ?> executable) {
+        this(nodeId, executable, ForkJoinPool.commonPool());
     }
 
-    /**
-     * Initialize the vertex with a session and optional context.
-     * 
-     * @param session the base session
-     * @param kwargs additional arguments (e.g., "context")
-     * @return true if initialization succeeded
-     * @since 0.1.7
-     */
-    public boolean init(BaseSession session, Map<String, Object> kwargs) {
-        this.session = new NodeSession(session, this.nodeId, executable.getClass().getSimpleName());
-        this.context = kwargs != null ? kwargs.get("context") : null;
+    public Vertex(String nodeId,
+                  Executable<Map<String, Object>, ?> executable,
+                  Executor executor) {
+        this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
+        this.executable = castExecutable(executable);
+        this.executor = executor != null ? executor : ForkJoinPool.commonPool();
+    }
 
-        // Get stream call timeout from config
-        if (session.config() != null) {
-            Object timeout = session.config().getEnv(SessionConstants.COMP_STREAM_CALL_TIMEOUT_KEY);
-            if (timeout instanceof Number) {
-                this.streamCalledTimeout = ((Number) timeout).intValue();
-            }
-        }
+    @SuppressWarnings("unchecked")
+    public Executable<Object, Object> getExecutable() {
+        return (Executable<Object, Object>) (Executable<?, ?>) executable;
+    }
 
-        // Get node config and determine abilities
-        Object rawConfig = this.session.nodeConfig();
-        if (rawConfig instanceof NodeConfig) {
-            this.nodeConfig = (NodeConfig) rawConfig;
-        }
+    public boolean init(VertexSession session) {
+        return init(session, Collections.emptyMap());
+    }
 
-        if (nodeConfig != null && nodeConfig.getAbilities() != null && !nodeConfig.getAbilities().isEmpty()) {
-            this.componentAbility = nodeConfig.getAbilities();
+    public boolean init(VertexSession session, Map<String, Object> kwargs) {
+        VertexSession graphSession = Objects.requireNonNull(session, "session must not be null");
+        this.session = graphSession.nodeSession(nodeId);
+        this.session.setNodeType(componentTypeName());
+        this.context = kwargs == null ? null : kwargs.get("context");
+        this.streamCallTimeoutSeconds = this.session.streamCallTimeoutSeconds();
+        this.nodeConfig = this.session.nodeConfig() != null ? this.session.nodeConfig() : new VertexNodeConfig();
+        if (nodeConfig.abilities().isEmpty()) {
+            this.componentAbilities = List.of(ComponentAbility.INVOKE);
         } else {
-            this.componentAbility = List.of(ComponentAbility.INVOKE);
+            this.componentAbilities = List.copyOf(nodeConfig.abilities());
         }
-
         this.hasStreamCall = !streamAbilities().isEmpty();
-        this.hasCall = componentAbility.size() > streamAbilities().size();
-
-        this.logMessage = new HashMap<>();
-        logMessage.put("graph_id", this.session.workflowId());
-        logMessage.put("node_id", this.nodeId);
-
-        if (isFirstInit) {
-            List<String> abilityNames =
-                componentAbility.stream().map(ComponentAbility::name).collect(Collectors.toList());
-            LOGGER.info("Initialized node [{}], abilities is {}", this.nodeId, abilityNames);
-            isFirstInit = false;
+        this.hasCall = componentAbilities.size() > streamAbilities().size();
+        if (firstInit) {
+            LOGGER.info("Initialized node [{}], abilities is {}", nodeId,
+                    componentAbilities.stream().map(ComponentAbility::name).toList());
+            firstInit = false;
         }
-
-        boolean hasStreamInputs = hasStreamCall && nodeConfig != null && nodeConfig.getStreamIoConfigs() != null
-                && nodeConfig.getStreamIoConfigs().getInputsSchema() != null;
-
-        if (hasStreamInputs && executable instanceof MixModeAware) {
-            ((MixModeAware) executable).setMix();
+        boolean hasStreamInputs = hasStreamCall
+                && nodeConfig.streamIoConfigs() != null
+                && nodeConfig.streamIoConfigs().inputsSchema() != null;
+        if (hasStreamInputs && executable instanceof MixConfigurable mixConfigurable) {
+            mixConfigurable.setMix();
         }
-
-        this.isStarted = false;
+        this.started = false;
         return true;
     }
 
-    /**
-     * Main entry point - called by the Pregel engine.
-     * Mirrors Python's {@code __call__(state, config)}.
-     * 
-     * @param state the graph state
-     * @param config execution config
-     * @return a map with source_node_id
-     * @throws Exception on execution failure
-     * @since 0.1.7
-     */
-    public Map<String, Object> call(GraphNodeState state, Object config) throws Exception {
-        LOGGER.info("Begin to call batch-in node [{}]", nodeId);
+    public CompletionStage<Map<String, List<String>>> invoke(GraphState state, Map<String, Object> config) {
+        CompletableFuture<Map<String, List<String>>> future = new CompletableFuture<>();
         try {
-            if (executable.postCommit()) {
-                Map<String, Object> kwargs = new HashMap<>();
-                kwargs.put("config", config);
-                kwargs.put("session", session);
-                atomicInvoke(kwargs);
+            LOGGER.info("Begin to call batch-in node [{}]", nodeId);
+            if (executable != null && executable.postCommit()) {
+                atomicInvoke(Map.of("config", safeConfig(config), "session", session))
+                        .toCompletableFuture().join();
             } else {
-                doCall(config);
+                callBlocking(config);
             }
-            LOGGER.info("Succeed to call batch-in node [{}]", nodeId);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("source_node_id", List.of(nodeId));
-            return result;
-        } catch (GraphInterrupt e) {
-            if (session.tracer() != null) {
-                traceError(e);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("node_id", nodeId);
+            payload.put("ability", componentAbilities.stream().map(ComponentAbility::name).toList());
+            payload.put("graph_id", safeWorkflowId());
+            payload.put("inputs", state != null ? state : new GraphState());
+            payload.put("outputs", session != null ? session.state().get(nodeId) : null);
+            emitEvent(WorkflowEvents.NODE_EXECUTED, payload);
+            Map<String, List<String>> output = new LinkedHashMap<>();
+            output.put("source_node_id", List.of(nodeId));
+            future.complete(output);
+        } catch (Throwable throwable) {
+            Throwable error = unwrapCompletion(throwable);
+            if (session != null && session.tracer() != null) {
+                traceError(error);
             }
-            LOGGER.info("Interrupt to call batch-in node [{}]", nodeId);
-            throw e;
-        } catch (Exception e) {
-            if (session.tracer() != null) {
-                traceError(e);
+            if (!(error instanceof GraphInterrupt)) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("node_id", nodeId);
+                payload.put("graph_id", safeWorkflowId());
+                payload.put("error", error);
+                emitEvent(WorkflowEvents.NODE_ERROR, payload);
             }
-            if (e instanceof BaseError be) {
-                LOGGER.error("Failed to call batch-in node [{}], code={}, msg={}", nodeId, be.getCode(),
-                        be.getMessage());
-            } else {
-                LOGGER.error("Failed to call batch-in node [{}]", nodeId, e);
-            }
-            throw e;
+            future.completeExceptionally(error);
         } finally {
-            callCount++;
-            isStarted = false;
-            isCallStarted = false;
+            callCount += 1;
+            started = false;
+            callStarted = false;
         }
+        return future;
     }
 
-    /**
-     * doAtomicInvoke.
-     * 
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected Object doAtomicInvoke(Map<String, Object> kwargs) {
-        try {
-            return doCall(kwargs.get("config"));
-        } catch (Exception e) {
-            if (e instanceof RuntimeException) {
-                throw (RuntimeException) e;
+    public CompletionStage<Void> call(Map<String, Object> config) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        executor.execute(() -> {
+            try {
+                callBlocking(config);
+                future.complete(null);
+            } catch (Throwable throwable) {
+                future.completeExceptionally(unwrapCompletion(throwable));
             }
-            throw new RuntimeException(e);
-        }
+        });
+        return future;
     }
 
-    // ---- Core Execution ----
+    @Override
+    protected CompletionStage<Object> atomicInvokeInternal(Map<String, Object> kwargs) {
+        Map<String, Object> safeKwargs = kwargs != null ? kwargs : Collections.emptyMap();
+        return call(castMap(safeKwargs.get("config"))).thenApply(ignored -> null);
+    }
 
-    /**
-     * Execute the node's abilities (invoke/stream, then wait for stream-in).
-     * 
-     * @param config execution configuration
-     * @return null
-     * @throws Exception on execution failure
-     * @since 0.1.7
-     */
-    private Object doCall(Object config) throws Exception {
-        throwIfInterrupted();
-        deferredStreamEndAbilities.clear();
-        // 1. Check whether the node is initialized
+    private void callBlocking(Map<String, Object> config) throws Exception {
         if (session == null || executable == null) {
-            throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR, "reason", "node is not initialized",
-                    "node_id", nodeId);
+            throw buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR,
+                    null,
+                    Map.of("reason", "node is not initialized", "node_id", nodeId));
         }
-
-        // 2. Execute node 'batch-in' abilities (INVOKE and STREAM)
-        boolean isSubgraph = executable.graphInvoker();
+        boolean subgraph = executable.graphInvoker();
         ComponentAbility currentAbility = null;
         try {
-            List<ComponentAbility> callAbilities = componentAbility.stream()
-                    .filter(a -> a == ComponentAbility.INVOKE || a == ComponentAbility.STREAM).toList();
-
+            List<ComponentAbility> callAbilities = callAbilities();
             for (ComponentAbility ability : callAbilities) {
-                throwIfInterrupted();
                 currentAbility = ability;
-                runExecutable(ability, isSubgraph, config, null);
+                runExecutableWithRetry(ability, subgraph, config, null);
             }
-            sendDeferredStreamEndMessages();
-
             if (callAbilities.isEmpty()) {
                 traceComponentBegin();
             }
-        } catch (ExecutionError e) {
-            LOGGER.error("Node ability call failed, node_id={}, ability={}", nodeId,
-                    currentAbility != null ? currentAbility.name() : null);
-            throw e;
+        } catch (BaseError error) {
+            LOGGER.error("Node ability call failed: node={}, ability={}", nodeId,
+                    currentAbility != null ? currentAbility.name() : null, error);
+            throw error;
         }
 
-        // 3. Wait for stream-in abilities to complete
         if (streamCalled()) {
-            int timeout = streamCalledTimeout > 0 ? streamCalledTimeout : 0;
-            try {
-                Object result;
-                if (timeout > 0) {
-                    result = streamDone.get(timeout, TimeUnit.SECONDS);
-                } else {
-                    result = streamDone.get();
-                }
-                if (result instanceof Exception) {
-                    throw (Exception) result;
-                }
-            } catch (TimeoutException e) {
-                throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_TIMEOUT, "timeout",
-                        String.valueOf(timeout), "node_id", nodeId);
-            }
-        } else if (hasStreamCall && !isEndNode) {
-            throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR, "reason", "no stream data in",
-                    "node_id", nodeId);
+            waitForStreamDone();
+        } else if (hasStreamCall && !endNode) {
+            throw buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
+                    null,
+                    Map.of("reason", "no stream data in", "node_id", nodeId));
         }
-
-        // 4. Send end tracer frame
+        if (session.actorManager() != null) {
+            session.actorManager().markProducerDone(nodeId);
+        }
         traceComponentDone();
-        return null;
     }
 
-    /**
-     * throwIfInterrupted.
-     * 
-     * @since 0.1.7
-     */
-    private static void throwIfInterrupted() {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new CancellationException("Vertex execution cancelled");
+    private boolean runExecutableWithRetry(ComponentAbility ability,
+                                           boolean subgraph,
+                                           Map<String, Object> config,
+                                           Runnable readinessSignal) throws Exception {
+        int maxRetries = Math.max(0, nodeConfig.maxRetries());
+        double timeout = nodeConfig.timeoutSeconds();
+
+        if (maxRetries <= 0 && (timeout < 0.0d || nearlyZero(timeout))) {
+            return runExecutable(ability, subgraph, config, readinessSignal);
         }
-    }
 
-    // ---- Ability Execution ----
-
-    /**
-     * Run the executable with a specific ability.
-     * 
-     * @param ability the component ability to execute
-     * @param isSubgraph whether the executable is a subgraph
-     * @param config execution config
-     * @param latch optional latch to signal when stream-in is ready
-     * @throws Exception on execution failure
-     * @since 0.1.7
-     */
-    private void runExecutable(ComponentAbility ability, boolean isSubgraph, Object config, CountDownLatch latch)
-            throws Exception {
-        try {
-            LOGGER.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
-
-            switch (ability) {
-                case INVOKE:
-                    executeInvoke(isSubgraph, config);
-                    break;
-                case STREAM:
-                    executeStream(isSubgraph, config);
-                    break;
-                case COLLECT:
-                    executeCollect(isSubgraph, latch);
-                    break;
-                case TRANSFORM:
-                    executeTransform(isSubgraph, latch);
-                    break;
-                default:
-                    break;
-            }
-
-            LOGGER.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
-        } catch (BaseError e) {
-            LOGGER.error("Failed to call node [{}] ability [{}], code={}, msg={}", nodeId, ability.name(), e.getCode(),
-                    e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            GraphInterrupt interrupt = unwrapGraphInterrupt(e);
-            if (interrupt != null) {
-                LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (timeout < 0.0d || nearlyZero(timeout)) {
+                    return runExecutable(ability, subgraph, config, readinessSignal);
+                }
+                return runExecutableWithTimeout(ability, subgraph, config, readinessSignal, timeout);
+            } catch (GraphInterrupt interrupt) {
                 throw interrupt;
-            }
-            LOGGER.error("Failed to call node [{}]'s '{}'", nodeId, ability.name(), e);
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR, "ability", ability.name(),
-                    "comp", nodeId, "reason", e.toString(), "workflow", session.workflowId());
-        } finally {
-            if (latch != null) {
-                latch.countDown();
-            }
-        }
-    }
-
-    /**
-     * executeInvoke.
-     * 
-     * @param isSubgraph isSubgraph
-     * @param config config
-     * @since 0.1.7
-     */
-    private void executeInvoke(boolean isSubgraph, Object config) {
-        Map<String, Object> batchInputs = preInvoke();
-        LOGGER.debug("Prepare inputs for [{}] ability [INVOKE]", nodeId);
-        Object inputs = batchInputs;
-        if (isSubgraph) {
-            Map<String, Object> wrappedInputs = new HashMap<>();
-            wrappedInputs.put(Constant.INPUTS_KEY, batchInputs);
-            wrappedInputs.put(Constant.CONFIG_KEY, config);
-            inputs = wrappedInputs;
-        }
-        Object results = executable.onInvoke(inputs, session, context);
-        results = postInvoke(results);
-        LOGGER.debug("Post-process results for [{}] ability [INVOKE]", nodeId);
-    }
-
-    /**
-     * executeStream.
-     * 
-     * @param isSubgraph isSubgraph
-     * @param config config
-     * @since 0.1.7
-     */
-    private void executeStream(boolean isSubgraph, Object config) {
-        Map<String, Object> batchInputs = preInvoke();
-        LOGGER.debug("Prepare inputs for [{}] ability [STREAM]", nodeId);
-        Object inputs = batchInputs;
-        if (isSubgraph) {
-            Map<String, Object> wrappedInputs = new HashMap<>();
-            wrappedInputs.put(Constant.INPUTS_KEY, batchInputs);
-            wrappedInputs.put(Constant.CONFIG_KEY, config);
-            inputs = wrappedInputs;
-        }
-        Iterator<Object> resultIter = executable.onStream(inputs, session, context);
-        postStream(resultIter, ComponentAbility.STREAM);
-    }
-
-    /**
-     * executeCollect.
-     * 
-     * @param isSubgraph isSubgraph
-     * @param latch latch
-     * @since 0.1.7
-     */
-    private void executeCollect(boolean isSubgraph, CountDownLatch latch) {
-        Object collectInputs = preStream(ComponentAbility.COLLECT);
-        if (latch != null) {
-            latch.countDown();
-        }
-        Object batchOutput = executable.onCollect(collectInputs, session, context);
-        Object results = postInvoke(batchOutput);
-        LOGGER.debug("Post-process inputs for [{}] ability [COLLECT]", nodeId);
-    }
-
-    /**
-     * executeTransform.
-     * 
-     * @param isSubgraph isSubgraph
-     * @param latch latch
-     * @since 0.1.7
-     */
-    private void executeTransform(boolean isSubgraph, CountDownLatch latch) {
-        Object transformInputs = preStream(ComponentAbility.TRANSFORM);
-        if (latch != null) {
-            latch.countDown();
-        }
-        Iterator<Object> outputIter = executable.onTransform(transformInputs, session, context);
-        postStream(outputIter, ComponentAbility.TRANSFORM);
-    }
-
-    // ---- Pre/Post Processing ----
-
-    @SuppressWarnings("unchecked")
-    /**
-     * preInvoke.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> preInvoke() {
-        traceComponentBegin();
-        Object inputsSchema = null;
-        if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
-            inputsSchema = nodeConfig.getIoConfigs().getInputsSchema();
-        }
-
-        Map<String, Object> inputs = null;
-        if (inputsSchema != null && session.state() instanceof WorkflowStateCollection) {
-            WorkflowStateCollection stateCollection = (WorkflowStateCollection) session.state();
-            if (inputsSchema instanceof Map) {
-                inputs = (Map<String, Object>) stateCollection.getInputs(inputsSchema);
-            } else {
-                inputs = (Map<String, Object>) stateCollection.getInputsByTransformer(inputsSchema);
-            }
-        }
-
-        traceComponentInputs(inputs);
-        return inputs;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * postInvoke.
-     * 
-     * @param results results
-     * @return the result
-     * @since 0.1.7
-     */
-    private Object postInvoke(Object results) {
-        Object outputsSchema = null;
-        if (nodeConfig != null && nodeConfig.getIoConfigs() != null) {
-            outputsSchema = nodeConfig.getIoConfigs().getOutputsSchema();
-        }
-
-        if (outputsSchema != null) {
-            if (outputsSchema instanceof Map) {
-                results = SessionUtils.getBySchema(outputsSchema, (Map<String, Object>) results);
-                if (!isEndNode && results instanceof Map) {
-                    Map<String, Object> resultMap = (Map<String, Object>) results;
-                    resultMap.values().removeIf(java.util.Objects::isNull);
+            } catch (TimeoutException timeoutException) {
+                BaseError wrapped = buildError(StatusCode.WORKFLOW_EXECUTION_TIMEOUT,
+                        timeoutException,
+                        Map.of("timeout", timeout, "node_id", nodeId));
+                if (attempt < maxRetries) {
+                    traceInnerError(timeoutException);
+                    continue;
                 }
-            } else {
-                // transformer function
-                if (outputsSchema instanceof java.util.function.Function) {
-                    results = ((java.util.function.Function<Object, Object>) outputsSchema).apply(results);
+                return runErrorRecovery(ability, wrapped);
+            } catch (Exception exception) {
+                if (attempt < maxRetries) {
+                    traceInnerError(exception);
+                    continue;
                 }
-            }
-        }
-
-        // Mix mode: end node with both batch and stream calls
-        boolean isEndMixMode = isEndNode && hasCall && hasStreamCall;
-        if (results instanceof Map && isEndMixMode) {
-            Map<String, Object> resultMap = (Map<String, Object>) results;
-            Object outputs = resultMap.get("output");
-            if (outputs != null && !(outputs instanceof List)) {
-                resultMap.put("output", new ArrayList<>(List.of(outputs)));
-            }
-            if (session.state() instanceof WorkflowStateCollection) {
-                Object oldOutputs = ((WorkflowStateCollection) session.state()).getOutputs(nodeId);
-                if (oldOutputs instanceof Map) {
-                    Map<String, Object> oldMap = (Map<String, Object>) oldOutputs;
-                    if (oldMap.get("output") instanceof List && resultMap.get("output") instanceof List) {
-                        ((List<Object>) resultMap.get("output")).addAll((List<Object>) oldMap.get("output"));
-                    }
-                }
-            }
-        }
-
-        if (results != null && session.state() instanceof WorkflowStateCollection) {
-            ((WorkflowStateCollection) session.state()).setOutputs(results);
-        }
-        traceComponentOutputs(results);
-        clearInteractive();
-        return results;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * preStream.
-     * 
-     * @param ability ability
-     * @return the result
-     * @since 0.1.7
-     */
-    private Object preStream(ComponentAbility ability) {
-        traceComponentBegin();
-        ActorManager actorManager = getActorManager();
-        Object inputsSchema = null;
-        if (nodeConfig != null && nodeConfig.getStreamIoConfigs() != null) {
-            inputsSchema = nodeConfig.getStreamIoConfigs().getInputsSchema();
-        }
-        if (!(inputsSchema instanceof Map)) {
-            inputsSchema = null;
-        }
-
-        boolean enableTrace = session.tracer() != null && !executable.skipTrace();
-
-        Consumer<Object> streamCallback = chunk -> {
-            LOGGER.debug("Consume chunk of {}[{}]", nodeId, ability.name());
-            if (enableTrace) {
-                TracerWorkflowUtils.traceComponentStreamInput(session, chunk, false);
-            }
-        };
-
-        if (actorManager != null) {
-            return actorManager.consume(nodeId, ability, inputsSchema, streamCallback);
-        }
-        return Collections.emptyMap();
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * postStream.
-     * 
-     * @param resultsIter resultsIter
-     * @param ability ability
-     * @since 0.1.7
-     */
-    private void postStream(Iterator<Object> resultsIter, ComponentAbility ability) {
-        boolean isEnd = isEndNode;
-        boolean isSubGraph = session.parentId() != null && !session.parentId().isEmpty();
-        ActorManager actorManager = getActorManager();
-
-        Object outputSchema = null;
-        if (nodeConfig != null && nodeConfig.getStreamIoConfigs() != null) {
-            outputSchema = nodeConfig.getStreamIoConfigs().getOutputsSchema();
-        }
-        Object outputTransformer = null;
-        if (!(outputSchema instanceof Map)) {
-            outputTransformer = outputSchema;
-        }
-
-        int endStreamIndex = 0;
-        while (resultsIter != null && resultsIter.hasNext()) {
-            Object chunk = resultsIter.next();
-            Object message;
-            if (outputTransformer == null) {
-                message = (outputSchema != null && actorManager != null)
-                        ? actorManager.getStreamTransform().getByDefaultTransformer(chunk, outputSchema)
-                        : chunk;
-            } else {
-                message = (actorManager != null)
-                        ? actorManager.getStreamTransform().getByDefinedTransformer(chunk, outputTransformer)
-                        : chunk;
-            }
-
-            LOGGER.debug("Produce chunk[{}] from {}[{}]", endStreamIndex, nodeId, ability.name());
-            processChunk(message, isEnd, endStreamIndex, isSubGraph, ability);
-            endStreamIndex++;
-        }
-
-        // Send end frame
-        if (isEnd && isSubGraph) {
-            ActorManager am = getActorManager();
-            if (am != null && am.subWorkflowStream() != null) {
-                sendToSubWorkflowStream(am, StreamEmitter.END_FRAME);
-            }
-        } else if (actorManager != null) {
-            if (shouldDeferStreamEnd(ability)) {
-                deferredStreamEndAbilities.add(ability);
-            } else {
-                actorManager.endMessage(nodeId, ability);
-            }
-        }
-
-        LOGGER.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
-        clearInteractive();
-
-        // LLM stream output writeback: mirrors Python Vertex._post_stream() LLMExecutable handling
-        if (executable instanceof LLMExecutable llmExec) {
-            Map<String, Object> result = llmExec.getStreamOutput();
-            if (result != null && session.state() instanceof WorkflowStateCollection) {
-                ((WorkflowStateCollection) session.state()).setOutputs(result);
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * processChunk.
-     * 
-     * @param message message
-     * @param isEnd isEnd
-     * @param endStreamIndex endStreamIndex
-     * @param isSubGraph isSubGraph
-     * @param ability ability
-     * @since 0.1.7
-     */
-    private void processChunk(Object message, boolean isEnd, int endStreamIndex, boolean isSubGraph,
-            ComponentAbility ability) {
-        if (isEnd && !isSubGraph) {
-            Object messageStreamData;
-            if (message instanceof StreamSchema) {
-                messageStreamData = message;
-            } else {
-                Map<String, Object> data = new HashMap<>();
-                data.put("type", Constant.END_NODE_STREAM);
-                data.put("index", endStreamIndex);
-                data.put("payload", message);
-                messageStreamData = data;
-            }
-            traceComponentStreamOutput(messageStreamData);
-            if (session.streamWriterManager() != null && session.streamWriterManager().getOutputWriter() != null) {
-                session.streamWriterManager().getOutputWriter().write(messageStreamData);
-            }
-        } else if (isEnd) {
-            // isEnd && isSubGraph
-            Object messageStreamData =
-                (message instanceof OutputSchema) ? ((OutputSchema) message).getPayload() : message;
-            traceComponentStreamOutput(messageStreamData);
-            ActorManager am = getActorManager();
-            if (am != null && am.subWorkflowStream() != null) {
-                sendToSubWorkflowStream(am, messageStreamData);
-            }
-        } else {
-            boolean firstFrame = endStreamIndex == 0;
-            traceComponentStreamOutput(message);
-            ActorManager am = getActorManager();
-            if (am != null) {
-                am.produce(nodeId, message, ability, firstFrame);
-            }
-        }
-    }
-
-    /**
-     * sendToSubWorkflowStream.
-     * 
-     * @param actorManager actorManager
-     * @param message message
-     * @since 0.1.7
-     */
-    private void sendToSubWorkflowStream(ActorManager actorManager, Object message) {
-        try {
-            actorManager.subWorkflowStream().put(message);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw ErrorHelper.buildError(StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR, "reason",
-                    "interrupted while sending sub-workflow stream message", "node_id", nodeId);
-        }
-    }
-
-    /**
-     * shouldDeferStreamEnd.
-     * 
-     * @param ability ability
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean shouldDeferStreamEnd(ComponentAbility ability) {
-        if (ability != ComponentAbility.STREAM || componentAbility == null) {
-            return false;
-        }
-        int currentIndex = componentAbility.indexOf(ability);
-        if (currentIndex < 0) {
-            return false;
-        }
-        for (int i = currentIndex + 1; i < componentAbility.size(); i++) {
-            ComponentAbility later = componentAbility.get(i);
-            if (later == ComponentAbility.INVOKE) {
-                return true;
+                return runErrorRecovery(ability, exception);
             }
         }
         return false;
     }
 
-    /**
-     * sendDeferredStreamEndMessages.
-     * 
-     * @since 0.1.7
-     */
-    private void sendDeferredStreamEndMessages() {
-        if (deferredStreamEndAbilities.isEmpty()) {
-            return;
-        }
-        ActorManager actorManager = getActorManager();
-        if (actorManager != null) {
-            for (ComponentAbility ability : deferredStreamEndAbilities) {
-                actorManager.endMessage(nodeId, ability);
-                LOGGER.debug("Produce deferred 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
+    private boolean runExecutableWithTimeout(ComponentAbility ability,
+                                             boolean subgraph,
+                                             Map<String, Object> config,
+                                             Runnable readinessSignal,
+                                             double timeoutSeconds)
+            throws Exception {
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
+            try {
+                return runExecutable(ability, subgraph, config, readinessSignal);
+            } catch (Exception exception) {
+                throw new CompletionException(exception);
             }
+        }, executor);
+        try {
+            long timeoutMillis = Math.max(1L, Math.round(timeoutSeconds * 1000L));
+            return future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException exception) {
+            Throwable cause = unwrapCompletion(exception);
+            GraphInterrupt interrupt = findGraphInterrupt(cause);
+            if (interrupt != null) {
+                throw interrupt;
+            }
+            if (cause instanceof Exception checked) {
+                throw checked;
+            }
+            throw new RuntimeException(cause);
+        } catch (TimeoutException timeoutException) {
+            future.cancel(true);
+            throw timeoutException;
         }
-        deferredStreamEndAbilities.clear();
     }
 
-    /**
-     * unwrapGraphInterrupt.
-     * 
-     * @param throwable throwable
-     * @return the result
-     * @since 0.1.7
-     */
-    private GraphInterrupt unwrapGraphInterrupt(Throwable throwable) {
-        if (throwable instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper wrapper) {
-            return wrapper.getGraphInterrupt();
+    private boolean runExecutable(ComponentAbility ability,
+                                  boolean subgraph,
+                                  Map<String, Object> config,
+                                  Runnable readinessSignal) throws Exception {
+        AtomicBoolean readinessSet = new AtomicBoolean(false);
+        try {
+            markNodeExecuted();
+            LOGGER.info("Begin to call node [{}] ability [{}]", nodeId, ability.name());
+            switch (ability) {
+                case INVOKE -> runInvoke(subgraph, config);
+                case STREAM -> runStream(subgraph, config);
+                case COLLECT -> {
+                    Map<String, Object> collectInputs = preStream(ComponentAbility.COLLECT);
+                    signalReady(readinessSignal, readinessSet);
+                    if (endNode) {
+                        Object streamSchema = nodeConfig.streamIoConfigs().inputsSchema();
+                        if (streamSchema instanceof Map<?, ?> mapSchema) {
+                            collectInputs = sanitizeUnexecutedBranchInputs(collectInputs, castSchemaMap(mapSchema));
+                        }
+                    }
+                    Object result = executable.onCollect(collectInputs, session, context);
+                    postInvoke(result);
+                }
+                case TRANSFORM -> {
+                    Map<String, Object> transformInputs = preStream(ComponentAbility.TRANSFORM);
+                    signalReady(readinessSignal, readinessSet);
+                    if (endNode) {
+                        Object streamSchema = nodeConfig.streamIoConfigs().inputsSchema();
+                        if (streamSchema instanceof Map<?, ?> mapSchema) {
+                            transformInputs = sanitizeUnexecutedBranchInputs(transformInputs, castSchemaMap(mapSchema));
+                        }
+                    }
+                    Iterator<Object> iterator = executable.onTransform(transformInputs, session, context);
+                    postStream(iterator, ComponentAbility.TRANSFORM);
+                }
+                default -> throw new IllegalArgumentException("Unsupported ability: " + ability);
+            }
+            LOGGER.info("Succeed to call node [{}] ability [{}]", nodeId, ability.name());
+            return true;
+        } catch (GraphInterrupt interrupt) {
+            LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+            throw interrupt;
+        } catch (BaseError error) {
+            LOGGER.error("Failed to call node [{}] ability [{}]", nodeId, ability.name(), error);
+            throw error;
+        } catch (Exception exception) {
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            if (interrupt != null) {
+                LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+                throw interrupt;
+            }
+            LOGGER.error("Failed to call node [{}]'s [{}]", nodeId, ability.name(), exception);
+            throw buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    exception,
+                    Map.of("ability", ability.name(), "comp", nodeId, "reason", exception, "workflow", safeWorkflowId()));
+        } finally {
+            signalReady(readinessSignal, readinessSet);
         }
+    }
+
+    private void runInvoke(boolean subgraph, Map<String, Object> config) {
+        Map<String, Object> batchInputs = preInvoke();
+        if (subgraph) {
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put(INPUTS_KEY, batchInputs);
+            wrapped.put(CONFIG_KEY, config);
+            batchInputs = wrapped;
+        }
+        batchInputs = applyComponentInputCallbacks(WorkflowEvents.COMPONENT_BATCH_INPUT, batchInputs);
+        Object results = executable.onInvoke(batchInputs, session, context);
+        results = applyComponentOutputCallbacks(WorkflowEvents.COMPONENT_BATCH_OUTPUT, results);
+        postInvoke(results);
+    }
+
+    private void runStream(boolean subgraph, Map<String, Object> config) throws Exception {
+        Map<String, Object> batchInputs = preInvoke();
+        if (subgraph) {
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put(INPUTS_KEY, batchInputs);
+            wrapped.put(CONFIG_KEY, config);
+            batchInputs = wrapped;
+        }
+        batchInputs = applyComponentInputCallbacks(WorkflowEvents.COMPONENT_BATCH_INPUT, batchInputs);
+        Iterator<Object> iterator = executable.onStream(batchInputs, session, context);
+        iterator = applyComponentStreamOutputCallbacks(WorkflowEvents.COMPONENT_STREAM_OUTPUT, iterator);
+        postStream(iterator, ComponentAbility.STREAM);
+    }
+
+    private boolean runErrorRecovery(ComponentAbility ability, Exception error) throws Exception {
+        if (ability != ComponentAbility.INVOKE && ability != ComponentAbility.COLLECT) {
+            throw error;
+        }
+        ErrorRecoveryHandler handler = session != null ? session.errorRecoveryHandler() : null;
+        if (handler == null) {
+            throw error;
+        }
+        Map<String, Object> result = handler.recover(
+                error, session, nodeId, ability, nodeConfig.exceptionConfig());
+        if (result != null) {
+            postInvoke(result);
+            return true;
+        }
+        throw error;
+    }
+
+    private Map<String, Object> preInvoke() {
+        traceComponentBegin();
+        Object inputsSchema = nodeConfig.ioConfigs().inputsSchema();
+        Map<String, Object> inputs = null;
+        if (inputsSchema instanceof ValueTransformer transformer) {
+            inputs = session.state().getInputsByTransformer(transformer);
+        } else if (inputsSchema != null) {
+            inputs = castMap(session.state().getInputs(inputsSchema));
+        }
+        if (endNode && inputs != null && inputsSchema instanceof Map<?, ?> mapSchema) {
+            inputs = sanitizeEndNodeInputs(inputs, castSchemaMap(mapSchema));
+        }
+        traceComponentInputs(inputs);
+        return inputs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> applyComponentInputCallbacks(String event, Map<String, Object> inputs) {
+        DecoratorFramework framework = componentCallbackFramework();
+        if (framework == null) {
+            return inputs;
+        }
+        Object[] args = new Object[]{inputs, session, context};
+        Map<String, Object> kwargs = componentCallbackKwargs(inputs, args);
+        Object transformed = framework.triggerTransform(event, args, kwargs);
+        Object[] effectiveArgs = args;
+        Map<String, Object> effectiveKwargs = kwargs;
+        if (transformed instanceof CallbackDecorators.BoundArgs boundArgs) {
+            effectiveArgs = boundArgs.getArgs();
+            effectiveKwargs = componentCallbackKwargs(
+                    firstMapArg(effectiveArgs, inputs),
+                    effectiveArgs);
+            effectiveKwargs.putAll(boundArgs.getKwargs());
+        } else if (transformed instanceof Map<?, ?> transformedMap) {
+            effectiveKwargs = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : transformedMap.entrySet()) {
+                effectiveKwargs.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            Object transformedArgs = effectiveKwargs.get("_args");
+            if (transformedArgs instanceof Object[] values) {
+                effectiveArgs = values;
+            }
+        }
+        trigger(framework, event, effectiveArgs, effectiveKwargs);
+        Object transformedInputs = effectiveArgs.length > 0
+                ? effectiveArgs[0]
+                : effectiveKwargs.getOrDefault("inputs", inputs);
+        if (transformedInputs == null) {
+            return null;
+        }
+        if (transformedInputs instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        if (effectiveKwargs.get("inputs") instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        return (Map<String, Object>) transformedInputs;
+    }
+
+    private Object applyComponentOutputCallbacks(String event, Object result) {
+        DecoratorFramework framework = componentCallbackFramework();
+        if (framework == null) {
+            return result;
+        }
+        Object transformed = triggerComponentOutputTransform(framework, event, result);
+        Object effectiveResult = transformed == CallbackDecorators.TRANSFORM_NOOP ? result : transformed;
+        trigger(framework, event, new Object[0], resultKwargs(effectiveResult));
+        return effectiveResult;
+    }
+
+    private Iterator<Object> applyComponentStreamOutputCallbacks(
+            String event,
+            Iterator<Object> source) {
+        DecoratorFramework framework = componentCallbackFramework();
+        if (framework == null || source == null) {
+            return source;
+        }
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return source.hasNext();
+            }
+
+            @Override
+            public Object next() {
+                Object current = source.next();
+                Object transformed = triggerComponentOutputTransform(framework, event, current);
+                Object effectiveCurrent = transformed == CallbackDecorators.TRANSFORM_NOOP ? current : transformed;
+                trigger(framework, event, new Object[0], resultKwargs(effectiveCurrent));
+                return effectiveCurrent;
+            }
+        };
+    }
+
+    private Map<String, Object> sanitizeEndNodeInputs(Map<String, Object> inputs, Map<String, Object> inputsSchema) {
+        TemplateDataSourceCounter template = executable instanceof TemplateAware templateAware
+                ? templateAware.templateDataSourceCounter()
+                : null;
+        if (template == null) {
+            return inputs;
+        }
+        Map<String, Object> sanitized = sanitizeUnexecutedBranchInputs(inputs, inputsSchema);
+        if (!(hasCall && hasStreamCall)) {
+            return sanitized;
+        }
+        Object streamSchema = nodeConfig.streamIoConfigs().inputsSchema();
+        if (!(streamSchema instanceof Map<?, ?> streamMap) || streamMap.isEmpty()) {
+            return sanitized;
+        }
+        Set<String> streamSourceIds = collectRefSourceIds(castSchemaMap(streamMap));
+        if (!streamSourceIds.isEmpty()
+                && streamSourceIds.stream().noneMatch(this::isComponentExecuted)) {
+            template.setDataSourceCount(0);
+        }
+        return sanitized;
+    }
+
+    private Map<String, Object> sanitizeUnexecutedBranchInputs(Map<String, Object> inputs,
+                                                               Map<String, Object> inputsSchema) {
+        sanitizeNode(inputs, inputsSchema);
+        return inputs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void sanitizeNode(Object inputs, Object inputsSchema) {
+        if (inputs instanceof Map<?, ?> mapInputs && inputsSchema instanceof Map<?, ?> mapSchema) {
+            Map<Object, Object> writableMap = (Map<Object, Object>) mapInputs;
+            for (Object key : new ArrayList<>(writableMap.keySet())) {
+                Object value = writableMap.get(key);
+                Object schemaValue = mapSchema.containsKey(key) ? mapSchema.get(key) : "";
+                if (value instanceof Map<?, ?> && schemaValue instanceof Map<?, ?>) {
+                    sanitizeNode(value, schemaValue);
+                } else if (value instanceof List<?> && schemaValue instanceof List<?>) {
+                    sanitizeNode(value, schemaValue);
+                } else {
+                    sanitizeLeaf(writableMap, key, value, schemaValue);
+                }
+            }
+            return;
+        }
+        if (inputs instanceof List<?> inputList && inputsSchema instanceof List<?> schemaList) {
+            int size = Math.min(inputList.size(), schemaList.size());
+            List<Object> writableList = (List<Object>) inputList;
+            for (int index = 0; index < size; index++) {
+                Object value = writableList.get(index);
+                Object schemaValue = schemaList.get(index);
+                if (value instanceof Map<?, ?> || value instanceof List<?>) {
+                    sanitizeNode(value, schemaValue);
+                } else {
+                    sanitizeLeaf(writableList, index, value, schemaValue);
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void sanitizeLeaf(Object container, Object key, Object value, Object refPath) {
+        if (value != null && !(value instanceof PendingStreamInput)) {
+            return;
+        }
+        if (!(refPath instanceof String path) || !SessionUtils.isRefPath(path)) {
+            return;
+        }
+        String originKey = SessionUtils.extractOriginKey(path);
+        if (originKey == null || originKey.isEmpty()) {
+            return;
+        }
+        String componentId = originKey.split("\\.", 2)[0];
+        if (isComponentExecuted(componentId)) {
+            return;
+        }
+        if (value instanceof PendingStreamInput && isStreamSourceStillPending(componentId)) {
+            return;
+        }
+        if (value instanceof PendingStreamInput pendingStreamInput) {
+            pendingStreamInput.close();
+        }
+        if (container instanceof Map<?, ?> map) {
+            ((Map<Object, Object>) map).put(key, "");
+        } else if (container instanceof List<?> list && key instanceof Integer index) {
+            ((List<Object>) list).set(index, "");
+        }
+    }
+
+    private boolean isStreamSourceStillPending(String componentId) {
+        VertexActorManager actorManager = session != null ? session.actorManager() : null;
+        if (actorManager == null) {
+            return false;
+        }
+        return !actorManager.shouldSanitizeStreamSource(nodeId, componentId);
+    }
+
+    private boolean isComponentExecuted(String componentId) {
+        Object executedNodes = session.state().getWorkflowState("executed_nodes");
+        return executedNodes instanceof List<?> nodes && nodes.contains(componentId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void markNodeExecuted() {
+        Object executedNodesObject = session.state().getWorkflowState("executed_nodes");
+        List<String> executedNodes;
+        if (executedNodesObject instanceof List<?> list) {
+            executedNodes = new ArrayList<>(list.stream().map(String::valueOf).toList());
+        } else {
+            executedNodes = new ArrayList<>();
+        }
+        if (!executedNodes.contains(nodeId)) {
+            executedNodes.add(nodeId);
+            session.state().updateAndCommitWorkflowState(Map.of("executed_nodes", executedNodes));
+        }
+    }
+
+    private Map<String, Object> postInvoke(Object results) {
+        Object outputsSchema = nodeConfig.ioConfigs().outputsSchema();
+        Object normalizedResults = results;
+        if (outputsSchema instanceof ValueTransformer transformer) {
+            normalizedResults = transformer.apply(outputAsMap(results));
+        } else if (outputsSchema instanceof Map<?, ?> schema && results != null) {
+            normalizedResults = SessionUtils.getBySchema(schema, outputAsMap(results));
+            if (!endNode && normalizedResults instanceof Map<?, ?> selectedMap) {
+                normalizedResults = filterNullValues(castMap(selectedMap));
+            }
+        }
+        boolean endMixMode = endNode && hasCall && hasStreamCall;
+        if (normalizedResults instanceof Map<?, ?> resultMap && endMixMode) {
+            Map<String, Object> normalizedMap = castMap(resultMap);
+            Object outputs = normalizedMap.get("output");
+            if (outputs != null && !(outputs instanceof List<?>)) {
+                normalizedMap.put("output", new ArrayList<>(List.of(outputs)));
+            }
+            Object oldOutputs = session.state().getOutputs(nodeId);
+            if (oldOutputs instanceof Map<?, ?> oldMap
+                    && oldMap.get("output") instanceof List<?> oldOutputList
+                    && normalizedMap.get("output") instanceof List<?> newOutputList) {
+                List<Object> merged = new ArrayList<>(newOutputList);
+                merged.addAll(oldOutputList);
+                normalizedMap.put("output", merged);
+            }
+            normalizedResults = normalizedMap;
+        }
+        if (normalizedResults != null) {
+            setOutput(normalizedResults);
+        }
+        Map<String, Object> traceOutputs = normalizedResults instanceof Map<?, ?> map
+                ? castMap(map)
+                : outputAsMap(normalizedResults);
+        traceComponentOutputs(traceOutputs);
+        clearInteractive();
+        return traceOutputs;
+    }
+
+    private Map<String, Object> preStream(ComponentAbility ability) throws Exception {
+        traceComponentBegin();
+        VertexActorManager actorManager = session.actorManager();
+        if (actorManager == null) {
+            throw buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
+                    null,
+                    Map.of("reason", "queue manager is not initialized", "node_id", nodeId));
+        }
+        Object inputsSchema = nodeConfig.streamIoConfigs().inputsSchema();
+        if (!(inputsSchema instanceof Map<?, ?>)) {
+            inputsSchema = null;
+        }
+        boolean enableTrace = session.tracer() != null && executable != null && !executable.skipTrace();
+        Object finalInputsSchema = inputsSchema;
+        return actorManager.consume(nodeId, ability, finalInputsSchema, chunk -> {
+            if (enableTrace) {
+                session.tracer().traceComponentStreamInput(session, chunk, false);
+            }
+        });
+    }
+
+    private void postStream(Iterator<Object> resultsIterator, ComponentAbility ability) throws Exception {
+        boolean subGraph = session.subGraph();
+        VertexActorManager actorManager = session.actorManager();
+        Object outputSchema = nodeConfig.streamIoConfigs().outputsSchema();
+        ValueTransformer outputTransformer = outputSchema instanceof ValueTransformer transformer ? transformer : null;
+        int endStreamIndex = 0;
+        if (resultsIterator != null) {
+            while (resultsIterator.hasNext()) {
+                Object chunk = resultsIterator.next();
+                Object message = outputTransformer == null
+                        ? (outputSchema != null
+                        ? actorManager.streamTransform().getByDefaultTransformer(chunk, outputSchema)
+                        : chunk)
+                        : actorManager.streamTransform().getByDefinedTransformer(chunk, outputTransformer);
+                processChunk(message, endNode || isEndComponent(), endStreamIndex, subGraph, ability);
+                endStreamIndex += 1;
+            }
+        }
+        if ((endNode || isEndComponent()) && subGraph) {
+            actorManager.subWorkflowStream().emit(StreamEmitter.END_FRAME);
+        } else {
+            actorManager.endMessage(nodeId, ability);
+        }
+        clearInteractive();
+        if (executable instanceof StreamOutputProvider streamOutputProvider) {
+            Map<String, Object> result = streamOutputProvider.getStreamOutput();
+            if (result != null) {
+                session.state().setOutputs(result);
+            }
+        }
+    }
+
+    private void processChunk(Object message,
+                              boolean endNodeFlag,
+                              int endStreamIndex,
+                              boolean subGraph,
+                              ComponentAbility ability) throws Exception {
+        VertexActorManager actorManager = session.actorManager();
+        if (endNodeFlag && !subGraph) {
+            Object streamData = message instanceof OutputSchema
+                    ? message
+                    : message instanceof StreamSchemaMessage
+                    ? message
+                    : new OutputSchema(END_NODE_STREAM, endStreamIndex, message);
+            traceComponentStreamOutput(streamData);
+            VertexStreamWriterManager writerManager = session.streamWriterManager();
+            if (writerManager != null && writerManager.getOutputWriter() != null) {
+                writerManager.getOutputWriter().write(streamData);
+            }
+            return;
+        }
+        if (endNodeFlag) {
+            Object streamData = message instanceof OutputSchemaPayload payload ? payload.payload() : message;
+            traceComponentStreamOutput(streamData);
+            actorManager.subWorkflowStream().emit(streamData);
+            return;
+        }
+        boolean firstFrame = endStreamIndex == 0;
+        traceComponentStreamOutput(message);
+        actorManager.produce(nodeId, message, ability, firstFrame);
+    }
+
+    private void clearInteractive() {
+        if (session.state().get(INTERACTIVE_INPUT) != null) {
+            Map<String, Object> update = new LinkedHashMap<>();
+            update.put(INTERACTIVE_INPUT, null);
+            session.state().update(update);
+        }
+    }
+
+    private static DecoratorFramework componentCallbackFramework() {
+        return Runner.getCallbackFramework();
+    }
+
+    private static Object triggerComponentOutputTransform(DecoratorFramework framework, String event, Object result) {
+        Object transformed = framework.triggerTransform(event, new Object[0], resultKwargs(result));
+        if (transformed == null || transformed == CallbackDecorators.TRANSFORM_NOOP) {
+            return result;
+        }
+        return transformed;
+    }
+
+    private static Map<String, Object> componentCallbackKwargs(Object inputs, Object[] args) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("inputs", inputs);
+        values.put("session", args.length > 1 ? args[1] : null);
+        values.put("context", args.length > 2 ? args[2] : null);
+        values.put("_args", args);
+        return values;
+    }
+
+    private static Map<String, Object> resultKwargs(Object result) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("result", result);
+        return values;
+    }
+
+    private static Map<String, Object> componentResultAsMap(Object transformed, Map<String, Object> fallback) {
+        if (transformed == null || transformed == CallbackDecorators.TRANSFORM_NOOP) {
+            return fallback;
+        }
+        if (transformed instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        throw new IllegalArgumentException("component callback output must be a map: "
+                + transformed.getClass().getName());
+    }
+
+    private static Map<String, Object> firstMapArg(Object[] args, Map<String, Object> fallback) {
+        if (args.length == 0 || args[0] == null) {
+            return fallback;
+        }
+        if (args[0] instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        return fallback;
+    }
+
+    private static void trigger(DecoratorFramework framework, String event, Object[] args, Map<String, Object> kwargs) {
+        framework.trigger(event, args != null ? args : new Object[0], kwargs != null ? kwargs : Map.of());
+    }
+
+    @Override
+    public boolean isDone() {
+        return callCount == streamCallCount
+                || callCount == streamCallCount + 1
+                || streamCallCount == callCount + 1;
+    }
+
+    public boolean streamCalled() {
+        return streamCallCount == callCount + 1;
+    }
+
+    @Override
+    public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
+        CountDownLatch readyLatch = latch != null ? latch : new CountDownLatch(0);
+        Consumer<Exception> safeErrorCallback = errorCallback != null ? errorCallback : ignored -> { };
+        streamCallCount += 1;
+        streamDone = new CompletableFuture<>();
+
+        if (session == null || session.actorManager() == null) {
+            BaseError error = buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR,
+                    null,
+                    Map.of("reason", "queue manager is not initialized", "node_id", nodeId));
+            streamDone.complete(error);
+            safeErrorCallback.accept(error);
+            readyLatch.countDown();
+            return;
+        }
+
+        Exception error = null;
+        List<CompletableFuture<Boolean>> tasks = new ArrayList<>();
+        try {
+            List<ComponentAbility> abilities = streamAbilities();
+            CountDownLatch abilityReadyLatch = new CountDownLatch(abilities.size());
+            for (ComponentAbility ability : abilities) {
+                CompletableFuture<Boolean> task = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return runExecutableWithRetry(ability, false, null, abilityReadyLatch::countDown);
+                    } catch (Exception exception) {
+                        throw new CompletionException(exception);
+                    }
+                }, STREAM_EXECUTOR);
+                tasks.add(task);
+            }
+            abilityReadyLatch.await();
+            readyLatch.countDown();
+            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
+            for (CompletableFuture<Boolean> task : tasks) {
+                task.join();
+            }
+            LOGGER.info("Succeed to call stream-in node [{}]", nodeId);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            error = interruptedException;
+            safeErrorCallback.accept(interruptedException);
+        } catch (CompletionException completionException) {
+            Throwable cause = unwrapCompletion(completionException);
+            GraphInterrupt interrupt = findGraphInterrupt(cause);
+            error = interrupt != null
+                    ? interrupt
+                    : cause instanceof Exception exception ? exception : new RuntimeException(cause);
+            safeErrorCallback.accept(error);
+        } catch (Exception exception) {
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            error = interrupt != null ? interrupt : exception;
+            safeErrorCallback.accept(exception);
+        } finally {
+            if (error == null) {
+                streamDone.complete(STREAM_DONE_SUCCESS);
+            } else {
+                streamDone.complete(error);
+            }
+            traceComponentStreamInputSend();
+        }
+    }
+
+    @Override
+    public boolean shouldHandleMessage() {
+        return !streamAbilities().isEmpty();
+    }
+
+    public void reset() {
+        callCount = 0;
+        streamCallCount = 0;
+        streamDone.cancel(true);
+        streamDone = new CompletableFuture<>();
+    }
+
+    public boolean isEndNode() {
+        return endNode;
+    }
+
+    public void setEndNode(boolean endNode) {
+        this.endNode = endNode;
+    }
+
+    public int callCount() {
+        return callCount;
+    }
+
+    public int streamCallCount() {
+        return streamCallCount;
+    }
+
+    public List<ComponentAbility> streamAbilitiesForTest() {
+        return streamAbilities();
+    }
+
+    public static Set<String> collectRefSourceIds(Map<String, Object> schema) {
+        Set<String> ids = new LinkedHashSet<>();
+        walkSchema(schema, ids);
+        return ids;
+    }
+
+    private static void walkSchema(Object value, Set<String> ids) {
+        if (value instanceof Map<?, ?> map) {
+            for (Object nested : map.values()) {
+                walkSchema(nested, ids);
+            }
+            return;
+        }
+        if (value instanceof List<?> list) {
+            for (Object nested : list) {
+                walkSchema(nested, ids);
+            }
+            return;
+        }
+        if (value instanceof String path && SessionUtils.isRefPath(path)) {
+            String origin = SessionUtils.extractOriginKey(path);
+            if (origin != null && !origin.isEmpty()) {
+                ids.add(origin.split("\\.", 2)[0]);
+            }
+        }
+    }
+
+    private List<ComponentAbility> streamAbilities() {
+        return componentAbilities.stream()
+                .filter(ability -> ability == ComponentAbility.COLLECT || ability == ComponentAbility.TRANSFORM)
+                .toList();
+    }
+
+    private List<ComponentAbility> callAbilities() {
+        return componentAbilities.stream()
+                .filter(ability -> ability == ComponentAbility.INVOKE || ability == ComponentAbility.STREAM)
+                .toList();
+    }
+
+    private void waitForStreamDone() throws Exception {
+        Object result;
+        try {
+            if (streamCallTimeoutSeconds > 0) {
+                result = streamDone.get(streamCallTimeoutSeconds, TimeUnit.SECONDS);
+            } else {
+                result = streamDone.get();
+            }
+        } catch (TimeoutException timeoutException) {
+            throw buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_TIMEOUT,
+                    timeoutException,
+                    Map.of("timeout", streamCallTimeoutSeconds, "node_id", nodeId));
+        } catch (ExecutionException executionException) {
+            Throwable cause = unwrapCompletion(executionException);
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(cause);
+        }
+        if (result instanceof Exception exception) {
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            if (interrupt != null) {
+                throw interrupt;
+            }
+            throw exception;
+        }
+    }
+
+    private void traceComponentInputs(Map<String, Object> inputs) {
+        if (skipTrace()) {
+            return;
+        }
+        callStarted = true;
+        boolean needSend = !hasStreamCall || streamDone.isDone();
+        session.tracer().traceComponentInputs(session, inputs, needSend);
+        if (SUB_WORKFLOW_COMPONENT.equals(executable.componentType())) {
+            session.tracer().registerWorkflowSpanManager(session.executableId());
+        }
+    }
+
+    private void traceComponentOutputs(Map<String, Object> outputs) {
+        if (!skipTrace()) {
+            session.tracer().traceComponentOutputs(session, outputs);
+        }
+    }
+
+    private void traceComponentBegin() {
+        if (skipTrace() || started) {
+            return;
+        }
+        started = true;
+        session.tracer().traceComponentBegin(session);
+    }
+
+    private void traceComponentDone() {
+        if (!skipTrace()) {
+            session.tracer().traceComponentDone(session);
+        }
+    }
+
+    private void traceComponentStreamOutput(Object chunk) {
+        if (!skipTrace()) {
+            session.tracer().traceComponentStreamOutput(session, chunk);
+        }
+    }
+
+    private void traceError(Throwable error) {
+        if (!skipTrace()) {
+            session.tracer().traceError(session, error);
+        }
+    }
+
+    private void traceInnerError(Throwable error) {
+        if (skipTrace()) {
+            return;
+        }
+        Map<String, Object> innerError = new LinkedHashMap<>();
+        if (error instanceof BaseError baseError) {
+            innerError.put("error_code", baseError.getCode());
+            innerError.put("message", baseError.getMessage());
+        } else {
+            innerError.put("error_code", StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR.getCode());
+            innerError.put("message", error.getMessage());
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("inner_error", innerError);
+        data.put("current_time", OffsetDateTime.now(ZoneOffset.UTC).toString());
+        session.tracer().trace(session, data);
+    }
+
+    private void traceComponentStreamInputSend() {
+        if (skipTrace()) {
+            return;
+        }
+        if (!hasCall || callStarted) {
+            session.tracer().traceComponentStreamInput(session, Collections.emptyMap(), true);
+        }
+    }
+
+    private boolean skipTrace() {
+        return session == null || session.tracer() == null || executable == null || executable.skipTrace();
+    }
+
+    private String componentTypeName() {
+        if (executable == null) {
+            return "";
+        }
+        String componentType = executable.componentType();
+        return componentType == null || componentType.isBlank()
+                ? executable.getClass().getSimpleName()
+                : componentType;
+    }
+
+    private boolean isEndComponent() {
+        return executable instanceof com.openjiuwen.core.workflow.component.End;
+    }
+
+    private void emitEvent(String event, Map<String, Object> payload) {
+        VertexEventSink eventSink = session != null ? session.eventSink() : null;
+        if (eventSink != null) {
+            eventSink.emit(event, payload);
+        }
+    }
+
+    private String safeWorkflowId() {
+        return session != null ? session.workflowId() : "";
+    }
+
+    private static boolean nearlyZero(double value) {
+        return Math.abs(value) <= 1.0e-9d;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Executable<Map<String, Object>, Object> castExecutable(Executable<Map<String, Object>, ?> executable) {
+        return (Executable<Map<String, Object>, Object>) executable;
+    }
+
+    private static void signalReady(Runnable readinessSignal, AtomicBoolean readinessSet) {
+        if (readinessSignal != null && readinessSet.compareAndSet(false, true)) {
+            readinessSignal.run();
+        }
+    }
+
+    private static Map<String, Object> filterNullValues(Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (entry.getValue() != null) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private static Map<String, Object> endNodeStreamData(int index, Object payload) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("type", END_NODE_STREAM);
+        data.put("index", index);
+        data.put("payload", payload);
+        return data;
+    }
+
+    private static Map<String, Object> safeConfig(Map<String, Object> config) {
+        return config == null ? Collections.emptyMap() : config;
+    }
+
+    private static BaseError buildError(StatusCode status, Throwable cause, Map<String, Object> params) {
+        return ErrorHelper.buildError(status, null, null, cause, params);
+    }
+
+    private static Throwable unwrapCompletion(Throwable throwable) {
+        Throwable current = throwable;
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static GraphInterrupt findGraphInterrupt(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
             if (current instanceof GraphInterrupt interrupt) {
@@ -771,326 +1141,409 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         return null;
     }
 
-    // ---- Stream Call ----
-
-    /**
-     * streamCall.
-     * 
-     * @param latch latch
-     * @param errorCallback errorCallback
-     * @since 0.1.7
-     */
-    @Override
-    public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
-        LOGGER.info("Begin to call stream-in node [{}]", nodeId);
-        streamCallCount++;
-        streamDone = new CompletableFuture<>();
-
-        ActorManager actorManager = getActorManager();
-        if (session == null || actorManager == null) {
-            BaseError error = ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR, "reason",
-                    "queue manager is not initialized", "node_id", nodeId);
-            streamDone.complete(error);
-            LOGGER.warning("Failed to call stream-in node [{}], actor_manager is missing", nodeId);
-            errorCallback.accept(error);
-            return;
-        }
-
-        Exception error = null;
-        List<CompletableFuture<Void>> tasks = new ArrayList<>();
-        try {
-            List<ComponentAbility> callAbilities = streamAbilities();
-            for (ComponentAbility ability : callAbilities) {
-                CountDownLatch abilityLatch = new CountDownLatch(1);
-                CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
-                    try {
-                        runExecutable(ability, false, null, abilityLatch);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                }, VIRTUAL_EXECUTOR);
-                tasks.add(task);
-                abilityLatch.await();
-            }
-            latch.countDown();
-
-            // Wait for all tasks to complete
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-
-            LOGGER.info("Succeed to call stream-in node [{}]", nodeId);
-        } catch (InterruptedException | ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            LOGGER.error("Failed to call stream-in node [{}]", nodeId, cause);
-            error = (cause instanceof Exception) ? (Exception) cause : e;
-            errorCallback.accept(error);
-        } finally {
-            streamDone.complete(error != null ? error : Boolean.TRUE);
-            traceComponentStreamInputSend();
-        }
-    }
-
-    // ---- Helpers ----
-
-    /**
-     * clearInteractive.
-     * 
-     * @since 0.1.7
-     */
-    private void clearInteractive() {
-        if (session.state() instanceof WorkflowStateCollection stateCollection) {
-            Object interactiveInput = stateCollection.get(Constant.INTERACTIVE_INPUT);
-            if (interactiveInput != null) {
-                Map<String, Object> clearMap = new HashMap<>();
-                clearMap.put(Constant.INTERACTIVE_INPUT, null);
-                stateCollection.update(clearMap);
-            }
-        }
-    }
-
-    /**
-     * Get stream abilities (COLLECT, TRANSFORM).
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<ComponentAbility> streamAbilities() {
-        if (componentAbility == null) {
-            return List.of();
-        }
-        return componentAbility.stream().filter(a -> a == ComponentAbility.COLLECT || a == ComponentAbility.TRANSFORM)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * streamCalled.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean streamCalled() {
-        return streamCallCount == callCount + 1;
-    }
-
-    /**
-     * isDone.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean isDone() {
-        return callCount == streamCallCount || callCount == streamCallCount + 1;
-    }
-
-    /**
-     * shouldHandleMessage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean shouldHandleMessage() {
-        return !streamAbilities().isEmpty();
-    }
-
-    /**
-     * Try to get ActorManager from the session hierarchy.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private ActorManager getActorManager() {
-        // Check if parent session has actor manager
-        BaseSession parentSession = session.parent();
-        if (parentSession != null) {
-            try {
-                java.lang.reflect.Method method = parentSession.getClass().getMethod("actorManager");
-                Object am = method.invoke(parentSession);
-                if (am instanceof ActorManager) {
-                    return (ActorManager) am;
+    private void setOutput(Object output) {
+        if (output instanceof Map<?, ?> map) {
+            if (session.state() instanceof WorkflowCommitState commitState) {
+                CommitStateLike ioState = commitState.getIoState();
+                if (ioState != null) {
+                    String outputNodeId = effectiveOutputNodeId();
+                    ioState.updateById(outputNodeId, Map.of(outputNodeId, castMap(map)));
+                    ioState.commit(outputNodeId);
+                    return;
                 }
-            } catch (Exception e) {
-                // Not available on this session type
+            }
+            session.state().setOutputs(castMap(map));
+            return;
+        }
+        if (session.state() instanceof WorkflowCommitState commitState) {
+            CommitStateLike ioState = commitState.getIoState();
+            if (ioState != null) {
+                ioState.updateById(nodeId, Map.of(nodeId, output));
+                return;
             }
         }
-        return null;
+        session.state().setOutputs(outputAsMap(output));
+    }
+
+    private String effectiveOutputNodeId() {
+        String executableId = session != null ? session.executableId() : null;
+        return executableId == null || executableId.isBlank() ? nodeId : executableId;
+    }
+
+    private static Map<String, Object> outputAsMap(Object value) {
+        if (value == null) {
+            return PYTHON_NONE_MAP;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        return new LinkedHashMap<>(Map.of("output", value));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        if (value == null) {
+            return PYTHON_NONE_MAP;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return result;
+        }
+        throw new IllegalArgumentException("value is not a map: " + value.getClass().getName());
+    }
+
+    private static Map<String, Object> castSchemaMap(Map<?, ?> map) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 
     /**
-     * Reset the vertex for reuse.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code NodeSession} interaction surface used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public void reset() {
-        callCount = 0;
-        streamCallCount = 0;
-        streamDone.cancel(true);
-        streamDone = new CompletableFuture<>();
-    }
+    public abstract static class VertexSession extends BaseSession implements GraphSession {
+        @Override
+        public abstract VertexState state();
 
-    // ---- Tracing Helpers ----
+        public VertexNodeConfig nodeConfig() {
+            return new VertexNodeConfig();
+        }
 
-    /**
-     * traceComponentBegin.
-     * 
-     * @since 0.1.7
-     */
-    private void traceComponentBegin() {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public VertexSession nodeSession(String nodeId) {
+            return this;
         }
-        if (!isStarted) {
-            isStarted = true;
-            TracerWorkflowUtils.traceComponentBegin(session, sourceId);
-        }
-    }
 
-    /**
-     * traceComponentInputs.
-     * 
-     * @param inputs inputs
-     * @since 0.1.7
-     */
-    private void traceComponentInputs(Map<String, Object> inputs) {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public String workflowId() {
+            return "";
         }
-        isCallStarted = true;
-        boolean needSend = !hasStreamCall || streamDone.isDone();
-        TracerWorkflowUtils.traceComponentInputs(session, inputs, needSend);
-        if (SUB_WORKFLOW_COMPONENT.equals(executable.componentType())) {
-            TracerWorkflowUtils.registerWorkflowSpanManager(session);
-        }
-    }
 
-    /**
-     * traceComponentOutputs.
-     * 
-     * @param outputs outputs
-     * @since 0.1.7
-     */
-    private void traceComponentOutputs(Object outputs) {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public String parentId() {
+            return "";
         }
-        TracerWorkflowUtils.traceComponentOutputs(session, outputs);
-    }
 
-    /**
-     * traceComponentDone.
-     * 
-     * @since 0.1.7
-     */
-    private void traceComponentDone() {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public boolean subGraph() {
+            return false;
         }
-        TracerWorkflowUtils.traceComponentDone(session);
-    }
 
-    /**
-     * traceComponentStreamOutput.
-     * 
-     * @param chunk chunk
-     * @since 0.1.7
-     */
-    private void traceComponentStreamOutput(Object chunk) {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public String executableId() {
+            return "";
         }
-        TracerWorkflowUtils.traceComponentStreamOutput(session, chunk);
-    }
 
-    /**
-     * traceError.
-     * 
-     * @param error error
-     * @since 0.1.7
-     */
-    private void traceError(Exception error) {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public void setNodeType(String nodeType) {
         }
-        TracerWorkflowUtils.traceError(session, error);
-    }
 
-    /**
-     * traceComponentStreamInputSend.
-     * 
-     * @since 0.1.7
-     */
-    private void traceComponentStreamInputSend() {
-        if (session.tracer() == null || executable.skipTrace()) {
-            return;
+        public int streamCallTimeoutSeconds() {
+            return 10;
         }
-        if (!hasCall || isCallStarted) {
-            TracerWorkflowUtils.traceComponentStreamInput(session, new HashMap<>(), true);
+
+        public VertexActorManager actorManager() {
+            return PYTHON_NONE_ACTOR_MANAGER;
+        }
+
+        public VertexStreamWriterManager streamWriterManager() {
+            return PYTHON_NONE_STREAM_WRITER_MANAGER;
+        }
+
+        public VertexTraceSink tracer() {
+            return PYTHON_NONE_TRACE_SINK;
+        }
+
+        public ErrorRecoveryHandler errorRecoveryHandler() {
+            return PYTHON_NONE_ERROR_RECOVERY_HANDLER;
+        }
+
+        public VertexEventSink eventSink() {
+            return PYTHON_NONE_EVENT_SINK;
         }
     }
 
-    // ---- Getters ----
-
     /**
-     * getNodeId.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code self._session.state()} calls in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public String getNodeId() {
-        return nodeId;
+    public interface VertexState extends com.openjiuwen.core.session.state.SessionStateAccess {
+        Map<String, Object> getInputs(Object schema);
+
+        Map<String, Object> getInputsByTransformer(ValueTransformer transformer);
+
+        Object getOutputs(String nodeId);
+
+        void setOutputs(Map<String, Object> outputs);
+
+        Object getWorkflowState(String key);
+
+        void updateAndCommitWorkflowState(Map<String, Object> data);
+
+        Object get(String key);
+
+        void update(Map<String, Object> data);
     }
 
     /**
-     * getExecutable.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code actor_manager()} stream coordination used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public Executable<Object, Object> getExecutable() {
-        return executable;
+    public interface VertexActorManager {
+        Map<String, Object> consume(String nodeId,
+                                    ComponentAbility ability,
+                                    Object inputsSchema,
+                                    Consumer<Object> streamCallback) throws Exception;
+
+        void produce(String nodeId, Object message, ComponentAbility ability, boolean firstFrame) throws Exception;
+
+        void endMessage(String nodeId, ComponentAbility ability) throws Exception;
+
+        void markProducerDone(String nodeId);
+
+        default boolean shouldSanitizeStreamSource(String nodeId, String componentId) {
+            return true;
+        }
+
+        default VertexStreamTransform streamTransform() {
+            return new VertexStreamTransform() {
+            };
+        }
+
+        default StreamEmitter subWorkflowStream() {
+            return new StreamEmitter();
+        }
     }
 
     /**
-     * getSession.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's stream transform calls used by {@code Vertex._post_stream} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public NodeSession getSession() {
-        return session;
+    public interface VertexStreamTransform {
+        default Object getByDefaultTransformer(Object chunk, Object outputSchema) {
+            if (outputSchema instanceof Map<?, ?> schema && chunk instanceof Map<?, ?> mapChunk) {
+                return SessionUtils.getBySchema(schema, castMap(mapChunk));
+            }
+            return chunk;
+        }
+
+        default Object getByDefinedTransformer(Object chunk, ValueTransformer transformer) {
+            return transformer.apply(Vertex.castMap(chunk));
+        }
     }
 
     /**
-     * isEndNode.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code stream_writer_manager()} dependency used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public boolean isEndNode() {
-        return isEndNode;
+    public interface VertexStreamWriterManager {
+        VertexStreamWriter getOutputWriter();
     }
 
     /**
-     * setEndNode.
-     * 
-     * @param endNode endNode
-     * @since 0.1.7
+     * Mirrors Python's stream output writer used by {@code Vertex._process_chunk} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public void setEndNode(boolean endNode) {
-        isEndNode = endNode;
+    public interface VertexStreamWriter {
+        void write(Object streamData) throws Exception;
     }
 
     /**
-     * Marker interface for executables that support mixed mode (stream + batch).
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code TracerWorkflowUtils} calls used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
      */
-    public interface MixModeAware {
-        /**
-         * setMix.
-         * 
-         * @since 0.1.7
-         */
+    public interface VertexTraceSink {
+        default void traceComponentInputs(VertexSession session, Map<String, Object> inputs, boolean send) {
+        }
+
+        default void traceComponentOutputs(VertexSession session, Map<String, Object> outputs) {
+        }
+
+        default void traceComponentBegin(VertexSession session) {
+        }
+
+        default void traceComponentDone(VertexSession session) {
+        }
+
+        default void traceComponentStreamInput(VertexSession session, Object chunk, boolean send) {
+        }
+
+        default void traceComponentStreamOutput(VertexSession session, Object chunk) {
+        }
+
+        default void traceError(VertexSession session, Throwable error) {
+        }
+
+        default void trace(VertexSession session, Map<String, Object> data) {
+        }
+
+        default void registerWorkflowSpanManager(String executableId) {
+        }
+    }
+
+    /**
+     * Mirrors Python's component error recovery callback used by {@code Vertex._run_error_recovery} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface ErrorRecoveryHandler {
+        Map<String, Object> recover(Exception error,
+                                    VertexSession session,
+                                    String nodeId,
+                                    ComponentAbility ability,
+                                    Object exceptionConfig) throws Exception;
+    }
+
+    /**
+     * Mirrors Python's callback trigger calls used by {@code Vertex.__call__} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface VertexEventSink {
+        void emit(String event, Map<String, Object> payload);
+    }
+
+    @FunctionalInterface
+    /**
+     * Mirrors Python's dynamic input/output transformer boundary used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface ValueTransformer {
+        Map<String, Object> apply(Map<String, Object> source);
+    }
+
+    /**
+     * Mirrors Python's pending {@code AsyncGenerator} stream input branch used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface PendingStreamInput extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /**
+     * Mirrors Python's {@code StreamSchemas} marker used by {@code Vertex._process_chunk} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface StreamSchemaMessage {
+    }
+
+    /**
+     * Mirrors Python's {@code OutputSchema} payload access used by {@code Vertex._process_chunk} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface OutputSchemaPayload {
+        Object payload();
+    }
+
+    /**
+     * Mirrors Python's optional {@code set_mix} executable hook used by {@code Vertex.init} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface MixConfigurable {
         void setMix();
+    }
+
+    /**
+     * Mirrors Python's optional executable template access used by {@code Vertex._sanitize_end_node_inputs} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface TemplateAware {
+        TemplateDataSourceCounter templateDataSourceCounter();
+    }
+
+    /**
+     * Mirrors Python's template {@code set_data_source_count} call used by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface TemplateDataSourceCounter {
+        void setDataSourceCount(int count);
+    }
+
+    /**
+     * Mirrors Python's optional {@code get_stream_output} hook used by {@code Vertex._post_stream} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public interface StreamOutputProvider {
+        Map<String, Object> getStreamOutput();
+    }
+
+    /**
+     * Mirrors Python's node IO config fields consumed by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public static final class VertexIoConfig {
+        private final Object inputsSchema;
+        private final Object outputsSchema;
+
+        public VertexIoConfig() {
+            this(null, null);
+        }
+
+        public VertexIoConfig(Object inputsSchema, Object outputsSchema) {
+            this.inputsSchema = inputsSchema;
+            this.outputsSchema = outputsSchema;
+        }
+
+        public Object inputsSchema() {
+            return inputsSchema;
+        }
+
+        public Object outputsSchema() {
+            return outputsSchema;
+        }
+    }
+
+    /**
+     * Mirrors Python's node config fields consumed by {@code Vertex} in
+     * {@code openjiuwen/core/graph/vertex.py}.
+     */
+    public static final class VertexNodeConfig {
+        private final List<ComponentAbility> abilities;
+        private final VertexIoConfig ioConfigs;
+        private final VertexIoConfig streamIoConfigs;
+        private final int maxRetries;
+        private final double timeoutSeconds;
+        private final Object exceptionConfig;
+
+        public VertexNodeConfig() {
+            this(List.of(ComponentAbility.INVOKE), new VertexIoConfig(), new VertexIoConfig(), 0, -1.0d, null);
+        }
+
+        public VertexNodeConfig(List<ComponentAbility> abilities,
+                                VertexIoConfig ioConfigs,
+                                VertexIoConfig streamIoConfigs,
+                                int maxRetries,
+                                double timeoutSeconds,
+                                Object exceptionConfig) {
+            this.abilities = abilities == null ? List.of() : List.copyOf(abilities);
+            this.ioConfigs = ioConfigs == null ? new VertexIoConfig() : ioConfigs;
+            this.streamIoConfigs = streamIoConfigs == null ? new VertexIoConfig() : streamIoConfigs;
+            this.maxRetries = maxRetries;
+            this.timeoutSeconds = timeoutSeconds;
+            this.exceptionConfig = exceptionConfig;
+        }
+
+        public List<ComponentAbility> abilities() {
+            return abilities;
+        }
+
+        public VertexIoConfig ioConfigs() {
+            return ioConfigs;
+        }
+
+        public VertexIoConfig streamIoConfigs() {
+            return streamIoConfigs;
+        }
+
+        public int maxRetries() {
+            return maxRetries;
+        }
+
+        public double timeoutSeconds() {
+            return timeoutSeconds;
+        }
+
+        public Object exceptionConfig() {
+            return exceptionConfig;
+        }
     }
 }

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.schema.Artifact
+# com.openjiuwen.core.single_agent.schema.Artifact
 
 ## 类 Artifact
 

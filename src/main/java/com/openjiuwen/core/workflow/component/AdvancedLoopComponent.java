@@ -9,31 +9,24 @@ import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 
 /**
- * Interface for advanced loop components that contain a body subgraph.
- * <p>
- * Stub interface for the graph visualization module. Will be fully implemented
- * when the workflow module is converted from Python.
- * </p>
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.AdvancedLoopComponent}.
- * </p>
- * 
- * @since 0.1.7
+ * Advanced loop component view exposing the loop body used for visualization.
+ *
+ * <p>Mirrors Python's {@code AdvancedLoopComponent} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
 public interface AdvancedLoopComponent extends ComponentComposable {
+
     /**
-     * getBody.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Gets Python's {@code body} property.
+     *
+     * @return drawable-owning loop body
      */
     HasDrawable getBody();
 
     /**
-     * Register a loop callback after construction.
-     * 
-     * @param callback callback
-     * @since 0.1.7
+     * Registers a loop callback after construction.
+     *
+     * @param callback loop callback
      */
     void registerCallback(LoopCallback callback);
 }

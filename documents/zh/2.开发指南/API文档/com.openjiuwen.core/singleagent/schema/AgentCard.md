@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.schema.AgentCard
+# com.openjiuwen.core.single_agent.schema.AgentCard
 
 ## 类 AgentCard
 

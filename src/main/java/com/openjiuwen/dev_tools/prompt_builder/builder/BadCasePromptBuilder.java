@@ -4,255 +4,366 @@
 
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LogManager;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.badcase_prompt_builder.BadCasePromptBuilder}.
- * 
- * @since 0.1.7
+ * Prompt builder that optimizes prompts from evaluated bad cases.
+ *
+ * <p>Mirrors Python's {@code BadCasePromptBuilder} in
+ * {@code openjiuwen/dev_tools/prompt_builder/builder/badcase_prompt_builder.py}.</p>
  */
 public class BadCasePromptBuilder extends BasePromptBuilder {
-    private static final Logger log = LoggerFactory.getLogger(BadCasePromptBuilder.class);
-    private static final int MAX_CASES_LIMIT = 10;
+    public static final int MAX_CASES_LIMIT = 10;
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern INTENT_TAG_PATTERN =
-        Pattern.compile("<intent>((?:(?!<intent>).)*?)</intent>", Pattern.DOTALL);
+    private static final LoggerProtocol LOGGER = LogManager.getLogger("prompt_builder");
+    private static final Pattern INTENT_PATTERN = Pattern.compile("<intent>((?:(?!<intent>).)*?)</intent>",
+            Pattern.DOTALL);
+    private static final Pattern SUMMARY_PATTERN = Pattern.compile("<summary>((?:(?!</summary>).)*?)</summary>",
+            Pattern.DOTALL);
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern SUMMARY_TAG_PATTERN =
-        Pattern.compile("<summary>((?:(?!</summary>).)*?)</summary>", Pattern.DOTALL);
+    private Map<String, PromptTemplate> template;
 
-    private Object template;
-
-    /**
-     * BadCasePromptBuilder.
-     * 
-     * @param modelConfig modelConfig
-     * @param modelClientConfig modelClientConfig
-     * @since 0.1.7
-     */
     public BadCasePromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
-        this.template = PromptTemplateUtils.selectTemplate("zh-CN");
+        this.template = PromptBuilderUtils.selectTemplate();
+    }
+
+    public Map<String, PromptTemplate> getTemplate() {
+        return template;
     }
 
     /**
-     * build.
-     * 
-     * @param prompt prompt
-     * @param args args
-     * @return the result
-     * @since 0.1.7
+     * 0.1.12-compatible varargs facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args cases and optional language
+     * @return optimized prompt text
      */
-    @Override
     public CompletableFuture<String> build(Object prompt, Object... args) {
-        return UnwrappedCompletableFuture.supplyAsync(() -> {
-            try {
-                @SuppressWarnings("unchecked")
-                List<EvaluatedCase> cases = args.length >= 1 ? (List<EvaluatedCase>) args[0] : null;
-                String language = args.length >= 2 && args[1] instanceof String ? (String) args[1] : "zh-CN";
-
-                this.template = PromptTemplateUtils.selectTemplate(language);
-                String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
-                List<Object> messages = formatBadCaseTemplate(promptStr, cases).get();
-                AssistantMessage response =
-                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
-                return response != null ? response.getContentAsString() : null;
-            } catch (Exception exception) {
-                log.error("Error building bad case template", exception);
-                throw new RuntimeException(exception);
-            }
-        });
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
+        return build(prompt, cases, language);
     }
 
-    /**
-     * streamBuild.
-     * 
-     * @param prompt prompt
-     * @param args args
-     * @return the result
-     * @since 0.1.7
-     */
+    public CompletableFuture<String> build(Object prompt, List<EvaluatedCase> cases) {
+        return build(prompt, cases, "zh-CN");
+    }
+
+    public CompletableFuture<String> build(Object prompt, List<EvaluatedCase> cases, String language) {
+        return optionalToString(buildOptional(prompt, cases, language));
+    }
+
+    private CompletableFuture<Optional<String>> buildOptional(
+            Object prompt,
+            List<EvaluatedCase> cases,
+            String language) {
+        template = PromptBuilderUtils.selectTemplate(language);
+        String promptText = PromptBuilderUtils.getStringPrompt(prompt);
+        return formatBadCaseTemplate(promptText, cases)
+                .thenCompose(messages -> model.invoke(messages).toCompletableFuture())
+                .thenApply(response -> Optional.ofNullable(response == null ? null : response.getContentAsString()));
+    }
+
     @Override
-    public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
-        return UnwrappedCompletableFuture.supplyAsync(() -> {
-            try {
-                @SuppressWarnings("unchecked")
-                List<EvaluatedCase> cases = args.length >= 1 ? (List<EvaluatedCase>) args[0] : null;
-                String language = args.length >= 2 && args[1] instanceof String ? (String) args[1] : "zh-CN";
+    public CompletableFuture<Optional<String>> build(List<Object> args, Map<String, Object> kwargs) {
+        Object prompt = argument(args, kwargs, 0, "prompt", null);
+        List<EvaluatedCase> cases = evaluatedCases(argument(args, kwargs, 1, "cases", List.of()));
+        String language = String.valueOf(argument(args, kwargs, 2, "language", "zh-CN"));
+        return buildOptional(prompt, cases, language);
+    }
 
-                this.template = PromptTemplateUtils.selectTemplate(language);
-                String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
-                List<Object> messages = formatBadCaseTemplate(promptStr, cases).get();
-
-                StringBuilder result = new StringBuilder();
-                var iterator = model.stream(messages, null, null, null, null, null, null, null, null, null);
-                while (iterator.hasNext()) {
-                    var chunk = iterator.next();
-                    result.append(chunk.getContentAsString());
-                }
-                return result.toString();
-            } catch (Exception exception) {
-                log.error("Error streaming bad case template", exception);
-                throw new RuntimeException(exception);
-            }
-        });
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(Object prompt, List<EvaluatedCase> cases) {
+        return streamBuild(prompt, cases, "zh-CN");
     }
 
     /**
-     * formatBadCaseTemplate.
-     * 
-     * @param prompt prompt
-     * @param cases cases
-     * @return the result
-     * @since 0.1.7
+     * 0.1.12-compatible varargs streaming facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args cases and optional language
+     * @return concatenated streamed response text
      */
-    private CompletableFuture<List<Object>> formatBadCaseTemplate(String prompt, List<EvaluatedCase> cases) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                String feedback = getFeedbackFromBadCase(prompt, cases).get();
-                PromptTemplate badCaseOptimizeTemplate =
-                    PromptTemplateUtils.getTemplate(template, "PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE");
-                Map<String, Object> formatParams = new HashMap<>();
-                formatParams.put("original_prompt", prompt);
-                formatParams.put("feedback", feedback);
-                return new ArrayList<>(badCaseOptimizeTemplate.format(formatParams).toMessages());
-            } catch (Exception exception) {
-                throw new RuntimeException(exception);
-            }
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(Object prompt, Object... args) {
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
+        return streamBuild(prompt, cases, language);
+    }
+
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(
+            Object prompt,
+            List<EvaluatedCase> cases,
+            String language) {
+        return collectPublisher(streamBuildPublisher(prompt, cases, language));
+    }
+
+    private Flow.Publisher<String> streamBuildPublisher(Object prompt, List<EvaluatedCase> cases, String language) {
+        template = PromptBuilderUtils.selectTemplate(language);
+        String promptText = PromptBuilderUtils.getStringPrompt(prompt);
+        return new StreamBuildPublisher(promptText, cases);
+    }
+
+    @Override
+    public Flow.Publisher<?> streamBuild(List<Object> args, Map<String, Object> kwargs) {
+        Object prompt = argument(args, kwargs, 0, "prompt", null);
+        List<EvaluatedCase> cases = evaluatedCases(argument(args, kwargs, 1, "cases", List.of()));
+        String language = String.valueOf(argument(args, kwargs, 2, "language", "zh-CN"));
+        return streamBuildPublisher(prompt, cases, language);
+    }
+
+    CompletableFuture<List<BaseMessage>> formatBadCaseTemplate(String prompt, List<EvaluatedCase> cases) {
+        return getFeedbackFromBadCase(prompt, cases).thenApply(feedback -> {
+            PromptTemplate badCaseOptimizeTemplate = template.get("PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE");
+            return badCaseOptimizeTemplate.format(Map.of(
+                    "original_prompt", prompt,
+                    "feedback", feedback == null ? "" : feedback
+            )).toMessages();
         });
     }
 
-    /**
-     * getFeedbackFromBadCase.
-     * 
-     * @param prompt prompt
-     * @param cases cases
-     * @return the result
-     * @since 0.1.7
-     */
-    private CompletableFuture<String> getFeedbackFromBadCase(String prompt, List<EvaluatedCase> cases) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                validateInput(prompt, cases);
-                String badCaseString = buildBadCaseString(cases);
-                PromptTemplate analyzeTemplate =
-                    PromptTemplateUtils.getTemplate(template, "PROMPT_BAD_CASE_ANALYZE_TEMPLATE");
-                Map<String, Object> formatParams = new HashMap<>();
-                formatParams.put("original_prompt", prompt);
-                formatParams.put("bad_cases", badCaseString);
-                List<Object> messages = new ArrayList<>(analyzeTemplate.format(formatParams).toMessages());
-                AssistantMessage response =
-                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
-                return parseFeedbackSummary(response);
-            } catch (Exception exception) {
-                throw new RuntimeException(exception);
-            }
-        });
+    CompletableFuture<String> getFeedbackFromBadCase(String prompt, List<EvaluatedCase> cases) {
+        validateInput(prompt, cases);
+        String badCaseString = buildBadCaseString(cases);
+        PromptTemplate analyzeTemplate = template.get("PROMPT_BAD_CASE_ANALYZE_TEMPLATE");
+        List<BaseMessage> messages = analyzeTemplate.format(Map.of(
+                "original_prompt", prompt,
+                "bad_cases", badCaseString
+        )).toMessages();
+        return model.invoke(messages)
+                .toCompletableFuture()
+                .thenApply(this::parseFeedbackSummary);
     }
 
-    /**
-     * parseFeedbackSummary.
-     * 
-     * @param response response
-     * @return the result
-     * @since 0.1.7
-     */
-    private String parseFeedbackSummary(AssistantMessage response) {
-        String content = response.getContentAsString();
-
-        Matcher intentMatcher = INTENT_TAG_PATTERN.matcher(content);
+    String parseFeedbackSummary(AssistantMessage response) {
+        String content = response == null ? "" : response.getContentAsString();
+        List<String> intents = new ArrayList<>();
+        Matcher intentMatcher = INTENT_PATTERN.matcher(content);
         while (intentMatcher.find()) {
-            String intentText = intentMatcher.group(1).trim();
-            if ("false".equalsIgnoreCase(intentText)) {
-                log.warn("Failed to get intent");
-            }
+            intents.add(intentMatcher.group(1).strip());
+        }
+        if (intents.contains("false")) {
+            LOGGER.warning("Failed to get intent input_data={}", content);
         }
 
-        Matcher summaryMatcher = SUMMARY_TAG_PATTERN.matcher(content);
-        String parseSummary = content;
-        if (summaryMatcher.find()) {
-            parseSummary = summaryMatcher.group(1).trim();
+        List<String> summaries = new ArrayList<>();
+        Matcher summaryMatcher = SUMMARY_PATTERN.matcher(content);
+        while (summaryMatcher.find()) {
+            summaries.add(summaryMatcher.group(1).strip());
         }
-        return parseSummary;
+        if (summaries.isEmpty()) {
+            return content;
+        }
+        return summaries.get(summaries.size() - 1);
     }
 
-    /**
-     * buildBadCaseString.
-     * 
-     * @param cases cases
-     * @return the result
-     * @since 0.1.7
-     */
-    private String buildBadCaseString(List<EvaluatedCase> cases) {
-        PromptTemplate badCaseTemplate = PromptTemplateUtils.getTemplate(template, "FORMAT_BAD_CASE_TEMPLATE");
-        StringBuilder sb = new StringBuilder();
-        for (EvaluatedCase evaluatedCase : cases) {
-            Map<String, Object> formatParams = new HashMap<>();
-            formatParams.put("question", evaluatedCase.getInputs() != null ? evaluatedCase.getInputs().toString() : "");
-            formatParams.put("label", evaluatedCase.getLabel() != null ? evaluatedCase.getLabel().toString() : "");
-            formatParams.put("answer", evaluatedCase.getAnswer() != null ? evaluatedCase.getAnswer().toString() : "");
-            formatParams.put("reason", evaluatedCase.getReason() != null ? evaluatedCase.getReason() : "");
-
-            var messages = badCaseTemplate.format(formatParams).toMessages();
-            for (var msg : messages) {
-                sb.append(msg.getContentAsString());
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
+    String buildBadCaseString(List<EvaluatedCase> cases) {
+        PromptTemplate badCaseTemplate = template.get("FORMAT_BAD_CASE_TEMPLATE");
+        return safeCases(cases).stream()
+                .map(item -> badCaseTemplate.format(Map.of(
+                        "question", pythonString(item.getCase().getInputs()),
+                        "label", pythonString(item.getCase().getLabel()),
+                        "answer", pythonString(item.getAnswer()),
+                        "reason", item.getReason()
+                )).getContent())
+                .map(String::valueOf)
+                .collect(Collectors.joining("\n"));
     }
 
-    /**
-     * validateInput.
-     * 
-     * @param prompt prompt
-     * @param cases cases
-     * @since 0.1.7
-     */
-    private void validateInput(String prompt, List<EvaluatedCase> cases) {
+    void validateInput(String prompt, List<EvaluatedCase> cases) {
         if (prompt == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+            throw buildPromptError(
+                    StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
                     "prompt cannot be None");
         }
-        if (prompt.trim().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+        if (prompt.strip().isEmpty()) {
+            throw buildPromptError(
+                    StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
                     "prompt cannot be empty");
         }
         if (cases == null || cases.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+            throw buildPromptError(
+                    StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
                     "The cases cannot be empty");
         }
         if (cases.size() > MAX_CASES_LIMIT) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+            throw buildPromptError(
+                    StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
                     "The number of cases cannot exceed " + MAX_CASES_LIMIT);
+        }
+    }
+
+    private static BaseError buildPromptError(StatusCode status, String errorMessage) {
+        return ErrorHelper.buildError(status, "error_msg", errorMessage);
+    }
+
+    private static Object argument(
+            List<Object> args,
+            Map<String, Object> kwargs,
+            int index,
+            String key,
+            Object defaultValue) {
+        if (args != null && index < args.size()) {
+            return args.get(index);
+        }
+        if (kwargs != null && kwargs.containsKey(key)) {
+            return kwargs.get(key);
+        }
+        return defaultValue;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<EvaluatedCase> evaluatedCases(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list && list.stream().allMatch(EvaluatedCase.class::isInstance)) {
+            return (List<EvaluatedCase>) list;
+        }
+        throw new IllegalArgumentException("cases must be List<EvaluatedCase>");
+    }
+
+    private static List<EvaluatedCase> safeCases(List<EvaluatedCase> cases) {
+        return cases == null ? List.of() : cases;
+    }
+
+    private static BasePromptBuilder.PromptBuilderStreamResult collectPublisher(Flow.Publisher<String> publisher) {
+        return new BasePromptBuilder.PromptBuilderStreamResult(publisher);
+    }
+
+    private static CompletableFuture<String> optionalToString(CompletableFuture<Optional<String>> future) {
+        return future.thenApply(value -> value.orElse(null));
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return pythonMapString(map);
+        }
+        if (value instanceof List<?> list) {
+            return pythonListString(list);
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return pythonMapString(map);
+        }
+        if (value instanceof List<?> list) {
+            return pythonListString(list);
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonMapString(Map<?, ?> map) {
+        return map.entrySet().stream()
+                .map(entry -> pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()))
+                .collect(Collectors.joining(", ", "{", "}"));
+    }
+
+    private static String pythonListString(List<?> list) {
+        return list.stream()
+                .map(BadCasePromptBuilder::pythonRepr)
+                .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    private final class StreamBuildPublisher implements Flow.Publisher<String> {
+        private final String prompt;
+        private final List<EvaluatedCase> cases;
+
+        private StreamBuildPublisher(String prompt, List<EvaluatedCase> cases) {
+            this.prompt = prompt;
+            this.cases = cases;
+        }
+
+        @Override
+        public void subscribe(Flow.Subscriber<? super String> subscriber) {
+            Objects.requireNonNull(subscriber, "subscriber");
+            subscriber.onSubscribe(new Flow.Subscription() {
+                private boolean started;
+                private boolean canceled;
+
+                @Override
+                public void request(long n) {
+                    if (n <= 0) {
+                        subscriber.onError(new IllegalArgumentException("non-positive subscription request"));
+                        return;
+                    }
+                    if (started) {
+                        return;
+                    }
+                    started = true;
+                    formatBadCaseTemplate(prompt, cases)
+                            .thenAccept(messages -> publishChunks(messages, subscriber, this))
+                            .exceptionally(error -> {
+                                if (!canceled) {
+                                    subscriber.onError(error);
+                                }
+                                return null;
+                            });
+                }
+
+                @Override
+                public void cancel() {
+                    canceled = true;
+                }
+
+                private void publishChunks(
+                        List<BaseMessage> messages,
+                        Flow.Subscriber<? super String> target,
+                        Flow.Subscription subscription) {
+                    try {
+                        Iterator<AssistantMessageChunk> iterator = model.stream(messages);
+                        while (!canceled && iterator.hasNext()) {
+                            target.onNext(iterator.next().getContentAsString());
+                        }
+                        if (!canceled) {
+                            target.onComplete();
+                        }
+                    } catch (RuntimeException exception) {
+                        if (!canceled) {
+                            target.onError(exception);
+                        }
+                    }
+                }
+            });
         }
     }
 }

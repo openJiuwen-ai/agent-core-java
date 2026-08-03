@@ -1,12 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.systemtest;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
@@ -21,7 +16,7 @@ import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -33,6 +28,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Advanced ContextEngine system tests covering gaps identified in CHECK doc:
  * ContextMessageBuffer, SessionModelContext messages, Compressor/Offloader configs.
@@ -40,7 +39,8 @@ import java.util.Map;
  */
 @Tag("system-test")
 class ContextEngineAdvancedSystemTest {
-    static class MinimalSession implements Session {
+
+    static class MinimalSession implements AgentSessionApi {
         private final String sessionId;
         private final Map<String, Object> state = new LinkedHashMap<>();
         private String currentOperatorId;
@@ -66,20 +66,28 @@ class ContextEngineAdvancedSystemTest {
             }
         }
 
-        @Override
         public void setCurrentOperatorId(String operatorId) {
             this.currentOperatorId = operatorId;
         }
 
-        @Override
         public String getCurrentOperatorId() {
             return currentOperatorId;
+        }
+
+        @Override
+        public void writeStream(Object data) {
+        }
+
+        @Override
+        public java.util.Iterator<Object> streamIterator() {
+            return java.util.List.of().iterator();
         }
     }
 
     @Nested
     @DisplayName("ContextMessageBuffer Tests")
     class ContextMessageBufferTests {
+
         @Test
         @DisplayName("Buffer addBack and getBack")
         void testAddAndGetBack() {
@@ -87,7 +95,9 @@ class ContextEngineAdvancedSystemTest {
             history.add(new UserMessage("History msg"));
 
             ContextMessageBuffer buffer = new ContextMessageBuffer(history, 100);
-            buffer.addBack(List.of(new UserMessage("Hello"), new AssistantMessage("Hi there")));
+            buffer.addBack(List.of(
+                    new UserMessage("Hello"),
+                    new AssistantMessage("Hi there")));
 
             List<BaseMessage> messages = buffer.getBack();
             assertNotNull(messages);
@@ -109,7 +119,10 @@ class ContextEngineAdvancedSystemTest {
         @DisplayName("Buffer popBack removes messages")
         void testPopBack() {
             ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 100);
-            buffer.addBack(List.of(new UserMessage("msg1"), new AssistantMessage("msg2"), new UserMessage("msg3")));
+            buffer.addBack(List.of(
+                    new UserMessage("msg1"),
+                    new AssistantMessage("msg2"),
+                    new UserMessage("msg3")));
 
             List<BaseMessage> popped = buffer.popBack(1, false);
             assertNotNull(popped);
@@ -132,7 +145,10 @@ class ContextEngineAdvancedSystemTest {
         @DisplayName("Buffer getBack with size limit")
         void testGetBackWithSizeLimit() {
             ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), 100);
-            buffer.addBack(List.of(new UserMessage("msg1"), new AssistantMessage("msg2"), new UserMessage("msg3"),
+            buffer.addBack(List.of(
+                    new UserMessage("msg1"),
+                    new AssistantMessage("msg2"),
+                    new UserMessage("msg3"),
                     new AssistantMessage("msg4")));
 
             List<BaseMessage> last2 = buffer.getBack(2, false);
@@ -144,6 +160,7 @@ class ContextEngineAdvancedSystemTest {
     @Nested
     @DisplayName("SessionModelContext Tests")
     class SessionModelContextTests {
+
         @Test
         @DisplayName("SessionModelContext addMessages and getMessages")
         void testAddAndGetMessages() {
@@ -152,9 +169,12 @@ class ContextEngineAdvancedSystemTest {
             history.add(new UserMessage("Previous question"));
             history.add(new AssistantMessage("Previous answer"));
 
-            SessionModelContext ctx = new SessionModelContext("ctx_1", "sess_1", config, history, List.of(), null);
+            SessionModelContext ctx = new SessionModelContext(
+                    "ctx_1", "sess_1", config, history, List.of(), null);
 
-            ctx.addMessages(List.of(new UserMessage("New question"), new AssistantMessage("New answer")));
+            ctx.addMessages(List.of(
+                    new UserMessage("New question"),
+                    new AssistantMessage("New answer")));
 
             List<BaseMessage> messages = ctx.getMessages(null, true);
             assertNotNull(messages);
@@ -165,8 +185,8 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("SessionModelContext clearMessages")
         void testClearMessages() {
-            SessionModelContext ctx =
-                new SessionModelContext("ctx_2", "sess_2", new ContextEngineConfig(), List.of(), List.of(), null);
+            SessionModelContext ctx = new SessionModelContext(
+                    "ctx_2", "sess_2", new ContextEngineConfig(), List.of(), List.of(), null);
 
             ctx.addMessages(List.of(new UserMessage("Q1"), new AssistantMessage("A1")));
             assertTrue(ctx.size() > 0);
@@ -178,8 +198,8 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("SessionModelContext contextId and sessionId")
         void testContextIdentifiers() {
-            SessionModelContext ctx =
-                new SessionModelContext("my_ctx", "my_sess", new ContextEngineConfig(), List.of(), List.of(), null);
+            SessionModelContext ctx = new SessionModelContext(
+                    "my_ctx", "my_sess", new ContextEngineConfig(), List.of(), List.of(), null);
 
             assertEquals("my_ctx", ctx.contextId());
             assertEquals("my_sess", ctx.sessionId());
@@ -189,6 +209,7 @@ class ContextEngineAdvancedSystemTest {
     @Nested
     @DisplayName("ContextEngine SaveContexts Tests")
     class ContextEngineSaveTests {
+
         @Test
         @DisplayName("ContextEngine createContext with history and retrieve")
         void testCreateWithHistoryAndRetrieve() {
@@ -209,6 +230,7 @@ class ContextEngineAdvancedSystemTest {
     @Nested
     @DisplayName("Compressor Config Tests")
     class CompressorConfigTests {
+
         @Test
         @DisplayName("CurrentRoundCompressorConfig defaults")
         void testCurrentRoundCompressorDefaults() {
@@ -222,8 +244,12 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("DialogueCompressorConfig builder")
         void testDialogueCompressorBuilder() {
-            DialogueCompressorConfig config = DialogueCompressorConfig.builder().messagesThreshold(20)
-                    .tokensThreshold(8000).keepLastRound(true).compressionTargetTokens(3000).build();
+            DialogueCompressorConfig config = DialogueCompressorConfig.builder()
+                    .messagesThreshold(20)
+                    .tokensThreshold(8000)
+                    .keepLastRound(true)
+                    .compressionTargetTokens(3000)
+                    .build();
 
             assertEquals(20, config.getMessagesThreshold());
             assertEquals(8000, config.getTokensThreshold());
@@ -234,8 +260,11 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("RoundLevelCompressorConfig builder")
         void testRoundLevelCompressorBuilder() {
-            RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder().triggerTotalTokens(5000)
-                    .targetTotalTokens(3000).keepRecentMessages(2).build();
+            RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder()
+                    .triggerTotalTokens(5000)
+                    .targetTotalTokens(3000)
+                    .keepRecentMessages(2)
+                    .build();
 
             assertEquals(5000, config.getTriggerTotalTokens());
             assertEquals(3000, config.getTargetTotalTokens());
@@ -246,6 +275,7 @@ class ContextEngineAdvancedSystemTest {
     @Nested
     @DisplayName("Offloader Config Tests")
     class OffloaderConfigTests {
+
         @Test
         @DisplayName("MessageOffloaderConfig defaults")
         void testMessageOffloaderDefaults() {
@@ -259,9 +289,13 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("MessageOffloaderConfig builder")
         void testMessageOffloaderBuilder() {
-            MessageOffloaderConfig config =
-                MessageOffloaderConfig.builder().messagesThreshold(50).tokensThreshold(15000)
-                        .offloadMessageType(List.of("tool", "system")).trimSize(200).keepLastRound(false).build();
+            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
+                    .messagesThreshold(50)
+                    .tokensThreshold(15000)
+                    .offloadMessageType(List.of("tool", "system"))
+                    .trimSize(200)
+                    .keepLastRound(false)
+                    .build();
 
             assertEquals(50, config.getMessagesThreshold());
             assertEquals(15000, config.getTokensThreshold());
@@ -273,8 +307,12 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("MessageSummaryOffloaderConfig builder")
         void testMessageSummaryOffloaderBuilder() {
-            MessageSummaryOffloaderConfig config = MessageSummaryOffloaderConfig.builder().messagesThreshold(30)
-                    .tokensThreshold(10000).summaryMaxTokens(600).enablePreciseStep(true).build();
+            MessageSummaryOffloaderConfig config = MessageSummaryOffloaderConfig.builder()
+                    .messagesThreshold(30)
+                    .tokensThreshold(10000)
+                    .summaryMaxTokens(600)
+                    .enablePreciseStep(true)
+                    .build();
 
             assertEquals(30, config.getMessagesThreshold());
             assertEquals(10000, config.getTokensThreshold());

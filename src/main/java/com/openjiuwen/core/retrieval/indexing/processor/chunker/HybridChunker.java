@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
@@ -8,76 +8,57 @@ import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
- * Chunker that skips splitting for specific document types.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code HybridChunker} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/hybrid_chunker.py}.
  */
 public class HybridChunker extends Chunker {
+
     private final Chunker innerChunker;
     private final Predicate<Document> noSplitWhen;
 
-    /**
-     * HybridChunker.
-     * 
-     * @param innerChunker innerChunker
-     * @since 0.1.7
-     */
     public HybridChunker(Chunker innerChunker) {
-        this(innerChunker, doc -> {
-            Object sourceType = doc.getMetadata().get("source_type");
-            return "row".equals(sourceType) || "column".equals(sourceType);
-        });
+        this(innerChunker, null);
     }
 
-    /**
-     * HybridChunker.
-     * 
-     * @param innerChunker innerChunker
-     * @param noSplitWhen noSplitWhen
-     * @since 0.1.7
-     */
     public HybridChunker(Chunker innerChunker, Predicate<Document> noSplitWhen) {
-        super(innerChunker.chunkSize, innerChunker.chunkOverlap);
+        super(innerChunker.getChunkSize(), innerChunker.getChunkOverlap(), innerChunker.getLengthFunction());
         this.innerChunker = innerChunker;
-        this.noSplitWhen = noSplitWhen;
+        this.noSplitWhen = noSplitWhen == null ? HybridChunker::defaultNoSplit : noSplitWhen;
     }
 
-    /**
-     * chunkText.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public List<String> chunkText(String text) {
         return innerChunker.chunkText(text);
     }
 
-    /**
-     * chunkDocuments.
-     * 
-     * @param documents documents
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public List<TextChunk> chunkDocuments(List<Document> documents) {
-        List<TextChunk> result = new ArrayList<>();
-        if (documents == null) {
-            return result;
-        }
+        List<TextChunk> chunks = new ArrayList<>();
         for (Document document : documents) {
-            if (noSplitWhen.test(document)) {
-                result.add(TextChunk.fromDocument(document, document.getText()));
+            String text = document.getText();
+            if (noSplitWhen.test(document) && text != null && !text.strip().isEmpty()) {
+                String uid = UUID.randomUUID().toString();
+                Map<String, Object> metadata = new LinkedHashMap<>(document.getMetadata());
+                metadata.put("chunk_index", 0);
+                metadata.put("total_chunks", 1);
+                metadata.put("chunk_id", uid);
+                chunks.add(new TextChunk(uid, text.strip(), document.getId_(), metadata));
             } else {
-                result.addAll(innerChunker.chunkDocuments(List.of(document)));
+                chunks.addAll(innerChunker.chunkDocuments(List.of(document)));
             }
         }
-        return result;
+        return chunks;
+    }
+
+    public static boolean defaultNoSplit(Document document) {
+        Object sourceType = document.getMetadata().get("source_type");
+        return "row".equals(sourceType) || "column".equals(sourceType);
     }
 }

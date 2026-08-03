@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.base.TagMatchStrategy
+# com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy
 
 ## 枚举 TagMatchStrategy
 

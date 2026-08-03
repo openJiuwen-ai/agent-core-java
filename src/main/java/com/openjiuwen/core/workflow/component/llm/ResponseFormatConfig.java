@@ -12,33 +12,22 @@ import java.util.Set;
  * <p>
  * Mirrors Python's {@code ResponseFormatConfig} Pydantic model.
  * Validates that the response type is one of: text, markdown, json.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public class ResponseFormatConfig {
+
     private static final Set<String> VALID_TYPES = Set.of("text", "markdown", "json");
 
     private final String responseType;
 
-    /**
-     * ResponseFormatConfig.
-     * 
-     * @param responseType responseType
-     * @since 0.1.7
-     */
     public ResponseFormatConfig(String responseType) {
         if (responseType == null || !VALID_TYPES.contains(responseType)) {
-            throw new IllegalArgumentException("responseType must be one of " + VALID_TYPES + ", got: " + responseType);
+            throw new IllegalArgumentException(
+                    "responseType must be one of " + VALID_TYPES + ", got: " + responseType);
         }
         this.responseType = responseType;
     }
 
-    /**
-     * getResponseType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getResponseType() {
         return responseType;
     }
@@ -46,10 +35,6 @@ public class ResponseFormatConfig {
     /**
      * Validate and create from a map (looks for "type" key).
      * Mirrors Python's {@code ResponseFormatConfig.model_validate(dict)}.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
      */
     public static ResponseFormatConfig fromMap(Map<String, Object> map) {
         if (map == null) {

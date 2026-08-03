@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig
+# com.openjiuwen.core.single_agent.legacy.config.ConstrainConfig
 
 ## 类 ConstrainConfig
 

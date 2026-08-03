@@ -1,227 +1,148 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.operator.llm_call;
 
+import com.openjiuwen.core.operator.TunableSpec;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.operator.OperatorStream;
-import com.openjiuwen.core.operator.OperatorTestSupport;
-import com.openjiuwen.core.operator.TunableSpec;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.function.BiConsumer;
 
 /**
- * Port of Python LLMCallOperator tests.
+ * Tests for LLM prompt parameter handle behavior.
+ *
+ * <p>Mirrors Python's {@code LLMCallOperator} in
+ * {@code openjiuwen/core/operator/llm_call/base.py}.</p>
  */
 class LLMCallOperatorTest {
+
     @Test
-    @DisplayName("operator id and tunables")
-    void testOperatorIdAndTunables() {
-        Model llm = mock(Model.class);
-        LLMCallOperator operator =
-            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
-        LLMCallOperator custom = new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, true, "custom_id", null);
-        LLMCallOperator frozenSystem =
-            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", true, false, "llm_call", null);
-        LLMCallOperator frozenUser =
-            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, true, "llm_call", null);
-        LLMCallOperator bothFrozen =
-            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", true, true, "llm_call", null);
+    void constructorUsesPythonDefaultsAndTunableOrder() {
+        LLMCallOperator operator = new LLMCallOperator("system", "");
 
         assertEquals("llm_call", operator.getOperatorId());
-        assertEquals("custom_id", custom.getOperatorId());
+        assertEquals("system", operator.getSystemPrompt().getContent());
+        assertEquals(LLMCallOperator.DEFAULT_USER_PROMPT, operator.getUserPrompt().getContent());
+        assertEquals(List.of("system_prompt"), new ArrayList<>(operator.getTunables().keySet()));
+    }
+
+    @Test
+    void getTunablesExcludesFrozenPrompts() {
+        LLMCallOperator operator = new LLMCallOperator(
+                "system",
+                "user",
+                false,
+                false,
+                "custom_llm",
+                null
+        );
 
         Map<String, TunableSpec> tunables = operator.getTunables();
-        assertTrue(tunables.containsKey("system_prompt"));
-        assertTrue(tunables.containsKey("user_prompt"));
-        assertEquals("prompt", tunables.get("system_prompt").kind());
-        assertEquals("prompt", tunables.get("user_prompt").kind());
 
-        assertFalse(frozenSystem.getTunables().containsKey("system_prompt"));
-        assertTrue(frozenSystem.getTunables().containsKey("user_prompt"));
-        assertTrue(frozenUser.getTunables().containsKey("system_prompt"));
-        assertFalse(frozenUser.getTunables().containsKey("user_prompt"));
-        assertTrue(bothFrozen.getTunables().isEmpty());
+        assertEquals("custom_llm", operator.getOperatorId());
+        assertEquals(List.of("system_prompt", "user_prompt"), new ArrayList<>(tunables.keySet()));
+        assertEquals("prompt", tunables.get("system_prompt").kind());
+        assertEquals("user_prompt", tunables.get("user_prompt").path());
     }
 
     @Test
-    @DisplayName("set parameter, state, freeze and callback")
-    void testPromptsStateFreezeAndCallback() {
-        Model llm = mock(Model.class);
-        @SuppressWarnings("unchecked")
-        BiConsumer<String, Object> callback = mock(BiConsumer.class);
-        LLMCallOperator operator = new LLMCallOperator("gpt-4", llm, "You are a helpful assistant.",
-                "Answer: {{query}}", false, false, "llm_call", callback);
+    void setParameterUpdatesOnlyUnfrozenTargetsAndNormalizesPythonStrings() {
+        List<String> updates = new ArrayList<>();
+        List<Map<String, String>> userMessages = List.of(Map.of("role", "user", "content", "hello"));
+        LLMCallOperator operator = new LLMCallOperator(
+                "system",
+                "user",
+                false,
+                false,
+                "llm_call",
+                (target, value) -> updates.add(target + "=" + value)
+        );
 
-        operator.setParameter("system_prompt", "New system prompt");
-        operator.setParameter("user_prompt", "New: {{query}}");
-        assertEquals("New system prompt", operator.getSystemPrompt().getContent());
-        assertEquals("New: {{query}}", operator.getUserPrompt().getContent());
-        verify(callback).accept("system_prompt", "New system prompt");
-        verify(callback).accept("user_prompt", "New: {{query}}");
+        operator.setParameter("system_prompt", Boolean.TRUE);
+        operator.setParameter("user_prompt", userMessages);
 
-        Map<String, Object> state = operator.getState();
-        assertEquals("New system prompt", state.get("system_prompt"));
-        assertEquals("New: {{query}}", state.get("user_prompt"));
+        assertEquals("True", operator.getSystemPrompt().getContent());
+        assertEquals(userMessages, operator.getUserPrompt().getContent());
+        assertEquals(List.of(
+                "system_prompt=True",
+                "user_prompt=" + userMessages
+        ), updates);
+    }
 
-        operator.loadState(Map.of("system_prompt", "Loaded system", "user_prompt", "Loaded: {{query}}"));
-        assertEquals("Loaded system", operator.getSystemPrompt().getContent());
-        assertEquals("Loaded: {{query}}", operator.getUserPrompt().getContent());
+    @Test
+    void frozenSetParameterIsIgnoredButLoadStateBypassesFreezeMarkers() {
+        List<String> updates = new ArrayList<>();
+        LLMCallOperator operator = new LLMCallOperator(
+                "system",
+                "user",
+                true,
+                true,
+                "llm_call",
+                (target, value) -> updates.add(target + "=" + value)
+        );
 
-        operator.updateUserPrompt("");
-        assertEquals("", operator.getUserPrompt().getContent());
+        operator.setParameter("system_prompt", "blocked-system");
+        operator.setParameter("user_prompt", "blocked-user");
 
-        operator.loadState(Map.of("system_prompt", "Partial load"));
-        assertEquals("Partial load", operator.getSystemPrompt().getContent());
-        assertEquals("", operator.getUserPrompt().getContent());
+        assertEquals("system", operator.getSystemPrompt().getContent());
+        assertEquals("user", operator.getUserPrompt().getContent());
+        assertTrue(updates.isEmpty());
+
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("system_prompt", "restored-system");
+        state.put("user_prompt", 42);
+        operator.loadState(state);
+
+        assertEquals("restored-system", operator.getSystemPrompt().getContent());
+        assertEquals("42", operator.getUserPrompt().getContent());
+        assertEquals(List.of(
+                "system_prompt=restored-system",
+                "user_prompt=42"
+        ), updates);
+    }
+
+    @Test
+    void dictLikeValuesUsePythonStyleStringConversion() {
+        LLMCallOperator operator = new LLMCallOperator("system", "user", false, false, "llm_call", null);
+        Map<String, Object> dict = new LinkedHashMap<>();
+        dict.put("enabled", Boolean.FALSE);
+        dict.put("name", "Ada");
+
+        operator.setParameter("system_prompt", dict);
+
+        assertEquals("{'enabled': False, 'name': 'Ada'}", operator.getSystemPrompt().getContent());
+    }
+
+    @Test
+    void stateAndFreezeAccessorsMirrorPythonProperties() {
+        LLMCallOperator operator = new LLMCallOperator("system", "user");
 
         operator.setFreezeSystemPrompt(true);
-        operator.setFreezeUserPrompt(true);
+        operator.setFreezeUserPrompt(false);
+        Map<String, Object> state = operator.getState();
+
         assertTrue(operator.getFreezeSystemPrompt());
-        assertTrue(operator.getFreezeUserPrompt());
-
-        operator.setParameter("system_prompt", "ignored");
-        operator.setParameter("user_prompt", "ignored");
-        assertEquals("Partial load", operator.getSystemPrompt().getContent());
-        assertEquals("", operator.getUserPrompt().getContent());
+        assertFalse(operator.getFreezeUserPrompt());
+        assertEquals("system", state.get("system_prompt"));
+        assertEquals("user", state.get("user_prompt"));
     }
 
     @Test
-    @DisplayName("invoke formats prompt and clears operator context")
-    void testInvokeBasicAndHistory() throws Exception {
-        Model llm = mock(Model.class);
-        AssistantMessage response = new AssistantMessage("Hello!");
-        when(llm.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(response);
-        LLMCallOperator operator = new LLMCallOperator("gpt-4", llm, "You are a helpful assistant.",
-                "Answer: {{query}}", false, false, "llm_call", null);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
+    void backwardCompatibleAliasExtendsOperatorImplementation() {
+        LLMCall alias = new LLMCall("system", "user");
 
-        AssistantMessage result = operator.invoke(Map.of("query", "new question"), session,
-                Map.of("history", List.of(new UserMessage("past"))));
-
-        assertEquals("Hello!", result.getContent());
-        assertEquals(Arrays.asList("llm_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
-
-        ArgumentCaptor<Object> messagesCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(llm).invoke(messagesCaptor.capture(), isNull(), isNull(), isNull(), eq("gpt-4"), isNull(), isNull(),
-                isNull(), isNull(), anyMap());
-
-        @SuppressWarnings("unchecked")
-        List<BaseMessage> messages = (List<BaseMessage>) messagesCaptor.getValue();
-        assertEquals(3, messages.size());
-        assertInstanceOf(SystemMessage.class, messages.get(0));
-        assertEquals("You are a helpful assistant.", messages.get(0).getContent());
-        assertEquals("past", ((BaseMessage) messages.get(1)).getContent());
-        assertEquals("Answer: new question", messages.get(2).getContent());
-    }
-
-    @Test
-    @DisplayName("invoke forwards tool definitions and passthrough messages")
-    void testInvokeWithToolsAndPassthroughMessages() throws Exception {
-        Model llm = mock(Model.class);
-        when(llm.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new AssistantMessage("response"));
-        LLMCallOperator operator =
-            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
-        List<Map<String, Object>> tools = List.of(Map.of("name", "get_weather", "description", "Get weather"));
-        List<BaseMessage> passthrough = List.of(new UserMessage("context"), new AssistantMessage("answer"));
-
-        operator.invoke(Map.of("messages", passthrough), new OperatorTestSupport.TrackingSession(),
-                Map.of("tools", tools));
-
-        ArgumentCaptor<Object> messagesCaptor = ArgumentCaptor.forClass(Object.class);
-        ArgumentCaptor<Object> toolsCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(llm).invoke(messagesCaptor.capture(), toolsCaptor.capture(), isNull(), isNull(), eq("gpt-4"), isNull(),
-                isNull(), isNull(), isNull(), anyMap());
-
-        @SuppressWarnings("unchecked")
-        List<BaseMessage> messages = (List<BaseMessage>) messagesCaptor.getValue();
-        assertEquals(3, messages.size());
-        assertEquals("sys", messages.get(0).getContent());
-        assertEquals("context", messages.get(1).getContent());
-        assertEquals("answer", messages.get(2).getContent());
-        assertEquals(tools, toolsCaptor.getValue());
-    }
-
-    @Test
-    @DisplayName("stream yields chunks and clears context")
-    void testStreamBasicAndCleanup() throws Exception {
-        Model llm = mock(Model.class);
-        List<AssistantMessageChunk> stream = List.of(AssistantMessageChunk.builder().content("Hel").build(),
-                AssistantMessageChunk.builder().content("lo!").build());
-        when(llm.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(stream.iterator());
-        LLMCallOperator operator = new LLMCallOperator("test", llm, "sys", "{{query}}", false, false, "llm_call", null);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
-
-        List<AssistantMessageChunk> chunks = new ArrayList<>();
-        Iterator<AssistantMessageChunk> iterator = operator.stream(Map.of("query", "hi"), session, Map.of());
-        while (iterator.hasNext()) {
-            chunks.add(iterator.next());
-        }
-
-        assertEquals(2, chunks.size());
-        assertEquals(Arrays.asList("llm_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
-    }
-
-    @Test
-    @DisplayName("updateSystemPrompt directly updates system prompt")
-    void testUpdateSystemPrompt() {
-        Model llm = mock(Model.class);
-        LLMCallOperator operator =
-            new LLMCallOperator("gpt-4", llm, "original", "{{query}}", false, false, "llm_call", null);
-
-        operator.updateSystemPrompt("Updated system prompt");
-        assertEquals("Updated system prompt", operator.getSystemPrompt().getContent());
-    }
-
-    @Test
-    @DisplayName("stream close clears context on early termination")
-    void testStreamEarlyCloseClearsContext() throws Exception {
-        Model llm = mock(Model.class);
-        List<AssistantMessageChunk> stream = List.of(AssistantMessageChunk.builder().content("Hel").build(),
-                AssistantMessageChunk.builder().content("lo!").build());
-        when(llm.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(stream.iterator());
-        LLMCallOperator operator = new LLMCallOperator("test", llm, "sys", "{{query}}", false, false, "llm_call", null);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
-
-        OperatorStream<AssistantMessageChunk> iterator = operator.stream(Map.of("query", "hi"), session, Map.of());
-        assertTrue(iterator.hasNext());
-        iterator.next();
-        iterator.close();
-
-        assertEquals(Arrays.asList("llm_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
+        assertInstanceOf(LLMCallOperator.class, alias);
+        assertEquals("llm_call", alias.getOperatorId());
+        assertEquals("system", alias.getState().get("system_prompt"));
     }
 }

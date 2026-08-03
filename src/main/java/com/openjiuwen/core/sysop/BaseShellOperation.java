@@ -31,7 +31,7 @@ public abstract class BaseShellOperation extends BaseOperation {
      * @since 0.1.7
      */
     protected BaseShellOperation(String name, OperationMode mode, String description, Object runConfig) {
-        super(name, mode, description, runConfig);
+        super(name, mode.toNewMode(), description, runConfig);
     }
 
     /**

@@ -4,201 +4,232 @@
 
 package com.openjiuwen.core.memory.graph.extraction;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Base LLM response model with multilingual schema helpers.
- * 
- * @since 0.1.7
+ * Multilingual base model for LLM response schema generation.
+ *
+ * <p>Mirrors Python's {@code MultilingualBaseModel} in
+ * {@code openjiuwen/core/memory/graph/extraction/base.py}.</p>
  */
 public abstract class MultilingualBaseModel {
-    private static final Map<String, Map<String, String>> MULTILINGUAL_DESCRIPTION = new LinkedHashMap<>();
 
-    static {
-        com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageCn
-                .registerLanguage();
-        com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageEn
-                .registerLanguage();
+    /** Multilingual description registry, populated by prompt files. */
+    protected static final Map<String, Map<String, String>> MULTILINGUAL_DESCRIPTION = new HashMap<>();
+
+    public static Map<String, Map<String, String>> getMultilingualDescription() {
+        return MULTILINGUAL_DESCRIPTION;
+    }
+
+    public static void registerMultilingualDescription(String language, Map<String, String> descriptions) {
+        MULTILINGUAL_DESCRIPTION.put(language, new LinkedHashMap<>(descriptions));
+    }
+
+    /** Java equivalent of Python's {@code readable_schema} tuple. */
+    public record ReadableSchema(String outputSchema, Map<String, Object> refs) {
     }
 
     /**
-     * multilingualModelJsonSchema.
-     * 
-     * @param modelClass modelClass
-     * @param language language
-     * @param shouldBeStrict shouldBeStrict
-     * @return the result
-     * @since 0.1.7
+     * Get the response format map for structured output.
+     *
+     * @return a map describing the response format
      */
-    public static Map<String, Object> multilingualModelJsonSchema(Class<?> modelClass, String language,
-            boolean shouldBeStrict) {
-        Map<String, String> descLookup = MULTILINGUAL_DESCRIPTION.getOrDefault(language, Map.of());
-        Map<String, Object> schema = buildSchema(modelClass, descLookup);
-        if (shouldBeStrict) {
-            Deque<Object> toVisit = new ArrayDeque<>();
-            toVisit.add(schema);
-            while (!toVisit.isEmpty()) {
-                Object node = toVisit.removeFirst();
-                if (node instanceof Map<?, ?> map) {
-                    Object type = map.get("type");
-                    Object props = map.get("properties");
-                    if ("object".equals(type) && props instanceof Map<?, ?> properties) {
-                        ((Map<String, Object>) map).put("additionalProperties", false);
-                        ((Map<String, Object>) map).putIfAbsent("required", new ArrayList<>(properties.keySet()));
-                    }
-                    toVisit.addAll(map.values());
-                } else if (node instanceof List<?> list) {
-                    toVisit.addAll(list);
-                } else {
-                    // no-op
-                }
-            }
+    public abstract Map<String, Object> responseFormat();
+
+    /**
+     * Convert this model to the LLM response-format wrapper used by Python.
+     *
+     * @param language the language code (cn/en)
+     * @return a response format map with a strict JSON schema payload
+     */
+    public Map<String, Object> responseFormat(String language) {
+        Map<String, Object> jsonSchema = new LinkedHashMap<>();
+        jsonSchema.put("schema", multilingualModelJsonSchema(language, true));
+        jsonSchema.put("name", getClass().getSimpleName());
+        jsonSchema.put("strict", false);
+
+        Map<String, Object> wrapper = new LinkedHashMap<>();
+        wrapper.put("type", "json_schema");
+        wrapper.put("json_schema", jsonSchema);
+        return wrapper;
+    }
+
+    /**
+     * Get JSON schema with multilingual descriptions replaced.
+     *
+     * @param language the language code (cn/en)
+     * @param strict   whether to enforce strict mode (additionalProperties: false)
+     * @return the JSON schema as a map
+     */
+    public Map<String, Object> multilingualModelJsonSchema(String language, boolean strict) {
+        Map<String, Object> schema = responseFormat();
+        Map<String, String> descLookup = MULTILINGUAL_DESCRIPTION.getOrDefault(language, new HashMap<>());
+        recursiveReplace(schema, descLookup, "description", "description");
+        if (strict) {
+            enforceStrictMode(schema);
         }
         return schema;
     }
 
     /**
-     * registerDescriptions.
-     * 
-     * @param language language
-     * @param descriptions descriptions
-     * @since 0.1.7
+     * Generate a compact, LLM-readable schema description and referenced definitions.
+     *
+     * @param language the language code (cn/en)
+     * @return formatted schema text plus referenced object definitions
      */
-    public static void registerDescriptions(String language, Map<String, String> descriptions) {
-        MULTILINGUAL_DESCRIPTION.put(language, descriptions);
-    }
-
-    /**
-     * responseFormat.
-     * 
-     * @param modelClass modelClass
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Map<String, Object> responseFormat(Class<?> modelClass, String language) {
-        return Map.of("type", "json_schema", "json_schema",
-                Map.of("schema", multilingualModelJsonSchema(modelClass, language, true), "name",
-                        modelClass.getSimpleName(), "strict", false));
-    }
-
-    /**
-     * readableSchema.
-     * 
-     * @param modelClass modelClass
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Map.Entry<String, Map<String, Object>> readableSchema(Class<?> modelClass, String language) {
-        Map<String, Object> schema = multilingualModelJsonSchema(modelClass, language, false);
-        StringBuilder out = new StringBuilder();
+    @SuppressWarnings("unchecked")
+    public ReadableSchema readableSchema(String language) {
+        Map<String, Object> schema = multilingualModelJsonSchema(language, false);
         Map<String, Object> refs = new LinkedHashMap<>();
-        Object properties = schema.get("properties");
-        if (properties instanceof Map<?, ?> props) {
-            for (Map.Entry<?, ?> entry : props.entrySet()) {
-                String fieldName = String.valueOf(entry.getKey());
-                Map<?, ?> propSchema = (Map<?, ?>) entry.getValue();
-                Object typeValue = propSchema.containsKey("type") ? propSchema.get("type") : "object";
-                out.append(fieldName).append(": ").append(typeValue);
-                Object description = propSchema.get("description");
-                if (description != null && !String.valueOf(description).isBlank()) {
-                    out.append("  # ").append(description);
+        Object defs = schema.get("$defs");
+        if (defs instanceof Map<?, ?> defsMap) {
+            for (Map.Entry<?, ?> entry : defsMap.entrySet()) {
+                if (entry.getKey() instanceof String key && entry.getValue() instanceof Map<?, ?> def) {
+                    Object properties = def.get("properties");
+                    if (properties instanceof Map<?, ?> propertiesMap) {
+                        refs.put(key, new LinkedHashMap<>((Map<String, Object>) propertiesMap));
+                    }
                 }
-                out.append("\n");
             }
         }
-        return Map.entry(out.toString().strip(), refs);
+
+        StringBuilder output = new StringBuilder();
+        Object properties = schema.get("properties");
+        if (properties instanceof Map<?, ?> propertiesMap) {
+            for (Map.Entry<?, ?> entry : propertiesMap.entrySet()) {
+                if (!(entry.getKey() instanceof String key) || !(entry.getValue() instanceof Map<?, ?> prop)) {
+                    continue;
+                }
+                if (!output.isEmpty()) {
+                    output.append('\n');
+                }
+                output.append(key).append(": ").append(schemaType((Map<String, Object>) prop));
+                Object description = prop.get("description");
+                if (description instanceof String desc && !desc.isEmpty()) {
+                    output.append("  # ").append(desc);
+                }
+            }
+        }
+        return new ReadableSchema(output.toString(), refs);
+    }
+
+    /**
+     * Recursively replace values in a nested map structure.
+     */
+    protected static boolean recursiveReplace(Map<String, Object> schema, Map<String, String> lookup, String fromKey) {
+        return recursiveReplace(schema, lookup, fromKey, fromKey);
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * buildSchema.
-     * 
-     * @param modelClass modelClass
-     * @param descLookup descLookup
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> buildSchema(Class<?> modelClass, Map<String, String> descLookup) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("title", modelClass.getSimpleName());
-        schema.put("type", "object");
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
-        for (Field field : modelClass.getDeclaredFields()) {
-            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
-                continue;
+    protected static boolean recursiveReplace(Object schema, Map<String, String> lookup, String fromKey, String toKey) {
+        boolean replaced = false;
+        List<Object> toVisit = new ArrayList<>();
+        toVisit.add(schema);
+        for (int i = 0; i < toVisit.size(); i++) {
+            Object current = toVisit.get(i);
+            if (current instanceof Map<?, ?> currentMap) {
+                Map<String, Object> map = (Map<String, Object>) currentMap;
+                if (map.containsKey(fromKey)) {
+                    Object value = map.remove(fromKey);
+                    if (toKey != null) {
+                        map.put(toKey, lookup.getOrDefault(String.valueOf(value), String.valueOf(value)));
+                    }
+                    replaced = true;
+                }
+                toVisit.addAll(map.values());
+            } else if (current instanceof List<?> list) {
+                toVisit.addAll(list);
             }
-            Map<String, Object> fieldSchema = schemaForType(field.getGenericType(), descLookup);
-            SchemaDescription description = field.getAnnotation(SchemaDescription.class);
-            if (description != null) {
-                fieldSchema.put("description", descLookup.getOrDefault(description.value(), description.value()));
-            }
-            properties.put(field.getName(), fieldSchema);
-            required.add(field.getName());
         }
-        schema.put("properties", properties);
-        schema.put("required", required);
-        return schema;
+        return replaced;
     }
 
     @SuppressWarnings("unchecked")
+    private void enforceStrictMode(Map<String, Object> schema) {
+        List<Object> toVisit = new ArrayList<>();
+        toVisit.add(schema);
+        for (int i = 0; i < toVisit.size(); i++) {
+            Object current = toVisit.get(i);
+            if (current instanceof Map<?, ?> node) {
+                Map<String, Object> currentMap = (Map<String, Object>) node;
+                if ("object".equals(currentMap.get("type")) && currentMap.get("properties") instanceof Map<?, ?> props) {
+                    currentMap.put("additionalProperties", false);
+                    currentMap.putIfAbsent("required", new ArrayList<>(((Map<String, Object>) props).keySet()));
+                }
+                toVisit.addAll(currentMap.values());
+            } else if (current instanceof List<?> list) {
+                toVisit.addAll(list);
+            }
+        }
+    }
+
     /**
-     * schemaForType.
-     * 
-     * @param type type
-     * @param descLookup descLookup
-     * @return the result
-     * @since 0.1.7
+     * Convert Java reflection types into the compact type strings used in tests.
      */
-    private static Map<String, Object> schemaForType(Type type, Map<String, String> descLookup) {
-        Map<String, Object> schema = new LinkedHashMap<>();
+    public static String toJsonTypes(Type type) {
+        if (type instanceof Class<?> clazz) {
+            return pythonTypeName(clazz);
+        }
         if (type instanceof ParameterizedType parameterizedType) {
             Type raw = parameterizedType.getRawType();
-            if (raw == List.class) {
-                schema.put("type", "array");
-                schema.put("items", schemaForType(parameterizedType.getActualTypeArguments()[0], descLookup));
-                return schema;
+            String rawName = raw instanceof Class<?> clazz ? pythonTypeName(clazz) : raw.getTypeName();
+            Type[] args = parameterizedType.getActualTypeArguments();
+            if (args.length == 0) {
+                return rawName;
             }
-            if (raw == Map.class) {
-                schema.put("type", "object");
-                return schema;
+            List<String> argNames = new ArrayList<>();
+            for (Type arg : args) {
+                argNames.add(toJsonTypes(arg));
             }
+            return rawName + "[" + String.join(",", argNames) + "]";
         }
-        if (type instanceof Class<?> clazz) {
-            if (clazz == String.class) {
-                schema.put("type", "string");
-            } else if (clazz == Integer.class || clazz == int.class || clazz == Long.class || clazz == long.class) {
-                schema.put("type", "integer");
-            } else if (clazz == Double.class || clazz == double.class || clazz == Float.class || clazz == float.class) {
-                schema.put("type", "number");
-            } else if (clazz == Boolean.class || clazz == boolean.class) {
-                schema.put("type", "boolean");
-            } else if (clazz.isEnum()) {
-                schema.put("type", "string");
-                Object[] constants = clazz.getEnumConstants();
-                List<String> values = new ArrayList<>();
-                for (Object constant : constants) {
-                    values.add(String.valueOf(constant));
-                }
-                schema.put("enum", values);
-            } else if (Map.class.isAssignableFrom(clazz)) {
-                schema.put("type", "object");
-            } else {
-                return buildSchema(clazz, descLookup);
-            }
-            return schema;
+        return type.getTypeName();
+    }
+
+    private static String pythonTypeName(Class<?> clazz) {
+        if (String.class.equals(clazz)) {
+            return "str";
         }
-        schema.put("type", "object");
-        return schema;
+        if (Integer.class.equals(clazz) || Integer.TYPE.equals(clazz)
+                || Long.class.equals(clazz) || Long.TYPE.equals(clazz)
+                || Short.class.equals(clazz) || Short.TYPE.equals(clazz)
+                || Byte.class.equals(clazz) || Byte.TYPE.equals(clazz)) {
+            return "int";
+        }
+        if (Boolean.class.equals(clazz) || Boolean.TYPE.equals(clazz)) {
+            return "bool";
+        }
+        if (Double.class.equals(clazz) || Double.TYPE.equals(clazz)
+                || Float.class.equals(clazz) || Float.TYPE.equals(clazz)) {
+            return "float";
+        }
+        if (List.class.isAssignableFrom(clazz)) {
+            return "list";
+        }
+        if (Map.class.isAssignableFrom(clazz)) {
+            return "dict";
+        }
+        return clazz.getSimpleName();
+    }
+
+    private static String schemaType(Map<String, Object> property) {
+        Object type = property.get("type");
+        if ("array".equals(type) && property.get("items") instanceof Map<?, ?> items) {
+            Object ref = items.get("$ref");
+            if (ref instanceof String refString) {
+                int idx = refString.lastIndexOf('/');
+                String refName = idx >= 0 ? refString.substring(idx + 1) : refString;
+                return "array[" + refName + "]";
+            }
+            Object itemType = items.get("type");
+            return "array[" + (itemType == null ? "object" : itemType) + "]";
+        }
+        return type == null ? "object" : type.toString();
     }
 }

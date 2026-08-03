@@ -5,25 +5,12 @@
 package com.openjiuwen.core.sysop.result;
 
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
-/**
- * Result type for streaming download file operation.
- * 
- * @since 0.1.7
- */
-@SuperBuilder
+/** Result type for streaming download file operation. */
 @NoArgsConstructor
 public class DownloadFileStreamResult extends BaseResult<DownloadFileChunkData> {
     /**
-     * DownloadFileStreamResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public DownloadFileStreamResult(int code, String message, DownloadFileChunkData data) {
-        super(code, message, data);
-    }
+    public DownloadFileStreamResult(int code, String message, DownloadFileChunkData data) { setCode(code); setMessage(message); setData(data); }
 }

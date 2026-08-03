@@ -4,77 +4,69 @@
 
 package com.openjiuwen.harness.task_loop;
 
-import java.util.LinkedHashMap;
+import com.openjiuwen.core.controller.modules.TaskExecutor;
+import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
+import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.harness.DeepAgent;
+
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
- * Public class SessionSpawnExecutor used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Executes session-spawn task requests.
+ *
+ * <p>Mirrors Python's {@code SessionSpawnExecutor} in
+ * {@code openjiuwen/harness/task_loop/session_spawn_executor.py}.</p>
  */
-public class SessionSpawnExecutor {
-    /**
-     * SESSION_SPAWN_TASK_TYPE.
-     * 
-     * @since 0.1.7
-     */
+public class SessionSpawnExecutor extends TaskExecutor {
+
     public static final String SESSION_SPAWN_TASK_TYPE = "session_spawn";
 
-    private final Function<Map<String, Object>, Object> subagentInvoker;
+    private final DeepAgent deepAgent;
 
-    /**
-     * SessionSpawnExecutor.
-     * 
-     * @param subagentInvoker subagentInvoker
-     * @since 0.1.7
-     */
-    public SessionSpawnExecutor(Function<Map<String, Object>, Object> subagentInvoker) {
-        this.subagentInvoker = subagentInvoker;
+    public SessionSpawnExecutor(TaskExecutorDependencies dependencies, DeepAgent deepAgent) {
+        super(dependencies);
+        this.deepAgent = deepAgent;
     }
 
-    /**
-     * execute.
-     * 
-     * @param taskId taskId
-     * @param metadata metadata
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> execute(String taskId, Map<String, Object> metadata) {
-        Map<String, Object> safeMetadata = metadata == null ? Map.of() : metadata;
-        Map<String, Object> request = new LinkedHashMap<>();
-        request.put("subagent_type", safeMetadata.getOrDefault("subagent_type", "general-purpose"));
-        request.put("task_description", safeMetadata.getOrDefault("task_description", ""));
-        request.put("sub_session_id", safeMetadata.getOrDefault("sub_session_id", ""));
-        request.put("task_id", taskId);
-        try {
-            Object output = subagentInvoker == null ? request.get("task_description") : subagentInvoker.apply(request);
-            return Map.of("type", "TASK_COMPLETION", "task_id", taskId, "task_type", SESSION_SPAWN_TASK_TYPE, "data",
-                    Map.of("output", output == null ? "" : output));
-        } catch (RuntimeException ex) {
-            return Map.of("type", "TASK_FAILED", "task_id", taskId, "task_type", SESSION_SPAWN_TASK_TYPE, "error",
-                    ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
-        }
+    @Override
+    public Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi session) {
+        ControllerOutputPayload payload = new ControllerOutputPayload(
+                ControllerOutputPayload.TASK_PROCESSING,
+                List.of(new DataFrame.TextDataFrame("Spawned sub-session for task: " + taskId)),
+                Map.of("task_id", taskId, "agent", deepAgent == null ? "" : deepAgent.getCard().getName())
+        );
+        return List.of(new ControllerOutputChunk(0, payload, true)).iterator();
     }
 
-    /**
-     * canPause.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean canPause() {
+    @Override
+    public PauseCheckResult canPause(String taskId, AgentSessionApi session) {
+        return new PauseCheckResult(false, "session spawn cannot be paused");
+    }
+
+    @Override
+    public boolean pause(String taskId, AgentSessionApi session) {
         return false;
     }
 
-    /**
-     * canCancel.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean canCancel() {
+    @Override
+    public CancelCheckResult canCancel(String taskId, AgentSessionApi session) {
+        return new CancelCheckResult(true, null);
+    }
+
+    @Override
+    public boolean cancel(String taskId, AgentSessionApi session) {
         return true;
+    }
+
+    public static SessionSpawnExecutor buildSessionSpawnExecutor(
+            TaskExecutorDependencies dependencies,
+            DeepAgent deepAgent
+    ) {
+        return new SessionSpawnExecutor(dependencies, deepAgent);
     }
 }

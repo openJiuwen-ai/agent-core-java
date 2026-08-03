@@ -1,266 +1,169 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.harness_config;
 
-import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.schema.DeepAgentConfig;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * HarnessConfigRegistry.
- * @since 0.1.7
+ * Discover and manage installed harness config packages.
+ *
+ * <p>Mirrors Python's {@code HarnessConfigRegistry} in
+ * {@code openjiuwen/harness/harness_config/registry.py}.</p>
  */
 public final class HarnessConfigRegistry {
-    private static final Map<String, HarnessConfigInfo> MANUAL = new ConcurrentHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private static final Map<String, LoadedConfig> LOADED = new ConcurrentHashMap<>();
+    private static List<HarnessConfigInfo> cache;
+    private static final Set<String> DISABLED = new LinkedHashSet<>();
 
-    /**
-     * ConcurrentHashMap.newKeySet.
-     * 
-     * @since 0.1.7
-     */
-    private static final Set<String> DISABLED = ConcurrentHashMap.newKeySet();
-    private static volatile List<HarnessConfigInfo> cache;
-
-    /**
-     * HarnessConfigRegistry.
-     * @since 0.1.7
-     */
     private HarnessConfigRegistry() {
     }
 
     /**
-     * register.
-     * @param info info
-     * @since 0.1.7
+     * Java service-provider counterpart to Python's {@code openjiuwen.harness_config}
+     * entry point group.
      */
-    public static void register(HarnessConfigInfo info) {
-        MANUAL.put(info.getId(), info);
-        invalidateCache();
+    public interface ConfigPathProvider {
+
+        String id();
+
+        Path getConfigPath();
+
+        default String name() {
+            return id();
+        }
+
+        default String version() {
+            return null;
+        }
+
+        default String packageName() {
+            Package providerPackage = getClass().getPackage();
+            return providerPackage == null ? null : providerPackage.getName();
+        }
     }
 
-    /**
-     * discover.
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<HarnessConfigInfo> discover() {
+    public static synchronized List<HarnessConfigInfo> discover() {
         if (cache == null) {
-            synchronized (HarnessConfigRegistry.class) {
-                if (cache == null) {
-                    cache = scan();
-                }
-            }
+            cache = scanEntryPoints();
         }
-        return cache.stream().filter(HarnessConfigInfo::isEnabled).filter(info -> !DISABLED.contains(info.getId()))
+        return cache.stream()
+                .filter(HarnessConfigInfo::isEnabled)
+                .filter(info -> !DISABLED.contains(info.getId()))
                 .toList();
     }
 
-    /**
-     * get.
-     * @param configId configId
-     * @return the result
-     * @since 0.1.7
-     */
     public static HarnessConfigInfo get(String configId) {
-        return discover().stream().filter(info -> info.getId().equals(configId)).findFirst().orElse(null);
+        if (configId == null) {
+            return null;
+        }
+        return discover().stream()
+                .filter(info -> configId.equals(info.getId()))
+                .findFirst()
+                .orElse(null);
     }
 
-    /**
-     * load.
-     * @param configId configId
-     * @return the result
-     * @since 0.1.7
-     */
-    public static DeepAgent load(String configId) {
+    public static DeepAgent load(String configId, Object model) {
+        return load(configId, model, null, (Path) null);
+    }
+
+    public static DeepAgent load(String configId,
+                                 Object model,
+                                 Map<String, Object> params,
+                                 String workspaceRoot) {
+        return load(configId, model, params, workspaceRoot == null ? null : Path.of(workspaceRoot));
+    }
+
+    public static DeepAgent load(String configId,
+                                 Object model,
+                                 Map<String, Object> params,
+                                 Path workspaceRoot) {
         HarnessConfigInfo info = get(configId);
         if (info == null) {
-            throw new IllegalArgumentException("HarnessConfig not found or disabled: " + configId);
+            List<String> installed = discover().stream().map(HarnessConfigInfo::getId).toList();
+            throw new NoSuchElementException(
+                    "HarnessConfig '" + configId + "' not found or is disabled. Installed: " + installed
+            );
         }
-        Path configPath = info.getConfigPath();
-        if (configPath == null) {
-            throw new IllegalArgumentException("HarnessConfig has no config_path: " + configId);
+        if (info.getConfigPath() == null) {
+            throw new IllegalArgumentException(
+                    "HarnessConfig '" + configId + "' has no configPath. "
+                            + "Ensure the provider returns a valid Path."
+            );
         }
-        Path normalized = configPath.toAbsolutePath().normalize();
-        FileTime modifiedAt = lastModifiedTime(normalized);
-        DeepAgent agent = HarnessConfigBuilder.build(HarnessConfigLoader.load(normalized));
-        LOADED.put(configId, new LoadedConfig(normalized, modifiedAt, agent));
+
+        ResolvedHarnessConfig resolved = HarnessConfigLoader.load(info.getConfigPath(), params, workspaceRoot);
+        DeepAgentConfig agentConfig = HarnessConfigBuilder.build(resolved, model, workspaceRoot);
+        AgentCard card = new AgentCard(
+                info.getId(),
+                info.getName(),
+                resolved.getConfig() == null ? info.getName() : resolved.getConfig().getDescription()
+        );
+        DeepAgent agent = new DeepAgent(card);
+        agent.configure(agentConfig);
         return agent;
     }
 
-    /**
-     * reloadIfChanged.
-     * @param configId configId
-     * @return the result
-     * @since 0.1.7
-     */
-    public static ReloadResult reloadIfChanged(String configId) {
-        HarnessConfigInfo info = get(configId);
-        if (info == null) {
-            throw new IllegalArgumentException("HarnessConfig not found or disabled: " + configId);
+    public static synchronized void disable(String configId) {
+        if (configId != null) {
+            DISABLED.add(configId);
         }
-        Path configPath = info.getConfigPath();
-        if (configPath == null) {
-            throw new IllegalArgumentException("HarnessConfig has no config_path: " + configId);
+    }
+
+    public static synchronized void enable(String configId) {
+        if (configId != null) {
+            DISABLED.remove(configId);
         }
-        Path normalized = configPath.toAbsolutePath().normalize();
-        FileTime modifiedAt = lastModifiedTime(normalized);
-        LoadedConfig loaded = LOADED.get(configId);
-        if (loaded != null && normalized.equals(loaded.configPath()) && modifiedAt.equals(loaded.modifiedAt())) {
-            return new ReloadResult(false, loaded.agent());
+    }
+
+    public static synchronized List<HarnessConfigInfo> inspect(String packageName) {
+        if (cache == null) {
+            cache = scanEntryPoints();
         }
-        DeepAgent agent = HarnessConfigBuilder.build(HarnessConfigLoader.load(normalized));
-        LOADED.put(configId, new LoadedConfig(normalized, modifiedAt, agent));
-        return new ReloadResult(true, agent);
+        return cache.stream()
+                .filter(info -> Objects.equals(info.getPackageName(), packageName))
+                .toList();
     }
 
-    /**
-     * getLoaded.
-     * @param configId configId
-     * @return the result
-     * @since 0.1.7
-     */
-    public static DeepAgent getLoaded(String configId) {
-        LoadedConfig loaded = LOADED.get(configId);
-        return loaded != null ? loaded.agent() : null;
-    }
-
-    /**
-     * disable.
-     * @param configId configId
-     * @since 0.1.7
-     */
-    public static void disable(String configId) {
-        DISABLED.add(configId);
-        LOADED.remove(configId);
-    }
-
-    /**
-     * enable.
-     * @param configId configId
-     * @since 0.1.7
-     */
-    public static void enable(String configId) {
-        DISABLED.remove(configId);
-    }
-
-    /**
-     * inspect.
-     * @param packageName packageName
-     * @return the result
-     * @since 0.1.7
-     */
-    public static List<HarnessConfigInfo> inspect(String packageName) {
-        return scan().stream().filter(info -> packageName.equals(info.getPackageName())).toList();
-    }
-
-    /**
-     * invalidateCache.
-     * @since 0.1.7
-     */
-    public static void invalidateCache() {
+    public static synchronized void invalidateCache() {
         cache = null;
     }
 
-    /**
-     * clearLoaded.
-     * @param configId configId
-     * @since 0.1.7
-     */
-    public static void clearLoaded(String configId) {
-        LOADED.remove(configId);
+    static synchronized void replaceCacheForTesting(List<HarnessConfigInfo> infos) {
+        cache = infos == null ? null : new ArrayList<>(infos);
+        DISABLED.clear();
     }
 
-    /**
-     * scan.
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<HarnessConfigInfo> scan() {
-        Map<String, HarnessConfigInfo> discovered = new LinkedHashMap<>();
-        for (HarnessConfigInfo info : MANUAL.values()) {
-            discovered.put(info.getId(), normalize(info));
-        }
-        for (HarnessConfigProvider provider : ServiceLoader.load(HarnessConfigProvider.class)) {
+    static synchronized List<HarnessConfigInfo> scanEntryPoints() {
+        List<HarnessConfigInfo> results = new ArrayList<>();
+        ServiceLoader<ConfigPathProvider> loader = ServiceLoader.load(ConfigPathProvider.class);
+        for (ConfigPathProvider provider : loader) {
             try {
-                HarnessConfigInfo info = normalize(provider.describe());
-                info.setConfigPath(provider.getConfigPath());
-                discovered.put(info.getId(), info);
-            } catch (Exception ignored) {
-                // skip broken provider
+                Path configPath = provider.getConfigPath();
+                results.add(new HarnessConfigInfo(
+                        provider.id(),
+                        provider.name(),
+                        provider.version(),
+                        provider.packageName(),
+                        configPath == null ? null : configPath.toAbsolutePath().normalize()
+                ));
+            } catch (RuntimeException ignored) {
+                // Python registry ignores broken entry points during discovery.
             }
         }
-        return List.copyOf(new ArrayList<>(discovered.values()));
-    }
-
-    /**
-     * normalize.
-     * @param info info
-     * @return the result
-     * @since 0.1.7
-     */
-    private static HarnessConfigInfo normalize(HarnessConfigInfo info) {
-        if (info.getName() == null || info.getName().isBlank()) {
-            info.setName(info.getId());
-        }
-        return info;
-    }
-
-    /**
-     * lastModifiedTime.
-     * @param configPath configPath
-     * @return the result
-     * @since 0.1.7
-     */
-    private static FileTime lastModifiedTime(Path configPath) {
-        try {
-            return Files.getLastModifiedTime(configPath);
-        } catch (IOException ex) {
-            throw new UncheckedIOException("Failed to read HarnessConfig mtime: " + configPath, ex);
-        }
-    }
-
-    /**
-     * LoadedConfig.
-     * @param configPath configPath
-     * @param modifiedAt modifiedAt
-     * @param agent agent
-     * @since 0.1.7
-     */
-    private record LoadedConfig(Path configPath, FileTime modifiedAt, DeepAgent agent) {
-    }
-
-    /**
-     * Public record ReloadResult used by the Java parity implementation.
-     * @since 0.1.7
-     */
-    public record ReloadResult(boolean isReloaded, DeepAgent agent) {
-        /**
-         * reloaded.
-         * @return the result
-         * @since 0.1.7
-         */
-        public boolean reloaded() {
-            return isReloaded();
-        }
+        return results;
     }
 }

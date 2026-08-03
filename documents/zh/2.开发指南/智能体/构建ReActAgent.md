@@ -1,8 +1,7 @@
-本章节演示了如何基于openJiuwen构建一个用于天气查询的`ReActAgent`应用，该应用支持通过ReAct规划模式引导大模型生成插件调用命令，进而结合插件执行结果生成最终答案。通过示例，你将会了解到如下信息：
+﻿本章节演示了如何基于openJiuwen构建一个用于天气查询的`ReActAgent`应用，该应用支持通过ReAct规划模式引导大模型生成插件调用命令，进而结合插件执行结果生成最终答案。通过示例，你将会了解到如下信息：
 
 - 如何创建提示词。
 - 如何使用插件模块。
-- 如何配置MCP扩展插件。
 - 如何创建和执行`ReActAgent`。
 
 # 应用设计流程
@@ -11,453 +10,264 @@
 
 1. 思考：`ReActController`调用LLM进行任务规划，解析 LLM 输出里是否包含工具执行指令。
 2. 行动：根据思考中 LLM 的输出，分两种情况进行操作：
-    - 有工具执行指令：调工具，选择并调用合适的工具（如检索、数据库、第三方API、代码执行等）执行具体的操作，本用例中是调用一个根据地点查询天气的工具；
+    - 有工具执行指令：调工具，选择并调用合适的工具（如检索、数据库、第三方API、代码执行等）执行具体的操作，本用例中是调用一个根据时间和地点查询天气的工具；
     - 无工具执行指令：把LLM输出作为最终答案。
 3. 观察：`ReActController`把工具返回的Observation追加到对话历史，再调用LLM进行下一次任务规划。
 
 `ReActAgent`能根据工具执行结果观察与反馈，不断调整策略，优化推理路径，直至达成任务目标或获得最终答案。其强大的多轮推理与自我修正能力，使ReActAgent具备动态决策能力且能够灵活应对环境变化，适用于需要复杂推理和策略调整的多样化任务场景。
-  
-   <div align="center">
-     <img src="../../images/ReActAgent.png" alt="ReActAgent" width="70%">
-   </div>
+
+  <div align="center">
+    <img src="../images/ReActAgent.png" alt="ReActAgent" width="70%">
+  </div>
 
 # 前提条件
 
-- **Java版本**: Java 21或更高版本
-- **构建工具**: Maven 3.9+
+JDK 版本应为 JDK 17。Maven 版本建议 3.9+。
 
-使用前请检查Java版本信息：
+# 添加 Maven 依赖
 
-```bash
-java -version
-```
-
-# 安装openJiuwen
-
-通过Maven将agent-core-java添加为依赖：
+在 `pom.xml` 中添加 openJiuwen Java SDK 依赖：
 
 ```xml
 <dependency>
     <groupId>com.openjiuwen</groupId>
-    <artifactId>agent-core-java</artifactId>
-    <version>0.1.7</version>
+    <artifactId>openjiuwen-core</artifactId>
+    <version>0.1.14</version>
 </dependency>
 ```
 
 # 创建提示词模板
 
-创建系统提示词模板，用于设定`ReActAgent`的整体行为和角色定位。以下系统提示词定义了人设、任务目标和约束限制，帮助`ReActAgent`在与用户交互时正确理解任务目标。
+创建系统提示词模板，用于设定`ReActAgent`的整体行为和角色定位。以下系统提示词不仅定义了人设、任务目标，同时提供了当前日期信息，还给定了约束限制，帮助`ReActAgent`在与用户交互时正确理解当前时间完成任务目标。示例代码如下：
 
 ```java
-private static final String SYSTEM_PROMPT = "你是一个天气查询助手。"
-        + "当用户询问天气时，必须先调用 WeatherReporter 工具获取天气信息，再基于工具结果总结回答。"
-        + "工具会返回实时天气和未来几天预报。"
-        + "每次只调用一次工具，不要重复调用。";
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+
+public class PromptHelper {
+    public static String buildCurrentDate() {
+        return LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+    }
+
+    public static List<Map<String, String>> createPromptTemplate() {
+        String systemPrompt = "你是一个AI助手，在适当的时候调用合适的工具，帮助我完成任务！\n"  // 人设&任务目标
+                + "今天的日期为：" + buildCurrentDate() + "\n"                       // 当前日期
+                + "注意：1. 如果用户请求中未指定具体时间，则默认为今天。";                // 约束限制
+        return List.of(Map.of("role", "system", "content", systemPrompt));
+    }
+}
 ```
 
 # 创建插件对象及其描述信息
 
-本示例创建了天气查询插件，并定义了其输入参数的结构和要求。首先通过`RestfulApi`接口将天气查询服务封装成可以被框架使用的工具类。
+本示例创建了天气查询插件，并定义了其输入参数的结构和要求。首先通过`RestfulApi`接口将天气查询服务封装成可以被框架使用的工具类。示例代码如下：
 
 > **注意**
-> 本地测试请求服务（http 开头），可以通过配置相关的环境变量关闭SSL校验。但禁用SSL会跳过证书验证，可能遭遇数据篡改、中间人攻击，导致敏感信息泄露，仅允许测试环境临时使用，生产环境务必启用SSL校验保障安全。
+> 本地测试请求服务（http 开头），可以通过配置相关的系统属性关闭SSL校验。但禁用SSL会跳过证书验证，可能遭遇数据篡改、中间人攻击，导致敏感信息泄露，仅允许测试环境临时使用，生产环境务必启用SSL校验保障安全。
 
 ```java
-import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;
-import java.util.Map;
 
-private static Tool createWeatherTool(String weatherUrl) {
-    RestfulApiCard card = RestfulApiCard.builder()
-            .id("weather_tool")
-            .name("WeatherReporter")
-            .description("天气查询插件，输入 city 获取实时天气和未来几天预报；city 可传中文或英文城市名")
-            .url(weatherUrl)
-            .method("GET")
-            .timeout(10.0)
-            .queries(Map.of(
-                "lang", "zh",
-                "forecast", true
-            ))
-            .inputParams(Map.of(
-                "type", "object",
-                "properties", Map.of(
-                    "city", Map.of(
-                        "type", "string",
-                        "description", "城市名称，支持中文（北京）和英文（Tokyo）",
-                        "location", "query"
-                    )
-                )
-            ))
-            .build();
+System.setProperty("SSRF_PROTECT_ENABLED", "false");  // 关闭IP校验仅用于本地调试，生产环境请务必打开
+System.setProperty("RESTFUL_SSL_VERIFY", "false");    // 关闭SSL校验仅用于本地调试，生产环境请务必打开
 
-    return new RestfulApi(card);
+public class ToolFactory {
+    public static RestfulApi createTool() {
+        RestfulApiCard weatherCard = new RestfulApiCard();
+        weatherCard.setName("WeatherReporter");
+        weatherCard.setDescription("天气查询插件");
+        weatherCard.setUrl("your weather search api url");  // 天气查询服务部署地址
+        weatherCard.setMethod("GET");
+        weatherCard.setHeaders(Map.of());
+        weatherCard.setInputParams(Map.of(
+            "type", "object",
+            "properties", Map.of(
+                "location", Map.of("type", "string", "description", "天气查询的地点，必须为英文"),
+                "date", Map.of("type", "string", "description", "天气查询的时间，格式为YYYY-MM-DD")
+            ),
+            "required", List.of("location", "date")
+        ));
+        return new RestfulApi(weatherCard);
+    }
 }
 ```
-
-## 配置MCP扩展插件
-
-openJiuwen支持创建集成MCP（Model Context Protocol）扩展协议的插件。本示例提供了一个基于SSE协议的天气查询MCP插件的配置。
-
-```java
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-
-private static McpServerConfig createMcpConfig() {
-    return McpServerConfig.builder()
-            .serverId("query_weather_mcp")
-            .serverName("query_weather")
-            .serverPath("http://127.0.0.1:8188/sse")
-            .clientType("sse")
-            .params(Map.of(
-                "type", "object",
-                "title", "query_weatherArguments",
-                "properties", Map.of(
-                    "location", Map.of(
-                        "title", "Location",
-                        "type", "string"
-                    )
-                ),
-                "required", List.of("location")
-            ))
-            .build();
-}
-```
-
-MCP服务器配置完成后，需要通过`Runner.resourceMgr()`注册：
-
-```java
-// 注册MCP服务器
-Runner.resourceMgr().addMcpServer(mcpConfig, AGENT_ID, 600000.0);
-
-// 将MCP工具卡片添加到Agent的能力管理器
-agent.getAbilityManager().add(mcpToolCard);
-
-// 使用完成后清理
-Runner.resourceMgr().removeMcpServer(mcpConfig.getServerId(), null, null, true);
-```
-
-> **安全提示**
-> 生产环境务必启用SSL校验和SSRF保护：
-> - 设置环境变量 `RESTFUL_SSL_VERIFY=true`
-> - 设置环境变量 `SSRF_PROTECT_ENABLED=true`
 
 # 创建ReActAgent
 
-首先使用`AgentCard`定义Agent的身份信息，然后使用`ReActAgentConfig`配置Agent的行为参数：
+在创建Agent之前，需要准备好`ModelRequestConfig`和`ModelClientConfig`配置。然后使用`Runner`和`AgentCard`初始化`ReActAgent`，启动`Runner`后可执行同步或流式调用。示例代码如下：
+
+```java
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+
+// 准备模型配置
+ModelClientConfig clientConfig = new ModelClientConfig();
+clientConfig.setClientProvider(MODEL_PROVIDER);
+clientConfig.setApiKey(API_KEY);
+clientConfig.setApiBase(API_BASE);
+clientConfig.setTimeout(30);
+
+ModelRequestConfig requestConfig = new ModelRequestConfig();
+requestConfig.setModelName(MODEL_NAME);
+requestConfig.setTemperature(0.8);
+requestConfig.setTopP(0.9);
+
+// 创建ReActAgent配置
+ReActAgentConfig reactConfig = new ReActAgentConfig();
+reactConfig.setModelConfigObj(requestConfig);
+reactConfig.setModelClientConfig(clientConfig);
+reactConfig.setPromptTemplate(PromptHelper.createPromptTemplate());
+
+// 创建Agent卡片
+AgentCard agentCard = new AgentCard();
+agentCard.setId("react_agent_123");
+agentCard.setDescription("AI助手");
+
+// 构建并配置ReActAgent
+ReActAgent reactAgent = new ReActAgent(agentCard).configure(reactConfig);
+
+// 注册工具
+RestfulApi tool = ToolFactory.createTool();
+Runner.resourceMgr().addTool(tool);
+reactAgent.getAbilityManager().add(tool.getCard());
+
+// 启动Runner并执行
+Runner.start();
+Object result = reactAgent.invoke(
+        Map.of("query", "查询杭州的天气"),
+        (Session) null
+).toCompletableFuture().join();
+System.out.println("ReActAgent 最终输出结果：" + result);
+```
+
+# 动态模型请求头
+
+如果同一个 `ReActAgent` 需要按当前用户、租户或会话获取模型凭证，可以注册 `ModelRequestHeadersRail`。Provider 接收本次模型调用的 `AgentCallbackContext`，并统一返回 `CompletionStage<Map<String, String>>`；实现方可以同步完成，也可以真正异步解析凭证。
+
+`ReActAgent` 会把调用输入中非空的 `run_context` 对象原样放入 `AgentCallbackContext.extra["run_context"]`。下面使用 SDK 的 `RunContext` 类型，并把本次调用的 token 放入其 `extra` Map；Provider 从当前 callback context 解析该值，不依赖全局可变状态：
+
+```java
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersProvider;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
+import com.openjiuwen.core.singleagent.rail.RunContext;
+
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+ModelRequestHeadersProvider provider = context -> {
+    Object rawRunContext = context.getExtra().get("run_context");
+    if (!(rawRunContext instanceof RunContext runContext)) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("run context is unavailable"));
+    }
+    Object rawToken = runContext.getExtra().get("model_access_token");
+    if (!(rawToken instanceof String token) || token.isBlank()) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("model access token is unavailable"));
+    }
+    return CompletableFuture.completedFuture(Map.of(
+            "Authorization", "Bearer " + token,
+            "X-Tenant-Id", "tenant-a"
+    ));
+};
+
+ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(provider);
+reactAgent.registerRail(headersRail).toCompletableFuture().join();
+```
+
+调用方按下面的输入结构提供 token。`run_context` 的值是 `RunContext`，业务字段放在其 `extra` 中；`query` 和 `run_context` 一起传给同一次 `invoke`：
+
+```java
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.rail.RunContext;
+
+import java.util.Map;
+import java.util.Objects;
+
+String requestToken = Objects.requireNonNull(
+        System.getenv("OPENJIUWEN_REQUEST_TOKEN"),
+        "OPENJIUWEN_REQUEST_TOKEN is required");
+
+RunContext runContext = new RunContext();
+runContext.setExtra(Map.of("model_access_token", requestToken));
+
+Map<String, Object> invokeInput = Map.of(
+        "query", "查询杭州的天气",
+        "run_context", runContext
+);
+
+Object resultWithDynamicHeaders = reactAgent.invoke(
+        invokeInput,
+        (Session) null
+).toCompletableFuture().join();
+```
+
+`Authorization` 的 value 是完整请求头值。上例显式拼出 `Bearer `；SDK 不会自动添加该前缀，也可以按网关要求返回 `Basic ...` 或自定义认证方案。
+
+凭证来自远程服务时，可以注入应用自己的异步服务。Provider 原样返回异步链，SDK 会在进入模型调用前等待它完成：
 
 ```java
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import java.util.List;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersProvider;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
+
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
-private static ReActAgent createAgent() {
-    // 创建Agent身份卡片
-    AgentCard agentCard = AgentCard.builder()
-            .id("react_agent_java_example")
-            .name("react_agent_java_example")
-            .description("天气查询助手")
-            .build();
+public final class DynamicHeadersRegistration {
+    private final TokenService tokenService;
 
-    // 创建ReActAgent实例
-    ReActAgent agent = new ReActAgent(agentCard);
-    
-    // 配置Agent
-    ReActAgentConfig config = ReActAgentConfig.builder()
-            .promptTemplate(List.of(Map.of("role", "system", "content", SYSTEM_PROMPT)))
-            .maxIterations(3)
-            .build()
-            .configureModelClient(
-                    "your-model-provider",    // 模型提供商
-                    "your-api-key",           // API密钥
-                    "your-api-base",          // API基础URL
-                    "your-model-name",        // 模型名称
-                    true                      // SSL校验
-            );
+    public DynamicHeadersRegistration(TokenService tokenService) {
+        this.tokenService = tokenService;
+    }
 
-    // 配置模型请求参数
-    ModelRequestConfig requestConfig = config.getModelConfigObj();
-    requestConfig.setTemperature(0.6);
-    requestConfig.setTopP(0.8);
-    requestConfig.setMaxTokens(256);
+    public void register(ReActAgent agent) {
+        ModelRequestHeadersProvider provider = context -> tokenService.resolve(context)
+                .thenApply(token -> {
+                    if (token == null || token.isBlank()) {
+                        throw new IllegalStateException("model access token is unavailable");
+                    }
+                    return Map.of("Authorization", "Bearer " + token);
+                });
+        agent.registerRail(new ModelRequestHeadersRail(provider))
+                .toCompletableFuture()
+                .join();
+    }
 
-    agent.configure(config);
-    return agent;
-}
-```
-
-## 注册工具到Agent
-
-创建并注册天气查询工具到Agent：
-
-```java
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
-
-private static final String AGENT_ID = "react_agent_java_example";
-
-private static void registerTool(ReActAgent agent, Tool tool) {
-    // 移除已存在的同名工具
-    Runner.resourceMgr().removeTool(tool.getCard().getId(), AGENT_ID, TagMatchStrategy.ALL, true);
-    // 添加工具到资源管理器
-    Runner.resourceMgr().addTool(tool, AGENT_ID);
-    // 将工具添加到Agent的能力管理器
-    agent.getAbilityManager().add(tool.getCard());
-}
-```
-
-# 运行ReActAgent
-
-创建完`ReActAgent`对象后，可以调用`Runner.runAgent`方法执行Agent：
-
-```java
-import com.openjiuwen.core.runner.Runner;
-import java.util.Map;
-
-public static void main(String[] args) throws Exception {
-    Tool weatherTool = null;
-
-    try {
-        // 创建Agent和工具
-        ReActAgent agent = createAgent();
-        weatherTool = createWeatherTool("https://uapis.cn/api/v1/misc/weather");
-        registerTool(agent, weatherTool);
-
-        // 执行查询
-        String query = "查询北京明天天气，并给出简短建议";
-        Map<String, Object> result = (Map<String, Object>) Runner.runAgent(
-                agent,
-                Map.of(
-                        "query", query,
-                        "conversation_id", "react_agent_example_001"
-                ),
-                null,
-                null
-        );
-
-        System.out.println("Agent result:");
-        System.out.println(result);
-    } finally {
-        // 清理资源
-        if (weatherTool != null) {
-            Runner.resourceMgr().removeTool(weatherTool.getCard().getId(), AGENT_ID, TagMatchStrategy.ALL, true);
-        }
-        Runner.release("react_agent_example_001");
-        Runner.stop();
+    public interface TokenService {
+        CompletionStage<String> resolve(AgentCallbackContext context);
     }
 }
 ```
 
-## 执行结果
+运行时与安全规则如下：
 
-查询成功后，会得到如下的结果：
+- 构造 Rail 时 Provider 为 `null` 会立即抛出 `NullPointerException`；Provider 返回 `null` stage、同步抛出异常、stage 异常完成、返回 `null` / 空 Map，或者返回空白 `Authorization`，都会通过 `AbortError` 终止本次模型调用（fail-closed），不会自动使用静态 `apiKey`。如需备用凭证，Provider 必须自行解析并显式返回备用 `Authorization`。
+- 多个 Rail 的不同 header 会合并；同名 header 按大小写不敏感方式匹配，由后执行的 Rail 覆盖。Rail 按 priority 数值从大到小执行；相同 priority 时按注册顺序执行，先注册的先执行。因此需要覆盖前值的 Rail 应设置更低的 priority，或者在相同 priority 下后注册。
+- Agent 级模型重试的每个 attempt 都会重新执行 `BEFORE_MODEL_CALL` 并再次调用 Provider，便于刷新短期 token。单个 attempt 进入 OpenAI HTTP 重试后使用已复制的同一份请求头快照，不会在每次 HTTP 重试时再次调用 Provider。
+- headers 属于当前 `ModelCallInputs`，进入 `ModelInvokeOptions` 时会被消费并清空；即使后续 before-model Rail 失败、调用异常或取消，也会在 exception / after callback 之前清理，避免旧凭证跨 retry attempt 残留。不同 Agent 调用各自持有请求级 Map，不修改共享模型配置，可并发隔离。
+- 不要记录 Provider 结果或完整 headers。正式请求头不会进入序列化、模型请求体、模型参数日志、tracer 或异常文本；非法 header 会被明确拒绝，OpenAI 正式路径的非 2xx 错误也不会拼接上游响应 body。
+- 当前 OpenAI / OpenRouter 兼容客户端支持正式请求头；未实现该能力的客户端收到非空 headers 时明确失败。直接调用 `Model` 的正式与 legacy 用法、优先级和校验规则见[接入大模型](../基础功能/接入大模型.md#正式入口单次调用动态请求头)。
 
-```json
-{
-  "output": "北京明天天气晴朗，气温22-30℃，适合户外活动。建议穿着轻便透气的衣物，注意防晒。",
-  "result_type": "answer"
-}
+最终输出结果为：
+
 ```
+ReActAgent 最终输出结果：
+当前杭州的天气情况如下：
+- 天气现象：小雨
+- 实时温度：30.78℃
+- 体感温度：37.78℃
+- 空气湿度：74%
+- 风速：0.77米/秒（约2.8公里/小时）
 
-# 完整示例代码
-
-```java
-package examples.reac_agent;
-
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
-import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-import java.util.List;
-import java.util.Map;
-
-public class ReActWeatherAgentExample {
-    private static final String AGENT_ID = "react_agent_java_example";
-    private static final String SYSTEM_PROMPT = "你是一个天气查询助手。"
-            + "当用户询问天气时，必须先调用 WeatherReporter 工具获取天气信息，再基于工具结果总结回答。"
-            + "工具会返回实时天气和未来几天预报。"
-            + "每次只调用一次工具，不要重复调用。";
-
-    public static void main(String[] args) throws Exception {
-        Tool weatherTool = null;
-
-        try {
-            ReActAgent agent = createAgent();
-            weatherTool = createWeatherTool("https://uapis.cn/api/v1/misc/weather");
-            registerTool(agent, weatherTool);
-
-            String query = args.length == 0 ? "查询北京明天天气" : String.join(" ", args);
-            Map<String, Object> result = (Map<String, Object>) Runner.runAgent(
-                    agent,
-                    Map.of("query", query, "conversation_id", "react_example_001"),
-                    null, null
-            );
-
-            System.out.println("结果: " + result.get("output"));
-        } finally {
-            if (weatherTool != null) {
-                Runner.resourceMgr().removeTool(weatherTool.getCard().getId(), AGENT_ID, TagMatchStrategy.ALL, true);
-            }
-            Runner.release("react_example_001");
-            Runner.stop();
-        }
-    }
-
-    private static ReActAgent createAgent() {
-        AgentCard agentCard = AgentCard.builder()
-                .id(AGENT_ID)
-                .name(AGENT_ID)
-                .description("天气查询助手")
-                .build();
-
-        ReActAgent agent = new ReActAgent(agentCard);
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .promptTemplate(List.of(Map.of("role", "system", "content", SYSTEM_PROMPT)))
-                .maxIterations(3)
-                .build()
-                .configureModelClient("provider", "apiKey", "apiBase", "modelName", true);
-
-        ModelRequestConfig requestConfig = config.getModelConfigObj();
-        requestConfig.setTemperature(0.6);
-        requestConfig.setTopP(0.8);
-        requestConfig.setMaxTokens(256);
-
-        agent.configure(config);
-        return agent;
-    }
-
-    private static Tool createWeatherTool(String weatherUrl) {
-        RestfulApiCard card = RestfulApiCard.builder()
-                .id("weather_tool")
-                .name("WeatherReporter")
-                .description("天气查询插件，输入 city 获取实时天气")
-                .url(weatherUrl)
-                .method("GET")
-                .timeout(10.0)
-                .inputParams(Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "city", Map.of("type", "string", "description", "城市名称")
-                    )
-                ))
-                .build();
-        return new RestfulApi(card);
-    }
-
-    private static void registerTool(ReActAgent agent, Tool tool) {
-        Runner.resourceMgr().addTool(tool, AGENT_ID);
-        agent.getAbilityManager().add(tool.getCard());
-    }
-}
+建议外出时携带雨具，注意防雨防滑。需要其他天气信息可以随时告诉我哦~
 ```
-
-> **注意**: 以上代码中的API配置信息（provider, apiKey, apiBase, modelName）需要替换为您实际的大模型服务配置。
-
-# 使用MCP服务的完整示例
-
-```java
-package examples.reac_agent;
-
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-import java.util.List;
-import java.util.Map;
-
-public class ReActMcpAgentExample {
-    private static final String AGENT_ID = "react_mcp_agent_example";
-    private static final String SYSTEM_PROMPT = "你是一个天气查询助手。"
-            + "当用户询问天气时，必须先调用 query_weather 工具获取天气信息。"
-            + "每次只调用一次工具。";
-
-    public static void main(String[] args) throws Exception {
-        ReActAgent agent = createAgent();
-        McpServerConfig mcpConfig = createMcpConfig();
-
-        try {
-            // 注册MCP服务器
-            Runner.resourceMgr().addMcpServer(mcpConfig, AGENT_ID, 600000.0);
-            
-            // 获取MCP工具卡片并添加到Agent
-            // agent.getAbilityManager().add(mcpToolCard);
-
-            String query = args.length == 0 ? "北京天气怎么样" : String.join(" ", args);
-            Map<String, Object> result = (Map<String, Object>) Runner.runAgent(
-                    agent,
-                    Map.of("query", query, "conversation_id", "mcp_example_001"),
-                    null, null
-            );
-
-            System.out.println("结果: " + result);
-        } finally {
-            Runner.resourceMgr().removeMcpServer(mcpConfig.getServerId(), null, null, true);
-            Runner.release("mcp_example_001");
-            Runner.stop();
-        }
-    }
-
-    private static ReActAgent createAgent() {
-        AgentCard agentCard = AgentCard.builder()
-                .id(AGENT_ID)
-                .name(AGENT_ID)
-                .description("MCP天气查询助手")
-                .build();
-
-        ReActAgent agent = new ReActAgent(agentCard);
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .promptTemplate(List.of(Map.of("role", "system", "content", SYSTEM_PROMPT)))
-                .maxIterations(3)
-                .build()
-                .configureModelClient("provider", "apiKey", "apiBase", "modelName", true);
-
-        agent.configure(config);
-        return agent;
-    }
-
-    private static McpServerConfig createMcpConfig() {
-        return McpServerConfig.builder()
-                .serverId("query_weather_mcp")
-                .serverName("query_weather")
-                .serverPath("http://127.0.0.1:8188/sse")
-                .clientType("sse")
-                .params(Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "location", Map.of("type", "string")
-                    ),
-                    "required", List.of("location")
-                ))
-                .build();
-    }
-}
-```
-
-# 关键API说明
-
-| 类/方法 | 说明 |
-|---------|------|
-| `ReActAgent(AgentCard)` | 创建ReActAgent实例 |
-| `ReActAgentConfig.builder()` | 配置Builder，支持promptTemplate、maxIterations等 |
-| `configureModelClient(...)` | 配置大模型客户端 |
-| `Runner.runAgent(agent, inputs, session, context)` | 执行Agent，返回结果 |
-| `Runner.resourceMgr().addTool(tool, tag)` | 注册工具到资源管理器 |
-| `agent.getAbilityManager().add(card)` | 将工具卡片添加到Agent能力列表 |
-| `McpServerConfig.builder()` | MCP服务器配置Builder |
-
-# 相关资源
-
-- 示例代码: `examples/reac_agent/ReActWeatherAgentExample.java`
-- API文档: `documents/zh/2.开发指南/API文档/com.openjiuwen.core/singleagent.README.md`
-- Python版对照: `docs/zh/2.开发指南/智能体/构建ReActAgent.md`

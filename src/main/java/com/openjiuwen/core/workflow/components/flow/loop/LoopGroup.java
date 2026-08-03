@@ -4,143 +4,91 @@
 
 package com.openjiuwen.core.workflow.components.flow.loop;
 
-import com.openjiuwen.core.workflow.ComponentAbility;
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.component.ComponentAbility;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.session.BaseSession;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Public class LoopGroup used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Compatibility facade for the loop group workflow component.
+ *
+ * <p>Mirrors Python's {@code LoopGroup} in
+ * {@code openjiuwen/core/workflow/components/flow/loop.py}.</p>
  */
 public class LoopGroup extends com.openjiuwen.core.workflow.component.loop.LoopGroup {
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @param in in
-     * @param sin sin
-     * @param isWait isWait
-     * @param ab ab
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, ComponentComposable c, Object in, Object sin, Boolean isWait, List ab) {
-        super.addWorkflowComp(id, c, isWait, in, null, sin, null, conv(ab));
+
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component, Object inputsSchema) {
+        return addWorkflowComp(id, component);
+    }
+
+    public LoopGroup addWorkflowComp(String id, Object component, Object inputsSchema) {
+        return addWorkflowComp(id, wrap(component));
+    }
+
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component, Object inputsSchema,
+            Object streamInputsSchema, Boolean waitForAll, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, component);
+    }
+
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component, Object inputsSchema,
+            Object streamInputsSchema, boolean waitForAll, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, component);
+    }
+
+    public LoopGroup addWorkflowComp(String id, Object component, Object inputsSchema,
+            Object streamInputsSchema, Boolean waitForAll, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, wrap(component));
+    }
+
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component, Boolean waitForAll,
+            Object inputsSchema, Object outputsSchema, Object streamInputsSchema,
+            Object streamOutputsSchema, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, component);
+    }
+
+    public LoopGroup addWorkflowComp(String id, Object component, Boolean waitForAll,
+            Object inputsSchema, Object outputsSchema, Object streamInputsSchema,
+            Object streamOutputsSchema, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, wrap(component));
+    }
+
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component) {
+        super.addWorkflowComp(id, component);
         return this;
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @param in in
-     * @param sin sin
-     * @param isWait isWait
-     * @param ab ab
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, Object c, Object in, Object sin, Boolean isWait, List ab) {
-        return addWorkflowComp(id, wrap(c), in, sin, isWait, ab);
+    public LoopGroup addWorkflowComp(String id, Object component) {
+        return addWorkflowComp(id, wrap(component));
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @param in in
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, ComponentComposable c, Object in) {
-        super.addWorkflowComp(id, c, null, in, null, null, null, null);
+    @Override
+    public LoopGroup addStreamConnection(String sourceComponentId, String targetComponentId) {
+        super.addStreamConnection(sourceComponentId, targetComponentId);
         return this;
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @param in in
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, Object c, Object in) {
-        super.addWorkflowComp(id, wrap(c), null, in, null, null, null, null);
+    public LoopGroup start_nodes(List<String> nodes) {
+        super.startNodes(nodes);
         return this;
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, ComponentComposable c) {
-        super.addWorkflowComp(id, c, null, null, null, null, null, null);
+    public LoopGroup end_nodes(List<String> nodes) {
+        super.endNodes(nodes);
         return this;
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param id id
-     * @param c c
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String id, Object c) {
-        super.addWorkflowComp(id, wrap(c), null, null, null, null, null, null);
-        return this;
-    }
-
-    /**
-     * wrap.
-     * 
-     * @param o o
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ComponentComposable wrap(Object o) {
-        if (o instanceof ComponentComposable c) {
-            return c;
+    private static ComponentComposable wrap(Object component) {
+        if (component instanceof ComponentComposable composable) {
+            return composable;
         }
-        return new WorkflowComponent() {
+        return new WorkflowComponent<Object, Object>() {
             @Override
-            public Object invoke(Object i, com.openjiuwen.core.session.NodeSessionApi s,
-                    com.openjiuwen.core.context.ModelContext cx) {
-                return i;
+            public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+                return inputs;
             }
         };
-    }
-
-    /**
-     * conv.
-     * 
-     * @param a a
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List conv(List a) {
-        if (a == null) {
-            return List.of();
-        }
-        List r = new ArrayList();
-        for (Object x : a) {
-            if (x instanceof ComponentAbility ca) {
-                r.add(com.openjiuwen.core.workflow.component.ComponentAbility.valueOf(ca.name()));
-            }
-        }
-        return r;
     }
 }

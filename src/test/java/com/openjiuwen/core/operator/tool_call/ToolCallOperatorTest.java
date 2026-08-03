@@ -4,190 +4,173 @@
 
 package com.openjiuwen.core.operator.tool_call;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
-import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.operator.OperatorStream;
-import com.openjiuwen.core.operator.OperatorTestSupport;
+import com.openjiuwen.agent_evolving.ApplyResult;
+import com.openjiuwen.agent_evolving.UpdateValue;
 import com.openjiuwen.core.operator.TunableSpec;
 
-import org.junit.jupiter.api.DisplayName;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
- * Port of Python ToolCallOperator tests.
+ * Mirrors Python's {@code TestToolCallOperator} and {@code TestToolCallOperatorCallbacks} in
+ * {@code tests/unit_tests/core/operator/test_tool_call.py}.
+ *
+ * <p>Also validates the Java type that mirrors Python's {@code ToolCallOperator} in
+ * {@code openjiuwen/core/operator/tool_call/base.py}.</p>
  */
 class ToolCallOperatorTest {
+
     @Test
-    @DisplayName("operator id and tunables")
-    void testOperatorIdAndTunables() {
-        TestTool tool = new TestTool();
-        ToolRegistry registry = mock(ToolRegistry.class);
-        ToolCallOperator operator = new ToolCallOperator(tool);
-        ToolCallOperator custom = new ToolCallOperator(tool, "custom_tool", null, null);
-        ToolCallOperator withRegistry = new ToolCallOperator(tool, "tool_call", null, registry);
+    void operatorId() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool");
 
-        assertEquals("tool_call", operator.getOperatorId());
-        assertEquals("custom_tool", custom.getOperatorId());
-        assertFalse(operator.getTunables().containsKey("tool_description"));
+        assertEquals("test_tool", operator.getOperatorId());
+    }
 
-        Map<String, TunableSpec> tunables = withRegistry.getTunables();
+    @Test
+    void getTunablesWithoutDescriptions() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool");
+
+        assertEquals(Map.of(), operator.getTunables());
+    }
+
+    @Test
+    void getTunablesWithDescriptions() {
+        ToolCallOperator operator = new ToolCallOperator(
+                "test_tool",
+                Map.of("tool1", "Description 1", "tool2", "Description 2")
+        );
+
+        Map<String, TunableSpec> tunables = operator.getTunables();
+
         assertTrue(tunables.containsKey("tool_description"));
         assertEquals("text", tunables.get("tool_description").kind());
     }
 
     @Test
-    @DisplayName("set parameter updates registry and ignores invalid input")
-    void testSetParameter() {
-        ToolRegistry registry = mock(ToolRegistry.class);
-        ToolCallOperator operator = new ToolCallOperator(new TestTool(), "tool_call", null, registry);
+    void setParameterToolDescriptionTriggersCallback() {
+        RecordingCallback callback = new RecordingCallback();
+        ToolCallOperator operator = new ToolCallOperator("test_tool", null, callback::accept);
+        Map<String, String> descriptions = orderedDescriptions("tool1", "Updated description 1", "tool2",
+                "Updated description 2");
 
-        operator.setParameter("tool_description",
-                Map.of("tool1", "Updated description 1", "tool2", "Updated description 2"));
-        verify(registry).setToolDescription("tool1", "Updated description 1");
-        verify(registry).setToolDescription("tool2", "Updated description 2");
+        operator.setParameter("tool_description", descriptions);
 
-        assertDoesNotThrow(() -> operator.setParameter("unknown", "value"));
+        assertEquals(1, callback.count);
+        assertEquals("tool_description", callback.target);
+        assertEquals(descriptions, callback.value);
+    }
+
+    @Test
+    void setParameterUnknownTargetIgnoresUpdate() {
+        RecordingCallback callback = new RecordingCallback();
+        ToolCallOperator operator = new ToolCallOperator("test_tool", null, callback::accept);
+
+        operator.setParameter("unknown", "value");
+
+        assertEquals(0, callback.count);
+        assertEquals(Map.of(), operator.getDescriptions());
+    }
+
+    @Test
+    void setParameterInvalidValueIgnoresUpdate() {
+        RecordingCallback callback = new RecordingCallback();
+        ToolCallOperator operator = new ToolCallOperator("test_tool", null, callback::accept);
+
         operator.setParameter("tool_description", "not a dict");
-        verify(registry).setToolDescription("tool1", "Updated description 1");
-        verify(registry).setToolDescription("tool2", "Updated description 2");
 
-        ToolCallOperator noRegistry = new ToolCallOperator(new TestTool());
-        assertDoesNotThrow(() -> noRegistry.setParameter("tool_description", Map.of("tool1", "desc")));
+        assertEquals(0, callback.count);
+        assertEquals(Map.of(), operator.getDescriptions());
     }
 
     @Test
-    @DisplayName("invoke direct mode and kwargs")
-    void testInvokeBasicAndKwargs() throws Exception {
-        TestTool tool = new TestTool();
-        tool.invokeResult = Map.of("result", "success");
-        ToolCallOperator operator = new ToolCallOperator(tool);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
+    void getStateReturnsToolDescription() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool", Map.of("tool1", "Description 1"));
 
-        Object result = operator.invoke(Map.of("param", "value"), session, Map.of("extra_arg", "test"));
+        Map<String, Object> state = operator.getState();
 
-        assertEquals(Map.of("result", "success"), result);
-        assertEquals(Map.of("param", "value"), tool.lastInputs);
-        assertEquals(Map.of("extra_arg", "test"), tool.lastKwargs);
-        assertEquals(Arrays.asList("tool_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
+        assertTrue(state.containsKey("tool_description"));
+        assertEquals(Map.of("tool1", "Description 1"), state.get("tool_description"));
     }
 
     @Test
-    @DisplayName("invoke handles missing tool and router mode")
-    void testInvokeMissingToolAndRouterMode() throws Exception {
-        ToolCallOperator missing = new ToolCallOperator();
-        IllegalStateException noTool = assertThrows(IllegalStateException.class,
-                () -> missing.invoke(Map.of(), new OperatorTestSupport.TrackingSession(), Map.of()));
-        assertTrue(noTool.getMessage().contains("no tool"));
+    void loadStateRestoresToolDescription() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool");
 
-        AtomicInteger executions = new AtomicInteger();
-        ToolExecutor executor = (toolCall, session) -> {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> call = (Map<String, Object>) toolCall;
-            executions.incrementAndGet();
-            return new ToolExecutionResult(Map.of("result", "executed " + call.get("name")), null);
-        };
-        ToolCallOperator router = new ToolCallOperator(null, "tool_call", executor, null);
-        @SuppressWarnings("unchecked")
-        List<ToolExecutionResult> results =
-            (List<ToolExecutionResult>) router.invoke(
-                    Map.of("tool_calls",
-                            List.of(Map.of("name", "func1", "args", Map.of()),
-                                    Map.of("name", "func2", "args", Map.of()))),
-                    new OperatorTestSupport.TrackingSession(), Map.of());
+        operator.loadState(Map.of("tool_description", Map.of("tool1", "loaded desc")));
 
-        assertEquals(2, results.size());
-        assertEquals(2, executions.get());
-        assertEquals(Map.of("result", "executed func1"), results.get(0).result());
-        assertEquals(Map.of("result", "executed func2"), results.get(1).result());
+        assertEquals(Map.of("tool1", "loaded desc"), operator.getState().get("tool_description"));
     }
 
     @Test
-    @DisplayName("stream yields chunks and clears context")
-    void testStreamBasicAndCleanup() throws Exception {
-        TestTool tool = new TestTool();
-        tool.streamValues = List.of("chunk1", "chunk2");
-        ToolCallOperator operator = new ToolCallOperator(tool);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
+    void setParameterTriggersCallback() {
+        RecordingCallback callback = new RecordingCallback();
+        ToolCallOperator operator = new ToolCallOperator("test_tool", null, callback::accept);
 
-        List<Object> chunks = new ArrayList<>();
-        Iterator<Object> iterator = operator.stream(Map.of(), session, Map.of());
-        while (iterator.hasNext()) {
-            chunks.add(iterator.next());
-        }
+        operator.setParameter("tool_description", Map.of("tool1", "new desc"));
 
-        assertEquals(List.of("chunk1", "chunk2"), chunks);
-        assertEquals(Arrays.asList("tool_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
+        assertEquals(1, callback.count);
+        assertEquals("tool_description", callback.target);
+        assertEquals(Map.of("tool1", "new desc"), callback.value);
     }
 
     @Test
-    @DisplayName("stream close clears context on early termination")
-    void testStreamEarlyCloseClearsContext() throws Exception {
-        TestTool tool = new TestTool();
-        tool.streamValues = List.of("chunk1", "chunk2");
-        ToolCallOperator operator = new ToolCallOperator(tool);
-        OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
+    void loadStateTriggersCallback() {
+        RecordingCallback callback = new RecordingCallback();
+        ToolCallOperator operator = new ToolCallOperator("test_tool", null, callback::accept);
 
-        OperatorStream<Object> iterator = operator.stream(Map.of(), session, Map.of());
-        iterator.next();
-        iterator.close();
+        operator.loadState(Map.of("tool_description", Map.of("tool1", "loaded desc")));
 
-        assertEquals(Arrays.asList("tool_call", null), session.getOperatorHistory());
-        assertNull(session.getCurrentOperatorId());
+        assertEquals(1, callback.count);
+        assertEquals("tool_description", callback.target);
+        assertEquals(Map.of("tool1", "loaded desc"), callback.value);
     }
 
     @Test
-    @DisplayName("stream not implemented equivalent")
-    void testStreamNotImplemented() {
-        TestTool tool = new TestTool();
-        tool.streamException = new UnsupportedOperationException("tool stream not implemented");
-        ToolCallOperator operator = new ToolCallOperator(tool);
+    void applyUpdateReusesReplaceStateBehavior() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool");
 
-        assertThrows(UnsupportedOperationException.class,
-                () -> operator.stream(Map.of(), new OperatorTestSupport.TrackingSession(), Map.of()));
+        ApplyResult result = operator.applyUpdate(
+                "tool_description",
+                new UpdateValue(Map.of("tool1", "Updated description"))
+        );
+
+        assertEquals(Map.of("tool1", "Updated description"), operator.getState().get("tool_description"));
+        assertTrue(result.isApplied());
+        assertEquals(Map.of("tool1", "Updated description"), result.getValue());
     }
 
-    private static final class TestTool extends Tool {
-        private Object invokeResult = Map.of("result", "success");
-        private List<Object> streamValues = List.of();
-        private RuntimeException streamException;
-        private Map<String, Object> lastInputs;
-        private Map<String, Object> lastKwargs;
+    @Test
+    void applyUpdateReportsNoopForInvalidToolDescriptionValue() {
+        ToolCallOperator operator = new ToolCallOperator("test_tool");
 
-        private TestTool() {
-            super(ToolCard.builder().id("tool-id").name("test-tool").description("test tool").build());
-        }
+        ApplyResult result = operator.applyUpdate("tool_description", new UpdateValue("not a dict"));
 
-        @Override
-        public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-            this.lastInputs = inputs;
-            this.lastKwargs = kwargs;
-            return invokeResult;
-        }
+        assertEquals(Map.of(), operator.getState().get("tool_description"));
+        assertFalse(result.isApplied());
+    }
 
-        @Override
-        public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
-            if (streamException != null) {
-                throw streamException;
-            }
-            return streamValues.iterator();
+    private static Map<String, String> orderedDescriptions(String key1, String value1, String key2, String value2) {
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        descriptions.put(key1, value1);
+        descriptions.put(key2, value2);
+        return descriptions;
+    }
+
+    private static final class RecordingCallback {
+        private int count;
+        private String target;
+        private Object value;
+
+        private void accept(String target, Object value) {
+            this.count++;
+            this.target = target;
+            this.value = value;
         }
     }
 }

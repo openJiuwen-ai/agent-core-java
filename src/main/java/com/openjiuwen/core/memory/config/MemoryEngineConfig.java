@@ -4,92 +4,181 @@
 
 package com.openjiuwen.core.memory.config;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.CryptUtils;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.memory.common.MemoryCrypto;
 
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.util.Arrays;
 
 /**
  * Memory engine configuration.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code MemoryEngineConfig} in
+ * {@code openjiuwen/core/memory/config/config.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class MemoryEngineConfig {
+
     @JsonProperty("default_model_cfg")
     private ModelRequestConfig defaultModelCfg;
 
     @JsonProperty("default_model_client_cfg")
     private ModelClientConfig defaultModelClientCfg;
 
-    @Builder.Default
-    @JsonProperty("input_msg_max_len")
-    private int inputMsgMaxLen = 8192;
-
-    @Builder.Default
-    @JsonProperty("crypto_key")
-    private byte[] cryptoKey = new byte[0];
-
-    @Builder.Default
     @JsonProperty("forbidden_variables")
     private String forbiddenVariables = "";
 
-    @Builder.Default
+    @JsonProperty("input_msg_max_len")
+    private int inputMsgMaxLen = 8192;
+
+    @JsonProperty("crypto_key")
+    private byte[] cryptoKey = new byte[0];
+
     @JsonProperty("single_turn_history_summary_max_token")
     private int singleTurnHistorySummaryMaxToken = 128;
 
-    /**
-     * MemoryEngineConfig.
-     * 
-     * @param defaultModelCfg defaultModelCfg
-     * @param defaultModelClientCfg defaultModelClientCfg
-     * @param inputMsgMaxLen inputMsgMaxLen
-     * @param cryptoKey cryptoKey
-     * @param forbiddenVariables forbiddenVariables
-     * @param singleTurnHistorySummaryMaxToken singleTurnHistorySummaryMaxToken
-     * @since 0.1.7
-     */
-    public MemoryEngineConfig(ModelRequestConfig defaultModelCfg, ModelClientConfig defaultModelClientCfg,
-            int inputMsgMaxLen, byte[] cryptoKey, String forbiddenVariables, int singleTurnHistorySummaryMaxToken) {
+    public MemoryEngineConfig() {
+    }
+
+    public MemoryEngineConfig(
+            ModelRequestConfig defaultModelCfg,
+            ModelClientConfig defaultModelClientCfg,
+            String forbiddenVariables,
+            int inputMsgMaxLen,
+            byte[] cryptoKey,
+            int singleTurnHistorySummaryMaxToken) {
         this.defaultModelCfg = defaultModelCfg;
         this.defaultModelClientCfg = defaultModelClientCfg;
+        setForbiddenVariables(forbiddenVariables);
         this.inputMsgMaxLen = inputMsgMaxLen;
-        this.forbiddenVariables = forbiddenVariables != null ? forbiddenVariables : "";
+        setCryptoKey(cryptoKey);
+        setSingleTurnHistorySummaryMaxToken(singleTurnHistorySummaryMaxToken);
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public ModelRequestConfig getDefaultModelCfg() {
+        return defaultModelCfg;
+    }
+
+    public void setDefaultModelCfg(ModelRequestConfig defaultModelCfg) {
+        this.defaultModelCfg = defaultModelCfg;
+    }
+
+    public ModelClientConfig getDefaultModelClientCfg() {
+        return defaultModelClientCfg;
+    }
+
+    public void setDefaultModelClientCfg(ModelClientConfig defaultModelClientCfg) {
+        this.defaultModelClientCfg = defaultModelClientCfg;
+    }
+
+    public String getForbiddenVariables() {
+        return forbiddenVariables;
+    }
+
+    public void setForbiddenVariables(String forbiddenVariables) {
+        this.forbiddenVariables = forbiddenVariables == null ? "" : forbiddenVariables;
+    }
+
+    public int getInputMsgMaxLen() {
+        return inputMsgMaxLen;
+    }
+
+    public void setInputMsgMaxLen(int inputMsgMaxLen) {
+        this.inputMsgMaxLen = inputMsgMaxLen;
+    }
+
+    public byte[] getCryptoKey() {
+        return cryptoKey == null ? new byte[0] : Arrays.copyOf(cryptoKey, cryptoKey.length);
+    }
+
+    public void setCryptoKey(byte[] cryptoKey) {
+        byte[] nextKey = cryptoKey == null ? new byte[0] : Arrays.copyOf(cryptoKey, cryptoKey.length);
+        if (nextKey.length != 0 && nextKey.length != CryptUtils.AES_KEY_LENGTH) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
+                    "config_type", "crypto_key",
+                    "error_msg", "crypto_key must be empty or " + CryptUtils.AES_KEY_LENGTH + " bytes length"
+            );
+        }
+        this.cryptoKey = nextKey;
+    }
+
+    public int getSingleTurnHistorySummaryMaxToken() {
+        return singleTurnHistorySummaryMaxToken;
+    }
+
+    public void setSingleTurnHistorySummaryMaxToken(int singleTurnHistorySummaryMaxToken) {
+        if (singleTurnHistorySummaryMaxToken <= 0) {
+            throw new IllegalArgumentException("single_turn_history_summary_max_token must be greater than 0");
+        }
         this.singleTurnHistorySummaryMaxToken = singleTurnHistorySummaryMaxToken;
+    }
+
+    /**
+     * Explicit validator retained for compatibility with earlier translated call sites.
+     */
+    public void validateCryptoKey() {
         setCryptoKey(cryptoKey);
     }
 
-    /**
-     * setCryptoKey.
-     * 
-     * @param cryptoKey cryptoKey
-     * @since 0.1.7
-     */
-    public void setCryptoKey(byte[] cryptoKey) {
-        this.cryptoKey = cryptoKey != null ? cryptoKey : new byte[0];
-        validateCryptoKey();
-    }
+    public static final class Builder {
+        private ModelRequestConfig defaultModelCfg;
+        private ModelClientConfig defaultModelClientCfg;
+        private String forbiddenVariables = "";
+        private int inputMsgMaxLen = 8192;
+        private byte[] cryptoKey = new byte[0];
+        private int singleTurnHistorySummaryMaxToken = 128;
 
-    /**
-     * Validate crypto key: must be empty or exactly 32 bytes.
-     * 
-     * @since 0.1.7
-     */
-    public void validateCryptoKey() {
-        if (cryptoKey == null || cryptoKey.length == 0) {
-            return;
+        private Builder() {
         }
-        if (cryptoKey.length != MemoryCrypto.AES_KEY_LENGTH) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR, "config_type", "crypto_key",
-                    "error_msg", "crypto_key must be empty or " + MemoryCrypto.AES_KEY_LENGTH + " bytes length");
+
+        public Builder defaultModelCfg(ModelRequestConfig defaultModelCfg) {
+            this.defaultModelCfg = defaultModelCfg;
+            return this;
+        }
+
+        public Builder defaultModelClientCfg(ModelClientConfig defaultModelClientCfg) {
+            this.defaultModelClientCfg = defaultModelClientCfg;
+            return this;
+        }
+
+        public Builder forbiddenVariables(String forbiddenVariables) {
+            this.forbiddenVariables = forbiddenVariables;
+            return this;
+        }
+
+        public Builder inputMsgMaxLen(int inputMsgMaxLen) {
+            this.inputMsgMaxLen = inputMsgMaxLen;
+            return this;
+        }
+
+        public Builder cryptoKey(byte[] cryptoKey) {
+            this.cryptoKey = cryptoKey == null ? new byte[0] : Arrays.copyOf(cryptoKey, cryptoKey.length);
+            return this;
+        }
+
+        public Builder singleTurnHistorySummaryMaxToken(int singleTurnHistorySummaryMaxToken) {
+            this.singleTurnHistorySummaryMaxToken = singleTurnHistorySummaryMaxToken;
+            return this;
+        }
+
+        public MemoryEngineConfig build() {
+            return new MemoryEngineConfig(
+                    defaultModelCfg,
+                    defaultModelClientCfg,
+                    forbiddenVariables,
+                    inputMsgMaxLen,
+                    cryptoKey,
+                    singleTurnHistorySummaryMaxToken
+            );
         }
     }
 }

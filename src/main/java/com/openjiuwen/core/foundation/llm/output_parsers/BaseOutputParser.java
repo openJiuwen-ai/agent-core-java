@@ -5,32 +5,15 @@
 package com.openjiuwen.core.foundation.llm.output_parsers;
 
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Base class for parsing LLM output into the desired format.
- * <p>
- * Mirrors Python's {@code BaseOutputParser} ABC.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BaseOutputParser} in
+ * {@code openjiuwen/core/foundation/llm/output_parsers/output_parser.py}.
  */
 public abstract class BaseOutputParser {
-    /**
-     * parse.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public abstract Object parse(Object inputs) throws Exception;
 
-    /**
-     * streamParse.
-     * 
-     * @param streamingInputs streamingInputs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public abstract Iterator<Object> streamParse(Iterator<?> streamingInputs) throws Exception;
+    public abstract CompletableFuture<Object> parse(Object inputs);
+
+    public abstract Iterator<Object> streamParse(Iterator<?> streamingInputs);
 }

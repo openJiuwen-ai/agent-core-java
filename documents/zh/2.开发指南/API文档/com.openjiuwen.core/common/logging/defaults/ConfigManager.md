@@ -1,4 +1,4 @@
-# com.openjiuwen.core.common.logging.defaults.ConfigManager
+# com.openjiuwen.core.common.logging.ConfigManager
 
 ## 类 ConfigManager
 

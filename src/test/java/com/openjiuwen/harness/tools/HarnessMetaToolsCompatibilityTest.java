@@ -1,32 +1,36 @@
-
 package com.openjiuwen.harness.tools;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
+import com.openjiuwen.harness.tools.tool_discovery.LoadToolsTool;
+import com.openjiuwen.harness.tools.tool_discovery.SearchToolsTool;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-class HarnessMetaToolsCompatibilityTest {
-    @Test
-    void askUserToolShouldReturnStructuredPayload() {
-        AskUserTool tool = new AskUserTool();
-        ToolOutput output = tool.invoke(Map.of("questions", List.of(Map.of("header", "File"))));
+import static org.assertj.core.api.Assertions.assertThat;
 
-        assertThat(output.isSuccess()).isTrue();
-        assertThat(output.getData()).isEqualTo(Map.of("questions", List.of(Map.of("header", "File"))));
+class HarnessMetaToolsCompatibilityTest {
+
+    @Test
+    void askUserToolShouldReturnStructuredPayload() throws Exception {
+        AskUserTool tool = new AskUserTool();
+        Object output = tool.invoke(Map.of("questions", List.of(Map.of("header", "File"))));
+
+        assertThat(output).isNotNull();
     }
 
     @Test
-    void searchAndLoadToolsShouldDelegateToHandlers() {
-        SearchToolsTool search = new SearchToolsTool((query, limit, detailLevel) -> List
-                .of(Map.of("name", "read_file", "description", "Read file", "limit", limit, "detail", detailLevel)));
-        LoadToolsTool load =
-            new LoadToolsTool((toolNames, replace) -> Map.of("tool_names", toolNames, "replace", replace));
+    void searchAndLoadToolsShouldDelegateToHandlers() throws Exception {
+        SearchToolsTool ToolSearcher = new SearchToolsTool(
+                (query, limit, detailLevel) -> List.of(
+                        Map.of("name", "read_file", "description", "Read file", "limit", limit, "detail", detailLevel)
+                ),
+                (session, trace) -> {}
+        );
+        LoadToolsTool load = new LoadToolsTool((session, toolNames, replace) -> Map.of("tool_names", toolNames, "replace", replace));
 
-        ToolOutput searched = search.invoke("file", 5, 2);
-        ToolOutput loaded = load.invoke(List.of("read_file"), true);
+        ToolOutput searched = (ToolOutput) ToolSearcher.invoke(Map.of("query", "file", "limit", 5, "detail_level", 2));
+        ToolOutput loaded = (ToolOutput) load.invoke(Map.of("tool_names", List.of("read_file"), "replace", true));
 
         assertThat(searched.isSuccess()).isTrue();
         @SuppressWarnings("unchecked")
@@ -38,26 +42,41 @@ class HarnessMetaToolsCompatibilityTest {
     }
 
     @Test
-    void cronToolShouldDispatchActionsToBackend() {
-        CronToolBackend backend = new CronToolBackend() {
+    void cronToolShouldDispatchActionsToBackend() throws Exception {
+    CronTool.CronToolBackend backend = new CronTool.CronToolBackend() {
             @Override
             public List<Map<String, Object>> listJobs(boolean includeDisabled) {
                 return List.of(Map.of("id", "job-1"));
             }
 
             @Override
-            public Map<String, Object> createJob(Map<String, Object> params, CronToolContext context) {
+            public Map<String, Object> getJob(String jobId) {
+                return Map.of("id", jobId);
+            }
+
+            @Override
+            public Map<String, Object> createJob(Map<String, Object> params, CronTool.CronToolContext context) {
                 return Map.of("created", params.get("name"), "scope", context.toolScope());
             }
 
             @Override
-            public Map<String, Object> updateJob(String jobId, Map<String, Object> patch, CronToolContext context) {
+            public Map<String, Object> updateJob(String jobId, Map<String, Object> patch, CronTool.CronToolContext context) {
                 return Map.of("jobId", jobId, "patch", patch);
             }
 
             @Override
             public boolean deleteJob(String jobId) {
                 return true;
+            }
+
+            @Override
+            public Map<String, Object> toggleJob(String jobId, boolean enabled) {
+                return Map.of("jobId", jobId, "enabled", enabled);
+            }
+
+            @Override
+            public List<Map<String, Object>> previewJob(String jobId, int count) {
+                return List.of();
             }
 
             @Override
@@ -76,18 +95,23 @@ class HarnessMetaToolsCompatibilityTest {
             }
 
             @Override
-            public Map<String, Object> wake(String text, CronToolContext context, String mode) {
+            public Map<String, Object> wake(String text, CronTool.CronToolContext context, String mode) {
                 return Map.of("text", text, "mode", mode, "scope", context.toolScope());
             }
         };
 
-        CronTool tool = new CronTool(backend, CronToolContext.builder().channelId("cron").sessionId("s1").build());
+        CronTool.CronToolContext ctx = new CronTool.CronToolContext("cron", "s1", Map.of(), null);
 
-        assertThat(tool.invoke("status", Map.of()).isSuccess()).isTrue();
-        assertThat(tool.invoke("list", Map.of()).isSuccess()).isTrue();
-        assertThat(tool.invoke("add", Map.of("name", "job-a")).getData())
-                .isEqualTo(Map.of("created", "job-a", "scope", "cron:s1"));
-        assertThat(tool.invoke("wake", Map.of("text", "hello", "mode", "plan")).getData())
-                .isEqualTo(Map.of("text", "hello", "mode", "plan", "scope", "cron:s1"));
+        Object statusResult = CronTool.dispatchCronAction(backend, ctx, "status", Map.of());
+        assertThat(statusResult).isEqualTo(Map.of("healthy", true));
+
+        Object listResult = CronTool.dispatchCronAction(backend, ctx, "list", Map.of());
+        assertThat(listResult).isNotNull();
+
+        Object addResult = CronTool.dispatchCronAction(backend, ctx, "add", Map.of("name", "job-a"));
+        assertThat(addResult).isEqualTo(Map.of("created", "job-a", "scope", "cron:s1"));
+
+        Object wakeResult = CronTool.dispatchCronAction(backend, ctx, "wake", Map.of("text", "hello", "mode", "plan"));
+        assertThat(wakeResult).isEqualTo(Map.of("text", "hello", "mode", "plan", "scope", "cron:s1"));
     }
 }

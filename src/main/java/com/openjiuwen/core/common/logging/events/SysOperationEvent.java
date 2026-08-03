@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * SysOperation event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code SysOperationEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -27,22 +28,11 @@ public class SysOperationEvent extends BaseLogEvent {
     private Map<String, Object> methodResult;
     private Double methodExecTimeMs;
 
-    /**
-     * SysOperationEvent.
-     * 
-     * @since 0.1.7
-     */
     public SysOperationEvent() {
         super();
         setModuleType(ModuleType.SYS_OPERATION);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "operation_name", operationName);
@@ -54,3 +44,5 @@ public class SysOperationEvent extends BaseLogEvent {
         putIfNotNull(map, "method_exec_time_ms", methodExecTimeMs);
     }
 }
+
+

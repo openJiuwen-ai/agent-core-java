@@ -1,6 +1,6 @@
 # skills
 
-`com.openjiuwen.core.singleagent.skills` 提供技能元数据、技能注册、GitHub 远程拉取以及系统提示词拼装相关能力。
+`com.openjiuwen.core.single_agent.skills` 提供技能元数据、技能注册、GitHub 远程拉取以及系统提示词拼装相关能力。
 
 ## 类型
 

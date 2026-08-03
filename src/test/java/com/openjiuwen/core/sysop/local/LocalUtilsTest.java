@@ -1,21 +1,27 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.sysop.local;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import com.openjiuwen.core.sys_operation.local.InvokeData;
+import com.openjiuwen.core.sys_operation.local.OperationUtils;
+import com.openjiuwen.core.sys_operation.local.StreamEvent;
+import com.openjiuwen.core.sys_operation.local.StreamEventType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for local utility classes.
  */
 class LocalUtilsTest {
+
     @Nested
     @DisplayName("StreamEventType")
     class StreamEventTypeTests {
@@ -35,7 +41,7 @@ class LocalUtilsTest {
         @Test
         @DisplayName("builder creates event with correct fields")
         void testBuilder() {
-            StreamEvent event = StreamEvent.builder().type(StreamEventType.STDOUT).data("hello world").build();
+            StreamEvent event = new StreamEvent(StreamEventType.STDOUT, "hello world");
             assertEquals(StreamEventType.STDOUT, event.getType());
             assertEquals("hello world", event.getData());
             assertNotNull(event.getTimestamp());
@@ -48,7 +54,7 @@ class LocalUtilsTest {
         @Test
         @DisplayName("builder creates data with correct fields")
         void testBuilder() {
-            InvokeData data = InvokeData.builder().stdout("output").stderr("").exitCode(0).build();
+            InvokeData data = new InvokeData("output", "", 0);
             assertEquals("output", data.getStdout());
             assertEquals("", data.getStderr());
             assertEquals(0, data.getExitCode());
@@ -62,25 +68,25 @@ class LocalUtilsTest {
         @Test
         @DisplayName("createTmpFile creates and returns temp file path")
         void testCreateTmpFile() {
-            String path = OperationUtils.createTmpFile("test content", ".txt");
+            String path = OperationUtils.createTmpFile("test content", ".txt").join();
             assertNotNull(path);
             assertTrue(path.endsWith(".txt"));
             // Cleanup
-            OperationUtils.deleteTmpFile(path);
+            OperationUtils.deleteTmpFile(path).join();
         }
 
         @Test
         @DisplayName("deleteTmpFile deletes existing file")
         void testDeleteTmpFile() {
-            String path = OperationUtils.createTmpFile("to delete", ".tmp");
+            String path = OperationUtils.createTmpFile("to delete", ".tmp").join();
             assertNotNull(path);
-            assertTrue(OperationUtils.deleteTmpFile(path));
+            assertTrue(OperationUtils.deleteTmpFile(path).join());
         }
 
         @Test
         @DisplayName("deleteTmpFile returns false for non-existent file")
         void testDeleteNonExistent() {
-            assertFalse(OperationUtils.deleteTmpFile("/non/existent/file.tmp"));
+            assertFalse(OperationUtils.deleteTmpFile("/non/existent/file.tmp").join());
         }
 
         @Test

@@ -10,18 +10,23 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Data structure for chunked upload file.
- * 
- * @since 0.1.7
+ * Backward-compatible upload-file chunk payload for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code UploadFileChunkData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.UploadFileChunkData}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class UploadFileChunkData {
+
     private String localPath;
     private String targetPath;
     private int chunkSize;
     private int chunkIndex;
-    private boolean lastChunk;
+    private boolean isLastChunk;
 }

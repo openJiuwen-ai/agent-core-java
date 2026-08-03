@@ -13,7 +13,6 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.sysop.SysOperation;
-import com.openjiuwen.core.sysop.result.ReadFileResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -163,11 +162,40 @@ public class OffloadMessageBuffer {
      */
     private String readOffloadPayload(String offloadPath) throws IOException {
         if (sysOperation != null) {
-            ReadFileResult result = sysOperation.fs().readFile(offloadPath, "text", null, null, null, "utf-8", 0, null);
-            if (result.getCode() == 0 && result.getData() != null) {
-                return result.getData().getContentAsString();
+            try {
+                Object fs = sysOperation.fs();
+                java.lang.reflect.Method readFileMethod = fs.getClass().getMethod(
+                        "readFile", String.class, String.class, String.class,
+                        Integer.class, Long.class, String.class, int.class, Long.class);
+                Object result = readFileMethod.invoke(fs, offloadPath, "text", null, null, null, "utf-8", 0, null);
+                if (result != null) {
+                    java.lang.reflect.Method getCodeMethod = result.getClass().getMethod("getCode");
+                    int code = (int) getCodeMethod.invoke(result);
+                    java.lang.reflect.Method getDataMethod = result.getClass().getMethod("getData");
+                    Object data = getDataMethod.invoke(result);
+                    if (code == 0 && data != null) {
+                        java.lang.reflect.Method getContentMethod = data.getClass().getMethod("getContent");
+                        Object content = getContentMethod.invoke(data);
+                        if (content instanceof String text && !text.isBlank()) {
+                            return text;
+                        }
+                        if (content != null) {
+                            String text = String.valueOf(content);
+                            if (!text.isBlank()) {
+                                return text;
+                            }
+                        }
+                    }
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Fall back to direct file read.
             }
-            return "";
+        }
+        if (offloadPath != null) {
+            Path path = Path.of(offloadPath);
+            if (Files.isRegularFile(path)) {
+                return Files.readString(path);
+            }
         }
         return "";
     }

@@ -23,7 +23,7 @@ class LogManagerTest {
 
     @AfterEach
     void tearDown() {
-        LoggingUtils.clearSessionId();
+        LoggingUtils.setSessionId();
         LogManager.reset();
     }
 
@@ -359,7 +359,7 @@ class LogManagerTest {
         @Test
         @DisplayName("Default session ID is 'default_trace_id'")
         void testDefaultSessionId() {
-            LoggingUtils.clearSessionId();
+            LoggingUtils.setSessionId();
             assertEquals("default_trace_id", LoggingUtils.getSessionId());
         }
 
@@ -374,7 +374,7 @@ class LogManagerTest {
         @DisplayName("clearSessionId resets to default")
         void testClearSessionId() {
             LoggingUtils.setSessionId("some-id");
-            LoggingUtils.clearSessionId();
+            LoggingUtils.setSessionId();
             assertEquals("default_trace_id", LoggingUtils.getSessionId());
         }
 

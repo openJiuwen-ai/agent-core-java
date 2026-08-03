@@ -10,19 +10,19 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import java.util.Map;
 
 /**
- * Base exception for common task-manager errors.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskError} in
+ * {@code openjiuwen/core/common/task_manager/exceptions.py}.
  */
 public class TaskError extends ExecutionError {
-    /**
-     * TaskError.
-     * 
-     * @param status status
-     * @param msg msg
-     * @since 0.1.7
-     */
-    public TaskError(StatusCode status, String msg) {
-        super(status, msg, null, null, Map.of("error_msg", msg));
+    public TaskError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
+        super(status, msg, details, cause, params);
+    }
+
+    public TaskError(StatusCode status, Map<String, Object> params) {
+        super(status, params);
+    }
+
+    public TaskError(StatusCode status) {
+        super(status);
     }
 }

@@ -8,125 +8,145 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.PathChecker;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * Logging utility functions.
  * <p>
- * Uses {@link ThreadLocal} (or {@link InheritableThreadLocal}) to maintain trace/session IDs
- * across threads — the Java equivalent of Python's {@code contextvars.ContextVar}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code openjiuwen/core/common/logging/utils.py}.
+ * </p>
  */
 public final class LoggingUtils {
+
     private static final String DEFAULT_TRACE_ID = "default_trace_id";
+    private static final long DEFAULT_LOG_MAX_BYTES = 100L * 1024L * 1024L;
 
-    /**
-     * InheritableThreadLocal so that child threads (virtual-thread or platform-thread)
-     * inherit the parent's trace ID automatically.
-     * 
-     * @since 0.1.7
-     */
-    private static final InheritableThreadLocal<String> TRACE_ID_CONTEXT = new InheritableThreadLocal<>() {
-        @Override
-        protected String initialValue() {
-            return DEFAULT_TRACE_ID;
-        }
-    };
+    private static final InheritableThreadLocal<String> TRACE_ID_CONTEXT =
+            new InheritableThreadLocal<>() {
+                @Override
+                protected String initialValue() {
+                    return DEFAULT_TRACE_ID;
+                }
+            };
 
-    /**
-     * LoggingUtils.
-     * 
-     * @since 0.1.7
-     */
+    private static final InheritableThreadLocal<String> MEMBER_ID_CONTEXT =
+            new InheritableThreadLocal<>() {
+                @Override
+                protected String initialValue() {
+                    return "";
+                }
+            };
+
     private LoggingUtils() {
     }
 
-    /**
-     * Set trace / session ID in current thread context.
-     * 
-     * @param traceId traceId
-     * @since 0.1.7
-     */
+    public static void setSessionId() {
+        setSessionId(DEFAULT_TRACE_ID);
+    }
+
     public static void setSessionId(String traceId) {
-        TRACE_ID_CONTEXT.set(traceId != null ? traceId : DEFAULT_TRACE_ID);
+        TRACE_ID_CONTEXT.set(traceId == null ? DEFAULT_TRACE_ID : traceId);
     }
 
-    /**
-     * Get trace / session ID from current thread context.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static String getSessionId() {
-        String id = TRACE_ID_CONTEXT.get();
-        return id != null ? id : DEFAULT_TRACE_ID;
+        String traceId = TRACE_ID_CONTEXT.get();
+        return traceId == null ? DEFAULT_TRACE_ID : traceId;
     }
 
-    /**
-     * Clear the current thread's trace ID (useful for thread-pool cleanup).
-     * 
-     * @since 0.1.7
-     */
-    public static void clearSessionId() {
-        TRACE_ID_CONTEXT.remove();
+    public static void setMemberId(String memberId) {
+        MEMBER_ID_CONTEXT.set(memberId == null ? "" : memberId);
     }
 
-    /**
-     * Parse and validate max_bytes config value.
-     * 
-     * @param maxBytesConfig raw config value
-     * @return validated max bytes (capped at 100 MB)
-     * @since 0.1.7
-     */
+    public static String getMemberId() {
+        String memberId = MEMBER_ID_CONTEXT.get();
+        return memberId == null ? "" : memberId;
+    }
+
     public static int getLogMaxBytes(Object maxBytesConfig) {
-        int maxBytes;
+        long maxBytes;
         try {
-            maxBytes = Integer.parseInt(String.valueOf(maxBytesConfig));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid max_bytes configuration: " + maxBytesConfig, e);
+            maxBytes = Long.parseLong(String.valueOf(maxBytesConfig));
+        } catch (NumberFormatException | NullPointerException exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_LOG_CONFIG_INVALID,
+                    "error_msg",
+                    "invalid max_bytes configuration: " + maxBytesConfig + ", error: " + exception
+            );
         }
-        int defaultLogMaxBytes = 100 * 1024 * 1024; // 100 MB
-        if (maxBytes <= 0 || maxBytes > defaultLogMaxBytes) {
-            maxBytes = defaultLogMaxBytes;
+        if (maxBytes <= 0 || maxBytes > DEFAULT_LOG_MAX_BYTES) {
+            maxBytes = DEFAULT_LOG_MAX_BYTES;
         }
-        return maxBytes;
+        return Math.toIntExact(maxBytes);
     }
 
-    /**
-     * Normalize log path (resolve to real path) and validate it is not a sensitive path.
-     * <p>
-     * Mirrors Python's {@code normalize_and_validate_log_path()}.
-     * 
-     * @param pathValue the raw path value (String or Path)
-     * @return the normalized, validated real path string
-     * @since 0.1.7
-     */
     public static String normalizeAndValidateLogPath(Object pathValue) {
-        if (pathValue == null) {
-            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID, "error_msg", "the path_value is null");
+        String pathString = coercePathString(pathValue);
+        if (pathString.trim().isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg",
+                    "the path_str is " + pathString
+            );
         }
 
-        String pathStr = pathValue.toString().trim();
-        if (pathStr.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID, "error_msg", "the path_str is empty");
-        }
-
-        String realPath;
-        try {
-            Path path = Paths.get(pathStr).toRealPath();
-            realPath = path.toString();
-        } catch (IOException | IllegalArgumentException e) {
-            realPath = Paths.get(pathStr).toAbsolutePath().normalize().toString();
-        }
-
+        String realPath = normalizePath(pathString);
         if (PathChecker.isSensitivePath(realPath)) {
-            throw ErrorHelper.buildError(StatusCode.COMMON_LOG_PATH_INVALID, "error_msg",
-                    "the real_path is sensitive: " + realPath);
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg",
+                    "the real_path is " + realPath
+            );
         }
-
         return realPath;
+    }
+
+    private static String coercePathString(Object pathValue) {
+        if (pathValue instanceof String stringValue) {
+            return stringValue;
+        }
+        if (pathValue instanceof Path path) {
+            return path.toString();
+        }
+        if (pathValue instanceof File file) {
+            return file.getPath();
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.COMMON_LOG_PATH_INVALID,
+                "error_msg",
+                "the path_value is " + pathValue
+        );
+    }
+
+    private static String normalizePath(String pathString) {
+        String expanded = expandUser(pathString);
+        try {
+            return Path.of(expanded).toRealPath().toString();
+        } catch (IOException exception) {
+            try {
+                return Path.of(expanded).toAbsolutePath().normalize().toString();
+            } catch (InvalidPathException invalidPathException) {
+                throw ErrorHelper.buildError(
+                        StatusCode.COMMON_LOG_PATH_INVALID,
+                        "error_msg",
+                        "the path_str is " + pathString
+                );
+            }
+        } catch (InvalidPathException invalidPathException) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_LOG_PATH_INVALID,
+                    "error_msg",
+                    "the path_str is " + pathString
+            );
+        }
+    }
+
+    private static String expandUser(String pathString) {
+        if (pathString.startsWith("~")) {
+            return System.getProperty("user.home") + pathString.substring(1);
+        }
+        return pathString;
     }
 }

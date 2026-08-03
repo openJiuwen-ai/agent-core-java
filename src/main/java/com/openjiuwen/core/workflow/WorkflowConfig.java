@@ -4,100 +4,57 @@
 
 package com.openjiuwen.core.workflow;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Objects;
+
 /**
- * Configuration for a workflow instance.
+ * Workflow runtime configuration.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.workflow_config.WorkflowConfig}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code WorkflowConfig} in
+ * {@code openjiuwen/core/workflow/workflow_config.py}.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class WorkflowConfig {
+
     private WorkflowCard card;
-    private WorkflowSpec spec;
+
+    private WorkflowSpec spec = new WorkflowSpec();
+
+    @JsonProperty("workflow_max_nesting_depth")
     private int workflowMaxNestingDepth = 5;
 
-    /**
-     * WorkflowConfig.
-     * 
-     * @since 0.1.7
-     */
     public WorkflowConfig() {
-        this.spec = new WorkflowSpec();
     }
 
-    /**
-     * WorkflowConfig.
-     * 
-     * @param card card
-     * @since 0.1.7
-     */
     public WorkflowConfig(WorkflowCard card) {
-        this.card = card;
-        this.spec = new WorkflowSpec();
+        setCard(card);
     }
 
-    /**
-     * getCard.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public WorkflowCard getCard() {
         return card;
     }
 
-    /**
-     * setCard.
-     * 
-     * @param card card
-     * @since 0.1.7
-     */
     public void setCard(WorkflowCard card) {
-        this.card = card;
+        this.card = Objects.requireNonNull(card, "card must not be null");
     }
 
-    /**
-     * getSpec.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public WorkflowSpec getSpec() {
         return spec;
     }
 
-    /**
-     * setSpec.
-     * 
-     * @param spec spec
-     * @since 0.1.7
-     */
     public void setSpec(WorkflowSpec spec) {
         this.spec = spec;
     }
 
-    /**
-     * getWorkflowMaxNestingDepth.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int getWorkflowMaxNestingDepth() {
         return workflowMaxNestingDepth;
     }
 
-    /**
-     * setWorkflowMaxNestingDepth.
-     * 
-     * @param workflowMaxNestingDepth workflowMaxNestingDepth
-     * @since 0.1.7
-     */
     public void setWorkflowMaxNestingDepth(int workflowMaxNestingDepth) {
-        if (workflowMaxNestingDepth < 0) {
-            workflowMaxNestingDepth = 0;
-        }
-        if (workflowMaxNestingDepth > 10) {
-            workflowMaxNestingDepth = 10;
+        if (workflowMaxNestingDepth < 0 || workflowMaxNestingDepth > 10) {
+            throw new IllegalArgumentException("workflow_max_nesting_depth must be between 0 and 10");
         }
         this.workflowMaxNestingDepth = workflowMaxNestingDepth;
     }

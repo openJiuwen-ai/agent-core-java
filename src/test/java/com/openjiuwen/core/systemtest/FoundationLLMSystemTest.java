@@ -1,16 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.systemtest;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
@@ -24,6 +21,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Integration tests for the Foundation LLM module.
  * Tests real LLM invocation (invoke and stream) using remote API.
@@ -31,16 +32,27 @@ import java.util.List;
  */
 @Tag("system-test")
 class FoundationLLMSystemTest {
+
     private static Model model;
 
     @BeforeAll
     static void setUp() {
-        ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider(ApiConfigLoader.getModelProvider())
-                .apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase()).timeout(60.0).maxRetries(2)
-                .verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
+        ModelClientConfig clientConfig = ModelClientConfig.builder()
+                .clientProvider(ApiConfigLoader.getModelProvider())
+                .apiKey(ApiConfigLoader.getApiKey())
+                .apiBase(ApiConfigLoader.getApiBase())
+                .timeout(60.0)
+                .maxRetries(2)
+                .verifySsl(ApiConfigLoader.getSslVerify())
+                .sslCert(ApiConfigLoader.getSslCert())
+                .build();
 
-        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName(ApiConfigLoader.getModelName())
-                .temperature(0.7).topP(0.9).maxTokens(512).build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
+                .modelName(ApiConfigLoader.getModelName())
+                .temperature(0.7)
+                .topP(0.9)
+                .maxTokens(512)
+                .build();
 
         model = new Model(clientConfig, requestConfig);
     }
@@ -50,7 +62,11 @@ class FoundationLLMSystemTest {
     void testLlmInvoke() throws Exception {
         List<UserMessage> messages = List.of(new UserMessage("请用一句话介绍你自己。"));
 
-        AssistantMessage response = model.invoke(messages, null, null, null, null, 256, null, null, null, null);
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .maxTokens(256)
+                .build();
+        AssistantMessage response = model.invoke(
+                (List<BaseMessage>) (List<?>) messages, options).toCompletableFuture().join();
 
         assertNotNull(response, "LLM response should not be null");
         String content = response.getContentAsString();
@@ -62,11 +78,17 @@ class FoundationLLMSystemTest {
     @Test
     @DisplayName("LLM invoke with system prompt")
     void testLlmInvokeWithSystemPrompt() throws Exception {
-        List<Object> messages = new ArrayList<>();
-        messages.add(new com.openjiuwen.core.foundation.llm.schema.SystemMessage("你是一个专业的Java开发助手。"));
+        List<BaseMessage> messages = new ArrayList<>();
+        messages.add(new com.openjiuwen.core.foundation.llm.schema.SystemMessage(
+                "你是一个专业的Java开发助手。"));
         messages.add(new UserMessage("Java中如何创建线程？请简要回答。"));
 
-        AssistantMessage response = model.invoke(messages, null, 0.6f, 0.8f, null, 256, null, null, null, null);
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .temperature(0.6f)
+                .topP(0.8f)
+                .maxTokens(256)
+                .build();
+        AssistantMessage response = model.invoke(messages, options).toCompletableFuture().join();
 
         assertNotNull(response, "LLM response should not be null");
         String content = response.getContentAsString();
@@ -82,8 +104,11 @@ class FoundationLLMSystemTest {
     void testLlmStream() throws Exception {
         List<UserMessage> messages = List.of(new UserMessage("用三句话描述春天。"));
 
-        Iterator<AssistantMessageChunk> stream =
-            model.stream(messages, null, null, null, null, 256, null, null, null, null);
+        ModelInvokeOptions streamOptions = ModelInvokeOptions.builder()
+                .maxTokens(256)
+                .build();
+        Iterator<AssistantMessageChunk> stream = model.stream(
+                (List<BaseMessage>) (List<?>) messages, streamOptions);
 
         assertNotNull(stream, "Stream should not be null");
         StringBuilder fullResponse = new StringBuilder();
@@ -97,7 +122,8 @@ class FoundationLLMSystemTest {
         }
         assertTrue(chunkCount > 0, "Should receive at least one chunk");
         assertFalse(fullResponse.toString().isBlank(), "Assembled response should not be blank");
-        System.out.println("[LLM Stream] Chunks: " + chunkCount + ", Response: " + fullResponse);
+        System.out.println("[LLM Stream] Chunks: " + chunkCount
+                + ", Response: " + fullResponse);
     }
 
     @Test
@@ -105,7 +131,13 @@ class FoundationLLMSystemTest {
     void testLlmTemperatureControl() throws Exception {
         List<UserMessage> messages = List.of(new UserMessage("1+1等于几？只回答数字。"));
 
-        AssistantMessage response = model.invoke(messages, null, 0.01f, 0.1f, null, 32, null, null, null, null);
+        ModelInvokeOptions tempOptions = ModelInvokeOptions.builder()
+                .temperature(0.01f)
+                .topP(0.1f)
+                .maxTokens(32)
+                .build();
+        AssistantMessage response = model.invoke(
+                (List<BaseMessage>) (List<?>) messages, tempOptions).toCompletableFuture().join();
 
         assertNotNull(response);
         String content = response.getContentAsString();
@@ -117,16 +149,21 @@ class FoundationLLMSystemTest {
     @Test
     @DisplayName("LLM multi-turn conversation")
     void testLlmMultiTurnConversation() throws Exception {
-        List<Object> messages = new ArrayList<>();
+        List<BaseMessage> messages = new ArrayList<>();
         messages.add(new UserMessage("我的名字是小明。请记住它。"));
 
-        AssistantMessage first = model.invoke(messages, null, 0.7f, 0.9f, null, 128, null, null, null, null);
+        ModelInvokeOptions multiOptions = ModelInvokeOptions.builder()
+                .temperature(0.7f)
+                .topP(0.9f)
+                .maxTokens(128)
+                .build();
+        AssistantMessage first = model.invoke(messages, multiOptions).toCompletableFuture().join();
         assertNotNull(first);
 
         messages.add(first);
         messages.add(new UserMessage("我叫什么名字？"));
 
-        AssistantMessage second = model.invoke(messages, null, 0.7f, 0.9f, null, 128, null, null, null, null);
+        AssistantMessage second = model.invoke(messages, multiOptions).toCompletableFuture().join();
         assertNotNull(second);
         String content = second.getContentAsString();
         assertNotNull(content);

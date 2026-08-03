@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * Tool call related event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code ToolEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -27,22 +28,11 @@ public class ToolEvent extends BaseLogEvent {
     private Double executionTimeMs;
     private String toolCallId;
 
-    /**
-     * ToolEvent.
-     * 
-     * @since 0.1.7
-     */
     public ToolEvent() {
         super();
         setModuleType(ModuleType.TOOL);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "tool_name", toolName);
@@ -54,3 +44,5 @@ public class ToolEvent extends BaseLogEvent {
         putIfNotNull(map, "tool_call_id", toolCallId);
     }
 }
+
+

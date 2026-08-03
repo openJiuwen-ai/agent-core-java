@@ -5,6 +5,7 @@
 package com.openjiuwen.core.retrieval.indexing.indexer;
 
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
@@ -34,7 +35,16 @@ public final class IndexerFactory {
             throw RetrievalExceptions.validation("VectorStore is required");
         }
         if (vectorStore instanceof MilvusVectorStore milvusVectorStore) {
-            return new MilvusIndexer(milvusVectorStore);
+            VectorStoreConfig config = VectorStoreConfig.builder()
+                    .storeProvider(com.openjiuwen.core.retrieval.common.StoreType.MILVUS)
+                    .collectionName(milvusVectorStore.getCollectionName() != null
+                            ? milvusVectorStore.getCollectionName() : "default")
+                    .databaseName(milvusVectorStore.getDatabaseName() != null
+                            ? milvusVectorStore.getDatabaseName() : "")
+                    .distanceMetric(milvusVectorStore.getDistanceMetric() != null
+                            ? milvusVectorStore.getDistanceMetric() : "cosine")
+                    .build();
+            return new MilvusIndexer(config, milvusVectorStore.getMilvusUri(), milvusVectorStore.getMilvusToken());
         }
         return new InMemoryIndexer(vectorStore);
     }

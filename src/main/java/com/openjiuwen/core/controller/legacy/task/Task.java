@@ -4,10 +4,9 @@
 
 package com.openjiuwen.core.controller.legacy.task;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.constants.TaskType;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -19,173 +18,69 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Legacy task model for controller compatibility.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Task} in
+ * {@code openjiuwen/core/controller/legacy/task/task.py}.
  */
 @Data
-@Builder
 @NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Task {
+
+    @JsonProperty("agent_id")
     private String agentId;
 
-    @Builder.Default
+    @JsonProperty("task_id")
     private String taskId = "";
 
-    @Builder.Default
+    @JsonProperty("task_type")
     private TaskType taskType = TaskType.UNDEFINED;
 
     private String description;
 
-    @Builder.Default
     private TaskStatus status = TaskStatus.PENDING;
 
-    @Builder.Default
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
-    @Builder.Default
-    /**
-     * TaskInput.
-     * 
-     * @since 0.1.7
-     */
     private TaskInput input = new TaskInput();
 
     private TaskResult result;
 
-    @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<TaskDependency> dependencies = new ArrayList<>();
 
-    @Builder.Default
-    /**
-     * LinkedHashSet<>.
-     * 
-     * @since 0.1.7
-     */
     private Set<String> dependents = new LinkedHashSet<>();
 
+    @JsonProperty("parent_task_id")
     private String parentTaskId;
 
-    @Builder.Default
-    /**
-     * LinkedHashSet<>.
-     * 
-     * @since 0.1.7
-     */
+    @JsonProperty("child_task_ids")
     private Set<String> childTaskIds = new LinkedHashSet<>();
 
+    @JsonProperty("group_id")
     private String groupId;
 
-    @Builder.Default
     private int level = 0;
 
-    /**
-     * setAgentId.
-     * 
-     * @param agentId agentId
-     * @since 0.1.7
-     */
     public void setAgentId(String agentId) {
         this.agentId = agentId;
     }
 
-    /**
-     * TaskStatus.
-     * 
-     * @since 0.1.7
-     */
-    public enum TaskStatus {
-        PENDING,
-        RUNNING,
-        SUCCESS,
-        FAILED,
-        CANCELLED,
-        INTERRUPTED
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
 
-    /**
-     * DependencyType.
-     * 
-     * @since 0.1.7
-     */
-    public enum DependencyType {
-        SEQUENTIAL,
-        PARALLEL,
-        CONDITIONAL,
-        DATA
+    public void setInput(TaskInput input) {
+        this.input = input == null ? new TaskInput() : input;
     }
 
-    /**
-     * TaskDependency.
-     * 
-     * @since 0.1.7
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class TaskDependency {
-        private String dependencyId;
-        private DependencyType dependencyType = DependencyType.SEQUENTIAL;
-        private String condition;
-
-        /**
-         * LinkedHashMap<>.
-         * 
-         * @since 0.1.7
-         */
-        private Map<String, String> dataMapping = new LinkedHashMap<>();
-        private boolean required = true;
+    public void setDependencies(List<TaskDependency> dependencies) {
+        this.dependencies = dependencies == null ? new ArrayList<>() : new ArrayList<>(dependencies);
     }
 
-    /**
-     * TaskInput.
-     * 
-     * @since 0.1.7
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class TaskInput {
-        private String targetId = "";
-        private String targetName = "";
-
-        /**
-         * LinkedHashMap<>.
-         * 
-         * @since 0.1.7
-         */
-        private Object arguments = new LinkedHashMap<>();
+    public void setDependents(Set<String> dependents) {
+        this.dependents = dependents == null ? new LinkedHashSet<>() : new LinkedHashSet<>(dependents);
     }
 
-    /**
-     * TaskResult.
-     * 
-     * @since 0.1.7
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class TaskResult {
-        private TaskStatus status;
-        private Object output;
-        private String error;
-
-        /**
-         * LinkedHashMap<>.
-         * 
-         * @since 0.1.7
-         */
-        private Map<String, Object> metadata = new LinkedHashMap<>();
+    public void setChildTaskIds(Set<String> childTaskIds) {
+        this.childTaskIds = childTaskIds == null ? new LinkedHashSet<>() : new LinkedHashSet<>(childTaskIds);
     }
 }

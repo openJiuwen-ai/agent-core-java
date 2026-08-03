@@ -1,0 +1,528 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.core.application.workflow_agent;
+
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.constants.TaskType;
+import com.openjiuwen.core.controller.ControllerConfig;
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
+import com.openjiuwen.core.controller.modules.EventQueue;
+import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
+import com.openjiuwen.core.controller.modules.TaskFilter;
+import com.openjiuwen.core.controller.modules.TaskManager;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
+import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.Task;
+import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.resourcemanager.ResourceManagerBase;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowExecutionState;
+import com.openjiuwen.core.workflow.WorkflowKeys;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * Mirrors Python's workflow-agent mock tests in
+ * {@code tests/unit_tests/agent/workflow_agent/test_workflow_agent_mock.py}.
+ *
+ * <p>Mirrors Python's {@code TestWorkflowAgent.test_invoke_single} in
+ * {@code tests/unit_tests/agent/workflow_agent/test_workflow_agent.py}.</p>
+ */
+class WorkflowAgentMockPythonParityTest {
+
+    @Test
+    void testWorkflowAgentBasicExecution() {
+        WorkflowAgentConfig config = workflowConfig("simple_workflow_agent");
+        WorkflowAgent agent = new WorkflowAgent(config);
+        RecordingController controller = new RecordingController();
+        RecordingSession session = new RecordingSession("test_basic");
+        Map<String, Object> inputs = new LinkedHashMap<>(Map.of("query", "hello"));
+        agent.setController(controller);
+
+        Object result = agent.invoke(inputs, session).toCompletableFuture().join();
+
+        Map<String, Object> resultMap = map(result);
+        assertThat(resultMap).containsEntry("result_type", "answer");
+        WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+        assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+        assertThat(output.getResult()).isEqualTo(Map.of("query", "hello"));
+        assertThat(controller.invokeInputs).isSameAs(inputs);
+        assertThat(controller.invokeSession).isSameAs(session);
+    }
+
+    @Test
+    void testInvokeSingleFromWorkflowAgentPy() {
+        WorkflowAgent agent = new WorkflowAgent(workflowConfig("test_workflow_agent"));
+        SingleInvokeController controller = new SingleInvokeController();
+        RecordingSession session = new RecordingSession("test_invoke_single");
+        Map<String, Object> inputs = new LinkedHashMap<>(Map.of("query", "hi"));
+        agent.setController(controller);
+
+        Object result = agent.invoke(inputs, session).toCompletableFuture().join();
+
+        Map<String, Object> resultMap = map(result);
+        assertThat(resultMap).containsEntry("result_type", "answer");
+        WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+        assertThat(output.getResult()).isEqualTo(Map.of("result", "hi"));
+        assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+        assertThat(controller.invokeInputs).isSameAs(inputs);
+        assertThat(controller.invokeSession).isSameAs(session);
+    }
+
+    @Test
+    void testWorkflowAgentWithInterrupt() {
+        TaskManager taskManager = new TaskManager(new ControllerConfig());
+        Task task = workflowTask("task-interrupt", "test_interrupt", "location_workflow_1.0");
+        taskManager.addTask(task);
+        OutputSchema interaction = new OutputSchema(
+                Constant.INTERACTION,
+                0,
+                new InteractionOutput("questioner", Map.of("prompt", "Need location"))
+        );
+        RecordingExecutor executor = executor(taskManager, List.of(interaction));
+        RecordingSession session = new RecordingSession("test_interrupt");
+
+        List<ControllerOutputChunk> chunks = iteratorToList(executor.executeAbility("task-interrupt", session));
+
+        assertThat(session.stream).hasSize(1);
+        OutputSchema written = (OutputSchema) session.stream.get(0);
+        assertThat(written.getType()).isEqualTo(Constant.INTERACTION);
+        InteractionOutput payload = (InteractionOutput) written.getPayload();
+        assertThat(payload.getId()).isEqualTo("questioner");
+        assertThat(payload.getValue()).isEqualTo(Map.of("prompt", "Need location"));
+
+        assertThat(chunks).hasSize(1);
+        assertThat(chunks.get(0).getControllerPayload().getType())
+                .isEqualTo(EventType.TASK_INTERACTION.getValue());
+        WorkflowOutput output = workflowOutput(chunks.get(0));
+        assertThat(output.getState()).isEqualTo(WorkflowExecutionState.INPUT_REQUIRED);
+        assertThat(output.getResult()).isSameAs(written);
+
+        Map<String, Object> state = map(session.getState("workflow_controller"));
+        Map<String, Object> interrupted = map(state.get("interrupted_tasks"));
+        Map<String, Object> info = map(interrupted.get("location_workflow_1_0"));
+        assertThat(info).containsEntry("component_id", "questioner");
+        assertThat(info).containsEntry("last_interaction_value", Map.of("prompt", "Need location"));
+    }
+
+    @Test
+    void testWorkflowAgentInterruptResume() {
+        WorkflowCard workflow = workflowCard("location_workflow_resume", "地点查询");
+        WorkflowEventHandler handler = eventHandler(List.of(workflow));
+        RecordingSession session = new RecordingSession("test_resume");
+        session.updateState(Map.of("workflow_controller", interruptedState(
+                "location_workflow_resume",
+                "questioner",
+                Map.of("prompt", "Need location"),
+                Map.of(
+                        "workflow_id", "location_workflow_resume",
+                        "workflow_version", "1.0",
+                        "filtered_inputs", Map.of("query", "查询天气")
+                )
+        )));
+
+        handler.handleInput(new EventHandlerInput(jsonEvent("上海"), session));
+
+        List<Task> tasks = handler.getTaskManager().getTask(TaskFilter.bySessionId("test_resume"));
+        assertThat(tasks).hasSize(1);
+        Task resumeTask = tasks.get(0);
+        assertThat(resumeTask.getExtensions()).containsEntry("resume_mode", "resume");
+        InteractiveInput interactiveInput = (InteractiveInput) resumeTask.getExtensions().get("interactive_input");
+        assertThat(interactiveInput.getUserInputs()).containsExactlyEntriesOf(Map.of("questioner", "上海"));
+        assertThat(resumeTask.getExtensions()).containsEntry("workflow_id", "location_workflow_resume");
+    }
+
+    @Test
+    void testWorkflowAgentWorkflowTaggedWithAgentId() {
+        String workflowId = unique("tag_test_wf");
+        String agentId = unique("wf_agent_tag_test");
+        String workflowKey = WorkflowKeys.generateWorkflowKey(workflowId, "1.0");
+        WorkflowAgent agent = new WorkflowAgent(workflowConfig(agentId));
+        Workflow workflow = new Workflow(workflowCard(workflowId, "Tag Test WF"));
+
+        try {
+            agent.addWorkflows(List.of(workflow));
+
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKey, agentId)).isTrue();
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKey, ResourceManagerBase.GLOBAL)).isFalse();
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKey);
+        }
+    }
+
+    @Test
+    void testWorkflowAgentResolvesConfigWorkflowFromResourceManager() {
+        String workflowId = unique("resource_registered_wf");
+        String agentId = unique("resource_registered_agent");
+        String workflowKey = WorkflowKeys.generateWorkflowKey(workflowId, "1.0");
+        WorkflowCard card = workflowCard(workflowId, "Resource Registered WF");
+        WorkflowCard resourceCard = new WorkflowCard(workflowKey, card.getName(), card.getDescription(),
+                card.getVersion(), card.getInputParams());
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id(agentId)
+                                .version("1.0")
+                                .description("resource registered workflow agent")
+                                .workflows(List.of(com.openjiuwen.core.application.schema.WorkflowSchema.builder()
+                                        .id(workflowId)
+                                        .name(card.getName())
+                                        .version("1.0")
+                                        .description(card.getDescription())
+                                        .inputParams(map(card.getInputParams()))
+                                        .build()))
+                                .build());
+        Workflow workflow = new FixedWorkflow(card, Map.of("source", "resource-manager"));
+
+        try {
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agent.getCard().getId());
+
+            Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("resource-session"))
+                    .toCompletableFuture()
+                    .join();
+            Map<String, Object> resultMap = ((ControllerOutput) result).getDataAsMap();
+
+            assertThat(resultMap).containsEntry("result_type", "answer");
+            assertThat(resultMap.get("output")).isInstanceOf(WorkflowOutput.class);
+            WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+            assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+            assertThat(output.getResult()).isEqualTo(Map.of("source", "resource-manager"));
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKey);
+        }
+    }
+
+    @Test
+    void testWorkflowAgentRefreshesFacadeConfigWorkflowsRegisteredAfterConstruction() {
+        String workflowId = unique("late_config_wf");
+        String agentId = unique("late_config_agent");
+        String workflowKey = WorkflowKeys.generateWorkflowKey(workflowId, "1.0");
+        WorkflowCard card = workflowCard(workflowId, "Late Config WF");
+        WorkflowCard resourceCard = new WorkflowCard(workflowKey, card.getName(), card.getDescription(),
+                card.getVersion(), card.getInputParams());
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id(agentId)
+                                .version("1.0")
+                                .description("late config workflow agent")
+                                .build());
+        Workflow workflow = new FixedWorkflow(card, Map.of("source", "late-config-resource-manager"));
+
+        try {
+            agent.getAgentConfig().getWorkflows().add(
+                    com.openjiuwen.core.application.schema.WorkflowSchema.builder()
+                            .id(workflowId)
+                            .name(card.getName())
+                            .version("1.0")
+                            .description(card.getDescription())
+                            .inputParams(map(card.getInputParams()))
+                            .build());
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agent.getCard().getId());
+
+            Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("late-config-session"))
+                    .toCompletableFuture()
+                    .join();
+            Map<String, Object> resultMap = ((ControllerOutput) result).getDataAsMap();
+
+            assertThat(resultMap).containsEntry("result_type", "answer");
+            WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+            assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+            assertThat(output.getResult()).isEqualTo(Map.of("source", "late-config-resource-manager"));
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKey);
+        }
+    }
+
+    @Test
+    void testWorkflowAgentDirectInvokeFailureStillExposesMapCompatibleStage() {
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id("direct-invoke-map-stage")
+                                .version("1.0")
+                                .description("direct invoke map-compatible failure")
+                                .build());
+        agent.setController(new FailingController());
+
+        Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("failed-direct-invoke"));
+
+        assertThat(result).isInstanceOf(Map.class);
+        assertThat(result).isInstanceOf(CompletionStage.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resultMap = (Map<String, Object>) result;
+        assertThatThrownBy(() -> resultMap.get("interaction")).isInstanceOf(CompletionException.class);
+    }
+
+    @Test
+    void testTwoWorkflowAgentsIsolated() {
+        String workflowIdA = unique("wf_iso_a");
+        String workflowIdB = unique("wf_iso_b");
+        String agentIdA = unique("iso_agent_a");
+        String agentIdB = unique("iso_agent_b");
+        String workflowKeyA = WorkflowKeys.generateWorkflowKey(workflowIdA, "1.0");
+        String workflowKeyB = WorkflowKeys.generateWorkflowKey(workflowIdB, "1.0");
+        WorkflowAgent agentA = new WorkflowAgent(workflowConfig(agentIdA));
+        WorkflowAgent agentB = new WorkflowAgent(workflowConfig(agentIdB));
+
+        try {
+            agentA.addWorkflows(List.of(new Workflow(workflowCard(workflowIdA, "WF A"))));
+            agentB.addWorkflows(List.of(new Workflow(workflowCard(workflowIdB, "WF B"))));
+
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKeyA, agentIdA)).isTrue();
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKeyA, agentIdB)).isFalse();
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKeyB, agentIdB)).isTrue();
+            assertThat(Runner.resourceMgr().resourceHasTag(workflowKeyB, agentIdA)).isFalse();
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKeyA);
+            Runner.resourceMgr().removeWorkflow(workflowKeyB);
+        }
+    }
+
+    private static WorkflowAgentConfig workflowConfig(String agentId) {
+        WorkflowAgentConfig config = new WorkflowAgentConfig();
+        config.setId(agentId);
+        config.setVersion("1.0");
+        config.setDescription("workflow agent parity test");
+        config.setWorkflows(List.of());
+        return config;
+    }
+
+    private static WorkflowCard workflowCard(String id, String name) {
+        return new WorkflowCard(id, name, "Simple workflow: " + name, "1.0", Map.of(
+                "type", "object",
+                "properties", Map.of("query", Map.of("type", "string")),
+                "required", List.of("query")
+        ));
+    }
+
+    private static Task workflowTask(String taskId, String sessionId, String workflowId) {
+        Task task = new Task(sessionId, taskId, TaskType.WORKFLOW.getValue());
+        task.setStatus(TaskStatus.SUBMITTED);
+        task.setDescription("workflow");
+        task.setExtensions(new LinkedHashMap<>(Map.of(
+                "workflow_id", workflowId,
+                "workflow_version", "1.0",
+                "resume_mode", "new",
+                "filtered_inputs", Map.of("query", "查询天气")
+        )));
+        return task;
+    }
+
+    private static RecordingExecutor executor(TaskManager taskManager, List<Object> stream) {
+        ControllerConfig config = new ControllerConfig();
+        return new RecordingExecutor(new TaskExecutorDependencies(
+                config,
+                null,
+                null,
+                taskManager,
+                new EventQueue(config)
+        ), stream);
+    }
+
+    private static WorkflowEventHandler eventHandler(List<WorkflowCard> workflows) {
+        ControllerConfig config = new ControllerConfig();
+        WorkflowEventHandler handler = new WorkflowEventHandler();
+        AbilityManager abilityManager = new AbilityManager();
+        abilityManager.add(workflows);
+        handler.setConfig(config);
+        handler.setAbilityManager(abilityManager);
+        handler.setTaskManager(new TaskManager(config));
+        return handler;
+    }
+
+    private static InputEvent jsonEvent(String query) {
+        return new InputEvent(List.of(new DataFrame.JsonDataFrame(Map.of("query", query))));
+    }
+
+    private static Map<String, Object> interruptedState(
+            String stateKey,
+            String componentId,
+            Object lastInteractionValue,
+            Map<String, Object> extensions) {
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("extensions", new LinkedHashMap<>(extensions));
+
+        Map<String, Object> interruptedInfo = new LinkedHashMap<>();
+        interruptedInfo.put("task", task);
+        interruptedInfo.put("component_id", componentId);
+        interruptedInfo.put("last_interaction_value", lastInteractionValue);
+
+        Map<String, Object> interruptedTasks = new LinkedHashMap<>();
+        interruptedTasks.put(stateKey, interruptedInfo);
+
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("interrupted_tasks", interruptedTasks);
+        return state;
+    }
+
+    private static List<ControllerOutputChunk> iteratorToList(Iterator<ControllerOutputChunk> iterator) {
+        List<ControllerOutputChunk> result = new ArrayList<>();
+        while (iterator.hasNext()) {
+            result.add(iterator.next());
+        }
+        return result;
+    }
+
+    private static WorkflowOutput workflowOutput(ControllerOutputChunk chunk) {
+        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().get(0);
+        return (WorkflowOutput) frame.data().get("result");
+    }
+
+    private static String unique(String prefix) {
+        return prefix + "_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object value) {
+        assertThat(value).isInstanceOf(Map.class);
+        return (Map<String, Object>) value;
+    }
+
+    public static final class RecordingController {
+        private Map<String, Object> invokeInputs;
+        private AgentSessionApi invokeSession;
+
+        public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            invokeInputs = inputs;
+            invokeSession = session;
+            return CompletableFuture.completedFuture(new LinkedHashMap<>(Map.of(
+                    "result_type", "answer",
+                    "output", new WorkflowOutput(new LinkedHashMap<>(inputs), WorkflowExecutionState.COMPLETED)
+            )));
+        }
+    }
+
+    public static final class SingleInvokeController {
+        private Map<String, Object> invokeInputs;
+        private AgentSessionApi invokeSession;
+
+        public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            invokeInputs = inputs;
+            invokeSession = session;
+            return CompletableFuture.completedFuture(new LinkedHashMap<>(Map.of(
+                    "result_type", "answer",
+                    "output", new WorkflowOutput(
+                            Map.of("result", inputs.get("query")),
+                            WorkflowExecutionState.COMPLETED)
+            )));
+        }
+    }
+
+    public static final class FailingController {
+        public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            return CompletableFuture.failedFuture(new IllegalStateException("controller failed"));
+        }
+    }
+
+    private static final class FixedWorkflow extends Workflow {
+        private final Object result;
+
+        private FixedWorkflow(WorkflowCard card, Object result) {
+            super(card);
+            this.result = result;
+        }
+
+        @Override
+        public WorkflowOutput invoke(Object inputs, Object session, ModelContext context) {
+            return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
+        }
+    }
+
+    private static final class RecordingExecutor extends WorkflowTaskExecutor {
+        private final List<Object> stream;
+
+        private RecordingExecutor(TaskExecutorDependencies dependencies, List<Object> stream) {
+            super(dependencies);
+            this.stream = stream;
+        }
+
+        @Override
+        protected Object findWorkflow(String workflowId, AgentSessionApi session, String agentId) {
+            return new Object();
+        }
+
+        @Override
+        protected Iterator<?> runWorkflowStreaming(Object workflow, Object inputs, Object workflowSession,
+                                                   com.openjiuwen.core.context_engine.ModelContext context) {
+            return stream.iterator();
+        }
+
+        @Override
+        protected Object createWorkflowSession(AgentSessionApi session) {
+            return session;
+        }
+    }
+
+    private static final class RecordingSession implements AgentSessionApi {
+        private final String sessionId;
+        private final Map<String, Object> state = new LinkedHashMap<>();
+        private final List<Object> stream = new ArrayList<>();
+
+        private RecordingSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+            if (data == null) {
+                return;
+            }
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (entry.getValue() == null) {
+                    state.remove(entry.getKey());
+                } else {
+                    state.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            stream.add(data);
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            return stream.iterator();
+        }
+    }
+}

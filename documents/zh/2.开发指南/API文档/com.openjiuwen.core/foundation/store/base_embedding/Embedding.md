@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.store.base_embedding.Embedding
+# com.openjiuwen.core.foundation.store.Embedding
 
 ## abstract class Embedding
 

@@ -12,36 +12,19 @@ import java.util.Map;
 /**
  * Alias for {@link End} — exit point component of the workflow.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code End} in
+ * {@code openjiuwen/core/workflow/components/flow/end_comp.py}.
  */
 public class EndComponent extends End {
-    /**
-     * EndComponent.
-     * 
-     * @since 0.1.7
-     */
+
     public EndComponent() {
         super((EndConfig) null);
     }
 
-    /**
-     * EndComponent.
-     * 
-     * @param confMap confMap
-     * @since 0.1.7
-     */
     public EndComponent(Map<String, Object> confMap) {
         super(confMap);
     }
 
-    /**
-     * EndComponent.
-     * 
-     * @param conf conf
-     * @since 0.1.7
-     */
     public EndComponent(EndConfig conf) {
         super(conf);
     }

@@ -10,8 +10,9 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Backward-compatible alias for {@link LlmAgentConfig}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code LegacyReActAgentConfig} application schema in
+ * {@code openjiuwen/core/single_agent/legacy/config.py}.</p>
  */
 @SuperBuilder
 @NoArgsConstructor

@@ -4,10 +4,14 @@
 
 package com.openjiuwen.core.memory.manage.update;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Status of memory action.
- * 
- * @since 0.1.7
+ * Status of a memory action.
+ *
+ * <p>Mirrors Python's {@code MemoryStatus} in
+ * {@code openjiuwen/core/memory/manage/update/mem_update_checker.py}.</p>
  */
 public enum MemoryStatus {
     ADD("add"),
@@ -19,29 +23,18 @@ public enum MemoryStatus {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
     public String getValue() {
         return value;
     }
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonCreator
     public static MemoryStatus fromValue(String value) {
-        for (MemoryStatus ms : values()) {
-            if (ms.value.equalsIgnoreCase(value)) {
-                return ms;
+        for (MemoryStatus status : values()) {
+            if (status.value.equals(value)) {
+                return status;
             }
         }
-        return ADD;
+        throw new IllegalArgumentException("Unknown memory status: " + value);
     }
 }

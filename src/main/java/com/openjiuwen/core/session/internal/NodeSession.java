@@ -8,7 +8,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
-import com.openjiuwen.core.session.state.WorkflowStateCollection;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.workflow.WorkflowConfig;
 import com.openjiuwen.core.workflow.WorkflowSpec;
@@ -16,282 +16,150 @@ import com.openjiuwen.core.workflow.WorkflowSpec;
 import java.util.Map;
 
 /**
- * Node session representing a workflow node's scoped session.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.NodeSession}.
- * 
- * @since 0.1.7
+ * Internal node-scoped workflow session.
+ *
+ * <p>Mirrors Python's {@code NodeSession} in
+ * {@code openjiuwen/core/session/internal/workflow.py}.</p>
  */
 public class NodeSession extends BaseSession {
+
+    private final BaseSession parentSession;
     private final String nodeId;
     private final String nodeType;
-    private final String executableId;
     private final String parentId;
-    private final State stateField;
-    private final BaseSession parentSession;
+    private final String executableId;
+    private final State state;
     private final String workflowId;
-    private final int workflowNestingDepth;
     private final String mainWorkflowId;
+    private final int workflowNestingDepth;
     private final boolean skipTrace;
 
-    /**
-     * NodeSession.
-     * 
-     * @param session session
-     * @param nodeId nodeId
-     * @param nodeType nodeType
-     * @param skipTrace skipTrace
-     * @since 0.1.7
-     */
     public NodeSession(BaseSession session, String nodeId, String nodeType, boolean skipTrace) {
+        this.parentSession = session;
         this.nodeId = nodeId;
         this.nodeType = nodeType;
         this.skipTrace = skipTrace;
-
-        String pId = createParentId(session);
-        String eId = createExecutableId(nodeId, pId);
-
-        this.parentId = pId;
-        this.executableId = eId;
-        this.parentSession = session;
-
-        // Create node-scoped state from parent
-        if (session.state() instanceof com.openjiuwen.core.session.state.WorkflowStateCollection) {
-            this.stateField =
-                ((com.openjiuwen.core.session.state.WorkflowStateCollection) session.state()).createNodeState(eId, pId);
+        this.parentId = createParentId(session);
+        this.executableId = createExecutableId(nodeId, parentId);
+        if (session != null && session.state() instanceof WorkflowCommitState workflowState) {
+            this.state = workflowState.createNodeState(executableId, parentId);
         } else {
-            this.stateField = session.state();
+            this.state = session == null ? null : session.state();
         }
-
         if (session instanceof NodeSession nodeSession) {
             this.workflowId = nodeSession.workflowId();
-            this.workflowNestingDepth = nodeSession.workflowNestingDepth();
             this.mainWorkflowId = nodeSession.mainWorkflowId();
+            this.workflowNestingDepth = nodeSession.workflowNestingDepth();
         } else if (session instanceof WorkflowSession workflowSession) {
             this.workflowId = workflowSession.workflowId();
-            this.workflowNestingDepth = workflowSession.workflowNestingDepth();
             this.mainWorkflowId = workflowSession.mainWorkflowId();
+            this.workflowNestingDepth = workflowSession.workflowNestingDepth();
         } else {
-            this.workflowId = session.sessionId();
+            String id = session == null ? "" : session.sessionId();
+            this.workflowId = id;
+            this.mainWorkflowId = id;
             this.workflowNestingDepth = 0;
-            this.mainWorkflowId = session.sessionId();
         }
     }
 
-    /**
-     * NodeSession.
-     * 
-     * @param session session
-     * @param nodeId nodeId
-     * @param nodeType nodeType
-     * @since 0.1.7
-     */
     public NodeSession(BaseSession session, String nodeId, String nodeType) {
         this(session, nodeId, nodeType, false);
     }
 
-    /**
-     * NodeSession.
-     * 
-     * @param session session
-     * @param nodeId nodeId
-     * @since 0.1.7
-     */
     public NodeSession(BaseSession session, String nodeId) {
         this(session, nodeId, null, false);
     }
 
-    /**
-     * nodeId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String nodeId() {
         return nodeId;
     }
 
-    /**
-     * nodeType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String nodeType() {
         return nodeType;
     }
 
-    /**
-     * executableId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String executableId() {
-        return executableId;
-    }
-
-    /**
-     * parentId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String parentId() {
         return parentId;
     }
 
-    /**
-     * workflowId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public String executableId() {
+        return executableId;
+    }
+
     public String workflowId() {
         return workflowId;
     }
 
-    /**
-     * mainWorkflowId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String mainWorkflowId() {
         return mainWorkflowId;
     }
 
-    /**
-     * workflowNestingDepth.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int workflowNestingDepth() {
         return workflowNestingDepth;
     }
 
-    /**
-     * parent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseSession parent() {
-        return parentSession;
-    }
-
-    /**
-     * config.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Config config() {
-        return parentSession.config();
-    }
-
-    /**
-     * state.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public State state() {
-        return stateField;
-    }
-
-    /**
-     * tracer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object tracer() {
-        return parentSession.tracer();
-    }
-
-    /**
-     * streamWriterManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public StreamWriterManager streamWriterManager() {
-        return parentSession.streamWriterManager();
-    }
-
-    /**
-     * callbackManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public CallbackManager callbackManager() {
-        return parentSession.callbackManager();
-    }
-
-    /**
-     * sessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String sessionId() {
-        return parentSession.sessionId();
-    }
-
-    /**
-     * checkpointer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object checkpointer() {
-        return parentSession.checkpointer();
-    }
-
-    /**
-     * Whether this node session should skip trace operations.
-     * Mirrors Python's {@code NodeSession.skip_trace()}.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean skipTrace() {
         return skipTrace;
     }
 
-    /**
-     * Get the actor manager from the parent session.
-     * Mirrors Python's {@code NodeSession.actor_manager()}.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object actorManager() {
-        return parentSession.actorManager();
+    public BaseSession parent() {
+        return parentSession;
     }
 
-    /**
-     * nodeConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    public Config config() {
+        return parentSession == null ? super.config() : parentSession.config();
+    }
+
+    @Override
+    public State state() {
+        return state;
+    }
+
+    @Override
+    public Object tracer() {
+        return parentSession == null ? null : parentSession.tracer();
+    }
+
+    @Override
+    public StreamWriterManager streamWriterManager() {
+        if (parentSession == null) {
+            return null;
+        }
+        Object manager = parentSession.streamWriterManager();
+        if (manager instanceof StreamWriterManager typed) {
+            return typed;
+        }
+        // 兼容 WorkflowRuntimeSession：其 streamWriterManager() 返回 Vertex 适配器，
+        // 通过 rawStreamWriterManager() 获取底层原始 StreamWriterManager
+        return parentSession.rawStreamWriterManager();
+    }
+
+    @Override
+    public String sessionId() {
+        return parentSession == null ? "" : parentSession.sessionId();
+    }
+
+    @Override
+    public Object checkpointer() {
+        return parentSession == null ? null : parentSession.checkpointer();
+    }
+
+    @Override
+    public CallbackManager callbackManager() {
+        return parentSession == null ? null : parentSession.callbackManager();
+    }
+
+    @Override
+    public Object actorManager() {
+        return parentSession == null ? null : parentSession.actorManager();
+    }
+
     @SuppressWarnings("unchecked")
     public Object nodeConfig() {
         Object workflowConfig = config().getWorkflowConfig(workflowId);
-        if (workflowConfig instanceof WorkflowConfig typedConfig) {
-            WorkflowSpec spec = typedConfig.getSpec();
-            return spec != null ? spec.getCompConfigs().get(nodeId) : null;
+        if (workflowConfig instanceof WorkflowConfig typedConfig && typedConfig.getSpec() != null) {
+            return typedConfig.getSpec().getCompConfigs().get(nodeId);
         }
         if (workflowConfig instanceof Map<?, ?> configMap) {
             Object spec = configMap.get("spec");
@@ -299,9 +167,9 @@ public class NodeSession extends BaseSession {
                 return typedSpec.getCompConfigs().get(nodeId);
             }
             if (spec instanceof Map<?, ?> specMap) {
-                Object compConfigs = specMap.get("compConfigs");
+                Object compConfigs = specMap.get("comp_configs");
                 if (compConfigs == null) {
-                    compConfigs = specMap.get("comp_configs");
+                    compConfigs = specMap.get("compConfigs");
                 }
                 if (compConfigs instanceof Map<?, ?> compConfigsMap) {
                     return compConfigsMap.get(nodeId);
@@ -311,34 +179,14 @@ public class NodeSession extends BaseSession {
         return null;
     }
 
-    // ---- Static Helpers ----
-
-    /**
-     * createParentId.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     private static String createParentId(BaseSession session) {
-        if (session instanceof NodeSession) {
-            return ((NodeSession) session).executableId();
-        }
-        return "";
+        return session instanceof NodeSession nodeSession ? nodeSession.executableId() : "";
     }
 
-    /**
-     * createExecutableId.
-     * 
-     * @param nodeId nodeId
-     * @param parentId parentId
-     * @return the result
-     * @since 0.1.7
-     */
     private static String createExecutableId(String nodeId, String parentId) {
         if (parentId != null && !parentId.isEmpty()) {
             return parentId + "." + nodeId;
         }
-        return nodeId;
+        return nodeId == null ? "" : nodeId;
     }
 }

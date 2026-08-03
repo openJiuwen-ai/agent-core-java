@@ -1,12 +1,12 @@
-
 package com.openjiuwen.core.memory.manage.mem_model;
+
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import org.junit.jupiter.api.Test;
-
 class MemoryUnitTest {
+
     @Test
     void memoryTypeValuesMatchPythonPublicModel() {
         assertEquals("user_profile", MemoryType.USER_PROFILE.getValue());
@@ -20,8 +20,12 @@ class MemoryUnitTest {
 
     @Test
     void fragmentMemoryUnitKeepsCallerProvidedType() {
-        FragmentMemoryUnit unit = FragmentMemoryUnit.builder().memType(MemoryType.EPISODIC_MEMORY).memId("mem-1")
-                .content("episode").messageMemId("msg-1").timestamp("2026-05-11T10:00:00+08:00").build();
+        FragmentMemoryUnit unit = new FragmentMemoryUnit();
+        unit.setMemType(MemoryType.EPISODIC_MEMORY);
+        unit.setMemId("mem-1");
+        unit.setContent("episode");
+        unit.setMessageMemId("msg-1");
+        unit.setTimestamp("2026-05-11T10:00:00+08:00");
 
         assertEquals(MemoryType.EPISODIC_MEMORY, unit.getMemType());
         assertEquals("mem-1", unit.getMemId());
@@ -32,13 +36,15 @@ class MemoryUnitTest {
 
     @Test
     void variableAndSummaryUnitsExposePythonDefaultTypes() {
-        VariableUnit variable = VariableUnit.builder().memType(MemoryType.USER_PROFILE).memId("ignored")
-                .variableName("name").variableMem("value").build();
-        SummaryUnit summary = SummaryUnit.builder().summary("summary").build();
+        VariableUnit variable = new VariableUnit();
+        variable.setVariableName("name");
+        variable.setVariableMem("value");
+        SummaryUnit summary = new SummaryUnit();
+        summary.setSummary("summary");
 
         assertEquals(MemoryType.VARIABLE, variable.getMemType());
         assertEquals("", variable.getMemId());
         assertEquals(MemoryType.SUMMARY, summary.getMemType());
-        assertNull(summary.getMemId());
+        assertEquals("", summary.getMemId());
     }
 }

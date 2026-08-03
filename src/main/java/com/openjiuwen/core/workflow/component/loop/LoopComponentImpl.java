@@ -5,17 +5,16 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.constants.SessionConstants;
-import com.openjiuwen.core.session.interaction.WorkflowInteraction;
 import com.openjiuwen.core.workflow.HasDrawable;
-import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.component.LoopComponent;
+import com.openjiuwen.core.workflow.component.WorkflowComponent;
 import com.openjiuwen.core.workflow.component.loop.callback.IntermediateLoopVarCallback;
 import com.openjiuwen.core.workflow.component.loop.callback.OutputCallback;
 import com.openjiuwen.core.workflow.condition.AlwaysTrue;
@@ -24,238 +23,195 @@ import com.openjiuwen.core.workflow.condition.Condition;
 import com.openjiuwen.core.workflow.condition.ExpressionCondition;
 import com.openjiuwen.core.workflow.condition.FuncCondition;
 import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
+import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Full loop component implementation that creates an AdvancedLoopComponentImpl
- * based on runtime inputs (loop type, condition, etc.).
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopComponent}.
- * Implements the {@link LoopComponent} interface for Drawable compatibility.
- * 
- * @since 0.1.7
+ * Loop component implementation exposing Python's {@code loop_group} property.
+ *
+ * <p>Mirrors Python's {@code LoopComponent} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
 public class LoopComponentImpl extends WorkflowComponent implements LoopComponent {
+
     private final LoopGroup loopGroup;
-    private final Map<String, Object> outputSchema;
+    private final Map<String, ?> outputSchema;
 
-    /**
-     * LoopComponentImpl.
-     * 
-     * @param loopGroup loopGroup
-     * @param outputSchema outputSchema
-     * @since 0.1.7
-     */
-    public LoopComponentImpl(LoopGroup loopGroup, Map<String, Object> outputSchema) {
-        this.loopGroup = loopGroup;
-        this.outputSchema = outputSchema;
-        loopGroup.checkValidate();
-    }
-
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    @SuppressWarnings("unchecked")
-    public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-        try {
-            if (!(inputs instanceof Map)) {
-                String inputType = inputs == null ? "null" : inputs.getClass().getSimpleName();
-                throw new IllegalArgumentException("inputs must be a map, but got " + inputType);
-            }
-
-            Map<String, Object> inputsMap = (Map<String, Object>) inputs;
-            Object rawInputs = inputsMap.get(Constant.INPUTS_KEY);
-            if (rawInputs == null) {
-                throw new IllegalArgumentException("missing required key " + Constant.INPUTS_KEY);
-            }
-            LoopInput loopInput = LoopInput.fromMap(rawInputs instanceof Map ? (Map<String, Object>) rawInputs : null);
-
-            Condition condition;
-            String loopType = loopInput.getLoopType();
-
-            if (LoopType.ARRAY.getValue().equals(loopType)) {
-                condition = new ArrayConditionInSession(loopInput.getLoopArray());
-            } else if (LoopType.NUMBER.getValue().equals(loopType)) {
-                int maxLoopLimit = SessionConstants.LOOP_NUMBER_MAX_LIMIT_DEFAULT;
-                Object envLimit = session.getEnv(SessionConstants.LOOP_NUMBER_MAX_LIMIT_KEY);
-                if (envLimit instanceof Number) {
-                    maxLoopLimit = ((Number) envLimit).intValue();
-                }
-                Integer loopNumber = resolveLoopNumber(
-                        rawInputs instanceof Map ? (Map<String, Object>) rawInputs : null, loopInput.getLoopNumber());
-                if (loopNumber == null) {
-                    throw new IllegalArgumentException("loop_number variable not found or is None");
-                }
-                if (loopNumber > maxLoopLimit) {
-                    throw new IllegalArgumentException("loop_number exceeds maximum limit " + maxLoopLimit);
-                }
-                condition = new NumberConditionInSession(loopNumber);
-            } else if (LoopType.ALWAYS_TRUE.getValue().equals(loopType)) {
-                condition = new AlwaysTrue();
-            } else if (LoopType.EXPRESSION.getValue().equals(loopType)) {
-                Object expr = loopInput.getBoolExpression();
-                if (expr instanceof Boolean) {
-                    boolean val = (Boolean) expr;
-                    condition = new FuncCondition(() -> val);
-                } else {
-                    condition = new ExpressionCondition(String.valueOf(expr));
-                }
-            } else {
-                throw new IllegalArgumentException("invalid loop type '" + loopType + "' for LoopComponent");
-            }
-            OutputCallback outputCallback = new OutputCallback(outputSchema);
-            List<com.openjiuwen.core.workflow.component.loop.callback.LoopCallback> callbacks = new ArrayList<>();
-            callbacks.add(outputCallback);
-
-            if (loopInput.getIntermediateVar() != null && !loopInput.getIntermediateVar().isEmpty()) {
-                callbacks.add(new IntermediateLoopVarCallback(loopInput.getIntermediateVar()));
-            }
-
-            AdvancedLoopComponentImpl loopComponent =
-                new AdvancedLoopComponentImpl(loopGroup, condition, loopGroup.getBreakComponents(), callbacks);
-            BaseSession innerSession = session.getInner();
-            Map<String, Object> invokeInputs = new LinkedHashMap<>();
-            invokeInputs.put(Constant.INPUTS_KEY, Map.of());
-            invokeInputs.put(Constant.CONFIG_KEY, inputsMap.get(Constant.CONFIG_KEY));
-            return loopComponent.onInvoke(invokeInputs, innerSession);
-        } catch (RuntimeException e) {
-            if (e instanceof com.openjiuwen.core.common.exception.BaseError) {
-                throw e;
-            }
-            if (containsGraphInterrupt(e)) {
-                throw e;
-            }
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR, "comp", session.getComponentId(),
-                    "reason", e.getMessage());
+    public LoopComponentImpl(LoopGroup loopGroup, Map<String, ?> outputSchema) {
+        if (loopGroup == null) {
+            throw new IllegalArgumentException("loop_group is None");
         }
+        this.loopGroup = loopGroup;
+        this.outputSchema = outputSchema == null ? Map.of() : new LinkedHashMap<>(outputSchema);
+        this.loopGroup.checkValidate();
     }
 
-    /**
-     * graphInvoker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    public HasDrawable getLoopGroup() {
+        return loopGroup;
+    }
+
+    public Map<String, ?> getOutputSchema() {
+        return outputSchema;
+    }
+
     @Override
     public boolean graphInvoker() {
         return true;
     }
 
-    /**
-     * getLoop.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup getLoop() {
-        return loopGroup;
+    public Executable<?, ?> toExecutable() {
+        return new LoopExecutable(this);
     }
 
     /**
-     * getLoopGroup.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Python-compatible snake_case bridge for reflected callers.
+     *
+     * @return executable loop component
      */
-    @Override
-    public HasDrawable getLoopGroup() {
-        return (HasDrawable) loopGroup;
+    public Executable<?, ?> to_executable() {
+        return toExecutable();
     }
 
-    /**
-     * containsGraphInterrupt.
-     * 
-     * @param throwable throwable
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean containsGraphInterrupt(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof GraphInterrupt
-                    || current instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
-                return true;
+    @SuppressWarnings("unchecked")
+    public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+        return invokeInternal(inputs, session, context);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object invokeInternal(Object inputs, BaseSession session, ModelContext context) {
+        try {
+            if (!(inputs instanceof Map<?, ?> inputsMap)) {
+                throw new IllegalArgumentException("inputs must be a dict, but got "
+                        + (inputs == null ? "NoneType" : inputs.getClass().getSimpleName()));
             }
-            current = current.getCause();
+            if (!inputsMap.containsKey(Constant.INPUTS_KEY)) {
+                throw new IllegalArgumentException("missing required key " + Constant.INPUTS_KEY);
+            }
+            Object loopInputValue = inputsMap.get(Constant.INPUTS_KEY);
+            if (!(loopInputValue instanceof Map<?, ?> loopInputMap)) {
+                throw new IllegalArgumentException(Constant.INPUTS_KEY + " must be a dict, but got "
+                        + (loopInputValue == null ? "NoneType" : loopInputValue.getClass().getSimpleName()));
+            }
+
+            LoopInput loopInput = LoopInput.fromMap(toStringObjectMap(loopInputMap));
+            List<com.openjiuwen.core.workflow.component.loop.callback.LoopCallback> callbacks = new ArrayList<>();
+            callbacks.add(new OutputCallback(toStringObjectMap(outputSchema)));
+            if (loopInput.getIntermediateVar() != null && !loopInput.getIntermediateVar().isEmpty()) {
+                callbacks.add(new IntermediateLoopVarCallback(loopInput.getIntermediateVar()));
+            }
+
+            Object config = inputsMap.containsKey(Constant.CONFIG_KEY) ? inputsMap.get(Constant.CONFIG_KEY) : Map.of();
+            return LoopRuntime.invoke(
+                    conditionFor(loopInput),
+                    loopGroup,
+                    callbacks,
+                    Map.of(Constant.INPUTS_KEY, Map.of(), Constant.CONFIG_KEY, config),
+                    session,
+                    context);
+        } catch (BaseError exception) {
+            throw exception;
+        } catch (Exception exception) {
+            com.openjiuwen.core.graph.pregel.GraphInterrupt interrupt = LoopRuntime.findGraphInterrupt(exception);
+            if (interrupt != null) {
+                return LoopRuntime.sneakyThrow(interrupt);
+            }
+            BaseError nestedBaseError = LoopRuntime.findBaseError(exception);
+            if (nestedBaseError != null) {
+                throw nestedBaseError;
+            }
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR,
+                    "reason", normalizeExceptionMessage(exception),
+                    "comp", WorkflowSessionSupport.componentId(session));
         }
-        return false;
     }
 
-    /**
-     * resolveLoopNumber.
-     * 
-     * @param rawInputs rawInputs
-     * @param parsedLoopNumber parsedLoopNumber
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Integer resolveLoopNumber(Map<String, Object> rawInputs, Integer parsedLoopNumber) {
-        if (rawInputs == null || !rawInputs.containsKey("loop_number")) {
-            return parsedLoopNumber;
-        }
-        Object rawLoopNumber = rawInputs.get("loop_number");
-        if (rawLoopNumber == null) {
+    private static String normalizeExceptionMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null) {
             return null;
         }
-        if (rawLoopNumber instanceof Number number) {
-            return parseIntegralNumber(number);
-        }
-        if (rawLoopNumber instanceof String text) {
-            return parseIntegralString(text);
-        }
-        throw new IllegalArgumentException("loop_number must be an integer");
+        return message.replace("Expected list/tuple for", "Expected list for");
     }
 
-    /**
-     * parseIntegralNumber.
-     * 
-     * @param number number
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Integer parseIntegralNumber(Number number) {
-        if (number instanceof Byte || number instanceof Short || number instanceof Integer || number instanceof Long) {
-            return number.intValue();
+    private static Condition conditionFor(LoopInput input) {
+        LoopType loopType = LoopType.fromValue(input.getLoopType());
+        if (loopType == LoopType.ARRAY) {
+            return new ArrayConditionInSession(input.getLoopArray());
         }
-        if (number instanceof java.math.BigInteger bigInteger) {
-            return bigInteger.intValueExact();
+        if (loopType == LoopType.NUMBER) {
+            return new NumberConditionInSession(input.getLoopNumber());
         }
-        BigDecimal decimal = new BigDecimal(number.toString());
-        try {
-            return decimal.intValueExact();
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("loop_number must be an integer", e);
+        if (loopType == LoopType.EXPRESSION) {
+            Object boolExpression = input.getBoolExpression();
+            if (boolExpression instanceof Boolean boolValue) {
+                return new FuncCondition(() -> boolValue);
+            }
+            String expression = boolExpression == null ? "" : String.valueOf(boolExpression);
+            if (expression.matches(".*}\\s*\\[.*")) {
+                throw new IllegalArgumentException("expression syntax error");
+            }
+            return new ExpressionCondition(expression);
         }
+        return new AlwaysTrue();
     }
 
-    /**
-     * parseIntegralString.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Integer parseIntegralString(String text) {
-        String trimmed = text == null ? "" : text.trim();
-        if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("loop_number must be an integer");
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> toStringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (source == null) {
+            return result;
         }
-        try {
-            return Integer.valueOf(trimmed);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("loop_number must be an integer", e);
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private static final class LoopExecutable extends Executable<Object, Object> {
+
+        private final LoopComponentImpl owner;
+
+        private LoopExecutable(LoopComponentImpl owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
+            return owner.invokeInternal(inputs, session, extractContext(kwargs));
+        }
+
+        @Override
+        public java.util.Iterator<Object> onStream(Object inputs, BaseSession session, Object... kwargs) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    "ability", ComponentAbility.STREAM.name(),
+                    "comp", WorkflowSessionSupport.componentId(session),
+                    "reason", "Component 'LoopExecutable' does not implement the on_stream method.",
+                    "workflow", session == null ? "" : session.workflowId());
+        }
+
+        @Override
+        public boolean graphInvoker() {
+            return true;
+        }
+
+        private static ModelContext extractContext(Object... kwargs) {
+            if (kwargs == null) {
+                return null;
+            }
+            for (Object kwarg : kwargs) {
+                if (kwarg instanceof ModelContext modelContext) {
+                    return modelContext;
+                }
+                if (kwarg instanceof Map<?, ?> map && map.get("context") instanceof ModelContext modelContext) {
+                    return modelContext;
+                }
+            }
+            return null;
         }
     }
 }

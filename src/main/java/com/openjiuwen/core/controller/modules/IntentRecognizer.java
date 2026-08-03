@@ -5,12 +5,11 @@
 package com.openjiuwen.core.controller.modules;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.Event;
@@ -18,6 +17,7 @@ import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Intent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
@@ -36,11 +36,11 @@ import java.util.Map;
  * Recognizes user intent from input events by using LLM tool-calling.
  * Converts events into {@link Intent} objects.
  * <p>
- * Mirrors Python's {@code IntentRecognizer}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code IntentRecognizer} in
+ * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.
  */
 public class IntentRecognizer {
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MAX_MESSAGE_LEN = 50;
 
@@ -72,7 +72,7 @@ public class IntentRecognizer {
             # 工作流程
             1. **解析请求**：理解用户想做什么。
             2. **任务操作**：使用工具创建一个对应的任务或修改已有任务。
-            3. **永远不拒绝**：不声称"超出能力范围"，而是告知用户任务会由其他执行器处理。
+            3. **永远不拒绝**：不声称“超出能力范围”，而是告知用户任务会由其他执行器处理。
 
             # 任务目标
             - 根据用户输入，**总是优先创建对应的任务**。
@@ -83,36 +83,24 @@ public class IntentRecognizer {
     /**
      * Functional interface for obtaining a Model instance.
      * This avoids a direct dependency on Runner.
-     * 
-     * @since 0.1.7
+     *
+     * <p>Mirrors Python's {@code Runner.resource_mgr.get_model(...)} use in
+     * {@code openjiuwen/core/controller/modules/intent_recognizer.py}.</p>
      */
     @FunctionalInterface
     public interface ModelProvider {
-        /**
-         * getModel.
-         * 
-         * @param modelId modelId
-         * @param session session
-         * @return the result
-         * @since 0.1.7
-         */
         Model getModel(String modelId, AgentSessionApi session);
     }
 
     private final ModelProvider modelProvider;
 
-    /**
-     * IntentRecognizer.
-     * 
-     * @param config config
-     * @param taskManager taskManager
-     * @param abilityManager abilityManager
-     * @param contextEngine contextEngine
-     * @param modelProvider modelProvider
-     * @since 0.1.7
-     */
-    public IntentRecognizer(ControllerConfig config, TaskManager taskManager, Object abilityManager,
-            ContextEngine contextEngine, ModelProvider modelProvider) {
+    public IntentRecognizer(
+            ControllerConfig config,
+            TaskManager taskManager,
+            Object abilityManager,
+            ContextEngine contextEngine,
+            ModelProvider modelProvider
+    ) {
         this.config = config;
         this.taskManager = taskManager;
         this.abilityManager = abilityManager;
@@ -121,49 +109,41 @@ public class IntentRecognizer {
         this.systemMessage = new SystemMessage(SYSTEM_PROMPT);
     }
 
-    /**
-     * prepareUserMessage.
-     * 
-     * @param query query
-     * @return the result
-     * @since 0.1.7
-     */
     private UserMessage prepareUserMessage(String query) {
         List<Task> tasks = taskManager.getTask(null);
         StringBuilder taskPrompt = new StringBuilder();
         if (tasks != null && !tasks.isEmpty()) {
             for (Task task : tasks) {
-                taskPrompt.append("## Task id: ").append(task.getTaskId()).append("\n### Task description: ")
-                        .append(task.getDescription()).append("\nStatus: ").append(task.getStatus()).append("\n");
+                taskPrompt.append("## Task id: ").append(task.getTaskId())
+                        .append("\n### Task description: ").append(task.getDescription())
+                        .append("\nStatus: ").append(task.getStatus())
+                        .append("\n");
             }
         } else {
             taskPrompt.append("无");
         }
+
         String prompt = String.format(USER_PROMPT_TEMPLATE, taskPrompt, query);
         return new UserMessage(prompt);
     }
 
     /**
      * Recognize intents from an event.
-     * 
-     * @param event input event
+     *
+     * @param event   input event
      * @param session session object
      * @return list of recognized intents
-     * @since 0.1.7
      */
     public List<Intent> recognize(Event event, AgentSessionApi session) {
-        ModelContext context = contextEngine.getContext(session.getSessionId(), session.getSessionId());
+        ModelContext context = contextEngine.getContext(ContextEngine.DEFAULT_CONTEXT_ID, session.getSessionId());
         if (context == null) {
-            // Context should already be created by the caller (Controller/TaskScheduler).
-            // If not, create a minimal context using the session ID.
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                    "ModelContext not found for session " + session.getSessionId()
-                            + ". Ensure context is created before intent recognition.");
+            context = contextEngine.createContext(ContextEngine.DEFAULT_CONTEXT_ID, session);
         }
 
         if (!(event instanceof InputEvent inputEvent)) {
             throw new IllegalArgumentException("Event must be an InputEvent for intent recognition");
         }
+
         List<DataFrame> inputs = inputEvent.getInputData();
         List<DataFrame.TextDataFrame> texts = new ArrayList<>();
         boolean hasFiles = false;
@@ -175,36 +155,42 @@ public class IntentRecognizer {
                 hasFiles = true;
             } else if (df instanceof DataFrame.JsonDataFrame) {
                 hasJsons = true;
-            } else {
-                // no-op
             }
         }
 
         if (hasFiles || hasJsons) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                    "Inputs with files or jsons are not supported for intent recognition.");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Inputs with files or jsons are not supported for intent recognition.");
         }
         if (texts.size() > 1) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                    "Multiple inputs are not supported for intent recognition.");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "Multiple inputs are not supported for intent recognition.");
         }
+
         Model model = modelProvider.getModel(config.getIntentLlmId(), session);
         UserMessage userMessage = prepareUserMessage(texts.get(0).text());
-        context.addMessages(userMessage);
+        context.addMessages(userMessage).toCompletableFuture().join();
+
         IntentToolkits toolkits = new IntentToolkits(event, config.getIntentConfidenceThreshold());
+
         List<BaseMessage> messages = new ArrayList<>();
         messages.add(systemMessage);
         messages.addAll(context.getMessages(MAX_MESSAGE_LEN, true));
 
         AssistantMessage response;
         try {
-            response = model.invoke(messages, toolkits.getOpenaiToolSchemas(config.getIntentTypeList()), null, null,
-                    null, null, null, null, null, null);
+            response = model.invoke(
+                    messages,
+                    ModelInvokeOptions.builder()
+                            .tools(toolkits.getOpenaiToolSchemas(config.getIntentTypeList()))
+                            .build()
+            ).toCompletableFuture().join();
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                    "LLM invocation failed: " + e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                    "error_msg", "LLM invocation failed: " + e.getMessage());
         }
-        context.addMessages(response);
+        context.addMessages(response).toCompletableFuture().join();
+
         List<Intent> intents = new ArrayList<>();
         while (true) {
             if (response.getToolCalls() == null || response.getToolCalls().isEmpty()) {
@@ -212,30 +198,37 @@ public class IntentRecognizer {
             }
             for (ToolCall toolCall : response.getToolCalls()) {
                 try {
-                    Map<String, Object> args = OBJECT_MAPPER.readValue(toolCall.getArguments(), new TypeReference<>() {
-                    });
+                    Map<String, Object> args = OBJECT_MAPPER.readValue(
+                            toolCall.getArguments(), new TypeReference<>() {});
                     IntentToolkits.IntentResult result = toolkits.dispatch(toolCall.getName(), args);
                     intents.add(result.intent());
-                    context.addMessages(new ToolMessage(result.message(), toolCall.getId()));
-                } catch (JsonProcessingException e) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                            "Failed to parse tool call: " + e.getMessage());
+                    context.addMessages(new ToolMessage(result.message(), toolCall.getId()))
+                            .toCompletableFuture().join();
+                } catch (Exception e) {
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                            "error_msg", "Failed to parse tool call: " + e.getMessage());
                 }
             }
+
             messages = new ArrayList<>();
             messages.add(systemMessage);
             messages.addAll(context.getMessages(MAX_MESSAGE_LEN, true));
 
             try {
-                response = model.invoke(messages, toolkits.getOpenaiToolSchemas(null), null, null, null, null, null,
-                        null, null, null);
+                response = model.invoke(
+                        messages,
+                        ModelInvokeOptions.builder()
+                                .tools(toolkits.getOpenaiToolSchemas(null))
+                                .build()
+                ).toCompletableFuture().join();
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
-                        "LLM invocation failed: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
+                        "error_msg", "LLM invocation failed: " + e.getMessage());
             }
-            context.addMessages(response);
+            context.addMessages(response).toCompletableFuture().join();
         }
 
         return intents;
     }
 }
+

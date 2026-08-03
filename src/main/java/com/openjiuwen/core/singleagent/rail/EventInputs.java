@@ -5,9 +5,10 @@
 package com.openjiuwen.core.singleagent.rail;
 
 /**
- * Marker interface for typed event inputs.
- * 
- * @since 0.1.7
+ * Marker interface for typed agent lifecycle event inputs.
+ *
+ * <p>Mirrors Python's {@code EventInputs} union in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
 public interface EventInputs {
 }

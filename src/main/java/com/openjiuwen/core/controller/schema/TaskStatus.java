@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.controller.schema;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Task status enumeration.
  * <p>
@@ -11,11 +14,11 @@ package com.openjiuwen.core.controller.schema;
  * {@code submitted -> working -> (completed | failed | paused | canceled)}
  * {@code working -> input-required -> (continue execution or cancel)}
  * <p>
- * Mirrors Python's {@code TaskStatus(str, Enum)}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskStatus} in
+ * {@code openjiuwen/core/controller/schema/task.py}.
  */
 public enum TaskStatus {
+
     SUBMITTED("submitted"),
     WORKING("working"),
     PAUSED("paused"),
@@ -32,38 +35,24 @@ public enum TaskStatus {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
     public String getValue() {
         return value;
     }
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonCreator
     public static TaskStatus fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
         for (TaskStatus status : values()) {
-            if (status.value.equals(value)) {
+            if (status.value.equals(value) || status.name().equals(value)) {
                 return status;
             }
         }
         throw new IllegalArgumentException("Unknown TaskStatus: " + value);
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String toString() {
         return value;

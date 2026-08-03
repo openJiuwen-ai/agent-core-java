@@ -6,26 +6,17 @@ package com.openjiuwen.core.workflow.components.llm;
 
 /**
  * Alias/extension of {@link com.openjiuwen.core.workflow.component.llm.QuestionerComponent}.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code QuestionerComponent} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
-public class QuestionerComponent extends com.openjiuwen.core.workflow.component.llm.QuestionerComponent {
-    /**
-     * QuestionerComponent.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
+public class QuestionerComponent
+        extends com.openjiuwen.core.workflow.component.llm.QuestionerComponent {
+
     public QuestionerComponent(com.openjiuwen.core.workflow.component.llm.QuestionerConfig config) {
         super(config);
     }
 
-    /**
-     * QuestionerComponent.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public QuestionerComponent(QuestionerConfig config) {
         super(config);
     }

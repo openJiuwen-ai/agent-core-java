@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.common.BaseRankConfig
+# com.openjiuwen.core.foundation.store.graph.BaseRankConfig
 
 ## 类 BaseRankConfig
 

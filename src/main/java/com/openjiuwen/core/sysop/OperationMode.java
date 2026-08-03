@@ -5,12 +5,14 @@
 package com.openjiuwen.core.sysop;
 
 /**
- * Enum for operation mode.
- * <p>
- * Mirrors Python's {@code OperationMode} enum in {@code sys_operation/base.py}.
- * 
- * @since 0.1.7
+ * Backward-compatible enum for the moved system operation mode type.
+ *
+ * <p>Mirrors Python's {@code OperationMode} in
+ * {@code openjiuwen/core/sys_operation/base.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.OperationMode}.
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 public enum OperationMode {
     LOCAL("local"),
     SANDBOX("sandbox");
@@ -21,29 +23,39 @@ public enum OperationMode {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * Parse a string value to OperationMode (case-insensitive).
-     * 
-     * @param text the string to parse
-     * @return the corresponding OperationMode
-     * @since 0.1.7
-     */
+    public String value() {
+        return value;
+    }
+
+    public com.openjiuwen.core.sys_operation.OperationMode toNewMode() {
+        return com.openjiuwen.core.sys_operation.OperationMode.fromValue(value);
+    }
+
+    public static OperationMode fromNewMode(com.openjiuwen.core.sys_operation.OperationMode mode) {
+        if (mode == null) {
+            return LOCAL;
+        }
+        return fromString(mode.value());
+    }
+
     public static OperationMode fromString(String text) {
+        if (text == null) {
+            return LOCAL;
+        }
         for (OperationMode mode : values()) {
-            if (mode.value.equalsIgnoreCase(text)) {
+            if (mode.value.equalsIgnoreCase(text.trim())) {
                 return mode;
             }
         }
         throw new IllegalArgumentException("Unknown operation mode: " + text);
+    }
+
+    @Override
+    public String toString() {
+        return value;
     }
 }

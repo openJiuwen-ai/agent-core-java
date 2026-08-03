@@ -5,11 +5,13 @@
 package com.openjiuwen.core.workflow.component.llm;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -19,7 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Executable for ReActAgentComp workflow component.
@@ -29,8 +31,8 @@ import java.util.Optional;
  * the component only supports batch-in/batch-out and batch-in/stream-out.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.react.ReActAgentCompExecutable}.
- * 
- * @since 0.1.7
+ *
+ * @since 1.0.0
  */
 public class ReActAgentCompExecutable extends ComponentExecutable {
     private final ReActAgentCompConfig config;
@@ -38,63 +40,69 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
 
     /**
      * Create an executable from the given config.
-     * 
+     *
      * @param config component configuration
-     * @since 0.1.7
      */
     public ReActAgentCompExecutable(ReActAgentCompConfig config) {
         this.config = config;
-        this.reactAgent = new ReActAgent(AgentCard.builder().id("react_agent_workflow_executable")
-                .name("ReAct Agent Workflow Executable").description("ReAct agent for workflow execution").build());
+        this.reactAgent = new ReActAgent(AgentCard.builder()
+                .id("react_agent_workflow_executable")
+                .name("ReAct Agent Workflow Executable")
+                .description("ReAct agent for workflow execution")
+                .build());
         this.reactAgent.configure(config);
     }
 
     /**
      * Get the ability manager for adding tools/workflows/agents.
-     * 
+     *
      * @return the ability manager instance
-     * @since 0.1.7
      */
     public AbilityManager getAbilityManager() {
         return reactAgent.getAbilityManager();
     }
 
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-        Session agentSession = toSession(session).orElse(null);
+        com.openjiuwen.core.session.AgentSessionApi agentSession = toAgentSession(session);
         Object result = reactAgent.invoke(inputs, agentSession);
+        if (result instanceof CompletionStage<?> stage) {
+            result = stage.toCompletableFuture().join();
+        }
         if (result instanceof Map<?, ?> map) {
             return map;
         }
         return result;
     }
 
-    /**
-     * stream.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
-        Session agentSession = toSession(session).orElse(null);
-        Iterator<Object> agentStream = reactAgent.stream(inputs, agentSession, List.of(StreamMode.OUTPUT));
+        // 创建独立的 StreamEmitter + StreamWriterManager 收集 ReActAgent 的流式输出
+        StreamEmitter emitter = new StreamEmitter();
+        StreamWriterManager collectManager = StreamWriterManager.createManager(
+                emitter, List.of(StreamMode.OUTPUT));
 
+        // 创建独立 AgentSession，让 ReActAgent 的流式输出写入我们的 collectManager
+        String sessionId = session != null ? session.getSessionId() : "react_comp_stream";
+        AgentSession agentSession = new AgentSession(
+                sessionId, null, reactAgent.getCard(),
+                collectManager, true, null);
+
+        // 同步执行 ReActAgent 的流式 invoke，输出会写入 collectManager
+        try {
+            reactAgent.invoke(inputs, agentSession, Map.of("_streaming", true))
+                    .toCompletableFuture().join();
+        } catch (RuntimeException exception) {
+            writeInvokeResultToStream(emitter, exception);
+        } finally {
+            emitter.emit(StreamEmitter.END_FRAME);
+        }
+
+        // 从 collectManager 中读取流数据并处理
         List<Object> results = new ArrayList<>();
-        while (agentStream.hasNext()) {
-            Object chunk = agentStream.next();
+        Iterator<Object> it = collectManager.streamIterator();
+        while (it.hasNext()) {
+            Object chunk = it.next();
             Object processed = processStreamChunk(chunk);
             if (processed != null) {
                 results.add(processed);
@@ -103,52 +111,36 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
         return results.iterator();
     }
 
-    /**
-     * collect.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
+    private static void writeInvokeResultToStream(StreamEmitter emitter, RuntimeException exception) {
+        try {
+            Map<String, Object> errorResult = new java.util.LinkedHashMap<>(
+                    Map.of("output", exception.getMessage(), "result_type", "error"));
+            emitter.emit(new OutputSchema("error", 0, errorResult));
+        } catch (Exception ignored) {
+            // best-effort write
+        }
+    }
+
     @Override
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         throw new UnsupportedOperationException(
                 "Component 'ReActAgentCompExecutable' is missing required method: collect()");
     }
 
-    /**
-     * transform.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         throw new UnsupportedOperationException(
                 "Component 'ReActAgentCompExecutable' is missing required method: transform()");
     }
 
-    /**
-     * toSession.
-     * 
-     * @param nodeSessionApi nodeSessionApi
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Optional<Session> toSession(NodeSessionApi nodeSessionApi) {
+    private static com.openjiuwen.core.session.AgentSessionApi toAgentSession(NodeSessionApi nodeSessionApi) {
         if (nodeSessionApi == null) {
-            return Optional.empty();
+            return null;
         }
-        NodeSession inner = nodeSessionApi.getInner();
-        if (inner instanceof Session) {
-            return Optional.of((Session) inner);
+        if (nodeSessionApi instanceof com.openjiuwen.core.session.AgentSessionApi agentSessionApi) {
+            return agentSessionApi;
         }
-        return Optional.empty();
+        return new NodeSessionApiAdapter(nodeSessionApi);
     }
 
     /**
@@ -156,10 +148,9 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
      * <p>
      * If the chunk is an OutputSchema of type 'llm_output' with a 'content' key in its
      * payload, extract the content. Otherwise, use the payload directly.
-     * 
+     *
      * @param chunk the stream chunk to process
      * @return the processed chunk
-     * @since 0.1.7
      */
     private static Object processStreamChunk(Object chunk) {
         if (chunk instanceof OutputSchema outputSchema) {
@@ -180,5 +171,45 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
             }
         }
         return chunk;
+    }
+
+    /**
+     * Adapter that wraps a NodeSessionApi to implement AgentSessionApi.
+     */
+    private static final class NodeSessionApiAdapter implements AgentSessionApi {
+        private final NodeSessionApi delegate;
+
+        private NodeSessionApiAdapter(NodeSessionApi delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public String getSessionId() {
+            return delegate.getSessionId();
+        }
+
+        @Override
+        public Object getState(String key) {
+            return delegate.getState(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+            delegate.updateState(data);
+        }
+
+        @Override
+        public void writeStream(Object data) {
+            delegate.writeStream(data);
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            StreamWriterManager mgr = delegate.streamWriterManager();
+            if (mgr != null) {
+                return mgr.streamIterator();
+            }
+            return List.<Object>of().iterator();
+        }
     }
 }

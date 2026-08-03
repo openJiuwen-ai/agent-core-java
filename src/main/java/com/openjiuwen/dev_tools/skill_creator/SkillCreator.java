@@ -23,28 +23,25 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * SkillCreator - Use LLM to intelligently generate Skills.
- * <p>
- * Mirrors Python's {@code openjiuwen.dev_tools.skill_creator.SkillCreator}.
- * <p>
- * Usage example:
- * 
+ *
+ * <p>Mirrors Python's {@code openjiuwen.dev_tools.skill_creator.SkillCreator}.
+ *
+ * <p>Usage example:
  * <pre>
- * SkillCreator creator = new SkillCreator();
- * creator.createAgent().thenCompose(v -> creator.generate("Create a calculator skill", "/output/path"))
- *         .thenAccept(result -> {
- *             System.out.println("Result: " + result);
- *         });
+ *     SkillCreator creator = new SkillCreator();
+ *     creator.createAgent().thenCompose(v -> 
+ *         creator.generate("Create a calculator skill", "/output/path")
+ *     ).thenAccept(result -> {
+ *         System.out.println("Result: " + result);
+ *     });
  * </pre>
- * 
- * @since 0.1.7
  */
 public class SkillCreator {
+
     private ReActAgent agent;
 
     /**
      * Default constructor.
-     * 
-     * @since 0.1.7
      */
     public SkillCreator() {
         // Empty constructor, agent is initialized in createAgent()
@@ -52,21 +49,20 @@ public class SkillCreator {
 
     /**
      * Create and configure the ReActAgent with skills.
-     * <p>
-     * This method reads environment variables for configuration:
+     *
+     * <p>This method reads environment variables for configuration:
      * <ul>
-     * <li>SKILLS_DIR - Directory containing skill files (default: "openjiuwen/dev_tools/skill_creator/skills")</li>
-     * <li>FILES_BASE_DIR - Base directory for files (default: current directory)</li>
-     * <li>MAX_ITERATIONS - Maximum agent iterations (default: 25)</li>
-     * <li>API_BASE - API base URL</li>
-     * <li>API_KEY - API key</li>
-     * <li>MODEL_NAME - Model name</li>
-     * <li>MODEL_PROVIDER - Model provider</li>
-     * <li>LLM_SSL_VERIFY - SSL verification flag (default: false)</li>
+     *   <li>SKILLS_DIR - Directory containing skill files (default: "openjiuwen/dev_tools/skill_creator/skills")</li>
+     *   <li>FILES_BASE_DIR - Base directory for files (default: current directory)</li>
+     *   <li>MAX_ITERATIONS - Maximum agent iterations (default: 25)</li>
+     *   <li>API_BASE - API base URL</li>
+     *   <li>API_KEY - API key</li>
+     *   <li>MODEL_NAME - Model name</li>
+     *   <li>MODEL_PROVIDER - Model provider</li>
+     *   <li>LLM_SSL_VERIFY - SSL verification flag (default: false)</li>
      * </ul>
-     * 
+     *
      * @return a CompletableFuture that completes when the agent is configured
-     * @since 0.1.7
      */
     public CompletableFuture<Void> createAgent() {
         return CompletableFuture.runAsync(() -> {
@@ -108,33 +104,49 @@ public class SkillCreator {
 
             // Construct agent instance
             this.agent = new ReActAgent(
-                    AgentCard.builder().name("skill_creator_agent").description("Skill Creator Agent").build());
+                    AgentCard.builder()
+                            .name("skill_creator_agent")
+                            .description("Skill Creator Agent")
+                            .build()
+            );
 
             // Create system prompt
-            String systemPrompt = "You are an intelligent assistant.\n" + "All user-provided files are located at '"
-                    + filesBaseDir + "'\n";
-            systemPrompt += "You are running on Windows. Any shell command must be Windows-compatible.\n";
-            systemPrompt += "Prefer file tools over shell commands whenever possible. "
-                    + "Use writeFile to create or update files.\n";
-            systemPrompt += "When creating a new text file with writeFile, pass createIfNotExist=true "
-                    + "and provide content as an object like {value: \"...\"}.\n";
-            systemPrompt += "Use readFile with encoding UTF-8 for text files. Do not read binary files "
-                    + "such as PDF files as text.\n";
-            systemPrompt += "Do not duplicate binary assets with writeFile. For PDF or other binary inputs, "
-                    + "reference the original absolute path in SKILL.md instead of copying the binary file.\n";
-            systemPrompt += "Create only the files needed for the generated skill and place them under "
-                    + "the requested output directory.\n";
+            String systemPrompt = "You are an intelligent assistant.\n"
+                    + "All user-provided files are located at '" + filesBaseDir + "'\n";
+                systemPrompt += "You are running on Windows. Any shell command must be Windows-compatible.\n";
+                systemPrompt += "Prefer file tools over shell commands whenever possible. "
+                        + "Use writeFile to create or update files.\n";
+                systemPrompt += "When creating a new text file with writeFile, pass createIfNotExist=true "
+                        + "and provide content as an object like {value: \"...\"}.\n";
+                systemPrompt += "Use readFile with encoding UTF-8 for text files. Do not read binary files "
+                        + "such as PDF files as text.\n";
+                systemPrompt += "Do not duplicate binary assets with writeFile. For PDF or other binary inputs, "
+                        + "reference the original absolute path in SKILL.md instead of copying the binary file.\n";
+                systemPrompt += "Create only the files needed for the generated skill and place them under "
+                        + "the requested output directory.\n";
 
             // Create and register SysOperation
-            SysOperationCard sysopCard = SysOperationCard.builder().mode(OperationMode.LOCAL)
-                    .workConfig(LocalWorkConfig.builder().workDir(null).build()).build();
+            SysOperationCard sysopCard = SysOperationCard.builder()
+                    .mode(OperationMode.LOCAL)
+                    .workConfig(LocalWorkConfig.builder().build())
+                    .build();
             Runner.resourceMgr().addSysOperation(sysopCard, null);
 
             // Configure the agent
-            ReActAgentConfig config = ReActAgentConfig.builder().build()
-                    .configureModelClient(modelProvider, apiKey, apiBase, modelName, isVerifySsl)
-                    .configurePromptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)))
-                    .configureMaxIterations(maxIterations).configureContextEngine(null, null, false);
+            ReActAgentConfig config = ReActAgentConfig.builder()
+                    .build()
+                    .configureModelClient(
+                            modelProvider,
+                            apiKey,
+                            apiBase,
+                            modelName,
+                            isVerifySsl
+                    )
+                    .configurePromptTemplate(List.of(
+                            Map.of("role", "system", "content", systemPrompt)
+                    ))
+                    .configureMaxIterations(maxIterations)
+                    .configureContextEngine(null, null, false, false);
 
             config.setSysOperationId(sysopCard.getId());
             this.agent.configure(config);
@@ -155,11 +167,10 @@ public class SkillCreator {
 
     /**
      * Generate a skill based on the given requirement.
-     * 
+     *
      * @param requirement the skill requirement description
      * @param outputPath the output path for generated files
      * @return a CompletableFuture containing the generation result
-     * @since 0.1.7
      */
     public CompletableFuture<Object> generate(String requirement, String outputPath) {
         return CompletableFuture.supplyAsync(() -> {
@@ -180,11 +191,10 @@ public class SkillCreator {
 
     /**
      * Generate a skill based on the given requirement.
-     * 
+     *
      * @param requirement the skill requirement description
      * @param outputPath the output path for generated files (as Path object)
      * @return a CompletableFuture containing the generation result
-     * @since 0.1.7
      */
     public CompletableFuture<Object> generate(String requirement, Path outputPath) {
         return generate(requirement, outputPath.toString());
@@ -192,9 +202,8 @@ public class SkillCreator {
 
     /**
      * Get the configured agent.
-     * 
+     *
      * @return the ReActAgent instance, or null if not yet configured
-     * @since 0.1.7
      */
     public ReActAgent getAgent() {
         return agent;
@@ -202,11 +211,10 @@ public class SkillCreator {
 
     /**
      * Helper method to get environment variable with default value.
-     * 
+     *
      * @param key the environment variable name
      * @param defaultValue the default value if not set
      * @return the environment variable value or default
-     * @since 0.1.7
      */
     private String getEnvOrDefault(String key, String defaultValue) {
         String value = System.getenv(key);
@@ -216,17 +224,13 @@ public class SkillCreator {
         return (value != null && !value.isEmpty()) ? value : defaultValue;
     }
 
-    /**
-     * resolveDefaultSkillsDir.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private Path resolveDefaultSkillsDir() {
-        List<Path> candidates = List.of(Paths.get("openjiuwen", "dev_tools", "skill_creator", "skills"),
+        List<Path> candidates = List.of(
+                Paths.get("openjiuwen", "dev_tools", "skill_creator", "skills"),
                 Paths.get("src", "main", "resources", "openjiuwen", "dev_tools", "skill_creator", "skills"),
-                Paths.get("agent-core-java-myfork", "src", "main", "resources", "openjiuwen", "dev_tools",
-                        "skill_creator", "skills"));
+                Paths.get("agent-core-java-myfork", "src", "main", "resources",
+                        "openjiuwen", "dev_tools", "skill_creator", "skills")
+        );
 
         for (Path candidate : candidates) {
             Path normalized = candidate.toAbsolutePath().normalize();
@@ -239,16 +243,8 @@ public class SkillCreator {
                 + candidates.stream().map(path -> path.toAbsolutePath().normalize().toString()).toList());
     }
 
-    /**
-     * addSysOpTool.
-     * 
-     * @param sysOperationId sysOperationId
-     * @param operationName operationName
-     * @param toolName toolName
-     * @since 0.1.7
-     */
     private void addSysOpTool(String sysOperationId, String operationName, String toolName) {
-        Object toolCard = Runner.resourceMgr().getSysOpToolCards(sysOperationId, operationName, toolName);
+        Object toolCard = Runner.resourceMgr().getSysOpToolCards(sysOperationId, List.of(operationName), List.of(toolName));
         if (toolCard != null) {
             this.agent.getAbilityManager().add(toolCard);
         }

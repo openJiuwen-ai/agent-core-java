@@ -5,25 +5,12 @@
 package com.openjiuwen.core.sysop.result;
 
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
-/**
- * Result type for list files operation.
- * 
- * @since 0.1.7
- */
-@SuperBuilder
+/** Result type for list files operation. */
 @NoArgsConstructor
 public class ListFilesResult extends BaseResult<FileSystemData> {
     /**
-     * ListFilesResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public ListFilesResult(int code, String message, FileSystemData data) {
-        super(code, message, data);
-    }
+    public ListFilesResult(int code, String message, FileSystemData data) { setCode(code); setMessage(message); setData(data); }
 }

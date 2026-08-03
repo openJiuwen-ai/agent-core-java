@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.AgentGroupSession
+# com.openjiuwen.core.multi_agent.legacy.AgentGroupSession
 
 ## class AgentGroupSession
 

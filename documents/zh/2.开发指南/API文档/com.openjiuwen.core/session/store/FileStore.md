@@ -1,4 +1,4 @@
-# com.openjiuwen.core.session.store.FileStore
+# com.openjiuwen.core.session.FileStore
 
 ## 类 FileStore
 

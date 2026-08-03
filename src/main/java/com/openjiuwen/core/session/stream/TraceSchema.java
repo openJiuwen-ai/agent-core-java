@@ -4,88 +4,44 @@
 
 package com.openjiuwen.core.session.stream;
 
-import com.openjiuwen.core.workflow.WorkflowChunk;
-
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Trace stream schema.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.stream.base.TraceSchema}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TraceSchema} in
+ * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class TraceSchema implements WorkflowChunk {
+public class TraceSchema implements StreamSchema {
+
+    private static final long serialVersionUID = 1L;
+
     private String type;
     private Object payload;
 
-    /**
-     * TraceSchema.
-     * 
-     * @since 0.1.7
-     */
     public TraceSchema() {
     }
 
-    /**
-     * TraceSchema.
-     * 
-     * @param type type
-     * @param payload payload
-     * @since 0.1.7
-     */
     public TraceSchema(String type, Object payload) {
         this.type = type;
         this.payload = payload;
     }
 
-    /**
-     * getType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getType() {
         return type;
     }
 
-    /**
-     * setType.
-     * 
-     * @param type type
-     * @since 0.1.7
-     */
     public void setType(String type) {
         this.type = type;
     }
 
-    /**
-     * getPayload.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Object getPayload() {
         return payload;
     }
 
-    /**
-     * setPayload.
-     * 
-     * @param payload payload
-     * @since 0.1.7
-     */
     public void setPayload(Object payload) {
         this.payload = payload;
     }
 
-    /**
-     * Validate data from a map.
-     * 
-     * @param data the data map
-     * @return a validated TraceSchema instance
-     * @since 0.1.7
-     */
     public static TraceSchema fromMap(Map<String, Object> data) {
         if (data == null) {
             throw new IllegalArgumentException("data is null");
@@ -94,5 +50,21 @@ public class TraceSchema implements WorkflowChunk {
         schema.setType((String) data.get("type"));
         schema.setPayload(data.get("payload"));
         return schema;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof TraceSchema that)) {
+            return false;
+        }
+        return Objects.equals(type, that.type) && Objects.equals(payload, that.payload);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, payload);
     }
 }

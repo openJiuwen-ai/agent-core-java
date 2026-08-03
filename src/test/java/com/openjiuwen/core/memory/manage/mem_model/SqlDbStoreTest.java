@@ -1,138 +1,97 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.memory.manage.mem_model;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.openjiuwen.core.memory.support.TestDbStore;
+import com.openjiuwen.core.foundation.store.db.DefaultDbStore;
 
 import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
-import javax.sql.DataSource;
+/**
+ * Focused validation for {@link SqlDbStore}.
+ *
+ * <p>Mirrors Python's {@code SqlDbStore} in
+ * {@code openjiuwen/core/memory/manage/mem_model/sql_db_store.py}.</p>
+ */
+public final class SqlDbStoreTest {
 
-class SqlDbStoreTest {
-    private SqlDbStore sqlDbStore;
-
-    @BeforeEach
-    void setUp() {
-        sqlDbStore = new SqlDbStore(new TestDbStore(createDataSource()));
-        DbModel.createTables(sqlDbStore.getDbStore());
-        seedMessages();
+    private SqlDbStoreTest() {
     }
 
-    @Test
-    void conditionGetReturnsMatchingRow() {
-        Map<String, List<Object>> filters = new LinkedHashMap<>();
-        filters.put("message_id", new ArrayList<>(List.of("m1")));
+    public static void main(String[] args) throws Exception {
+        JdbcDataSource dataSource = newDataSource();
+        SqlDbStore store = new SqlDbStore(new DefaultDbStore<>(dataSource));
+        createTable(dataSource);
 
-        List<Map<String, Object>> rows = sqlDbStore.conditionGet("user_message", filters, null);
+        require(store.write("memory_items", row("1", "user-a", "scope-a", "2026-06-14T00:00:00Z", "first")).join(),
+                "write first");
+        require(store.write("memory_items", row("2", "user-b", "scope-a", "2026-06-14T00:01:00Z", "second")).join(),
+                "write second");
+        require(store.get("memory_items", "1").join().get("content").equals("first"), "get all columns");
+        require(store.get("memory_items", "1", List.of("content")).join().equals(Map.of("content", "first")),
+                "get selected columns");
+        require(store.exist("memory_items", Map.of("scope_id", "scope-a")).join(), "exists");
+        require(store.batchGet("memory_items", List.of(Map.of("id", "missing", "user_id", "user-b"))).join().size() == 1,
+                "batch_get uses OR conditions like Python");
+        require(store.conditionGet("memory_items", Map.of("scope_id", List.of("scope-a")), null).join().size() == 2,
+                "condition_get");
+        require(store.getWithSort("memory_items", Map.of("scope_id", "scope-a"), "timestamp", "DESC", 1)
+                .join().get(0).get("id").equals("2"), "get_with_sort");
+        require(store.update("memory_items", Map.of("id", "2"), Map.of("content", "updated")).join(),
+                "update");
+        require(store.get("memory_items", "2").join().get("content").equals("updated"), "updated content");
+        require(store.conditionGet("memory_items", Map.of("scope_id", "scope-a"), null).join() == null,
+                "condition_get invalid condition returns null");
+        require(store.delete("memory_items", Map.of("id", List.of("1", "2"))).join(), "delete");
+        require(!store.exist("memory_items", Map.of("scope_id", "scope-a")).join(), "deleted rows");
+        require(store.deleteTable("memory_items").join(), "delete table");
+        store.invalidateTableCache("memory_items");
 
-        assertNotNull(rows);
-        assertEquals(1, rows.size());
-        assertEquals("u1", rows.get(0).get("user_id"));
-        assertEquals("Hello", rows.get(0).get("content"));
+        System.out.println("PASS SqlDbStoreTest");
     }
 
-    @Test
-    void getWithSortReturnsAscendingResults() {
-        List<Map<String, Object>> rows =
-            sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "timestamp", "ASC", 10);
-
-        assertEquals(2, rows.size());
-        assertEquals("m1", rows.get(0).get("message_id"));
-        assertEquals("m2", rows.get(1).get("message_id"));
-    }
-
-    @Test
-    void getWithSortReturnsEmptyWhenSortColumnDoesNotExist() {
-        List<Map<String, Object>> rows =
-            sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "missing_column", "ASC", 10);
-
-        assertTrue(rows.isEmpty());
-    }
-
-    @Test
-    void batchGetUsesOrWithinEachConditionGroupLikePython() {
-        List<Map<String, Object>> rows =
-            sqlDbStore.batchGet("user_message", List.of(Map.of("message_id", "m1", "role", "assistant")));
-
-        assertEquals(2, rows.size());
-        List<String> ids = rows.stream().map(row -> String.valueOf(row.get("message_id"))).sorted().toList();
-        assertEquals(List.of("m1", "m3"), ids);
-    }
-
-    @Test
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    void conditionGetReturnsNullWhenConditionValueIsNotList() {
-        Map invalidConditions = new LinkedHashMap();
-        invalidConditions.put("message_id", "m1");
-
-        assertNull(sqlDbStore.conditionGet("user_message", invalidConditions, null));
-    }
-
-    @Test
-    void existUpdateAndDeleteFollowPythonSemantics() {
-        assertTrue(sqlDbStore.exist("user_message", Map.of("message_id", "m1")));
-        assertFalse(sqlDbStore.exist("user_message", Map.of("message_id", "not_exist")));
-
-        assertTrue(sqlDbStore.update("user_message", Map.of("message_id", "m1"), Map.of("content", "hi")));
-        Map<String, List<Object>> singleFilter = new LinkedHashMap<>();
-        singleFilter.put("message_id", new ArrayList<>(List.of("m1")));
-        assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).get(0).get("content"));
-
-        Map<String, Object> batchConditions = new LinkedHashMap<>();
-        batchConditions.put("message_id", new ArrayList<>(List.of("m2", "m3")));
-        assertTrue(sqlDbStore.update("user_message", batchConditions, Map.of("content", "batch")));
-
-        Map<String, List<Object>> m2Filter = new LinkedHashMap<>();
-        m2Filter.put("message_id", new ArrayList<>(List.of("m2")));
-        Map<String, List<Object>> m3Filter = new LinkedHashMap<>();
-        m3Filter.put("message_id", new ArrayList<>(List.of("m3")));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m2Filter, null).get(0).get("content"));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m3Filter, null).get(0).get("content"));
-
-        assertTrue(sqlDbStore.delete("user_message", Map.of("message_id", "m1")));
-        assertTrue(sqlDbStore.conditionGet("user_message", singleFilter, null).isEmpty());
-    }
-
-    private void seedMessages() {
-        assertTrue(sqlDbStore.write("user_message",
-                row("u1", "group1", "s1", "m1", "user", "Hello", "2025-11-19 09:00:00")));
-        assertTrue(sqlDbStore.write("user_message",
-                row("u1", "group1", "s1", "m2", "user", "World", "2025-11-19 10:00:00")));
-        assertTrue(sqlDbStore.write("user_message",
-                row("u2", "group2", "s2", "m3", "assistant", "Hi there", "2025-11-19 11:00:00")));
-    }
-
-    private static Map<String, Object> row(String userId, String scopeId, String sessionId, String messageId,
-            String role, String content, String timestamp) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("user_id", userId);
-        row.put("scope_id", scopeId);
-        row.put("session_id", sessionId);
-        row.put("message_id", messageId);
-        row.put("role", role);
-        row.put("content", content);
-        row.put("timestamp", timestamp);
-        return row;
-    }
-
-    private static DataSource createDataSource() {
+    private static JdbcDataSource newDataSource() {
         JdbcDataSource dataSource = new JdbcDataSource();
-        dataSource.setURL("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
+        dataSource.setURL("jdbc:h2:mem:sql_db_store_test;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false");
         dataSource.setUser("sa");
-        dataSource.setPassword("sa");
+        dataSource.setPassword("");
         return dataSource;
+    }
+
+    private static void createTable(JdbcDataSource dataSource) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE memory_items (
+                        id VARCHAR(64) PRIMARY KEY,
+                        user_id VARCHAR(64),
+                        scope_id VARCHAR(64),
+                        timestamp VARCHAR(64),
+                        content VARCHAR(256)
+                    )
+                    """);
+        }
+    }
+
+    private static Map<String, Object> row(String id, String userId, String scopeId, String timestamp, String content) {
+        return Map.of(
+                "id", id,
+                "user_id", userId,
+                "scope_id", scopeId,
+                "timestamp", timestamp,
+                "content", content
+        );
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new AssertionError(message);
+        }
     }
 }

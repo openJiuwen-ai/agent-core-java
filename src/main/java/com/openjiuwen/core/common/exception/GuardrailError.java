@@ -7,44 +7,11 @@ package com.openjiuwen.core.common.exception;
 import java.util.Map;
 
 /**
- * Guardrail security check blocked error.
- * Raised when guardrail detects a security risk and blocks the execution.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code GuardrailError} in
+ * {@code openjiuwen/core/common/exception/errors.py}.
  */
 public class GuardrailError extends ValidationError {
-    /**
-     * GuardrailError.
-     * 
-     * @param status status
-     * @param msg msg
-     * @param details details
-     * @param cause cause
-     * @param params params
-     * @since 0.1.7
-     */
-    public GuardrailError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
-        super(status, msg, details, cause, params);
-    }
-
-    /**
-     * Creates a GuardrailError with status and parameters.
-     * 
-     * @param status the status code
-     * @param params template parameters for message rendering
-     * @since 0.1.7
-     */
-    public GuardrailError(StatusCode status, Map<String, Object> params) {
-        super(status, params);
-    }
-
-    /**
-     * Creates a GuardrailError with status only.
-     * 
-     * @param status the status code
-     * @since 0.1.7
-     */
-    public GuardrailError(StatusCode status) {
-        super(status);
-    }
+    public GuardrailError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) { super(status, msg, details, cause, params); }
+    public GuardrailError(StatusCode status, Map<String, Object> params) { super(status, params); }
+    public GuardrailError(StatusCode status) { super(status); }
 }

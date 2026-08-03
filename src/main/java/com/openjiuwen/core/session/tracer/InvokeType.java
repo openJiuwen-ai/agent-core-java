@@ -5,11 +5,8 @@
 package com.openjiuwen.core.session.tracer;
 
 /**
- * Agent invoke type enum.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.data.InvokeType}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code InvokeType} in
+ * {@code openjiuwen/core/session/tracer/data.py}.
  */
 public enum InvokeType {
     PROMPT("prompt"),
@@ -18,7 +15,7 @@ public enum InvokeType {
     WORKFLOW("workflow"),
     CHAIN("chain"),
     RETRIEVER("retriever"),
-    EVALUATOR("evalutor");
+    EVALUATOR("evaluator");
 
     private final String value;
 
@@ -26,12 +23,6 @@ public enum InvokeType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }

@@ -1,190 +1,161 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.store.graph;
 
-import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
-import com.openjiuwen.spi.store.query.QueryExpr;
+import com.openjiuwen.core.foundation.store.Embedding;
+import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
+import com.openjiuwen.core.foundation.store.query.QueryExpr;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Semaphore;
 
 /**
- * Interface defining the contract for graph vector store backends.
+ * Protocol defining the graph vector store backend interface.
  * <p>
- * Mirrors Python's {@code GraphStore} Protocol. In Java this is an interface
- * rather than a Protocol since Java has explicit interface support.
- * <p>
- * Implementations should provide:
- * <ul>
- * <li>{@code getConfig()} - graph configuration</li>
- * <li>{@code getEmbedExecutor()} - executor for embedding tasks</li>
- * <li>{@code getEmbedder()} - optional embedding service</li>
- * </ul>
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code GraphStore} in
+ * {@code openjiuwen/core/foundation/store/graph/base_graph_store.py}.
+ * </p>
  */
 public interface GraphStore {
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+
     GraphConfig getConfig();
 
-    /**
-     * Get the executor for embedding tasks.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    ExecutorService getEmbedExecutor();
+    Optional<Semaphore> getSemophore();
 
-    /**
-     * Get the optional embedding service.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    Embedding getEmbedder();
-
-    /**
-     * Create a backend instance from configuration.
-     * 
-     * @param config graph configuration
-     * @return configured backend instance
-     * @since 0.1.7
-     */
-    static GraphStore fromConfig(GraphConfig config) {
-        throw new UnsupportedOperationException("Subclasses must implement fromConfig");
+    default ExecutorService getEmbedExecutor() {
+        return ForkJoinPool.commonPool();
     }
 
-    /**
-     * Refresh / flush inserted data to database.
-     * 
-     * @since 0.1.7
-     */
-    void refresh();
+    Optional<Embedding> getEmbedder();
 
-    /**
-     * Add arbitrary data into database.
-     * 
-     * @param collection collection name for data insertion
-     * @param data data to insert
-     * @param flush whether to flush changes immediately
-     * @param upsert whether to upsert instead of insert
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    void addData(String collection, Iterable<Map<String, Object>> data, boolean flush, boolean upsert) throws Exception;
+    boolean isReturnSimilarityScore();
 
-    /**
-     * Add entity objects to the graph store.
-     * 
-     * @param entities iterable of entity objects
-     * @param flush whether to flush changes immediately
-     * @param upsert whether to upsert
-     * @param noEmbed whether to skip embedding
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    void addEntity(Iterable<?> entities, boolean flush, boolean upsert, boolean noEmbed) throws Exception;
+    void rebuild();
 
-    /**
-     * Add relation objects to the graph store.
-     * 
-     * @param relations iterable of relation objects
-     * @param flush whether to flush changes immediately
-     * @param upsert whether to upsert
-     * @param noEmbed whether to skip embedding
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    void addRelation(Iterable<?> relations, boolean flush, boolean upsert, boolean noEmbed) throws Exception;
+    default CompletableFuture<Void> refresh() {
+        return refresh(true, Map.of());
+    }
 
-    /**
-     * Add episode objects to the graph store.
-     * 
-     * @param episodes iterable of episode objects
-     * @param flush whether to flush changes immediately
-     * @param upsert whether to upsert
-     * @param noEmbed whether to skip embedding
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    void addEpisode(Iterable<?> episodes, boolean flush, boolean upsert, boolean noEmbed) throws Exception;
+    default CompletableFuture<Void> refresh(boolean skipCompact) {
+        return refresh(skipCompact, Map.of());
+    }
 
-    /**
-     * Check if a collection is empty.
-     * 
-     * @param collection name of collection
-     * @return whether the collection is empty
-     * @since 0.1.7
-     */
+    CompletableFuture<Void> refresh(boolean skipCompact, Map<String, Object> kwargs);
+
+    default CompletableFuture<Void> addData(String collection, Iterable<Map<String, Object>> data) {
+        return addData(collection, data, true, false, Map.of());
+    }
+
+    default CompletableFuture<Void> addData(String collection,
+                                            Iterable<Map<String, Object>> data,
+                                            boolean flush,
+                                            boolean upsert) {
+        return addData(collection, data, flush, upsert, Map.of());
+    }
+
+    CompletableFuture<Void> addData(String collection,
+                                    Iterable<Map<String, Object>> data,
+                                    boolean flush,
+                                    boolean upsert,
+                                    Map<String, Object> kwargs);
+
+    default CompletableFuture<Void> addEntity(Iterable<?> entities) {
+        return addEntity(entities, true, false, false);
+    }
+
+    CompletableFuture<Void> addEntity(Iterable<?> entities, boolean flush, boolean upsert, boolean noEmbed);
+
+    default CompletableFuture<Void> addRelation(Iterable<?> relations) {
+        return addRelation(relations, true, false, false);
+    }
+
+    CompletableFuture<Void> addRelation(Iterable<?> relations, boolean flush, boolean upsert, boolean noEmbed);
+
+    default CompletableFuture<Void> addEpisode(Iterable<?> episodes) {
+        return addEpisode(episodes, true, false, false);
+    }
+
+    CompletableFuture<Void> addEpisode(Iterable<?> episodes, boolean flush, boolean upsert, boolean noEmbed);
+
     boolean isEmpty(String collection);
 
-    /**
-     * Query graph objects from a collection.
-     * 
-     * @param collection collection name to query
-     * @param ids optional list of IDs to query
-     * @param expr optional filter expression
-     * @param silenceErrors suppress exceptions and return empty list
-     * @return list of query results
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    List<Map<String, Object>> query(String collection, List<Object> ids, QueryExpr expr, boolean silenceErrors)
-            throws Exception;
+    default CompletableFuture<List<Map<String, Object>>> query(String collection) {
+        return query(collection, null, null, false, Map.of());
+    }
 
-    /**
-     * Delete graph objects from a collection.
-     * 
-     * @param collection collection name to delete from
-     * @param ids optional list of IDs to delete
-     * @param expr optional filter expression
-     * @return result of the delete operation
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    Map<String, Object> delete(String collection, List<Object> ids, QueryExpr expr) throws Exception;
+    default CompletableFuture<List<Map<String, Object>>> query(String collection,
+                                                               List<?> ids,
+                                                               QueryExpr expr,
+                                                               boolean silenceErrors) {
+        return query(collection, ids, expr, silenceErrors, Map.of());
+    }
 
-    /**
-     * Search for graph objects using hybrid search.
-     * 
-     * @param queryText search query string
-     * @param k number of results to return
-     * @param collection collection to search
-     * @param rankerConfig configuration for search ranking
-     * @param bfsDepth breadth-first search depth
-     * @param bfsK max nodes to expand in BFS
-     * @param filterExpr optional filter expression
-     * @param outputFields fields to include in results
-     * @param queryEmbedding pre-computed query embedding (optional)
-     * @param kwargs additional arguments (language, reranker, min_score, etc.)
-     * @return map of collection names to results
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    Map<String, List<Map<String, Object>>> search(String queryText, int k, String collection, Object rankerConfig,
-            int bfsDepth, int bfsK, QueryExpr filterExpr, List<String> outputFields, List<Float> queryEmbedding,
-            Map<String, Object> kwargs) throws Exception;
+    CompletableFuture<List<Map<String, Object>>> query(String collection,
+                                                       List<?> ids,
+                                                       QueryExpr expr,
+                                                       boolean silenceErrors,
+                                                       Map<String, Object> kwargs);
 
-    /**
-     * Attach an embedding service to the backend.
-     * 
-     * @param embedder embedding service instance
-     * @since 0.1.7
-     */
+    default CompletableFuture<Map<String, Object>> delete(String collection) {
+        return delete(collection, null, null, Map.of());
+    }
+
+    default CompletableFuture<Map<String, Object>> delete(String collection, List<?> ids, QueryExpr expr) {
+        return delete(collection, ids, expr, Map.of());
+    }
+
+    CompletableFuture<Map<String, Object>> delete(String collection,
+                                                  List<?> ids,
+                                                  QueryExpr expr,
+                                                  Map<String, Object> kwargs);
+
+    CompletableFuture<Map<String, List<Map<String, Object>>>> search(String query,
+                                                                     int k,
+                                                                     String collection,
+                                                                     BaseRankConfig rankerConfig,
+                                                                     Reranker reranker,
+                                                                     int bfsDepth,
+                                                                     int bfsK,
+                                                                     QueryExpr filterExpr,
+                                                                     List<String> outputFields,
+                                                                     List<Double> queryEmbedding,
+                                                                     Map<String, Object> kwargs);
+
+    default Map<String, List<Map<String, Object>>> search(String query,
+                                                          int k,
+                                                          String collection,
+                                                          BaseRankConfig rankerConfig,
+                                                          int bfsDepth,
+                                                          int bfsK,
+                                                          QueryExpr filterExpr,
+                                                          List<String> outputFields,
+                                                          List<Double> queryEmbedding,
+                                                          Map<String, Object> kwargs) {
+        return search(query, k, collection, rankerConfig, null, bfsDepth, bfsK, filterExpr, outputFields,
+                queryEmbedding, kwargs == null ? Map.of() : kwargs).join();
+    }
+
     void attachEmbedder(Embedding embedder);
 
-    /**
-     * Close the backend and clean up resources.
-     * 
-     * @since 0.1.7
-     */
     void close();
+
+    /**
+     * Java representation of Python's {@code @classmethod from_config}.
+     */
+    static GraphStore fromConfig(GraphConfig config) {
+        return GraphStoreFactory.fromConfig(config);
+    }
+
+    @FunctionalInterface
+    interface Factory {
+
+        GraphStore fromConfig(GraphConfig config, Map<String, Object> kwargs);
+    }
 }

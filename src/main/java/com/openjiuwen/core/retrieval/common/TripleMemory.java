@@ -11,46 +11,26 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Deduplicated triple memory.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TripleMemory} in
+ * {@code openjiuwen/core/retrieval/common/triple_memory.py}.
  */
 public class TripleMemory {
-    private final Set<String> includedTriples = new HashSet<>();
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
+    private final Set<String> includedTriples = new HashSet<>();
     private final List<List<String>> memory = new ArrayList<>();
 
-    /**
-     * size.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int size() {
         return memory.size();
     }
 
-    /**
-     * getMemory.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<List<String>> getMemory() {
-        return new ArrayList<>(memory);
+        List<List<String>> copy = new ArrayList<>();
+        for (List<String> triple : memory) {
+            copy.add(new ArrayList<>(triple));
+        }
+        return copy;
     }
 
-    /**
-     * getTriplesStr.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getTriplesStr() {
         List<String> formatted = new ArrayList<>();
         for (List<String> triple : memory) {
@@ -59,43 +39,24 @@ public class TripleMemory {
         return String.join("\n", formatted);
     }
 
-    /**
-     * extendMemory.
-     * 
-     * @param triple triple
-     * @since 0.1.7
-     */
-    public void extendMemory(List<String> triple) {
-        String normalized = tupleToString(triple);
+    public void extendMemory(List<String> newTriple) {
+        String normalized = tupleToString(newTriple);
         if (includedTriples.add(normalized)) {
-            memory.add(new ArrayList<>(triple));
+            memory.add(new ArrayList<>(newTriple));
         }
     }
 
-    /**
-     * batchExtendMemory.
-     * 
-     * @param triples triples
-     * @since 0.1.7
-     */
-    public void batchExtendMemory(List<List<String>> triples) {
-        for (List<String> triple : triples) {
+    public void batchExtendMemory(List<List<String>> newTriples) {
+        for (List<String> triple : newTriples) {
             extendMemory(triple);
         }
     }
 
-    /**
-     * tupleToString.
-     * 
-     * @param triple triple
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String tupleToString(List<String> triple) {
-        List<String> normalized = new ArrayList<>();
-        for (String item : triple) {
-            normalized.add(item.toLowerCase(Locale.ROOT));
+    public static String tupleToString(List<String> newTriple) {
+        List<String> lowered = new ArrayList<>();
+        for (String item : newTriple) {
+            lowered.add(item.toLowerCase(Locale.ROOT));
         }
-        return String.join(" ", normalized);
+        return String.join(" ", lowered);
     }
 }

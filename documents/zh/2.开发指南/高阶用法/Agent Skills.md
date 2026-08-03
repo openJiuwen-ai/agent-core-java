@@ -1,6 +1,6 @@
 # Agent Skills
 
-`Agent Skills` 对应 `com.openjiuwen.core.singleagent.skills`。在 Java 版里，skill 负责两件事：
+`Agent Skills` 对应 `com.openjiuwen.core.single_agent.skills`。在 Java 版里，skill 负责两件事：
 
 1. 把磁盘上的技能目录注册成可查询的元数据；
 2. 把这些元数据拼成补充提示词，让 `ReActAgent` 在推理时知道“有哪些 skill、应该去哪里读 `SKILL.md`”。

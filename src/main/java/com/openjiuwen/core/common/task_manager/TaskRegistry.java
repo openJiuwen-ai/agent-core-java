@@ -6,81 +6,53 @@ package com.openjiuwen.core.common.task_manager;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.lang.ref.WeakReference;
 import java.util.concurrent.ConcurrentHashMap;
+import java.lang.ref.WeakReference;
 
 /**
- * Registry for common task-manager tasks with weak-reference storage.
- * 
- * @since 0.1.7
+ * Registry for coroutine tasks.
+ *
+ * <p>Mirrors Python's {@code TaskRegistry} in
+ * {@code openjiuwen/core/common/task_manager/registry.py}.</p>
  */
 public class TaskRegistry {
-    private final Map<String, WeakReference<Task>> tasks = new LinkedHashMap<>();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Set<String>> groups = new LinkedHashMap<>();
+    private final Map<String, WeakReference<Task>> tasks = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> groups = new ConcurrentHashMap<>();
 
-    /**
-     * add.
-     * 
-     * @param task task
-     * @since 0.1.7
-     */
     public void add(Task task) {
         tasks.put(task.getTaskId(), new WeakReference<>(task));
-        if (task.getGroup() != null && !task.getGroup().isBlank()) {
-            groups.computeIfAbsent(task.getGroup(), ignored -> new LinkedHashSet<>()).add(task.getTaskId());
+        if (task.getGroup() != null) {
+            groups.computeIfAbsent(task.getGroup(), ignored -> ConcurrentHashMap.newKeySet()).add(task.getTaskId());
         }
     }
 
-    /**
-     * get.
-     * 
-     * @param taskId taskId
-     * @return the result
-     * @since 0.1.7
-     */
     public Task get(String taskId) {
-        WeakReference<Task> ref = tasks.get(taskId);
-        Task task = ref != null ? ref.get() : null;
-        if (task == null && ref != null) {
-            removeUnsafe(taskId);
+        WeakReference<Task> reference = tasks.get(taskId);
+        if (reference == null) {
+            return null;
+        }
+        Task task = reference.get();
+        if (task == null) {
+            tasks.remove(taskId);
+            removeTaskIdFromGroups(taskId);
         }
         return task;
     }
 
-    /**
-     * contains.
-     * 
-     * @param taskId taskId
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean contains(String taskId) {
         return get(taskId) != null;
     }
 
-    /**
-     * getByGroup.
-     * 
-     * @param group group
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Task> getByGroup(String group) {
-        Set<String> ids = groups.getOrDefault(group, Set.of());
+        Set<String> taskIds = groups.getOrDefault(group, Set.of());
         List<Task> result = new ArrayList<>();
-        for (String id : ids) {
-            Task task = get(id);
+        for (String taskId : taskIds) {
+            Task task = get(taskId);
             if (task != null) {
                 result.add(task);
             }
@@ -88,41 +60,19 @@ public class TaskRegistry {
         return result;
     }
 
-    /**
-     * getByParent.
-     * 
-     * @param parentId parentId
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Task> getByParent(String parentId) {
         List<Task> result = new ArrayList<>();
-        for (WeakReference<Task> ref : tasks.values()) {
-            Task task = ref.get();
-            if (task == null) {
-                continue;
-            }
-            if (parentId != null && parentId.equals(task.getParentTaskId())) {
+        for (Task task : getAll()) {
+            if (parentId.equals(task.getParentTaskId())) {
                 result.add(task);
             }
         }
         return result;
     }
 
-    /**
-     * getByStatus.
-     * 
-     * @param status status
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Task> getByStatus(TaskStatus status) {
         List<Task> result = new ArrayList<>();
-        for (WeakReference<Task> ref : tasks.values()) {
-            Task task = ref.get();
-            if (task == null) {
-                continue;
-            }
+        for (Task task : getAll()) {
             if (task.getStatus() == status) {
                 result.add(task);
             }
@@ -130,26 +80,14 @@ public class TaskRegistry {
         return result;
     }
 
-    /**
-     * getRunning.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Task> getRunning() {
         return getByStatus(TaskStatus.RUNNING);
     }
 
-    /**
-     * getAll.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Task> getAll() {
         List<Task> result = new ArrayList<>();
-        for (WeakReference<Task> ref : tasks.values()) {
-            Task task = ref.get();
+        for (String taskId : new ArrayList<>(tasks.keySet())) {
+            Task task = get(taskId);
             if (task != null) {
                 result.add(task);
             }
@@ -157,95 +95,86 @@ public class TaskRegistry {
         return result;
     }
 
-    /**
-     * keys.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Collection<String> keys() {
-        cleanupStaleReferences();
-        return new ArrayList<>(tasks.keySet()); // LinkedHashMap preserves insertion order
+    public Set<String> keys() {
+        cleanupStale();
+        return new LinkedHashSet<>(tasks.keySet());
     }
 
-    /**
-     * items.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Collection<Task> values() {
+        return List.copyOf(getAll());
+    }
+
     public Set<Map.Entry<String, Task>> items() {
-        cleanupStaleReferences();
-        Set<Map.Entry<String, Task>> result = ConcurrentHashMap.newKeySet();
-        for (Map.Entry<String, WeakReference<Task>> entry : tasks.entrySet()) {
-            Task task = entry.getValue().get();
+        Map<String, Task> liveItems = new ConcurrentHashMap<>();
+        for (String taskId : new ArrayList<>(tasks.keySet())) {
+            Task task = get(taskId);
             if (task != null) {
-                result.add(Map.entry(entry.getKey(), task));
+                liveItems.put(taskId, task);
             }
         }
-        return result;
+        return Set.copyOf(liveItems.entrySet());
     }
 
-    /**
-     * removeUnsafe.
-     * 
-     * @param taskId taskId
-     * @since 0.1.7
-     */
-    public void removeUnsafe(String taskId) {
-        WeakReference<Task> ref = tasks.remove(taskId);
-        Task task = ref != null ? ref.get() : null;
+    public Task pop(String taskId) {
+        return pop(taskId, null);
+    }
+
+    public Task pop(String taskId, Task defaultValue) {
+        Task task = removeUnsafe(taskId);
+        return task == null ? defaultValue : task;
+    }
+
+    public Task removeUnsafe(String taskId) {
+        WeakReference<Task> reference = tasks.remove(taskId);
+        Task task = reference == null ? null : reference.get();
         if (task == null) {
-            groups.values().forEach(ids -> ids.remove(taskId));
-            groups.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+            removeTaskIdFromGroups(taskId);
+            return task;
+        }
+        removeTaskIdFromGroup(taskId, task.getGroup());
+        return task;
+    }
+
+    public void removeUnsafeDeprecated(String taskId) {
+        removeUnsafe(taskId);
+    }
+
+    private void cleanupStale() {
+        for (String taskId : new ArrayList<>(tasks.keySet())) {
+            get(taskId);
+        }
+    }
+
+    private void removeTaskIdFromGroups(String taskId) {
+        for (String group : new ArrayList<>(groups.keySet())) {
+            removeTaskIdFromGroup(taskId, group);
+        }
+    }
+
+    private void removeTaskIdFromGroup(String taskId, String group) {
+        if (group == null) {
             return;
         }
-        if (task.getGroup() != null && !task.getGroup().isBlank()) {
-            Set<String> ids = groups.get(task.getGroup());
-            if (ids != null) {
-                ids.remove(taskId);
-                if (ids.isEmpty()) {
-                    groups.remove(task.getGroup());
-                }
+        Set<String> groupTasks = groups.get(group);
+        if (groupTasks != null) {
+            groupTasks.remove(taskId);
+            if (groupTasks.isEmpty()) {
+                groups.remove(group);
             }
         }
     }
 
-    /**
-     * getGroupTaskIds.
-     * 
-     * @param group group
-     * @return the result
-     * @since 0.1.7
-     */
+    public Task remove(String taskId) {
+        return removeUnsafe(taskId);
+    }
+
     public List<String> getGroupTaskIds(String group) {
-        return new ArrayList<>(groups.getOrDefault(group, Set.of()));
-    }
-
-    /**
-     * clear.
-     * 
-     * @since 0.1.7
-     */
-    public void clear() {
-        tasks.clear();
-        groups.clear();
-    }
-
-    /**
-     * cleanupStaleReferences.
-     * 
-     * @since 0.1.7
-     */
-    private void cleanupStaleReferences() {
-        List<String> staleIds = new ArrayList<>();
-        for (Map.Entry<String, WeakReference<Task>> entry : tasks.entrySet()) {
-            if (entry.getValue().get() == null) {
-                staleIds.add(entry.getKey());
+        List<String> liveTaskIds = new ArrayList<>();
+        for (String taskId : groups.getOrDefault(group, Set.of())) {
+            if (contains(taskId)) {
+                liveTaskIds.add(taskId);
             }
         }
-        for (String staleId : staleIds) {
-            removeUnsafe(staleId);
-        }
+        return liveTaskIds;
     }
 }

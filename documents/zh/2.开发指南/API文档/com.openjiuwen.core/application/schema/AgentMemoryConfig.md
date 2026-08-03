@@ -1,4 +1,4 @@
-﻿# com.openjiuwen.core.application.schema.AgentMemoryConfig
+﻿# com.openjiuwen.core.memory.config.AgentMemoryConfig
 
 ## class AgentMemoryConfig
 

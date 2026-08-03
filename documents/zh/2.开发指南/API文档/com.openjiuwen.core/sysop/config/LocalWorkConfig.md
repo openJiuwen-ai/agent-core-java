@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.config.LocalWorkConfig
+# com.openjiuwen.core.sys_operation.config.LocalWorkConfig
 
 ## 类 LocalWorkConfig
 

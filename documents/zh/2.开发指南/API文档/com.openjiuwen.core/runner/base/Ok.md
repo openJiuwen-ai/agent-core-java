@@ -1,4 +1,4 @@
-# com.openjiuwen.core.runner.base.Ok
+# com.openjiuwen.core.runner.resourcemanager.Ok
 
 ## class Ok
 

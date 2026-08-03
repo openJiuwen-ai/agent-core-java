@@ -1,25 +1,28 @@
-
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DMessageType;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.mq.QueueMessage;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
-
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class MqServerAdapterCompatibilityTest {
+
     @Test
     void mqMessageUtilsShouldBuildStreamBatchAndErrorResponses() {
         DmqRequestMessage request = new DmqRequestMessage();
@@ -29,8 +32,7 @@ class MqServerAdapterCompatibilityTest {
 
         DmqResponseMessage stream = MqMessageUtils.buildStreamResponse(request, "adapter", "chunk", 0, false);
         DmqResponseMessage batch = MqMessageUtils.buildBatchResponse(request, "adapter", Map.of("ok", true));
-        DmqResponseMessage error =
-            MqMessageUtils.buildErrorResponse(request, "adapter", new IllegalStateException("boom"));
+        DmqResponseMessage error = MqMessageUtils.buildErrorResponse(request, "adapter", new BaseError(StatusCode.ERROR, "boom", null, null));
 
         assertThat(stream.getReceiverId()).isEqualTo("caller");
         assertThat(stream.isLastChunk()).isFalse();
@@ -40,8 +42,12 @@ class MqServerAdapterCompatibilityTest {
 
     @Test
     void mqServerAdapterShouldIgnoreExpiredAndHandleStopMessages() throws Exception {
-        MqServerAdapter adapter = new MqServerAdapter("agent-1", "agent.topic", inputs -> Map.of("ok", true),
-                inputs -> List.<Object>of("a", "b").iterator());
+        MqServerAdapter adapter = new MqServerAdapter(
+                "agent-1",
+                "agent.topic",
+                inputs -> Map.of("ok", true),
+                inputs -> List.<Object>of("a", "b").iterator()
+        );
 
         FakeMessageQueue mq = new FakeMessageQueue();
         setField(adapter, "mq", mq);
@@ -65,8 +71,12 @@ class MqServerAdapterCompatibilityTest {
 
     @Test
     void mqServerAdapterShouldProduceBatchAndStreamResponses() throws Exception {
-        MqServerAdapter adapter = new MqServerAdapter("agent-2", "agent.topic", inputs -> Map.of("value", "done"),
-                inputs -> List.<Object>of("c1", "c2").iterator());
+        MqServerAdapter adapter = new MqServerAdapter(
+                "agent-2",
+                "agent.topic",
+                inputs -> Map.of("value", "done"),
+                inputs -> List.<Object>of("c1", "c2").iterator()
+        );
 
         FakeMessageQueue mq = new FakeMessageQueue();
         setField(adapter, "mq", mq);
@@ -90,8 +100,7 @@ class MqServerAdapterCompatibilityTest {
         invokeProcessMessage(adapter, stream);
 
         assertThat(mq.produced).isNotEmpty();
-        assertThat(mq.produced.stream().filter(msg -> msg instanceof DmqResponseMessage).count())
-                .isGreaterThanOrEqualTo(4);
+        assertThat(mq.produced.stream().filter(msg -> msg instanceof DmqResponseMessage).count()).isGreaterThanOrEqualTo(4);
     }
 
     private static void invokeHandleMessage(MqServerAdapter adapter, DmqRequestMessage message) throws Exception {

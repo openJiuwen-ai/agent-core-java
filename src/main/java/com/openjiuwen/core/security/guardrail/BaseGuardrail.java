@@ -8,233 +8,176 @@ import com.openjiuwen.core.common.exception.GuardrailError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.runner.callback.CallbackFramework;
-import com.openjiuwen.core.runner.callback.HookType;
+import com.openjiuwen.core.runner.callback.AbortError;
+import com.openjiuwen.core.runner.callback.CallbackInfo;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * Base class for guardrails that integrate with {@link CallbackFramework}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BaseGuardrail} in
+ * {@code openjiuwen/core/security/guardrail/guardrail.py}.
  */
 public abstract class BaseGuardrail {
-    /**
-     * LOGGER.
-     * 
-     * @since 0.1.7
-     */
-    protected static final LoggerProtocol LOGGER = Loggers.RUNNER;
 
-    /**
-     * events.
-     * 
-     * @since 0.1.7
-     */
-    protected final List<String> events = new ArrayList<>();
+    public static final List<Object> DEFAULT_EVENTS = List.of();
+    public static final int DEFAULT_PRIORITY = 100;
+    public static final String NAMESPACE = "guardrail";
 
-    /**
-     * registeredCallbacks.
-     * 
-     * @since 0.1.7
-     */
-    protected final Map<String, Function<Map<String, Object>, Object>> registeredCallbacks = new ConcurrentHashMap<>();
+    private static final LoggerProtocol LOGGER = Loggers.COMMON;
 
-    /**
-     * backend.
-     * 
-     * @since 0.1.7
-     */
-    protected GuardrailBackend backend;
+    private final List<Object> events = new ArrayList<>();
+    private final List<Object> registeredEvents = new ArrayList<>();
+    private final Map<Object, Function<Map<String, Object>, Object>> registeredCallbacks = new LinkedHashMap<>();
 
-    /**
-     * framework.
-     * 
-     * @since 0.1.7
-     */
-    protected CallbackFramework framework;
+    private final int priority;
+    private final String namespace;
 
-    /**
-     * enableLogging.
-     * 
-     * @since 0.1.7
-     */
-    protected boolean enableLogging = true;
+    private GuardrailBackend backend;
+    private DecoratorFramework framework;
+    private boolean enableLogging;
 
-    /**
-     * BaseGuardrail.
-     * 
-     * @param backend backend
-     * @param events events
-     * @param enableLogging enableLogging
-     * @since 0.1.7
-     */
-    protected BaseGuardrail(GuardrailBackend backend, List<String> events, boolean enableLogging) {
+    protected BaseGuardrail() {
+        this(null, null, null, true);
+    }
+
+    protected BaseGuardrail(List<?> events, GuardrailBackend backend, boolean enableLogging) {
+        this(events, backend, null, enableLogging);
+    }
+
+    protected BaseGuardrail(GuardrailBackend backend, List<?> events, boolean enableLogging) {
+        this(events, backend, null, enableLogging);
+    }
+
+    protected BaseGuardrail(List<?> events, GuardrailBackend backend, Integer priority, boolean enableLogging) {
         this.backend = backend;
+        this.priority = priority != null ? priority : resolveDefaultPriority();
+        this.namespace = resolveNamespace();
         this.enableLogging = enableLogging;
-        List<String> defaults = events != null ? events : defaultEvents();
-        if (defaults != null) {
-            this.events.addAll(defaults);
+
+        if (events != null) {
+            this.events.addAll(copyEvents(events));
+        } else {
+            this.events.addAll(resolveDefaultEvents());
         }
     }
 
-    /**
-     * defaultEvents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    protected abstract List<String> defaultEvents();
-
-    /**
-     * listenEvents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<String> listenEvents() {
+    public List<Object> listenEvents() {
         return new ArrayList<>(events);
     }
 
-    /**
-     * withEvents.
-     * 
-     * @param events events
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseGuardrail withEvents(List<String> events) {
+    public BaseGuardrail withEvents(List<?> events) {
         this.events.clear();
         if (events != null) {
-            this.events.addAll(events);
+            this.events.addAll(copyEvents(events));
         }
         return this;
     }
 
-    /**
-     * setBackend.
-     * 
-     * @param backend backend
-     * @return the result
-     * @since 0.1.7
-     */
     public BaseGuardrail setBackend(GuardrailBackend backend) {
         this.backend = backend;
         return this;
     }
 
-    /**
-     * getBackend.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public GuardrailBackend getBackend() {
         return backend;
     }
 
-    /**
-     * isEnableLogging.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public List<Object> getRegisteredEvents() {
+        return new ArrayList<>(registeredEvents);
+    }
+
+    public boolean isEventRegistered(Object event) {
+        return registeredEvents.contains(event);
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public String getNamespace() {
+        return namespace;
+    }
+
     public boolean isEnableLogging() {
         return enableLogging;
     }
 
-    /**
-     * setEnableLogging.
-     * 
-     * @param enableLogging enableLogging
-     * @since 0.1.7
-     */
     public void setEnableLogging(boolean enableLogging) {
         this.enableLogging = enableLogging;
     }
 
-    /**
-     * Perform detection for an event. Subclasses may override.
-     * 
-     * @param eventName eventName
-     * @param args args
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public GuardrailResult detect(String eventName, Object[] args, Map<String, Object> kwargs) throws Exception {
+    public abstract GuardrailContext extractContext(Object event, Object[] args, Map<String, Object> kwargs);
+
+    public GuardrailResult detect(Object event, Object[] args, Map<String, Object> kwargs) throws Exception {
         if (backend == null) {
-            throw new IllegalStateException("No backend configured for " + getClass().getSimpleName()
-                    + ". Either set a backend or override detect().");
+            if (enableLogging) {
+                LOGGER.error("No backend configured for {}", getClass().getSimpleName());
+            }
+            throw new IllegalStateException(
+                    "No backend configured for " + getClass().getSimpleName() + ". Use setBackend() to set one."
+            );
         }
 
-        Map<String, Object> analysisData = new LinkedHashMap<>();
-        analysisData.put("event", eventName);
-        analysisData.put("args", args == null ? List.of() : List.of(args));
-        if (kwargs != null) {
-            for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
-                if (!"_args".equals(entry.getKey())) {
-                    analysisData.put(entry.getKey(), entry.getValue());
-                }
+        if (enableLogging) {
+            LOGGER.info("Guardrail detection started for event '{}'", event);
+        }
+
+        GuardrailContext context = extractContext(event, args != null ? args.clone() : new Object[0], safeKwargs(kwargs));
+
+        if (enableLogging) {
+            LOGGER.debug("Analyzing data with backend: {}", backend.getClass().getSimpleName());
+        }
+
+        RiskAssessment assessment = backend.analyze(context);
+
+        if (enableLogging) {
+            if (assessment.isHasRisk()) {
+                LOGGER.warning(
+                        "Guardrail detected risk: {} (level: {}) for event '{}'",
+                        assessment.getRiskType(),
+                        assessment.getRiskLevel(),
+                        event
+                );
+            } else {
+                LOGGER.info("Guardrail passed for event '{}'", event);
             }
         }
 
-        RiskAssessment assessment = backend.analyze(analysisData);
-        if (assessment == null || !assessment.isHasRisk()) {
-            return GuardrailResult.pass(assessment != null ? assessment.getDetails() : null);
-        }
-        return GuardrailResult.block(assessment.getRiskLevel(), assessment.getRiskType(), assessment.getDetails(),
-                null);
+        return new GuardrailResult(
+                !assessment.isHasRisk(),
+                assessment.getRiskLevel(),
+                assessment.getRiskType(),
+                assessment.getDetails(),
+                null
+        );
     }
 
-    /**
-     * Register this guardrail with a callback framework.
-     * 
-     * @param framework framework
-     * @since 0.1.7
-     */
-    public void register(CallbackFramework framework) {
+    public void register(DecoratorFramework framework) {
         this.framework = Objects.requireNonNull(framework, "framework");
 
-        Consumer<Map<String, Object>> rethrowHook = hookData -> {
-            Object error = hookData.get("_error");
-            if (error instanceof RuntimeException runtimeException) {
-                hookData.put("_raise", runtimeException);
-            } else if (error instanceof Throwable throwable) {
-                hookData.put("_raise", new RuntimeException(throwable));
-            } else {
-                // no-op
-            }
-        };
+        if (enableLogging) {
+            LOGGER.info(
+                    "Registering guardrail {} for events: {}",
+                    getClass().getSimpleName(),
+                    listenEvents()
+            );
+        }
 
-        for (String event : listenEvents()) {
-            framework.addHook(event, HookType.ERROR, rethrowHook);
-
+        for (Object event : listenEvents()) {
             Function<Map<String, Object>, Object> callback = kwargs -> {
-                Object[] args = kwargs != null && kwargs.get("_args") instanceof Object[] arr ? arr : new Object[0];
                 try {
-                    GuardrailResult result = detect(event, args, kwargs);
-                    if (!result.isSafe()) {
-                        Map<String, Object> params = new LinkedHashMap<>();
-                        params.put("risk_type", result.getRiskType() == null ? "unknown" : result.getRiskType());
-                        params.put("risk_level",
-                                result.getRiskLevel() == null ? "UNKNOWN" : result.getRiskLevel().name());
-                        params.put("event", event);
-                        if (result.getDetails() != null) {
-                            params.putAll(result.getDetails());
-                        }
-                        throw new GuardrailError(StatusCode.GUARDRAIL_BLOCKED, params);
-                    }
-                    return result;
+                    return detectCallback(event, internalArgs(kwargs), safeKwargs(kwargs));
                 } catch (RuntimeException runtimeException) {
                     throw runtimeException;
                 } catch (Exception exception) {
@@ -242,40 +185,158 @@ public abstract class BaseGuardrail {
                 }
             };
 
-            framework.register(event, callback, 100, false, "guardrail",
-                    Set.of("guardrail", getClass().getSimpleName()), null, null, null, 0, 0.0, null,
-                    callbackName(event));
+            framework.registerSync(
+                    String.valueOf(event),
+                    callback,
+                    priority,
+                    false,
+                    namespace,
+                    defaultTags(),
+                    Collections.emptyList(),
+                    null,
+                    null,
+                    0,
+                    0.0d,
+                    null,
+                    "_detect_callback_" + event
+            );
+
+            registeredEvents.add(event);
             registeredCallbacks.put(event, callback);
 
             if (enableLogging) {
-                LOGGER.info("Registered guardrail {} for event {}", getClass().getSimpleName(), event);
+                LOGGER.info("Registered callback for event '{}' -> _detect_callback_{}", event, event);
             }
         }
     }
 
-    /**
-     * Unregister this guardrail from the previously registered framework.
-     * 
-     * @since 0.1.7
-     */
     public void unregister() {
-        if (framework == null) {
-            return;
+        if (framework != null) {
+            Map<String, List<CallbackInfo>> callbacksByEvent = framework.getCallbacks();
+            for (Object event : registeredEvents) {
+                Function<Map<String, Object>, Object> callback = registeredCallbacks.get(event);
+                if (callback == null) {
+                    continue;
+                }
+                List<CallbackInfo> callbacks = callbacksByEvent.get(String.valueOf(event));
+                if (callbacks == null) {
+                    continue;
+                }
+                callbacks.removeIf(info -> info.getCallback() == callback);
+                if (callbacks.isEmpty()) {
+                    callbacksByEvent.remove(String.valueOf(event));
+                }
+            }
         }
-        for (Map.Entry<String, Function<Map<String, Object>, Object>> entry : registeredCallbacks.entrySet()) {
-            framework.unregister(entry.getKey(), entry.getValue());
-        }
+
+        registeredEvents.clear();
         registeredCallbacks.clear();
+        framework = null;
     }
 
-    /**
-     * callbackName.
-     * 
-     * @param event event
-     * @return the result
-     * @since 0.1.7
-     */
-    private String callbackName(String event) {
-        return getClass().getSimpleName() + ":" + event;
+    protected void addRegisteredEvent(Object event) {
+        registeredEvents.add(event);
+    }
+
+    protected Object detectCallback(Object event, Object[] args, Map<String, Object> kwargs) throws Exception {
+        if (enableLogging) {
+            LOGGER.info("Guardrail callback triggered for event '{}'", event);
+        }
+
+        GuardrailResult result = detect(event, args, kwargs);
+        if (result.isSafe()) {
+            return null;
+        }
+
+        Map<String, Object> riskInfo = new LinkedHashMap<>();
+        riskInfo.put("risk_type", result.getRiskType() != null ? result.getRiskType() : "unknown");
+        riskInfo.put("risk_level", result.getRiskLevel() != null ? result.getRiskLevel().name() : "UNKNOWN");
+        riskInfo.put("event", String.valueOf(event));
+        if (result.getDetails() != null) {
+            riskInfo.putAll(result.getDetails());
+        }
+
+        if (enableLogging) {
+            LOGGER.warning(
+                    "Guardrail blocked event '{}': {} risk detected",
+                    event,
+                    result.getRiskType() != null ? result.getRiskType() : "unknown"
+            );
+        }
+
+        if (result.getRiskLevel() == RiskLevel.CRITICAL) {
+            throw new AbortError(
+                    "Critical security risk detected: "
+                            + (result.getRiskType() != null ? result.getRiskType() : "unknown"),
+                    null,
+                    riskInfo
+            );
+        }
+
+        throw new GuardrailError(
+                StatusCode.GUARDRAIL_BLOCKED,
+                "Guardrail blocked: "
+                        + (result.getRiskType() != null ? result.getRiskType() : "unknown")
+                        + " risk detected",
+                riskInfo,
+                null,
+                riskInfo
+        );
+    }
+
+    private List<Object> resolveDefaultEvents() {
+        Object value = resolveStaticField("DEFAULT_EVENTS");
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> resolved = new ArrayList<>();
+            for (Object item : iterable) {
+                resolved.add(item);
+            }
+            return resolved;
+        }
+        return new ArrayList<>();
+    }
+
+    private int resolveDefaultPriority() {
+        Object value = resolveStaticField("DEFAULT_PRIORITY");
+        return value instanceof Number number ? number.intValue() : DEFAULT_PRIORITY;
+    }
+
+    private String resolveNamespace() {
+        Object value = resolveStaticField("NAMESPACE");
+        return value instanceof String text && !text.isBlank() ? text : NAMESPACE;
+    }
+
+    private Object resolveStaticField(String fieldName) {
+        try {
+            Field field = getClass().getField(fieldName);
+            if (!Modifier.isStatic(field.getModifiers())) {
+                return null;
+            }
+            return field.get(null);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private Set<String> defaultTags() {
+        Set<String> tags = new LinkedHashSet<>();
+        tags.add("guardrail");
+        tags.add(getClass().getSimpleName());
+        return tags;
+    }
+
+    private static List<Object> copyEvents(List<?> events) {
+        List<Object> copied = new ArrayList<>();
+        copied.addAll(events);
+        return copied;
+    }
+
+    private static Object[] internalArgs(Map<String, Object> kwargs) {
+        Object args = kwargs != null ? kwargs.get("_args") : null;
+        return args instanceof Object[] values ? values : new Object[0];
+    }
+
+    private static Map<String, Object> safeKwargs(Map<String, Object> kwargs) {
+        return kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
     }
 }

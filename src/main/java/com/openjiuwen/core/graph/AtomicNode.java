@@ -6,62 +6,54 @@ package com.openjiuwen.core.graph;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.state.WorkflowStateCollection;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 
 import java.util.Map;
 
 /**
- * Abstract atomic node that validates the session, invokes the inner logic,
- * and commits component state.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.atomic_node.AsyncAtomicNode}.
- * Java uses synchronous execution with Virtual Threads, so there is no separate sync variant.
- * 
- * @since 0.1.7
+ * Synchronous atomic graph node wrapper.
+ *
+ * <p>Mirrors Python's {@code AtomicNode} and {@code _validate_session_and_state} in
+ * {@code openjiuwen/core/graph/atomic_node.py}.</p>
  */
 public abstract class AtomicNode {
+
     /**
-     * atomicInvoke.
-     * 
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
+     * Validate session state, invoke the node, commit component state, and return the result.
+     *
+     * @param kwargs keyword-style invocation arguments
+     * @return node result
+     * @throws Exception when the concrete node invocation fails
      */
-    public Object atomicInvoke(Map<String, Object> kwargs) {
-        BaseSession session = (BaseSession) kwargs.get("session");
-        WorkflowStateCollection state = validateSessionAndState(session);
-        Object result = doAtomicInvoke(kwargs);
+    public Object atomicInvoke(Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> safeKwargs = kwargs != null ? kwargs : Map.of();
+        WorkflowCommitState state = validateSessionAndState(safeKwargs.get("session"));
+        Object result = atomicInvokeInternal(safeKwargs);
         state.commitCmp();
         return result;
     }
 
     /**
-     * Internal atomic invoke logic to be implemented by subclasses.
-     * 
-     * @param kwargs keyword arguments
-     * @return the result
-     * @since 0.1.7
+     * Concrete node body.
+     *
+     * @param kwargs keyword-style invocation arguments
+     * @return node result
+     * @throws Exception when invocation fails
      */
-    protected abstract Object doAtomicInvoke(Map<String, Object> kwargs);
+    protected abstract Object atomicInvokeInternal(Map<String, Object> kwargs) throws Exception;
 
-    /**
-     * Validate that the session and its state are suitable for atomic operations.
-     * 
-     * @param session the session to validate
-     * @return the result
-     * @since 0.1.7
-     */
-    private static WorkflowStateCollection validateSessionAndState(BaseSession session) {
+    static WorkflowCommitState validateSessionAndState(Object session) {
         if (session == null) {
             throw ErrorHelper.buildError(StatusCode.GRAPH_STATE_COMMIT_ERROR, "reason", "session is None");
         }
-
-        Object state = session.state();
-        if (!(state instanceof WorkflowStateCollection)) {
-            throw ErrorHelper.buildError(StatusCode.GRAPH_STATE_COMMIT_ERROR, "reason",
-                    "session does not support commit state");
+        if (!(session instanceof GraphSession graphSession)) {
+            throw ErrorHelper.buildError(StatusCode.GRAPH_STATE_COMMIT_ERROR, "reason", "session is not base session");
         }
-        return (WorkflowStateCollection) state;
+        Object state = graphSession.state();
+        if (!(state instanceof WorkflowCommitState commitState)) {
+            throw ErrorHelper.buildError(StatusCode.GRAPH_STATE_COMMIT_ERROR,
+                    "reason", "session is not support commit state");
+        }
+        return commitState;
     }
 }

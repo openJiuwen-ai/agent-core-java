@@ -4,108 +4,139 @@
 
 package com.openjiuwen.core.memory.migration;
 
-import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.BaseMemoryIndex;
+import com.openjiuwen.core.foundation.store.BaseMessageStore;
+import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.core.memory.migration.migrator.IndexVersionMigrator;
 import com.openjiuwen.core.memory.migration.migrator.KvMigrator;
+import com.openjiuwen.core.memory.migration.migrator.MessageMigrator;
 import com.openjiuwen.core.memory.migration.migrator.SqlMigrator;
 import com.openjiuwen.core.memory.migration.migrator.VectorMigrator;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationRegistry;
-import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.function.BiFunction;
 
 /**
- * Entry point for running all memory migrations (SQL, Vector, KV).
- * 
- * @since 0.1.7
+ * <p>Mirrors Python's module {@code openjiuwen.core.memory.migration.run_migrations} in
+ * {@code openjiuwen/core/memory/migration/run_migrations.py}.</p>
  */
 public final class RunMigrations {
-    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
-    /**
-     * RunMigrations.
-     * 
-     * @since 0.1.7
-     */
     private RunMigrations() {
     }
 
-    /**
-     * runSqlMigrations.
-     * 
-     * @param sqlDbStore sqlDbStore
-     * @return the result
-     * @since 0.1.7
-     */
-    public static boolean runSqlMigrations(SqlDbStore sqlDbStore) {
-        OperationRegistry registry = MigrationPlan.getSqlRegistry();
-        List<String> entityKeys = registry.getAllEntities();
-        if (entityKeys.isEmpty()) {
-            return true;
-        }
-        SqlMigrator migrator = new SqlMigrator(sqlDbStore);
-        boolean allOk = true;
-        for (String entityKey : entityKeys) {
-            List<BaseOperation> ops = registry.getOperations(entityKey);
-            if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] SQL migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
-                return false;
-            }
-        }
-        return allOk;
+    public static CompletableFuture<Void> runVectorMigrations(BaseVectorStore vectorStore) {
+        return runMigrationsWithRegistry(
+                MigrationPlan.getVectorRegistry(),
+                new VectorMigrator(vectorStore)::tryMigrate,
+                "vector store"
+        );
     }
 
-    /**
-     * runVectorMigrations.
-     * 
-     * @param semanticStore semanticStore
-     * @return the result
-     * @since 0.1.7
-     */
-    public static boolean runVectorMigrations(SemanticStore semanticStore) {
-        OperationRegistry registry = MigrationPlan.getVectorRegistry();
-        List<String> entityKeys = registry.getAllEntities();
-        if (entityKeys.isEmpty()) {
-            return true;
-        }
-        VectorMigrator migrator = new VectorMigrator(semanticStore);
-        boolean allOk = true;
-        for (String entityKey : entityKeys) {
-            List<BaseOperation> ops = registry.getOperations(entityKey);
-            if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] Vector migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
-                return false;
-            }
-        }
-        return allOk;
+    public static CompletableFuture<Void> runKvMigrations(BaseKVStore kvStore) {
+        return runMigrationsWithRegistry(
+                MigrationPlan.getKvRegistry(),
+                new KvMigrator(kvStore)::tryMigrate,
+                "kv store"
+        );
     }
 
-    /**
-     * runKvMigrations.
-     * 
-     * @param kvStore kvStore
-     * @return the result
-     * @since 0.1.7
-     */
-    public static boolean runKvMigrations(BaseKVStore kvStore) {
-        OperationRegistry registry = MigrationPlan.getKvRegistry();
-        List<String> entityKeys = registry.getAllEntities();
-        if (entityKeys.isEmpty()) {
-            return true;
+    public static CompletableFuture<Void> runSqlMigrations(SqlDbStore sqlDbStore) {
+        return runMigrationsWithRegistry(
+                MigrationPlan.getSqlRegistry(),
+                new SqlMigrator(sqlDbStore)::tryMigrate,
+                "db store"
+        );
+    }
+
+    public static CompletableFuture<Void> runMessageMigrations(BaseMessageStore messageStore) {
+        return runMigrationsWithRegistry(
+                MigrationPlan.getMessageRegistry(),
+                new MessageMigrator(messageStore)::tryMigrate,
+                "message"
+        );
+    }
+
+    public static CompletableFuture<Void> runIndexVersionMigrations(BaseMemoryIndex index) {
+        return runMigrationsWithRegistry(
+                MigrationPlan.getIndexRegistry(),
+                (entityKey, operations) -> new IndexVersionMigrator().tryMigrate(index, operations),
+                "index version"
+        );
+    }
+
+    private static CompletableFuture<Void> runMigrationsWithRegistry(
+            OperationRegistry registry,
+            BiFunction<String, List<BaseOperation>, CompletableFuture<Boolean>> migrator,
+            String storeName
+    ) {
+        Map<String, List<BaseOperation>> registryMap = registry.getAllOperations();
+        if (registryMap.isEmpty()) {
+            Loggers.MEMORY.info(
+                    "No {} migrations registered, skipping migration process",
+                    storeName,
+                    LogEventType.MEMORY_INIT
+            );
+            return CompletableFuture.completedFuture(null);
         }
-        KvMigrator migrator = new KvMigrator(kvStore);
-        boolean allOk = true;
-        for (String entityKey : entityKeys) {
-            List<BaseOperation> ops = registry.getOperations(entityKey);
-            if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] KV migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
-                return false;
-            }
+
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (Map.Entry<String, List<BaseOperation>> entry : registryMap.entrySet()) {
+            String entityKey = entry.getKey();
+            List<BaseOperation> operations = entry.getValue();
+            chain = chain.thenCompose(ignored -> migrator.apply(entityKey, operations)
+                    .thenCompose(success -> {
+                        if (Boolean.TRUE.equals(success)) {
+                            return CompletableFuture.completedFuture(null);
+                        }
+                        return CompletableFuture.<Void>failedFuture(migrationError(
+                                storeName,
+                                entityKey,
+                                null
+                        ));
+                    })
+                    .exceptionallyCompose(error -> {
+                        Throwable cause = rootCause(error);
+                        Loggers.MEMORY.error(
+                                "Error during {} migration for entity {}: {}",
+                                storeName,
+                                entityKey,
+                                cause.getMessage(),
+                                LogEventType.MEMORY_INIT,
+                                cause
+                        );
+                        return CompletableFuture.<Void>failedFuture(migrationError(storeName, entityKey, cause));
+                    }));
         }
-        return allOk;
+        return chain;
+    }
+
+    private static RuntimeException migrationError(String storeName, String entityKey, Throwable cause) {
+        return ErrorHelper.buildError(
+                StatusCode.MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR,
+                null,
+                null,
+                cause,
+                Map.of("error_msg", storeName + " migrations failed for entity: " + entityKey)
+        );
+    }
+
+    private static Throwable rootCause(Throwable error) {
+        Throwable cause = error;
+        if (cause instanceof CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 }

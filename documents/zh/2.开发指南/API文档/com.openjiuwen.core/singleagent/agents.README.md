@@ -1,6 +1,6 @@
 # agents
 
-`com.openjiuwen.core.singleagent.agents` 包含主要的 ReAct 单智能体实现、其配置对象，以及引入可演进 operator 的变体。
+`com.openjiuwen.core.single_agent.agents` 包含主要的 ReAct 单智能体实现、其配置对象，以及引入可演进 operator 的变体。
 
 ## 类型
 

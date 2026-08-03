@@ -1,124 +1,45 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.vendor_specific;
 
-import com.openjiuwen.core.retrieval.common.RerankerConfig;
-import com.openjiuwen.core.retrieval.reranker.StandardReranker;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
+import com.openjiuwen.core.retrieval.reranker.DashscopeReranker;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 
 /**
- * Aliyun reranker client mirroring Python's vendor-specific implementation.
- * 
- * @since 0.1.7
+ * Deprecated alias for DashScope reranker.
+ *
+ * <p>Mirrors Python's {@code AliyunReranker = DashscopeReranker} in
+ * {@code openjiuwen/extensions/vendor_specific/aliyun_reranker.py}.</p>
  */
-public class AliyunReranker extends StandardReranker {
-    /**
-     * END_POINT.
-     * 
-     * @since 0.1.7
-     */
-    public static final String END_POINT = "/services/rerank/text-rerank/text-rerank";
+@Deprecated(since = "0.1.14", forRemoval = false)
+public class AliyunReranker extends DashscopeReranker {
 
-    /**
-     * AliyunReranker.
-     * 
-     * @since 0.1.7
-     */
-    public AliyunReranker() {
-        super(new RerankerConfig());
+    public static final String PYTHON_MODULE = "openjiuwen/extensions/vendor_specific/aliyun_reranker.py";
+    public static final List<String> EXPORTED_SYMBOLS = List.of("AliyunReranker");
+    public static final Class<DashscopeReranker> ALIAS_TARGET = DashscopeReranker.class;
+    public static final String DEPRECATION_MESSAGE =
+            "AliyunReranker is deprecated, please use openjiuwen.core.retrieval.DashscopeReranker instead.";
+
+    static {
+        Loggers.COMMON.warning(DEPRECATION_MESSAGE);
     }
 
-    /**
-     * AliyunReranker.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public AliyunReranker(RerankerConfig config) {
         super(config);
     }
 
-    /**
-     * buildRequestPayload.
-     * 
-     * @param query query
-     * @param documents documents
-     * @param instruct instruct
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected Map<String, Object> buildRequestPayload(String query, List<String> documents, Object instruct,
-            Map<String, Object> options) {
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        parameters.put("return_documents", false);
-        parameters.put("top_n",
-                options != null && options.containsKey("top_n") ? options.get("top_n") : documents.size());
-        if (instruct instanceof String instructText && !instructText.isEmpty()) {
-            parameters.put("instruct", instructText);
-        }
-
-        Map<String, Object> input = new LinkedHashMap<>();
-        input.put("query", query);
-        input.put("documents", documents);
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", getModelName());
-        payload.put("input", input);
-        payload.put("parameters", parameters);
-        return payload;
-    }
-
-    /**
-     * rerankOrderedScores.
-     * 
-     * @param query query
-     * @param documents documents
-     * @param instruct instruct
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected List<Double> rerankOrderedScores(String query, List<String> documents, Object instruct,
-            Map<String, Object> options) {
-        List<Double> scores = new ArrayList<>();
-        boolean hasFrenchInstruction =
-            instruct instanceof String text && text.toLowerCase(Locale.ROOT).contains("french");
-        String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
-
-        for (String document : documents) {
-            String normalizedDocument = document == null ? "" : document.toLowerCase(Locale.ROOT);
-            double score;
-            if (hasFrenchInstruction) {
-                score = normalizedDocument.contains("bonjour") ? 0.95 : 0.25;
-            } else {
-                score = 0.40;
-                if (!normalizedQuery.isBlank() && normalizedDocument.contains(normalizedQuery)) {
-                    score += 0.05;
-                }
-            }
-            scores.add(score);
-        }
-        return scores;
-    }
-
-    /**
-     * endpoint.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected String endpoint() {
-        return END_POINT;
+    public AliyunReranker(RerankerConfig config,
+                          int maxRetries,
+                          double retryWait,
+                          Map<String, String> extraHeaders,
+                          HttpClient httpClient) {
+        super(config, maxRetries, retryWait, extraHeaders, httpClient);
     }
 }

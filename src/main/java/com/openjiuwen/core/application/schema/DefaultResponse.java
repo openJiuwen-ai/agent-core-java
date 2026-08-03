@@ -15,15 +15,15 @@ import lombok.NoArgsConstructor;
 /**
  * Default response configuration for agents.
  * <p>
- * Used when intent detection returns no matching workflow.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code DefaultResponse} in
+ * {@code openjiuwen/core/single_agent/legacy/config.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DefaultResponse {
+
     @Builder.Default
     @JsonProperty("type")
     @JsonAlias("type")

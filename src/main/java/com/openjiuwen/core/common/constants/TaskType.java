@@ -5,12 +5,8 @@
 package com.openjiuwen.core.common.constants;
 
 /**
- * Task type enumeration.
- * <p>
- * Defines the supported task types for agent execution.
- * </p>
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskType} in
+ * {@code openjiuwen/core/common/constants/enums.py}.
  */
 public enum TaskType {
     PLUGIN("plugin"),
@@ -24,23 +20,10 @@ public enum TaskType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * Parse a string value into the corresponding {@link TaskType}.
-     * 
-     * @param value the string representation
-     * @return the matching enum constant, or {@link #UNDEFINED} if no match
-     * @since 0.1.7
-     */
     public static TaskType fromValue(String value) {
         for (TaskType type : values()) {
             if (type.value.equals(value)) {

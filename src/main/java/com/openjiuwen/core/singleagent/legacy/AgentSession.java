@@ -44,7 +44,8 @@ public class AgentSession {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = "default_session";
         }
-        AgentSessionApi session = AgentSessionApi.create(sessionId, null, null);
+        com.openjiuwen.core.session.AgentSession session =
+                com.openjiuwen.core.session.AgentSession.createAgentSession(sessionId, null, null);
         session.preRun(inputs);
         return session;
     }

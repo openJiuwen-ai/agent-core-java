@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.BaseResult
+# com.openjiuwen.core.sys_operation.result.BaseResult
 
 ## 类 BaseResult
 

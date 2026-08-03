@@ -6,43 +6,103 @@ package com.openjiuwen.core.workflow.component.llm;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.workflow.component.ComponentConfig;
-
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Configuration for IntentDetection workflow component.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionCompConfig}.
- * 
- * @since 0.1.7
+ * Configuration values used by intent-detection components.
+ *
+ * <p>Mirrors Python's {@code IntentDetectionCompConfig} in
+ * {@code openjiuwen/core/workflow/components/llm/intent_detection_comp.py}.</p>
  */
-@Data
-@EqualsAndHashCode(callSuper = true)
-public class IntentDetectionCompConfig extends ComponentConfig {
+public class IntentDetectionCompConfig {
+
     private String modelId;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfig;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private List<String> categoryNameList = new ArrayList<>();
+    private final List<String> categoryNameList = new ArrayList<>();
     private String userPrompt = "";
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private List<String> exampleContent = new ArrayList<>();
-    private boolean enableHistory = false;
+    private final List<String> exampleContent = new ArrayList<>();
+    private boolean enableHistory;
     private int chatHistoryMaxTurn = 3;
     private String acceptLanguage = "zh";
+
+    public String getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(String modelId) {
+        this.modelId = modelId;
+    }
+
+    public ModelClientConfig getModelClientConfig() {
+        return modelClientConfig;
+    }
+
+    public void setModelClientConfig(ModelClientConfig modelClientConfig) {
+        this.modelClientConfig = modelClientConfig;
+    }
+
+    public ModelRequestConfig getModelConfig() {
+        return modelConfig;
+    }
+
+    public void setModelConfig(ModelRequestConfig modelConfig) {
+        this.modelConfig = modelConfig;
+    }
+
+    public List<String> getCategoryNameList() {
+        return categoryNameList;
+    }
+
+    public void setCategoryNameList(List<String> categoryNameList) {
+        this.categoryNameList.clear();
+        if (categoryNameList != null) {
+            this.categoryNameList.addAll(categoryNameList);
+        }
+    }
+
+    public String getUserPrompt() {
+        return userPrompt;
+    }
+
+    public void setUserPrompt(String userPrompt) {
+        this.userPrompt = userPrompt == null ? "" : userPrompt;
+    }
+
+    public List<String> getExampleContent() {
+        return exampleContent;
+    }
+
+    public void setExampleContent(List<String> exampleContent) {
+        this.exampleContent.clear();
+        if (exampleContent != null) {
+            this.exampleContent.addAll(exampleContent);
+        }
+    }
+
+    public boolean isEnableHistory() {
+        return enableHistory;
+    }
+
+    public void setEnableHistory(boolean enableHistory) {
+        this.enableHistory = enableHistory;
+    }
+
+    public int getChatHistoryMaxTurn() {
+        return chatHistoryMaxTurn;
+    }
+
+    public void setChatHistoryMaxTurn(int chatHistoryMaxTurn) {
+        this.chatHistoryMaxTurn = chatHistoryMaxTurn;
+    }
+
+    public String getAcceptLanguage() {
+        return acceptLanguage;
+    }
+
+    public void setAcceptLanguage(String acceptLanguage) {
+        this.acceptLanguage = acceptLanguage == null || acceptLanguage.isEmpty() ? "zh" : acceptLanguage;
+    }
 }

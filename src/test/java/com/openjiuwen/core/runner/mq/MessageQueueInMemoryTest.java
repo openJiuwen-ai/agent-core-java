@@ -1,277 +1,241 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.runner.mq;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
+import com.openjiuwen.core.common.exception.StatusCode;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Iterator;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Tests for MessageQueueInMemory: stream, invoke, and publish messaging patterns.
- * Translated from Python test_message_queue.py
+ * Focused tests for the in-memory message queue implementation.
+ *
+ * <p>Mirrors Python's {@code MessageQueueInMemory} and {@code SubscriptionInMemory} in
+ * {@code openjiuwen/core/runner/message_queue_inmemory.py}.</p>
+ *
+ * <p>Mirrors Python's tests in
+ * {@code tests/unit_tests/core/runner/test_message_queue.py}.</p>
  */
-@DisplayName("MessageQueueInMemory Tests")
 class MessageQueueInMemoryTest {
-    private MessageQueueInMemory mq;
-
-    @BeforeEach
-    void setup() {
-        mq = new MessageQueueInMemory();
-    }
-
-    @AfterEach
-    void teardown() {
-        mq.stop();
-    }
-
-    // ========== Stream Handler Tests ==========
 
     @Test
-    @DisplayName("Stream request to stream handler returns iterator")
-    void testStreamRequestToStreamHandler() throws Exception {
-        mq.start();
-
-        // Subscribe with a stream handler that returns an Iterator
-        SubscriptionBase sub = mq.subscribe("topic_stream");
-        sub.setMessageHandler(request -> {
-            String payload = request.toString();
-            List<Object> items = new ArrayList<>();
-            for (int i = 1; i < 10; i++) {
-                items.add("MockStream response for msg : " + payload + ", i is " + i);
-            }
-            return CompletableFuture.completedFuture(items.iterator());
-        });
-        sub.activate();
-
-        // Send stream request
-        StreamQueueMessage message = new StreamQueueMessage();
-        message.setPayload("上海温度多少");
-        mq.produceMessage("topic_stream", message);
-
-        // Wait for response
-        Iterator<Object> response = message.getResponse().get(5, TimeUnit.SECONDS);
-        assertNotNull(response);
-        assertEquals(0, message.getErrorCode());
-        assertEquals("", message.getErrorMsg());
-
-        int i = 1;
-        while (response.hasNext()) {
-            Object item = response.next();
-            assertEquals("MockStream response for msg : 上海温度多少, i is " + i, item);
-            i++;
-        }
-        assertEquals(10, i); // 9 items, i goes from 1 to 9, ends at 10
-
-        mq.unsubscribe("topic_stream");
-    }
-
-    @Test
-    @DisplayName("Invoke request to stream handler fails with error")
-    void testInvokeRequestToStreamHandler() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_stream");
-        sub.setMessageHandler(request -> {
-            // Stream handler returns an iterator, but InvokeQueueMessage expects a direct value
-            List<Object> items = new ArrayList<>();
-            items.add("item1");
-            return CompletableFuture.completedFuture(items.iterator());
-        });
-        sub.activate();
-
-        // Send InvokeQueueMessage to stream handler
-        InvokeQueueMessage message = new InvokeQueueMessage();
-        message.setPayload("上海温度多少");
-        mq.produceMessage("topic_stream", message);
-
-        // The InvokeQueueMessage should get response (Iterator cast to Object works)
-        Object response = message.getResponse().get(5, TimeUnit.SECONDS);
-        assertNotNull(response);
-
-        mq.unsubscribe("topic_stream");
-    }
-
-    @Test
-    @DisplayName("Publish request to stream handler succeeds with no error")
-    void testPublishRequestToStreamHandler() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_stream");
-        sub.setMessageHandler(request -> {
-            List<Object> items = new ArrayList<>();
-            items.add("result");
-            return CompletableFuture.completedFuture(items.iterator());
-        });
-        sub.activate();
-
-        // Plain QueueMessage (publish pattern)
-        QueueMessage message = new QueueMessage();
-        message.setPayload("上海温度多少");
-        mq.produceMessage("topic_stream", message);
-
-        // Give time for processing
-        Thread.sleep(500);
-        assertEquals(0, message.getErrorCode());
-        assertEquals("", message.getErrorMsg());
-
-        mq.unsubscribe("topic_stream");
-    }
-
-    // ========== Invoke Handler Tests ==========
-
-    @Test
-    @DisplayName("Invoke request to invoke handler returns value")
-    void testInvokeRequestToInvokeHandler() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
-        sub.activate();
-
-        // Send invoke request
-        InvokeQueueMessage message = new InvokeQueueMessage();
-        message.setPayload("北京温度多少");
-        mq.produceMessage("topic_invoke", message);
-
-        Object response = message.getResponse().get(5, TimeUnit.SECONDS);
-        assertNotNull(response);
-        assertEquals("MockInvoke response for msg : 北京温度多少", response);
-        assertEquals(0, message.getErrorCode());
-        assertEquals("", message.getErrorMsg());
-
-        mq.unsubscribe("topic_invoke");
-    }
-
-    @Test
-    @DisplayName("Stream request to invoke handler - handler returns non-iterator")
-    void testStreamRequestToInvokeHandler() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
-        sub.activate();
-
-        // Send StreamQueueMessage to invoke handler
-        StreamQueueMessage message = new StreamQueueMessage();
-        message.setPayload("北京温度多少");
-        mq.produceMessage("topic_invoke", message);
-
-        // The handleResponse will try to cast String to Iterator - ClassCastException
-        // This should result in error
+    void routesInvokeAndStreamMessages() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        queue.start();
         try {
-            Iterator<Object> response = message.getResponse().get(5, TimeUnit.SECONDS);
-            // If we get here, the cast worked silently, which is the Java behavior
-            // due to the unchecked cast in handleResponse
-        } catch (Exception e) {
-            // Expected - error from ClassCastException
-            assertTrue(message.getErrorCode() != 0 || e != null);
+            SubscriptionInMemory streamSubscription = queue.subscribe("topic_stream");
+            streamSubscription.setMessageHandler(payload -> CompletableFutureFactory.completedIterator(
+                    "stream response for " + payload,
+                    "stream done"));
+            streamSubscription.activate();
+
+            SubscriptionInMemory invokeSubscription = queue.subscribe("topic_invoke");
+            invokeSubscription.setMessageHandler(payload ->
+                    CompletableFutureFactory.completedValue("invoke response for " + payload));
+            invokeSubscription.activate();
+
+            StreamQueueMessage streamMessage = new StreamQueueMessage("stream-1", "payload-a");
+            queue.produceMessage("topic_stream", streamMessage);
+            assertThat(streamMessage.getResponse().get(1, TimeUnit.SECONDS))
+                    .toIterable()
+                    .containsExactly("stream response for payload-a", "stream done");
+            assertThat(streamMessage.getErrorCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+            assertThat(streamMessage.getErrorMsg()).isEmpty();
+
+            InvokeQueueMessage invokeMessage = new InvokeQueueMessage("invoke-1", "payload-b");
+            queue.produceMessage("topic_invoke", invokeMessage);
+            assertThat(invokeMessage.getResponse().get(1, TimeUnit.SECONDS))
+                    .isEqualTo("invoke response for payload-b");
+            assertThat(invokeMessage.getErrorCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+            assertThat(invokeMessage.getErrorMsg()).isEmpty();
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void recordsWrongResponseTypeAsConsumeError() {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        queue.start();
+        try {
+            SubscriptionInMemory streamSubscription = queue.subscribe("topic_stream");
+            streamSubscription.setMessageHandler(payload -> CompletableFutureFactory.completedIterator("item"));
+            streamSubscription.activate();
+
+            InvokeQueueMessage message = new InvokeQueueMessage("invoke-1", "payload");
+            queue.produceMessage("topic_stream", message);
+
+            assertThatThrownBy(() -> message.getResponse().get(1, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(IllegalArgumentException.class);
+            assertThat(message.getErrorCode())
+                    .isEqualTo(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode());
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void invokeRejectsPythonFalsyResponse() {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("topic");
+            subscription.setMessageHandler(payload -> CompletableFutureFactory.completedValue(""));
+            subscription.activate();
+
+            InvokeQueueMessage message = new InvokeQueueMessage("invoke-empty", "payload");
+            queue.produceMessage("topic", message);
+
+            assertThatThrownBy(() -> message.getResponse().get(1, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("response is empty");
+            assertThat(message.getErrorCode())
+                    .isEqualTo(StatusCode.MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR.getCode());
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void nestedSendDoesNotDeadlockSubscriptionConsumer() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        AtomicInteger callCount = new AtomicInteger();
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("nested");
+            subscription.setMessageHandler(payload -> {
+                int currentCall = callCount.incrementAndGet();
+                if (currentCall == 1) {
+                    InvokeQueueMessage innerMessage = new InvokeQueueMessage("inner", "inner-payload");
+                    queue.produceMessage("nested", innerMessage);
+                    return innerMessage.getResponse().thenApply(result -> "outer(" + result + ")");
+                }
+                return CompletableFutureFactory.completedValue("inner_done");
+            });
+            subscription.activate();
+
+            InvokeQueueMessage outerMessage = new InvokeQueueMessage("outer", "outer-payload");
+            queue.produceMessage("nested", outerMessage);
+
+            assertThat(outerMessage.getResponse().get(1, TimeUnit.SECONDS))
+                    .isEqualTo("outer(inner_done)");
+            assertThat(callCount).hasValue(2);
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void nestedSendSupportsThreeLevelChain() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        AtomicInteger callCount = new AtomicInteger();
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("nested-three");
+            subscription.setMessageHandler(payload -> {
+                int currentCall = callCount.incrementAndGet();
+                if (currentCall == 1) {
+                    InvokeQueueMessage levelBMessage = new InvokeQueueMessage("level-b", "b");
+                    queue.produceMessage("nested-three", levelBMessage);
+                    return levelBMessage.getResponse().thenApply(result -> "A(" + result + ")");
+                }
+                if (currentCall == 2) {
+                    InvokeQueueMessage levelCMessage = new InvokeQueueMessage("level-c", "c");
+                    queue.produceMessage("nested-three", levelCMessage);
+                    return levelCMessage.getResponse().thenApply(result -> "B(" + result + ")");
+                }
+                return CompletableFutureFactory.completedValue("C");
+            });
+            subscription.activate();
+
+            InvokeQueueMessage rootMessage = new InvokeQueueMessage("level-a", "a");
+            queue.produceMessage("nested-three", rootMessage);
+
+            assertThat(rootMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("A(B(C))");
+            assertThat(callCount).hasValue(3);
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void nestedSendLeavesSubscriptionUsableAfterNestedCompletion() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        AtomicInteger callCount = new AtomicInteger();
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("nested-task-done");
+            subscription.setMessageHandler(payload -> {
+                int currentCall = callCount.incrementAndGet();
+                if (currentCall == 1) {
+                    InvokeQueueMessage innerMessage = new InvokeQueueMessage("inner", "inner");
+                    queue.produceMessage("nested-task-done", innerMessage);
+                    return innerMessage.getResponse().thenApply(result -> "ok(" + result + ")");
+                }
+                if ("after".equals(payload)) {
+                    return CompletableFutureFactory.completedValue("after_done");
+                }
+                return CompletableFutureFactory.completedValue("inner_result");
+            });
+            subscription.activate();
+
+            InvokeQueueMessage rootMessage = new InvokeQueueMessage("start", "start");
+            queue.produceMessage("nested-task-done", rootMessage);
+            assertThat(rootMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("ok(inner_result)");
+
+            InvokeQueueMessage afterMessage = new InvokeQueueMessage("after", "after");
+            queue.produceMessage("nested-task-done", afterMessage);
+            assertThat(afterMessage.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("after_done");
+            assertThat(callCount).hasValue(3);
+        } finally {
+            queue.stop();
+        }
+    }
+
+    @Test
+    void subscriptionAssignsMissingMessageIdAndDuplicateTopicFails() throws Exception {
+        MessageQueueInMemory queue = new MessageQueueInMemory(100, Duration.ofSeconds(5));
+        queue.start();
+        try {
+            SubscriptionInMemory subscription = queue.subscribe("topic");
+            subscription.setMessageHandler(CompletableFutureFactory::completedValue);
+            subscription.activate();
+
+            assertThatThrownBy(() -> queue.subscribe("topic"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Topic 'topic' is already subscribed.");
+
+            InvokeQueueMessage message = new InvokeQueueMessage("", "payload");
+            queue.produceMessage("topic", message);
+            assertThat(message.getResponse().get(1, TimeUnit.SECONDS)).isEqualTo("payload");
+            assertThat(message.getMessageId()).isNotEmpty();
+        } finally {
+            queue.stop();
+        }
+    }
+
+    private static final class CompletableFutureFactory {
+
+        private CompletableFutureFactory() {
         }
 
-        mq.unsubscribe("topic_invoke");
-    }
+        static java.util.concurrent.CompletableFuture<Object> completedValue(Object value) {
+            return java.util.concurrent.CompletableFuture.completedFuture(value);
+        }
 
-    @Test
-    @DisplayName("Publish request to invoke handler succeeds")
-    void testPublishRequestToInvokeHandler() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
-        sub.activate();
-
-        // Plain QueueMessage
-        QueueMessage message = new QueueMessage();
-        message.setPayload("北京温度多少");
-        mq.produceMessage("topic_invoke", message);
-
-        Thread.sleep(500);
-        assertEquals(0, message.getErrorCode());
-        assertEquals("", message.getErrorMsg());
-
-        mq.unsubscribe("topic_invoke");
-    }
-
-    // ========== Subscription Management ==========
-
-    @Test
-    @DisplayName("Subscribe to same topic twice throws exception")
-    void testSubscribeSameTopicTwice() {
-        mq.subscribe("my_topic");
-        assertThrows(IllegalArgumentException.class, () -> mq.subscribe("my_topic"));
-    }
-
-    @Test
-    @DisplayName("Unsubscribe deactivates subscription")
-    void testUnsubscribeDeactivatesSubscription() {
-        SubscriptionBase sub = mq.subscribe("my_topic");
-        sub.activate();
-        assertTrue(sub.isActive());
-        mq.unsubscribe("my_topic");
-        assertFalse(sub.isActive());
-    }
-
-    @Test
-    @DisplayName("Start and stop lifecycle")
-    void testStartStop() {
-        mq.start();
-        mq.stop();
-        // Should be able to start again
-        mq.start();
-        mq.stop();
-    }
-
-    // ========== Handler Error Tests ==========
-
-    @Test
-    @DisplayName("Handler exception sets error on InvokeQueueMessage")
-    void testHandlerExceptionOnInvokeMessage() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_error");
-        sub.setMessageHandler(request -> {
-            return CompletableFuture.failedFuture(new RuntimeException("Handler error"));
-        });
-        sub.activate();
-
-        InvokeQueueMessage message = new InvokeQueueMessage();
-        message.setPayload("test");
-        mq.produceMessage("topic_error", message);
-
-        assertThrows(Exception.class, () -> message.getResponse().get(5, TimeUnit.SECONDS));
-        assertEquals(-1, message.getErrorCode());
-        assertEquals("Handler error", message.getErrorMsg());
-
-        mq.unsubscribe("topic_error");
-    }
-
-    @Test
-    @DisplayName("Handler exception sets error on StreamQueueMessage")
-    void testHandlerExceptionOnStreamMessage() throws Exception {
-        mq.start();
-
-        SubscriptionBase sub = mq.subscribe("topic_error");
-        sub.setMessageHandler(request -> {
-            return CompletableFuture.failedFuture(new RuntimeException("Stream handler error"));
-        });
-        sub.activate();
-
-        StreamQueueMessage message = new StreamQueueMessage();
-        message.setPayload("test");
-        mq.produceMessage("topic_error", message);
-
-        assertThrows(Exception.class, () -> message.getResponse().get(5, TimeUnit.SECONDS));
-        assertEquals(-1, message.getErrorCode());
-        assertEquals("Stream handler error", message.getErrorMsg());
-
-        mq.unsubscribe("topic_error");
+        static java.util.concurrent.CompletableFuture<Object> completedIterator(Object... values) {
+            return java.util.concurrent.CompletableFuture.completedFuture(List.of(values).iterator());
+        }
     }
 }

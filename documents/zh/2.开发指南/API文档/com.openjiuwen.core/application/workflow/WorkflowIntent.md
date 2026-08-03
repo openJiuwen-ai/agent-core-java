@@ -1,4 +1,4 @@
-# com.openjiuwen.core.application.workflow.WorkflowIntent
+# com.openjiuwen.core.application.workflow_agent.WorkflowIntent
 
 ## record WorkflowIntent
 

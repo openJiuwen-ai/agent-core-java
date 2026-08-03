@@ -5,6 +5,7 @@
 package com.openjiuwen.core.controller.modules;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.ControllerConfig;
@@ -12,10 +13,13 @@ import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.session.AgentSessionApi;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Event queue responsible for event publishing and subscription.
@@ -26,72 +30,35 @@ import java.util.function.Consumer;
  * <p>
  * Event topic format: {@code {agentId}_{sessionId}_{eventType}}
  * <p>
- * Mirrors Python's {@code EventQueue}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code EventQueue} in
+ * {@code openjiuwen/core/controller/modules/event_queue.py}.
  */
 public class EventQueue {
+
     private ControllerConfig config;
     private EventHandler eventHandler;
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, TopicSubscription> subscriptions = new ConcurrentHashMap<>();
-
-    /**
-     * AtomicBoolean.
-     * 
-     * @since 0.1.7
-     */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    /**
-     * EventQueue.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public EventQueue(ControllerConfig config) {
         this.config = config;
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public ControllerConfig getConfig() {
         return config;
     }
 
-    /**
-     * setConfig.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public void setConfig(ControllerConfig config) {
         this.config = config;
     }
 
-    /**
-     * setEventHandler.
-     * 
-     * @param eventHandler eventHandler
-     * @since 0.1.7
-     */
     public void setEventHandler(EventHandler eventHandler) {
         this.eventHandler = eventHandler;
     }
 
     /**
      * Start event queue processing.
-     * 
-     * @since 0.1.7
      */
     public void start() {
         running.set(true);
@@ -99,8 +66,6 @@ public class EventQueue {
 
     /**
      * Stop event queue processing and clear all subscriptions.
-     * 
-     * @since 0.1.7
      */
     public void stop() {
         running.set(false);
@@ -112,49 +77,90 @@ public class EventQueue {
 
     /**
      * Subscribe to all event types for a given agent/session pair.
-     * 
-     * @param agentId agent ID
+     *
+     * @param agentId   agent ID
      * @param sessionId session ID
-     * @since 0.1.7
+     * @return subscription and topic maps, matching Python's tuple return
      */
-    public void subscribe(String agentId, String sessionId) {
+    public SubscriptionResult subscribe(String agentId, String sessionId) {
         try {
-            subscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT), input -> eventHandler.handleInput(input));
-            subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_INTERACTION),
-                    input -> eventHandler.handleTaskInteraction(input));
-            subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_COMPLETION),
-                    input -> eventHandler.handleTaskCompletion(input));
-            subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_FAILED),
-                    input -> eventHandler.handleTaskFailed(input));
+            Map<EventType, String> topics = new LinkedHashMap<>();
+            Map<EventType, String> subscriptionMap = new LinkedHashMap<>();
+
+            String topic = buildTopic(agentId, sessionId, EventType.INPUT);
+            String subscription = subscribeEvent(topic, input -> eventHandler.handleInput(input));
+            subscriptionMap.put(EventType.INPUT, subscription);
+            topics.put(EventType.INPUT, topic);
+
+            topic = buildTopic(agentId, sessionId, EventType.TASK_INTERACTION);
+            subscription = subscribeEvent(topic, input -> eventHandler.handleTaskInteraction(input));
+            subscriptionMap.put(EventType.TASK_INTERACTION, subscription);
+            topics.put(EventType.TASK_INTERACTION, topic);
+
+            topic = buildTopic(agentId, sessionId, EventType.TASK_COMPLETION);
+            subscription = subscribeEvent(topic, input -> eventHandler.handleTaskCompletion(input));
+            subscriptionMap.put(EventType.TASK_COMPLETION, subscription);
+            topics.put(EventType.TASK_COMPLETION, topic);
+
+            topic = buildTopic(agentId, sessionId, EventType.TASK_FAILED);
+            subscription = subscribeEvent(topic, input -> eventHandler.handleTaskFailed(input));
+            subscriptionMap.put(EventType.TASK_FAILED, subscription);
+            topics.put(EventType.TASK_FAILED, topic);
+
+            topic = buildTopic(agentId, sessionId, EventType.FOLLOW_UP);
+            subscription = subscribeEvent(topic, input -> eventHandler.handleFollowUp(input));
+            subscriptionMap.put(EventType.FOLLOW_UP, subscription);
+            topics.put(EventType.FOLLOW_UP, topic);
+
+            return new SubscriptionResult(subscriptionMap, topics);
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Event queue subscription failed: {}", e.getMessage());
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_QUEUE_ERROR, "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_QUEUE_ERROR,
+                    "error_msg", e.getMessage());
         }
     }
 
     /**
      * Unsubscribe from all event types for a given agent/session pair.
-     * 
-     * @param agentId agent ID
+     *
+     * @param agentId   agent ID
      * @param sessionId session ID
-     * @since 0.1.7
+     * @return topic dictionary matching Python's return shape
      */
-    public void unsubscribe(String agentId, String sessionId) {
-        unsubscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT));
-        unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_INTERACTION));
-        unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_COMPLETION));
-        unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_FAILED));
+    public Map<EventType, String> unsubscribe(String agentId, String sessionId) {
+        Map<EventType, String> topics = new LinkedHashMap<>();
+
+        String topic = buildTopic(agentId, sessionId, EventType.INPUT);
+        unsubscribeEvent(topic);
+        topics.put(EventType.INPUT, topic);
+
+        topic = buildTopic(agentId, sessionId, EventType.TASK_INTERACTION);
+        unsubscribeEvent(topic);
+        topics.put(EventType.TASK_INTERACTION, topic);
+
+        topic = buildTopic(agentId, sessionId, EventType.TASK_COMPLETION);
+        unsubscribeEvent(topic);
+        topics.put(EventType.TASK_COMPLETION, topic);
+
+        topic = buildTopic(agentId, sessionId, EventType.TASK_FAILED);
+        unsubscribeEvent(topic);
+        topics.put(EventType.TASK_FAILED, topic);
+
+        topic = buildTopic(agentId, sessionId, EventType.FOLLOW_UP);
+        unsubscribeEvent(topic);
+        topics.put(EventType.FOLLOW_UP, topic);
+
+        return topics;
     }
 
     /**
      * Publish an event to the queue and wait until it is handled.
      * <p>
      * This ensures event processing order by blocking until the handler finishes.
-     * 
+     *
      * @param agentId agent ID
      * @param session session object
-     * @param event event to publish
-     * @since 0.1.7
+     * @param event   event to publish
      */
     public void publishEvent(String agentId, AgentSessionApi session, Event event) {
         String sessionId = session.getSessionId();
@@ -170,42 +176,51 @@ public class EventQueue {
         EventHandlerInput handlerInput = new EventHandlerInput(event, session);
         try {
             sub.dispatch(handlerInput);
-        } catch (RuntimeException e) {
-            // Re-throw framework errors directly
+        } catch (BaseError e) {
             throw e;
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Event handler failed for {}: {}", event.getEventType(), e.getMessage());
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_HANDLER_ERROR, "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_CONTROLLER_EVENT_HANDLER_ERROR,
+                    null,
+                    null,
+                    e,
+                    Map.of("error_msg", e.getMessage())
+            );
         }
     }
 
     /**
+     * Publish an event and return immediately.
+     *
+     * <p>Mirrors Python's {@code publish_event_async} in
+     * {@code openjiuwen/core/controller/modules/event_queue.py}.</p>
+     *
+     * @param agentId agent ID
+     * @param session session object
+     * @param event   event to publish
+     * @return completion stage for the fire-and-forget dispatch
+     */
+    public CompletionStage<Void> publishEventAsync(String agentId, AgentSessionApi session, Event event) {
+        return CompletableFuture.runAsync(() -> publishEvent(agentId, session, event));
+    }
+
+    /**
      * Unsubscribe from all topics.
-     * 
-     * @since 0.1.7
      */
     public void unsubscribeAll() {
         stop();
     }
 
-    /**
-     * subscribeEvent.
-     * 
-     * @param topic topic
-     * @param handler handler
-     * @since 0.1.7
-     */
-    private void subscribeEvent(String topic, Consumer<EventHandlerInput> handler) {
+    // ==================== Internal ====================
+
+    private String subscribeEvent(String topic, Function<EventHandlerInput, Map<String, Object>> handler) {
         TopicSubscription sub = new TopicSubscription(topic, handler);
         subscriptions.put(topic, sub);
+        sub.activate();
+        return topic;
     }
 
-    /**
-     * unsubscribeEvent.
-     * 
-     * @param topic topic
-     * @since 0.1.7
-     */
     private void unsubscribeEvent(String topic) {
         TopicSubscription sub = subscriptions.remove(topic);
         if (sub != null) {
@@ -222,21 +237,44 @@ public class EventQueue {
     /**
      * Represents a topic subscription with its handler.
      */
+    /**
+     * Subscription and topic maps returned by {@link #subscribe(String, String)}.
+     *
+     * <p>Mirrors Python's {@code (subscriptions, topics)} return in
+     * {@code openjiuwen/core/controller/modules/event_queue.py}.</p>
+     */
+    public record SubscriptionResult(Map<EventType, String> subscriptions, Map<EventType, String> topics) {
+        public SubscriptionResult {
+            subscriptions = subscriptions == null ? Map.of() : Map.copyOf(subscriptions);
+            topics = topics == null ? Map.of() : Map.copyOf(topics);
+        }
+    }
+
+    /**
+     * Represents a topic subscription with its handler.
+     *
+     * <p>Mirrors Python queue subscriptions used by
+     * {@code openjiuwen/core/controller/modules/event_queue.py}.</p>
+     */
     private static class TopicSubscription {
         private final String topic;
-        private final Consumer<EventHandlerInput> handler;
-        private volatile boolean active = true;
+        private final Function<EventHandlerInput, Map<String, Object>> handler;
+        private volatile boolean active = false;
 
-        TopicSubscription(String topic, Consumer<EventHandlerInput> handler) {
+        TopicSubscription(String topic, Function<EventHandlerInput, Map<String, Object>> handler) {
             this.topic = topic;
             this.handler = handler;
         }
 
-        void dispatch(EventHandlerInput input) {
+        Map<String, Object> dispatch(EventHandlerInput input) {
             if (!active) {
-                return;
+                return Map.of();
             }
-            handler.accept(input);
+            return handler.apply(input);
+        }
+
+        void activate() {
+            active = true;
         }
 
         void stop() {

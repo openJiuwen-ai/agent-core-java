@@ -4,21 +4,68 @@
 
 package com.openjiuwen.harness.harness_config;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * ResolvedHarnessConfig.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ResolvedSection} in
+ * {@code openjiuwen/harness/harness_config/loader.py}.
  */
-public record ResolvedHarnessConfig(HarnessConfig config, String systemPrompt, List<ResolvedSection> extraSections,
-        List<ResolvedFileSection> fileSections, Path sourcePath) {
-    public ResolvedHarnessConfig {
-        extraSections = extraSections == null ? List.of() : List.copyOf(new ArrayList<>(extraSections));
-        fileSections = fileSections == null ? List.of() : List.copyOf(new ArrayList<>(fileSections));
-        sourcePath =
-            sourcePath == null ? Path.of(".").toAbsolutePath().normalize() : sourcePath.toAbsolutePath().normalize();
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+class ResolvedSection {
+
+    private String name;
+
+    private int priority;
+
+    private Map<String, String> content;
+}
+
+/**
+ * Mirrors Python's {@code ResolvedFileSection} in
+ * {@code openjiuwen/harness/harness_config/loader.py}.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+class ResolvedFileSection {
+
+    private String filename;
+
+    private Map<String, String> content;
+}
+
+/**
+ * Mirrors Python's {@code ResolvedHarnessConfig} in
+ * {@code openjiuwen/harness/harness_config/loader.py}.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ResolvedHarnessConfig {
+
+    private HarnessConfig config;
+
+    private String systemPrompt;
+
+    @Builder.Default
+    private List<ResolvedSection> extraSections = new ArrayList<>();
+
+    @Builder.Default
+    private List<ResolvedFileSection> fileSections = new ArrayList<>();
+
+    @Builder.Default
+    private Path sourcePath = Path.of(".");
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.output_parsers;
@@ -13,14 +13,16 @@ import java.util.Map;
 
 /**
  * Single Markdown element with positional metadata.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code MarkdownElement} in
+ * {@code openjiuwen/core/foundation/llm/output_parsers/markdown_output_parser.py}.</p>
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class MarkdownElement {
+
     private String type;
 
     private Map<String, Object> content;

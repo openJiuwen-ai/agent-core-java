@@ -17,30 +17,29 @@ import java.util.function.Function;
  * Manages task executors of different types, supporting dynamic registration
  * and retrieval. Uses task_type to find the corresponding TaskExecutor builder.
  * <p>
- * Mirrors Python's {@code TaskExecutorRegistry}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskExecutorRegistry} in
+ * {@code openjiuwen/core/controller/modules/task_scheduler.py}.
  */
 public class TaskExecutorRegistry {
-    private final Map<String, Function<TaskExecutorDependencies, TaskExecutor>> taskExecutorBuilders =
-        new ConcurrentHashMap<>();
+
+    private final Map<String, Function<TaskExecutorDependencies, TaskExecutor>> taskExecutorBuilders
+            = new ConcurrentHashMap<>();
 
     /**
      * Register a task executor builder.
-     * 
-     * @param taskType task type identifier
-     * @param taskExecutorBuilder builder that receives dependencies and returns a TaskExecutor
-     * @since 0.1.7
+     *
+     * @param taskType             task type identifier
+     * @param taskExecutorBuilder  builder that receives dependencies and returns a TaskExecutor
      */
-    public void addTaskExecutor(String taskType, Function<TaskExecutorDependencies, TaskExecutor> taskExecutorBuilder) {
+    public void addTaskExecutor(String taskType,
+                                Function<TaskExecutorDependencies, TaskExecutor> taskExecutorBuilder) {
         taskExecutorBuilders.put(taskType, taskExecutorBuilder);
     }
 
     /**
      * Remove a task executor.
-     * 
+     *
      * @param taskType task type identifier
-     * @since 0.1.7
      */
     public void removeTaskExecutor(String taskType) {
         taskExecutorBuilders.remove(taskType);
@@ -48,17 +47,16 @@ public class TaskExecutorRegistry {
 
     /**
      * Get a task executor instance for the given task type.
-     * 
-     * @param taskType task type identifier
+     *
+     * @param taskType     task type identifier
      * @param dependencies task executor dependencies
      * @return task executor instance
-     * @since 0.1.7
      */
     public TaskExecutor getTaskExecutor(String taskType, TaskExecutorDependencies dependencies) {
         Function<TaskExecutorDependencies, TaskExecutor> builder = taskExecutorBuilders.get(taskType);
         if (builder == null) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR, "error_msg",
-                    "task executor not found for type: " + taskType);
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR,
+                    "error_msg", "task executor not found for type: " + taskType);
         }
         return builder.apply(dependencies);
     }

@@ -9,46 +9,28 @@ import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.workflow.ComponentComposable;
 
 /**
- * Memory Write workflow component (composable wrapper).
- * <p>
- * Creates a {@link MemoryWriteExecutable} for graph execution.
- * <p>
- * Mirrors Python's {@code MemoryWriteComponent}.
- * 
- * @since 0.1.7
+ * Composable long-term memory write workflow component.
+ *
+ * <p>Mirrors Python's {@code MemoryWriteComponent} in
+ * {@code openjiuwen/core/workflow/components/resource/memory_write_comp.py}.</p>
  */
 public class MemoryWriteComponent implements ComponentComposable {
+
     private final MemoryWriteCompConfig config;
 
-    /**
-     * Create a MemoryWriteComponent with the given configuration.
-     * 
-     * @param config the component configuration
-     * @since 0.1.7
-     */
+    public MemoryWriteComponent() {
+        this(null);
+    }
+
     public MemoryWriteComponent(MemoryWriteCompConfig config) {
         this.config = config;
     }
 
-    /**
-     * addComponent.
-     * 
-     * @param graph graph
-     * @param nodeId nodeId
-     * @param isWaitForAll isWaitForAll
-     * @since 0.1.7
-     */
     @Override
-    public void addComponent(Graph graph, String nodeId, boolean isWaitForAll) {
-        graph.addNode(nodeId, toExecutable(), isWaitForAll);
+    public void addComponent(Graph graph, String nodeId, boolean waitForAll) {
+        graph.addNode(nodeId, toExecutable(), waitForAll);
     }
 
-    /**
-     * toExecutable.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Executable<?, ?> toExecutable() {
         return new MemoryWriteExecutable(config);

@@ -1,12 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.systemtest;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
@@ -16,11 +11,11 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.local.LocalCodeOperation;
 import com.openjiuwen.core.sysop.local.LocalFsOperation;
 import com.openjiuwen.core.sysop.local.LocalShellOperation;
-import com.openjiuwen.core.sysop.registry.OperationDef;
 import com.openjiuwen.core.sysop.registry.OperationRegistry;
+import com.openjiuwen.core.sysop.registry.OperationDef;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
-import com.openjiuwen.core.sysop.result.ReadFileResult;
-import com.openjiuwen.core.sysop.result.WriteFileResult;
+import com.openjiuwen.core.sys_operation.result.ReadFileResult;
+import com.openjiuwen.core.sys_operation.result.WriteFileResult;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -33,6 +28,12 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Advanced SysOp system tests covering gaps identified in CHECK doc:
  * SysOperationToolAdapter, OperationRegistry, LocalCode/Shell/Fs operations.
@@ -40,12 +41,14 @@ import java.util.Optional;
  */
 @Tag("system-test")
 class SysOpAdvancedSystemTest {
+
     @TempDir
     Path tempDir;
 
     @Nested
     @DisplayName("OperationRegistry Tests")
     class OperationRegistryTests {
+
         @Test
         @DisplayName("OperationRegistry has LOCAL mode operations")
         void testLocalOperationsRegistered() {
@@ -90,14 +93,19 @@ class SysOpAdvancedSystemTest {
     @Nested
     @DisplayName("SysOperationToolAdapter Tests")
     class ToolAdapterTests {
+
         @Test
         @DisplayName("ToolAdapter extracts tools from SysOperation")
         void testExtractTools() {
-            SysOperationCard card = SysOperationCard.builder().id("adapter_test").mode(OperationMode.LOCAL)
-                    .workConfig(new LocalWorkConfig()).build();
+            SysOperationCard card = SysOperationCard.builder()
+                    .id("adapter_test")
+                    .mode(OperationMode.LOCAL)
+                    .workConfig(new LocalWorkConfig())
+                    .build();
 
             SysOperation sysOp = new SysOperation(card);
-            List<SysOperationToolAdapter.ToolEntry> tools = SysOperationToolAdapter.extractTools(card, sysOp);
+            List<SysOperationToolAdapter.ToolEntry> tools =
+                    SysOperationToolAdapter.extractTools(card, sysOp);
 
             assertNotNull(tools);
             assertFalse(tools.isEmpty(), "Should extract at least one tool");
@@ -121,20 +129,29 @@ class SysOpAdvancedSystemTest {
     @Nested
     @DisplayName("LocalFsOperation Tests")
     class LocalFsOperationTests {
+
         @Test
         @DisplayName("LocalFsOperation writeFile and readFile")
         void testWriteAndReadFile() throws Exception {
-            LocalFsOperation fs = new LocalFsOperation(null);
+            com.openjiuwen.core.sys_operation.local.LocalFsOperation fs =
+                    new com.openjiuwen.core.sys_operation.local.LocalFsOperation(
+                            "fs", com.openjiuwen.core.sys_operation.OperationMode.LOCAL, "local fs operation", null);
 
             String filePath = tempDir.resolve("test_fs_write.txt").toString();
 
-            WriteFileResult writeResult =
-                fs.writeFile(filePath, "Hello from system test", "w", false, true, true, null, "UTF-8", null);
+            WriteFileResult writeResult = fs.writeFile(
+                    filePath, "Hello from system test",
+                    com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode.TEXT,
+                    false, true, false, true, null, "UTF-8", null).join();
 
             assertNotNull(writeResult);
             System.out.println("[LocalFs Write] Result: " + writeResult);
 
-            ReadFileResult readResult = fs.readFile(filePath, "r", null, null, null, "UTF-8", 4096, null);
+            ReadFileResult readResult = fs.readFile(
+                    filePath,
+                    com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode.TEXT,
+                    null, null, (com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal.LineRange) null,
+                    "UTF-8", 4096, null).join();
 
             assertNotNull(readResult);
             System.out.println("[LocalFs Read] Result: " + readResult);
@@ -143,11 +160,15 @@ class SysOpAdvancedSystemTest {
         @Test
         @DisplayName("LocalFsOperation writeFile creates file if not exists")
         void testWriteCreatesFile() throws Exception {
-            LocalFsOperation fs = new LocalFsOperation(null);
+            com.openjiuwen.core.sys_operation.local.LocalFsOperation fs =
+                    new com.openjiuwen.core.sys_operation.local.LocalFsOperation(
+                            "fs", com.openjiuwen.core.sys_operation.OperationMode.LOCAL, "local fs operation", null);
             String filePath = tempDir.resolve("new_file.txt").toString();
 
-            WriteFileResult result =
-                fs.writeFile(filePath, "New file content", "w", false, false, true, null, "UTF-8", null);
+            WriteFileResult result = fs.writeFile(
+                    filePath, "New file content",
+                    com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode.TEXT,
+                    false, false, false, true, null, "UTF-8", null).join();
 
             assertNotNull(result);
             assertTrue(Files.exists(Path.of(filePath)), "File should be created");
@@ -157,12 +178,18 @@ class SysOpAdvancedSystemTest {
     @Nested
     @DisplayName("LocalShellOperation Tests")
     class LocalShellOperationTests {
+
         @Test
         @DisplayName("LocalShellOperation executeCmd echo")
         void testExecuteEcho() {
             LocalShellOperation shell = new LocalShellOperation(null);
 
-            ExecuteCmdResult result = shell.executeCmd("echo HelloSystemTest", tempDir.toString(), 30, null, null);
+            ExecuteCmdResult result = shell.executeCmd(
+                    "echo HelloSystemTest",
+                    tempDir.toString(),
+                    30,
+                    null,
+                    null);
 
             assertNotNull(result);
             System.out.println("[LocalShell] Result: " + result);
@@ -172,12 +199,18 @@ class SysOpAdvancedSystemTest {
     @Nested
     @DisplayName("LocalCodeOperation Tests")
     class LocalCodeOperationTests {
+
         @Test
         @DisplayName("LocalCodeOperation executeCode Python")
         void testExecutePython() {
             LocalCodeOperation code = new LocalCodeOperation(null);
             try {
-                var result = code.executeCode("print('hello from python')", "python", 30, null, null);
+                var result = code.executeCode(
+                        "print('hello from python')",
+                        "python",
+                        30,
+                        null,
+                        null);
                 assertNotNull(result);
                 System.out.println("[LocalCode Python] Result: " + result);
             } catch (Exception e) {

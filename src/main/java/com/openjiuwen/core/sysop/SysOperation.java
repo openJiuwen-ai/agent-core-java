@@ -4,138 +4,90 @@
 
 package com.openjiuwen.core.sysop;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.registry.OperationDef;
-import com.openjiuwen.core.sysop.registry.OperationRegistry;
+import com.openjiuwen.core.sysop.local.LocalCodeOperation;
+import com.openjiuwen.core.sysop.local.LocalFsOperation;
+import com.openjiuwen.core.sysop.local.LocalShellOperation;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * SysOperation — facade for accessing system operations.
- * <p>
- * Mirrors Python's {@code SysOperation} class in {@code sys_operation/sys_operation.py}.
- * <p>
- * Usage:
- * 
- * <pre>
- * SysOperationCard card = SysOperationCard.builder().id("sys_op").mode(OperationMode.LOCAL).build();
- * SysOperation sysOp = new SysOperation(card);
- * // Access operations
- * BaseFsOperation fs = sysOp.fs();
- * BaseShellOperation shell = sysOp.shell();
- * BaseCodeOperation code = sysOp.code();
- * </pre>
- * 
- * @since 0.1.7
+ * Backward-compatible facade for the moved system operation package.
+ *
+ * <p>Mirrors Python's {@code SysOperation} in
+ * {@code openjiuwen/core/sys_operation/sys_operation.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.SysOperation}.
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class SysOperation {
+
+    private final String id;
     private final OperationMode mode;
     private final Object runConfig;
+    private final com.openjiuwen.core.sys_operation.SysOperation delegate;
+    private final Map<String, BaseOperation> instances = new LinkedHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, BaseOperation> instances = new ConcurrentHashMap<>();
-
-    /**
-     * SysOperation.
-     * 
-     * @param card card
-     * @since 0.1.7
-     */
     public SysOperation(SysOperationCard card) {
-        this.mode = card.getMode() != null ? card.getMode() : OperationMode.LOCAL;
-        if (this.mode == OperationMode.LOCAL) {
-            this.runConfig = card.getWorkConfig() != null ? card.getWorkConfig() : new LocalWorkConfig();
-        } else {
-            this.runConfig = validateSandboxGatewayConfig(card.getGatewayConfig());
-        }
+        this.id = card.getId();
+        this.mode = OperationMode.fromNewMode(card.getMode());
+        this.delegate = new com.openjiuwen.core.sys_operation.SysOperation(card);
+        this.runConfig = delegate.getRunConfig();
     }
 
-    /**
-     * Get the file system operation instance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseFsOperation fs() {
-        return (BaseFsOperation) getOperation("fs");
+    public OperationMode getLegacyMode() {
+        return mode;
     }
 
-    /**
-     * Get the code execution operation instance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseCodeOperation code() {
-        return (BaseCodeOperation) getOperation("code");
+    public String getId() {
+        return id;
     }
 
-    /**
-     * Get the shell command operation instance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseShellOperation shell() {
-        return (BaseShellOperation) getOperation("shell");
-    }
-
-    /**
-     * Get an operation by name. Returns null if the operation is not registered.
-     * 
-     * @param name operation name (e.g., "fs", "shell", "code")
-     * @return the operation instance, or null
-     * @since 0.1.7
-     */
-    public BaseOperation getOperation(String name) {
-        return instances.computeIfAbsent(name, n -> {
-            Optional<OperationDef> def = OperationRegistry.getOperationInfo(n, mode);
-            return def.map(operationDef -> operationDef.createInstance(runConfig)).orElse(null);
-        });
-    }
-
-    /**
-     * getMode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public OperationMode getMode() {
         return mode;
     }
 
-    /**
-     * validateSandboxGatewayConfig.
-     * 
-     * @param gatewayConfig gatewayConfig
-     * @return the result
-     * @since 0.1.7
-     */
-    private static SandboxGatewayConfig validateSandboxGatewayConfig(SandboxGatewayConfig gatewayConfig) {
-        SandboxGatewayConfig config = gatewayConfig != null ? gatewayConfig : new SandboxGatewayConfig();
-        if (config.getLauncherConfig() == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
-                    "sandbox mode requires launcher_config");
+    public Object getRunConfig() {
+        return runConfig;
+    }
+
+    public String getIsolationKeyTemplate() {
+        return delegate.getIsolationKeyTemplate();
+    }
+
+    public BaseOperation fs() {
+        return getOperation("fs");
+    }
+
+    public BaseOperation code() {
+        return getOperation("code");
+    }
+
+    public BaseOperation shell() {
+        return getOperation("shell");
+    }
+
+    public BaseOperation getOperation(String name) {
+        if (instances.containsKey(name)) {
+            return instances.get(name);
         }
-        if (config.getLauncherConfig().getLauncherType() == null
-                || config.getLauncherConfig().getLauncherType().isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
-                    "sandbox mode requires launcher_type");
+        BaseOperation operation = createOperation(name);
+        if (operation != null) {
+            instances.put(name, operation);
         }
-        if (config.getLauncherConfig().getSandboxType() == null
-                || config.getLauncherConfig().getSandboxType().isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
-                    "sandbox mode requires sandbox_type");
+        return operation;
+    }
+
+    private BaseOperation createOperation(String name) {
+        if ("fs".equals(name)) {
+            return new LocalFsOperation(runConfig);
         }
-        return config;
+        if ("code".equals(name)) {
+            return new LocalCodeOperation(runConfig);
+        }
+        if ("shell".equals(name)) {
+            return new LocalShellOperation(runConfig);
+        }
+        return null;
     }
 }

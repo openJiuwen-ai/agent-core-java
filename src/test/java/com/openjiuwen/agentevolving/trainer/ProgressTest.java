@@ -1,7 +1,4 @@
-
 package com.openjiuwen.agentevolving.trainer;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
@@ -9,10 +6,15 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 class ProgressTest {
+
     @Test
     void runEpochYieldsAndUpdatesCurrentEpoch() {
-        Progress progress = new Progress(3);
+        Progress progress = new Progress();
+        progress.setMaxEpoch(3);
 
         List<Integer> epochs = new ArrayList<>();
         for (int epoch : progress.runEpoch()) {
@@ -25,7 +27,8 @@ class ProgressTest {
 
     @Test
     void runEpochRespectsStartEpochAndEmptyIteration() {
-        Progress progress = new Progress(5);
+        Progress progress = new Progress();
+        progress.setMaxEpoch(5);
         progress.setStartEpoch(5);
 
         List<Integer> epochs = new ArrayList<>();
@@ -39,7 +42,8 @@ class ProgressTest {
 
     @Test
     void runEpochSupportsPartialIteration() {
-        Progress progress = new Progress(4);
+        Progress progress = new Progress();
+        progress.setMaxEpoch(4);
         Iterator<Integer> iterator = progress.runEpoch().iterator();
 
         assertEquals(1, iterator.next());
@@ -65,15 +69,28 @@ class ProgressTest {
     }
 
     @Test
-    void settersClampScoresAndNormalizeBounds() {
+    void settersRejectInvalidValues() {
         Progress progress = new Progress();
-        progress.setStartEpoch(-1);
-        progress.setCurrentEpoch(-1);
-        progress.setCurrentBatchIter(-3);
-        progress.setMaxBatchIter(-5);
-        progress.setBestScore(1.5);
-        progress.setBestBatchScore(-0.2);
-        progress.setCurrentEpochScore(2.0);
+
+        // Negative integer fields throw
+        assertThrows(IllegalArgumentException.class, () -> progress.setStartEpoch(-1));
+        assertThrows(IllegalArgumentException.class, () -> progress.setCurrentEpoch(-1));
+        assertThrows(IllegalArgumentException.class, () -> progress.setCurrentBatchIter(-3));
+        assertThrows(IllegalArgumentException.class, () -> progress.setMaxBatchIter(-5));
+
+        // Out-of-range score fields throw
+        assertThrows(IllegalArgumentException.class, () -> progress.setBestScore(1.5));
+        assertThrows(IllegalArgumentException.class, () -> progress.setBestBatchScore(-0.2));
+        assertThrows(IllegalArgumentException.class, () -> progress.setCurrentEpochScore(2.0));
+
+        // Valid values are accepted
+        progress.setStartEpoch(0);
+        progress.setCurrentEpoch(0);
+        progress.setCurrentBatchIter(0);
+        progress.setMaxBatchIter(0);
+        progress.setBestScore(1.0);
+        progress.setBestBatchScore(0.0);
+        progress.setCurrentEpochScore(1.0);
 
         assertEquals(0, progress.getStartEpoch());
         assertEquals(0, progress.getCurrentEpoch());

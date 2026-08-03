@@ -4,34 +4,39 @@
 
 package com.openjiuwen.harness.security;
 
-import java.util.Locale;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Public enum PermissionLevel used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code PermissionLevel} in
+ * {@code openjiuwen/harness/security/models.py}.
  */
 public enum PermissionLevel {
-    ALLOW,
-    ASK,
-    DENY;
+    ALLOW("allow"),
+    ASK("ask"),
+    DENY("deny");
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PermissionLevel fromValue(Object value) {
-        if (value == null) {
-            return ALLOW;
+    private final String value;
+
+    PermissionLevel(String value) {
+        this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+        return value;
+    }
+
+    @JsonCreator
+    public static PermissionLevel fromValue(String value) {
+        if (value == null || value.isBlank()) {
+            return ASK;
         }
-        return switch (String.valueOf(value).trim().toLowerCase(Locale.ROOT)) {
-            case "allow" -> ALLOW;
-            case "ask" -> ASK;
-            case "deny" -> DENY;
-            default -> ALLOW;
-        };
+        for (PermissionLevel level : values()) {
+            if (level.value.equalsIgnoreCase(value)) {
+                return level;
+            }
+        }
+        return ASK;
     }
 }

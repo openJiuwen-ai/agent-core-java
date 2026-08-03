@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.prompt.assemble.variables.DictableVariable
 import com.openjiuwen.core.foundation.prompt.assemble.variables.TextableVariable;
 import com.openjiuwen.core.foundation.prompt.assemble.variables.Variable;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -19,86 +20,66 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Assembler that substitutes placeholders in a prompt template.
- * <p>
- * Supports both String and {@code List<BaseMessage>} content.
- * <p>
- * Mirrors Python's {@code PromptAssembler}.
- * 
- * @since 0.1.7
+ * Assembles prompt template content by replacing declared placeholders.
+ *
+ * <p>Mirrors Python's {@code PromptAssembler} in
+ * {@code openjiuwen/core/foundation/prompt/assemble/assembler.py}.</p>
  */
 public class PromptAssembler {
-    private Object templateContent; // String or List<BaseMessage>
+
+    private Object templateContent;
     private final String placeholderPrefix;
     private final String placeholderSuffix;
     private final List<Variable> templateFormatters;
     private final Map<String, Variable> variables;
 
-    /**
-     * Construct a PromptAssembler.
-     * 
-     * @param promptTemplateContent the template content (String or List of BaseMessage)
-     * @param placeholderPrefix prefix delimiter for placeholders
-     * @param placeholderSuffix suffix delimiter for placeholders
-     * @param initialVariables optional pre-configured variables
-     * @since 0.1.7
-     */
-    public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix,
-            Map<String, Variable> initialVariables) {
-        this.templateContent = promptTemplateContent;
-        this.placeholderPrefix = placeholderPrefix;
-        this.placeholderSuffix = placeholderSuffix;
-        this.templateFormatters = buildFormatterList();
-        this.variables = buildVariablesWithVerify(initialVariables != null ? initialVariables : Map.of());
-    }
-
-    /**
-     * PromptAssembler.
-     * 
-     * @param promptTemplateContent promptTemplateContent
-     * @param placeholderPrefix placeholderPrefix
-     * @param placeholderSuffix placeholderSuffix
-     * @since 0.1.7
-     */
     public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix) {
         this(promptTemplateContent, placeholderPrefix, placeholderSuffix, null);
     }
 
+    public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix,
+            Map<String, Variable> initialVariables) {
+        this.templateContent = promptTemplateContent;
+        this.placeholderPrefix = placeholderPrefix == null ? "{{" : placeholderPrefix;
+        this.placeholderSuffix = placeholderSuffix == null ? "}}" : placeholderSuffix;
+        this.templateFormatters = buildFormatterList();
+        this.variables = buildVariablesWithVerify(initialVariables == null ? Map.of() : initialVariables);
+    }
+
     /**
-     * Get all input keys needed for the template.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Python-compatible {@code input_keys} property.
+     *
+     * @return unique placeholder root names in first-seen order
      */
     public List<String> getInputKeys() {
         Set<String> keys = new LinkedHashSet<>();
-        for (Variable v : variables.values()) {
-            keys.addAll(v.getInputKeys());
+        for (Variable variable : variables.values()) {
+            keys.addAll(variable.getInputKeys());
         }
         return new ArrayList<>(keys);
     }
 
     /**
-     * promptAssemble.
-     * 
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
+     * Assemble with keyword arguments, preserving unfilled placeholders.
+     *
+     * @param kwargs keyword substitutions
+     * @return formatted String or list of BaseMessage values
      */
-    @SuppressWarnings("unchecked")
     public Object promptAssemble(Map<String, Object> kwargs) {
         List<String> inputKeys = getInputKeys();
         Map<String, Object> filtered = new LinkedHashMap<>();
-        for (var entry : kwargs.entrySet()) {
-            if (entry.getValue() != null && inputKeys.contains(entry.getKey())) {
-                filtered.put(entry.getKey(), entry.getValue());
+        if (kwargs != null) {
+            for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
+                if (entry.getValue() != null && inputKeys.contains(entry.getKey())) {
+                    filtered.put(entry.getKey(), entry.getValue());
+                }
             }
         }
-        // Fill missing keys with the placeholder string
+
         Map<String, Object> allKwargs = new LinkedHashMap<>();
-        for (String k : inputKeys) {
-            if (!filtered.containsKey(k)) {
-                allKwargs.put(k, placeholderPrefix + k + placeholderSuffix);
+        for (String key : inputKeys) {
+            if (!filtered.containsKey(key)) {
+                allKwargs.put(key, placeholderPrefix + key + placeholderSuffix);
             }
         }
         allKwargs.putAll(filtered);
@@ -107,101 +88,95 @@ public class PromptAssembler {
         return doFormat();
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * buildFormatterList.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private List<Variable> buildFormatterList() {
-        List<Variable> list = new ArrayList<>();
+        List<Variable> formatters = new ArrayList<>();
         if (templateContent instanceof String text) {
-            list.add(new TextableVariable(text, "__inner__", placeholderPrefix, placeholderSuffix));
-        } else if (templateContent instanceof List<?> messages) {
-            for (Object msg : messages) {
-                if (msg instanceof BaseMessage bm) {
-                    Object content = bm.getContent();
-                    if (content instanceof String text) {
-                        list.add(new TextableVariable(text, "__inner__", placeholderPrefix, placeholderSuffix));
-                    } else if (content instanceof List<?> contentList && !contentList.isEmpty()
-                            && contentList.get(0) instanceof Map) {
-                        list.add(new DictableVariable(content, "__inner__", placeholderPrefix, placeholderSuffix));
-                    } else {
-                        list.add(null);
-                    }
-                }
+            formatters.add(new TextableVariable(text, "__inner__", placeholderPrefix, placeholderSuffix));
+            return formatters;
+        }
+        if (!(templateContent instanceof List<?> messages)) {
+            return formatters;
+        }
+        for (Object message : messages) {
+            if (!(message instanceof BaseMessage baseMessage)) {
+                continue;
+            }
+            Object content = baseMessage.getContent();
+            if (content instanceof String text) {
+                formatters.add(new TextableVariable(text, "__inner__", placeholderPrefix, placeholderSuffix));
+            } else if (content instanceof List<?> contentList
+                    && !contentList.isEmpty()
+                    && contentList.get(0) instanceof Map) {
+                formatters.add(new DictableVariable(content, "__inner__", placeholderPrefix, placeholderSuffix));
+            } else {
+                formatters.add(null);
             }
         }
-        return list;
+        return formatters;
     }
 
-    /**
-     * buildVariablesWithVerify.
-     * 
-     * @param inputVariables inputVariables
-     * @return the result
-     * @since 0.1.7
-     */
     private Map<String, Variable> buildVariablesWithVerify(Map<String, Variable> inputVariables) {
-        // Collect all input keys from formatters
-        Set<String> allKeys = new LinkedHashSet<>();
+        Set<String> inputKeys = new LinkedHashSet<>();
         for (Variable formatter : templateFormatters) {
             if (formatter != null) {
-                allKeys.addAll(formatter.getInputKeys());
+                inputKeys.addAll(formatter.getInputKeys());
             }
         }
 
         Map<String, Variable> result = new LinkedHashMap<>(inputVariables);
-
-        // Verify provided variables
-        for (var entry : inputVariables.entrySet()) {
-            if (!allKeys.contains(entry.getKey())) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
-                        "variable " + entry.getKey() + " is not defined in the promptTemplate");
+        for (Map.Entry<String, Variable> entry : inputVariables.entrySet()) {
+            if (!inputKeys.contains(entry.getKey())) {
+                throw ErrorHelper.buildError(
+                        StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
+                        "error_msg",
+                        "variable " + entry.getKey() + " is not defined in the promptTemplate"
+                );
             }
-            if (!(entry.getValue() instanceof Variable)) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
-                        "variable " + entry.getKey() + " must be instantiated as a Variable object");
+            if (entry.getValue() == null) {
+                throw ErrorHelper.buildError(
+                        StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
+                        "error_msg",
+                        "variable " + entry.getKey() + " must be instantiated as a `variable` object"
+                );
             }
         }
 
-        // Create default TextableVariable for placeholders not yet provided
-        for (String placeholder : allKeys) {
+        for (String placeholder : inputKeys) {
             if (result.containsKey(placeholder)) {
-                result.get(placeholder).setName(placeholder);
-            } else {
-                String placeholderStr = placeholderPrefix + placeholder + placeholderSuffix;
-                result.put(placeholder,
-                        new TextableVariable(placeholderStr, placeholder, placeholderPrefix, placeholderSuffix));
+                renameVariable(result.get(placeholder), placeholder);
+                continue;
             }
+            String placeholderText = placeholderPrefix + placeholder + placeholderSuffix;
+            result.put(placeholder, new TextableVariable(
+                    placeholderText, placeholder, placeholderPrefix, placeholderSuffix));
         }
         return result;
     }
 
-    /**
-     * doUpdate.
-     * 
-     * @param kwargs kwargs
-     * @since 0.1.7
-     */
     private void doUpdate(Map<String, Object> kwargs) {
         List<String> inputKeys = getInputKeys();
-        Set<String> missing = new LinkedHashSet<>(inputKeys);
-        missing.removeAll(kwargs.keySet());
-        if (!missing.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR, "error_msg",
-                    "missing keys for updating the prompt assembler: " + missing);
+        Set<String> missingKeys = new LinkedHashSet<>(inputKeys);
+        missingKeys.removeAll(kwargs.keySet());
+        if (!missingKeys.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR,
+                    "error_msg",
+                    "missing keys for updating the prompt assembler: " + missingKeys
+            );
         }
-        Set<String> unexpected = new LinkedHashSet<>(kwargs.keySet());
-        unexpected.removeAll(new LinkedHashSet<>(inputKeys));
-        if (!unexpected.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR, "error_msg",
-                    "unexpected keys for updating the prompt assembler: " + unexpected);
+        Set<String> unexpectedKeys = new LinkedHashSet<>(kwargs.keySet());
+        unexpectedKeys.removeAll(new LinkedHashSet<>(inputKeys));
+        if (!unexpectedKeys.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR,
+                    "error_msg",
+                    "unexpected keys for updating the prompt assembler: " + unexpectedKeys
+            );
         }
+
         for (Variable variable : variables.values()) {
             Map<String, Object> inputKwargs = new LinkedHashMap<>();
-            for (var entry : kwargs.entrySet()) {
+            for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
                 if (variable.getInputKeys().contains(entry.getKey())) {
                     inputKwargs.put(entry.getKey(), entry.getValue());
                 }
@@ -210,21 +185,14 @@ public class PromptAssembler {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * doFormat.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private Object doFormat() {
         Map<String, Object> formatKwargs = new LinkedHashMap<>();
-        for (Variable v : variables.values()) {
-            formatKwargs.put(v.getName(), v.getValue());
+        for (Variable variable : variables.values()) {
+            formatKwargs.put(variable.getName(), variable.getValue());
         }
 
-        for (int idx = 0; idx < templateFormatters.size(); idx++) {
-            Variable formatter = templateFormatters.get(idx);
+        for (int index = 0; index < templateFormatters.size(); index++) {
+            Variable formatter = templateFormatters.get(index);
             if (formatter == null) {
                 continue;
             }
@@ -232,12 +200,25 @@ public class PromptAssembler {
             if (templateContent instanceof String) {
                 templateContent = formattedPrompt;
                 break;
-            } else if (templateContent instanceof List<?> messages) {
-                ((BaseMessage) messages.get(idx)).setContent(formattedPrompt);
-            } else {
-                // no-op
+            }
+            if (templateContent instanceof List<?> messages && messages.get(index) instanceof BaseMessage baseMessage) {
+                baseMessage.setContent(formattedPrompt);
             }
         }
         return templateContent;
+    }
+
+    private void renameVariable(Variable variable, String name) {
+        try {
+            Field field = Variable.class.getDeclaredField("name");
+            field.setAccessible(true);
+            field.set(variable, name);
+        } catch (ReflectiveOperationException error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
+                    "error_msg",
+                    "failed to rename prompt assembler variable `" + name + "`"
+            );
+        }
     }
 }

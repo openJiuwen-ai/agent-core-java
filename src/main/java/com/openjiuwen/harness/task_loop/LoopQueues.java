@@ -4,143 +4,71 @@
 
 package com.openjiuwen.harness.task_loop;
 
-import com.openjiuwen.core.singleagent.rail.SteeringQueue;
-
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Public class LoopQueues used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code LoopQueues} in
+ * {@code openjiuwen/harness/task_loop/loop_queues.py}.
  */
-public class LoopQueues implements SteeringQueue {
-    private final Queue<String> steering = new ArrayDeque<>();
+public final class LoopQueues {
 
-    /**
-     * ArrayDeque<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Queue<String> isFollowUp = new ArrayDeque<>();
+    private final Queue<String> steering;
+    private final Queue<String> followUp;
+    private final Queue<Object> input;
+    private final Queue<Object> output;
 
-    /**
-     * PriorityQueue<>.
-     * 
-     * @since 0.1.7
-     */
-    private final PriorityQueue<DeepLoopEvent> events = new PriorityQueue<>();
-    private long sequence;
-
-    /**
-     * pushSteer.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
-    public void pushSteer(String message) {
-        steering.add(message);
+    public LoopQueues() {
+        this.steering = new ConcurrentLinkedQueue<>();
+        this.followUp = new ConcurrentLinkedQueue<>();
+        this.input = new ConcurrentLinkedQueue<>();
+        this.output = new ConcurrentLinkedQueue<>();
     }
 
-    /**
-     * pushSteering.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
-    @Override
-    public void pushSteering(String message) {
-        pushSteer(message);
+    public Queue<String> steering() {
+        return steering;
     }
 
-    /**
-     * pushFollowUp.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
-    public void pushFollowUp(String message) {
-        isFollowUp.add(message);
+    public Queue<String> followUp() {
+        return followUp;
     }
 
-    /**
-     * drainSteering.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<String> drainSteering() {
-        List<String> result = new ArrayList<>(steering);
-        steering.clear();
-        return result;
+    public Queue<Object> input() {
+        return input;
     }
 
-    /**
-     * hasFollowUp.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Queue<Object> output() {
+        return output;
+    }
+
+    public void pushSteer(String msg) {
+        steering.add(msg);
+    }
+
+    public void pushFollowUp(String msg) {
+        followUp.add(msg);
+    }
+
     public boolean hasFollowUp() {
-        return !isFollowUp.isEmpty();
+        return !followUp.isEmpty();
     }
 
-    /**
-     * drainFollowUp.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public List<String> drainSteering() {
+        return drain(steering);
+    }
+
     public List<String> drainFollowUp() {
-        List<String> result = new ArrayList<>(isFollowUp);
-        isFollowUp.clear();
-        return result;
+        return drain(followUp);
     }
 
-    /**
-     * pushEvent.
-     * 
-     * @param eventType eventType
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    public DeepLoopEvent pushEvent(DeepLoopEventType eventType, String content) {
-        DeepLoopEvent event = DeepLoopEvent.builder(++sequence, eventType, content).build();
-        events.add(event);
-        if (eventType == DeepLoopEventType.STEER) {
-            pushSteer(content);
-        } else if (eventType == DeepLoopEventType.FOLLOWUP) {
-            pushFollowUp(content);
+    private static List<String> drain(Queue<String> queue) {
+        List<String> messages = new ArrayList<>();
+        String next;
+        while ((next = queue.poll()) != null) {
+            messages.add(next);
         }
-        return event;
-    }
-
-    /**
-     * hasEvents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean hasEvents() {
-        return !events.isEmpty();
-    }
-
-    /**
-     * drainEvents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<DeepLoopEvent> drainEvents() {
-        List<DeepLoopEvent> result = new ArrayList<>();
-        while (!events.isEmpty()) {
-            result.add(events.poll());
-        }
-        return result;
+        return messages;
     }
 }

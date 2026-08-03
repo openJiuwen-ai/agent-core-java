@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.migration.operation;
@@ -14,120 +14,75 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registry that manages chained upgrade operations by entity_key.
- * Operations for the same entity_key must have monotonically increasing schema_versions.
- * 
- * @since 0.1.7
+ * Registry that manages chained upgrade operations by entity key.
+ *
+ * <p>Mirrors Python's {@code OperationRegistry} in
+ * {@code openjiuwen/core/memory/migration/operation/operation_registry.py}.
  */
 public class OperationRegistry {
+
     private Map<String, List<BaseOperation>> operations = new LinkedHashMap<>();
 
-    /**
-     * register.
-     * 
-     * @param entityKey entityKey
-     * @param op op
-     * @since 0.1.7
-     */
-    public void register(String entityKey, BaseOperation op) {
-        List<BaseOperation> ops = operations.get(entityKey);
-        if (ops == null) {
-            ops = new ArrayList<>();
-            ops.add(op);
-            operations.put(entityKey, ops);
+    public void register(String entityKey, BaseOperation operation) {
+        List<BaseOperation> entityOperations = operations.get(entityKey);
+        if (entityOperations == null) {
+            operations.put(entityKey, new ArrayList<>(List.of(operation)));
             return;
         }
-        int lastVersion = ops.get(ops.size() - 1).getSchemaVersion();
-        if (op.getSchemaVersion() <= lastVersion) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_OPERATION_VALIDATION_INVALID, "entity_key",
-                    entityKey, "schema_version", String.valueOf(op.getSchemaVersion()), "error_msg",
-                    "schema number must be greater than current maximum");
+
+        int lastVersion = entityOperations.get(entityOperations.size() - 1).getSchemaVersion();
+        if (operation.getSchemaVersion() <= lastVersion) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_REGISTER_OPERATION_VALIDATION_INVALID,
+                    "entity_key", entityKey,
+                    "schema_version", String.valueOf(operation.getSchemaVersion()),
+                    "error_msg", "the schema number of the new operation must be greater than the current maximum"
+            );
         }
-        ops.add(op);
+        entityOperations.add(operation);
     }
 
-    /**
-     * getOperations.
-     * 
-     * @param entityKey entityKey
-     * @param fromVersion fromVersion
-     * @param toVersion toVersion
-     * @return the result
-     * @since 0.1.7
-     */
     public List<BaseOperation> getOperations(String entityKey, int fromVersion, int toVersion) {
         if (fromVersion > toVersion) {
             return Collections.emptyList();
         }
-        List<BaseOperation> ops = operations.getOrDefault(entityKey, Collections.emptyList());
+        List<BaseOperation> entityOperations = operations.getOrDefault(entityKey, Collections.emptyList());
+        if (entityOperations.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         List<BaseOperation> result = new ArrayList<>();
-        for (BaseOperation op : ops) {
-            if (op.getSchemaVersion() >= fromVersion && op.getSchemaVersion() <= toVersion) {
-                result.add(op);
+        for (BaseOperation operation : entityOperations) {
+            int schemaVersion = operation.getSchemaVersion();
+            if (fromVersion <= schemaVersion && schemaVersion <= toVersion) {
+                result.add(operation);
             }
         }
         return result;
     }
 
-    /**
-     * getOperations.
-     * 
-     * @param entityKey entityKey
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<BaseOperation> getOperations(String entityKey) {
-        return getOperations(entityKey, Integer.MIN_VALUE, Integer.MAX_VALUE);
-    }
-
-    /**
-     * getCurrentVersion.
-     * 
-     * @param entityKey entityKey
-     * @return the result
-     * @since 0.1.7
-     */
     public int getCurrentVersion(String entityKey) {
-        List<BaseOperation> ops = operations.getOrDefault(entityKey, Collections.emptyList());
-        return ops.isEmpty() ? 0 : ops.get(ops.size() - 1).getSchemaVersion();
+        List<BaseOperation> entityOperations = operations.getOrDefault(entityKey, Collections.emptyList());
+        return entityOperations.isEmpty() ? 0 : entityOperations.get(entityOperations.size() - 1).getSchemaVersion();
     }
 
-    /**
-     * getAllEntities.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<String> getAllEntities() {
         return new ArrayList<>(operations.keySet());
     }
 
-    /**
-     * getAllOperations.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, List<BaseOperation>> getAllOperations() {
         return new LinkedHashMap<>(operations);
     }
 
-    /**
-     * clear.
-     * 
-     * @since 0.1.7
-     */
     public void clear() {
         operations.clear();
     }
 
-    /**
-     * setOperations.
-     * 
-     * @param ops ops
-     * @since 0.1.7
-     */
-    public void setOperations(Map<String, List<BaseOperation>> ops) {
-        this.operations = ops;
+    public void setOperations(Map<String, List<BaseOperation>> operations) {
+        Map<String, List<BaseOperation>> copied = new LinkedHashMap<>();
+        for (Map.Entry<String, List<BaseOperation>> entry : operations.entrySet()) {
+            copied.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        this.operations = copied;
     }
 }

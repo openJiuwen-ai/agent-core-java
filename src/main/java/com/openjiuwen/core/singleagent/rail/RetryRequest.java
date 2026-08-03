@@ -4,21 +4,28 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 /**
- * Retry directive produced by on_exception rails.
- * 
- * @since 0.1.7
+ * Retry directive produced by exception rails.
+ *
+ * <p>Mirrors Python's {@code RetryRequest} in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class RetryRequest {
-    @Builder.Default
-    private double delaySeconds = 0.0;
+    private double delaySeconds;
+
+    public RetryRequest() {
+        this(0.0);
+    }
+
+    public RetryRequest(double delaySeconds) {
+        this.delaySeconds = Math.max(0.0, delaySeconds);
+    }
+
+    public double getDelaySeconds() {
+        return delaySeconds;
+    }
+
+    public void setDelaySeconds(double delaySeconds) {
+        this.delaySeconds = Math.max(0.0, delaySeconds);
+    }
 }

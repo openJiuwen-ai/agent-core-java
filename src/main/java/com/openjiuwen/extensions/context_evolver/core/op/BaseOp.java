@@ -1,183 +1,106 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.context_evolver.core.op;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.op.base_op.BaseOp}.
- * Base class for all operations.
- * 
- * @since 0.1.7
+ * Base operation class for context evolver operations.
+ * <p>
+ * Mirrors Python's {@code BaseOp} in
+ * {@code openjiuwen/extensions/context_evolver/core/op/base_op.py}.
+ * </p>
  */
 public abstract class BaseOp {
-    /**
-     * log.
-     * 
-     * @since 0.1.7
-     */
-    protected final Logger log = LoggerFactory.getLogger(getClass());
 
-    /**
-     * params.
-     * 
-     * @since 0.1.7
-     */
-    protected final Map<String, Object> params;
+    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
 
-    /**
-     * serviceContext.
-     * 
-     * @since 0.1.7
-     */
-    protected final ServiceContext serviceContext;
+    private final Map<String, Object> params;
+    private final ServiceContext serviceContext;
 
-    /**
-     * BaseOp.
-     * 
-     * @since 0.1.7
-     */
     protected BaseOp() {
-        this.params = new HashMap<>();
-        this.serviceContext = ServiceContext.getInstance();
+        this(Map.of());
     }
 
-    /**
-     * BaseOp.
-     * 
-     * @param params params
-     * @since 0.1.7
-     */
     protected BaseOp(Map<String, Object> params) {
-        this.params = params != null ? new HashMap<>(params) : new HashMap<>();
-        this.serviceContext = ServiceContext.getInstance();
+        this.params = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        this.serviceContext = new ServiceContext();
     }
 
-    /**
-     * Execute the operation.
-     * 
-     * @param context runtime context with input data
-     * @return future with updated runtime context
-     * @since 0.1.7
-     */
-    public CompletableFuture<RuntimeContext> execute(RuntimeContext context) {
+    public CompletableFuture<RuntimeContext> call(RuntimeContext context) {
         String opName = getClass().getSimpleName();
-        log.debug("Executing operation: {}", opName);
-
-        return asyncExecute(context).whenComplete((ctx, ex) -> {
-            if (ex != null) {
-                log.error("Operation {} failed: {}", opName, ex.getMessage());
-            } else {
-                log.debug("Operation {} completed successfully", opName);
-            }
-        }).thenApply(ctx -> context);
+        LOGGER.debug("Executing operation: %s", opName);
+        try {
+            return asyncExecute(context)
+                    .thenApply(ignored -> {
+                        LOGGER.debug("Operation %s completed successfully", opName);
+                        return context;
+                    })
+                    .exceptionally(error -> {
+                        LOGGER.error("Operation %s failed: %s", opName, error);
+                        throw error instanceof RuntimeException runtimeException
+                                ? runtimeException
+                                : new RuntimeException(error);
+                    });
+        } catch (RuntimeException exception) {
+            LOGGER.error("Operation %s failed: %s", opName, exception);
+            throw exception;
+        }
     }
 
-    /**
-     * Execute the operation logic (to be implemented by subclasses).
-     * 
-     * @param context runtime context
-     * @return future completing when done
-     * @since 0.1.7
-     */
-    protected abstract CompletableFuture<Void> asyncExecute(RuntimeContext context);
+    public CompletableFuture<RuntimeContext> execute(RuntimeContext context) {
+        return call(context);
+    }
 
-    /**
-     * Get LLM service.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Object getLlm() {
+    public abstract CompletableFuture<Void> asyncExecute(RuntimeContext context);
+
+    public Object getLlm() {
         return serviceContext.getLlm();
     }
 
-    /**
-     * Get embedding model service.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Object getEmbeddingModel() {
+    public Object getEmbeddingModel() {
         return serviceContext.getEmbeddingModel();
     }
 
-    /**
-     * Get vector store service.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Object getVectorStore() {
+    public Object getVectorStore() {
         return serviceContext.getVectorStore();
     }
 
-    /**
-     * Sequential composition operator.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
     public SequentialOp then(BaseOp other) {
         return new SequentialOp(this, other);
     }
 
-    /**
-     * Parallel composition operator.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
-    public ParallelOp parallel(BaseOp other) {
+    public ParallelOp parallelWith(BaseOp other) {
         return new ParallelOp(this, other);
     }
 
-    /**
-     * getParam.
-     * 
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Object getParam(String key) {
-        return params.get(key);
+    protected Map<String, Object> getParams() {
+        return new LinkedHashMap<>(params);
     }
 
-    /**
-     * getParam.
-     * 
-     * @param key key
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Object getParam(String key, Object defaultValue) {
-        return params.getOrDefault(key, defaultValue);
+    protected ServiceContext getServiceContext() {
+        return serviceContext;
     }
 
-    /**
-     * toString.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String toString() {
         if (params.isEmpty()) {
             return getClass().getSimpleName() + "()";
         }
-        return getClass().getSimpleName() + "(" + params + ")";
+        StringJoiner joiner = new StringJoiner(", ");
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            joiner.add(entry.getKey() + "=" + entry.getValue());
+        }
+        return getClass().getSimpleName() + "(" + joiner + ")";
     }
 }

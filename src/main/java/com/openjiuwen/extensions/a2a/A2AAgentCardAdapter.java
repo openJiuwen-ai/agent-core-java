@@ -4,200 +4,312 @@
 
 package com.openjiuwen.extensions.a2a;
 
-import com.openjiuwen.core.common.security.JsonUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * Adapter between openjiuwen AgentCard and A2A protocol card payloads.
- * 
- * @since 0.1.7
+ * Adapter between openjiuwen AgentCard and A2A AgentCard.
+ *
+ * <p>Mirrors Python's {@code A2AAgentCardAdapter} in
+ * {@code openjiuwen/extensions/a2a/a2a_agentcard_adapter.py}.</p>
  */
 public final class A2AAgentCardAdapter {
-    private static final List<String> DEFAULT_INPUT_MODES = List.of("text/plain", "application/json");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * List.of.
-     * 
-     * @since 0.1.7
-     */
-    private static final List<String> DEFAULT_OUTPUT_MODES = List.of("text/plain", "application/json");
+    public static final List<String> DEFAULT_INPUT_MODES = List.of("text/plain", "application/json");
+    public static final List<String> DEFAULT_OUTPUT_MODES = List.of("text/plain", "application/json");
 
-    /**
-     * A2AAgentCardAdapter.
-     * 
-     * @since 0.1.7
-     */
     private A2AAgentCardAdapter() {
     }
 
-    /**
-     * toA2ACard.
-     * 
-     * @param agentCard agentCard
-     * @param interfaceUrl interfaceUrl
-     * @param protocolBinding protocolBinding
-     * @param protocolVersion protocolVersion
-     * @param tenant tenant
-     * @param supportedInterfaces supportedInterfaces
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Map<String, Object> toA2ACard(AgentCard agentCard, String interfaceUrl, String protocolBinding,
-            String protocolVersion, String tenant, List<Map<String, Object>> supportedInterfaces) {
-        if (agentCard == null) {
-            return Map.of();
+    public static A2aAgentCard toA2aAgentCard(Object agentCard) {
+        return toA2aAgentCard(agentCard, null, "HTTP+JSON", "1.0", null, null);
+    }
+
+    public static A2aAgentCard toA2aAgentCard(Object agentCard,
+                                             String interfaceUrl,
+                                             String protocolBinding,
+                                             String protocolVersion,
+                                             String tenant,
+                                             Iterable<?> supportedInterfaces) {
+        if (!(agentCard instanceof AgentCard card)) {
+            return null;
         }
+        String description = buildDescription(card.getDescription(), card.getInputParams(), card.getOutputParams());
+        A2aAgentCard a2aCard = new A2aAgentCard(
+                card.getName() == null ? "" : card.getName(),
+                description,
+                new AgentCapabilities(true, false),
+                DEFAULT_INPUT_MODES,
+                DEFAULT_OUTPUT_MODES);
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("name", agentCard.getName() != null ? agentCard.getName() : "");
-        payload.put("description",
-                buildDescription(agentCard.getDescription(), agentCard.getInputParams(), agentCard.getOutputParams()));
-        payload.put("defaultInputModes", DEFAULT_INPUT_MODES);
-        payload.put("defaultOutputModes", DEFAULT_OUTPUT_MODES);
-
-        List<Map<String, Object>> interfaces =
-            buildInterfaces(interfaceUrl, protocolBinding != null ? protocolBinding : "HTTP+JSON",
-                    protocolVersion != null ? protocolVersion : "1.0", tenant, supportedInterfaces);
+        List<AgentInterface> interfaces = buildInterfaces(
+                interfaceUrl,
+                protocolBinding == null ? "HTTP+JSON" : protocolBinding,
+                protocolVersion == null ? "1.0" : protocolVersion,
+                tenant,
+                supportedInterfaces);
         if (!interfaces.isEmpty()) {
-            payload.put("supportedInterfaces", interfaces);
+            a2aCard.getSupportedInterfaces().addAll(interfaces);
         }
-        return payload;
+        return a2aCard;
     }
 
-    /**
-     * toA2ACard.
-     * 
-     * @param agentCard agentCard
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Map<String, Object> toA2ACard(AgentCard agentCard) {
-        return toA2ACard(agentCard, null, "HTTP+JSON", "1.0", null, null);
+    public static A2aAgentCard to_a2a_agent_card(Object agentCard,
+                                                String interfaceUrl,
+                                                String protocolBinding,
+                                                String protocolVersion,
+                                                String tenant,
+                                                Iterable<?> supportedInterfaces) {
+        return toA2aAgentCard(agentCard, interfaceUrl, protocolBinding, protocolVersion, tenant, supportedInterfaces);
     }
 
-    /**
-     * fromA2ACard.
-     * 
-     * @param a2aCard a2aCard
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public static AgentCard fromA2ACard(Map<String, Object> a2aCard) {
-        if (a2aCard == null) {
-            return AgentCard.builder().name("").description("").build();
-        }
-        String name = a2aCard.getOrDefault("name", "") instanceof String value ? value : "";
-        String description = a2aCard.getOrDefault("description", "") instanceof String value ? value : "";
-        return AgentCard.builder().name(name).description(description).build();
+    public static AgentCard fromA2aAgentCard(A2aAgentCard a2aAgentCard) {
+        Objects.requireNonNull(a2aAgentCard, "a2aAgentCard");
+        AgentCard card = new AgentCard();
+        card.setName(a2aAgentCard.getName());
+        card.setDescription(a2aAgentCard.getDescription());
+        return card;
     }
 
-    /**
-     * buildDescription.
-     * 
-     * @param baseDescription baseDescription
-     * @param inputParams inputParams
-     * @param outputParams outputParams
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String buildDescription(String baseDescription, Object inputParams, Object outputParams) {
-        List<String> sections = new ArrayList<>();
-        if (baseDescription != null && !baseDescription.isBlank()) {
-            sections.add(baseDescription.trim());
-        }
-        String inputText = serializePayload(inputParams);
-        String outputText = serializePayload(outputParams);
-        if (!inputText.isBlank()) {
-            sections.add("[input_params] " + inputText);
-        }
-        if (!outputText.isBlank()) {
-            sections.add("[output_params] " + outputText);
-        }
-        return String.join("\n", sections).trim();
+    public static AgentCard from_a2a_agent_card(A2aAgentCard a2aAgentCard) {
+        return fromA2aAgentCard(a2aAgentCard);
     }
 
-    /**
-     * serializePayload.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String serializePayload(Object value) {
+    static String serializeParamPayload(Object value) {
         if (value == null) {
             return "";
         }
-        if (value instanceof Class<?> cls) {
-            return JsonUtils.safeJsonDumps(Map.of("type", cls.getName()), "");
+        Object payload;
+        if (value instanceof Map<?, ?>) {
+            payload = value;
+        } else {
+            Object schema = callModelJsonSchema(value);
+            if (schema != null) {
+                payload = schema;
+            } else if (value instanceof Class<?> type) {
+                payload = Map.of("type", type.getSimpleName());
+            } else {
+                payload = Map.of("value", String.valueOf(value));
+            }
         }
-        if (value instanceof Map<?, ?> map) {
-            return JsonUtils.safeJsonDumps(map, "");
-        }
-        return JsonUtils.safeJsonDumps(Map.of("value", String.valueOf(value)), "");
+        return pythonJson(payload);
     }
 
-    /**
-     * buildInterfaces.
-     * 
-     * @param interfaceUrl interfaceUrl
-     * @param protocolBinding protocolBinding
-     * @param protocolVersion protocolVersion
-     * @param tenant tenant
-     * @param supportedInterfaces supportedInterfaces
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<Map<String, Object>> buildInterfaces(String interfaceUrl, String protocolBinding,
-            String protocolVersion, String tenant, List<Map<String, Object>> supportedInterfaces) {
-        List<Map<String, Object>> result = new ArrayList<>();
+    static String buildDescription(String baseDescription, Object inputParams, Object outputParams) {
+        List<String> sections = new ArrayList<>();
+        String base = baseDescription == null ? "" : baseDescription.strip();
+        sections.add(base);
+        String inputText = serializeParamPayload(inputParams);
+        String outputText = serializeParamPayload(outputParams);
+        if (!inputText.isEmpty()) {
+            sections.add("[input_params] " + inputText);
+        }
+        if (!outputText.isEmpty()) {
+            sections.add("[output_params] " + outputText);
+        }
+        return sections.stream()
+                .filter(part -> !part.isEmpty())
+                .collect(Collectors.joining("\n"))
+                .strip();
+    }
+
+    static List<AgentInterface> buildInterfaces(String interfaceUrl,
+                                                String protocolBinding,
+                                                String protocolVersion,
+                                                String tenant,
+                                                Iterable<?> supportedInterfaces) {
+        List<AgentInterface> result = new ArrayList<>();
         if (supportedInterfaces != null) {
-            for (Map<String, Object> item : supportedInterfaces) {
-                if (item == null) {
+            for (Object item : supportedInterfaces) {
+                if (!(item instanceof Map<?, ?> rawMap)) {
                     continue;
                 }
-                Object url = item.get("url");
-                Object binding = item.get("protocolBinding");
-                if (binding == null) {
-                    binding = item.get("protocol_binding");
-                }
-                Object version = item.get("protocolVersion");
-                if (version == null) {
-                    version = item.get("protocol_version");
-                }
-                if (url == null || binding == null || version == null) {
+                Object url = rawMap.get("url");
+                Object binding = rawMap.get("protocol_binding");
+                Object version = rawMap.get("protocol_version");
+                if (isBlank(url) || isBlank(binding) || isBlank(version)) {
                     continue;
                 }
-                Map<String, Object> built = new LinkedHashMap<>();
-                built.put("url", String.valueOf(url));
-                built.put("protocolBinding", String.valueOf(binding));
-                built.put("protocolVersion", String.valueOf(version));
-                Object interfaceTenant = item.get("tenant");
-                if (interfaceTenant != null) {
-                    built.put("tenant", String.valueOf(interfaceTenant));
+                AgentInterface agentInterface = new AgentInterface(
+                        String.valueOf(url),
+                        String.valueOf(binding),
+                        String.valueOf(version));
+                Object itemTenant = rawMap.get("tenant");
+                if (!isBlank(itemTenant)) {
+                    agentInterface.setTenant(String.valueOf(itemTenant));
                 }
-                result.add(built);
+                result.add(agentInterface);
             }
             if (!result.isEmpty()) {
                 return result;
             }
         }
 
-        if (interfaceUrl != null && !interfaceUrl.isBlank()) {
-            Map<String, Object> built = new LinkedHashMap<>();
-            built.put("url", interfaceUrl);
-            built.put("protocolBinding", protocolBinding);
-            built.put("protocolVersion", protocolVersion);
-            if (tenant != null && !tenant.isBlank()) {
-                built.put("tenant", tenant);
+        if (interfaceUrl != null && !interfaceUrl.isEmpty()) {
+            AgentInterface agentInterface = new AgentInterface(interfaceUrl, protocolBinding, protocolVersion);
+            if (tenant != null && !tenant.isEmpty()) {
+                agentInterface.setTenant(tenant);
             }
-            result.add(built);
+            result.add(agentInterface);
         }
         return result;
     }
+
+    private static boolean isBlank(Object value) {
+        return value == null || String.valueOf(value).isEmpty();
+    }
+
+    private static Object callModelJsonSchema(Object value) {
+        try {
+            Method method = value.getClass().getMethod("modelJsonSchema");
+            return method.invoke(value);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            throw new IllegalArgumentException("modelJsonSchema failed", exception);
+        }
+    }
+
+    private static String pythonJson(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .sorted(Comparator.comparing(entry -> String.valueOf(entry.getKey())))
+                    .map(entry -> quote(String.valueOf(entry.getKey())) + ": " + pythonJson(entry.getValue()))
+                    .collect(Collectors.joining(", ", "{", "}"));
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(A2AAgentCardAdapter::pythonJson)
+                    .collect(Collectors.joining(", ", "[", "]"));
+        }
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof String text) {
+            return quote(text);
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "true" : "false";
+        }
+        if (value instanceof Number) {
+            return String.valueOf(value);
+        }
+        return quote(String.valueOf(value));
+    }
+
+    private static String quote(String text) {
+        try {
+            return MAPPER.writeValueAsString(text);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to encode JSON string", exception);
+        }
+    }
+
+    public static final class A2aAgentCard {
+        private final String name;
+        private final String description;
+        private final AgentCapabilities capabilities;
+        private final List<String> defaultInputModes;
+        private final List<String> defaultOutputModes;
+        private final List<AgentInterface> supportedInterfaces = new ArrayList<>();
+
+        public A2aAgentCard(String name,
+                            String description,
+                            AgentCapabilities capabilities,
+                            List<String> defaultInputModes,
+                            List<String> defaultOutputModes) {
+            this.name = name;
+            this.description = description;
+            this.capabilities = capabilities;
+            this.defaultInputModes = new ArrayList<>(defaultInputModes);
+            this.defaultOutputModes = new ArrayList<>(defaultOutputModes);
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public AgentCapabilities getCapabilities() {
+            return capabilities;
+        }
+
+        public List<String> getDefaultInputModes() {
+            return defaultInputModes;
+        }
+
+        public List<String> getDefaultOutputModes() {
+            return defaultOutputModes;
+        }
+
+        public List<AgentInterface> getSupportedInterfaces() {
+            return supportedInterfaces;
+        }
+    }
+
+    public static final class AgentCapabilities {
+        private final boolean streaming;
+        private final boolean pushNotifications;
+
+        public AgentCapabilities(boolean streaming, boolean pushNotifications) {
+            this.streaming = streaming;
+            this.pushNotifications = pushNotifications;
+        }
+
+        public boolean isStreaming() {
+            return streaming;
+        }
+
+        public boolean isPushNotifications() {
+            return pushNotifications;
+        }
+    }
+
+    public static final class AgentInterface {
+        private final String url;
+        private final String protocolBinding;
+        private final String protocolVersion;
+        private String tenant;
+
+        public AgentInterface(String url, String protocolBinding, String protocolVersion) {
+            this.url = url;
+            this.protocolBinding = protocolBinding;
+            this.protocolVersion = protocolVersion;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public String getProtocolBinding() {
+            return protocolBinding;
+        }
+
+        public String getProtocolVersion() {
+            return protocolVersion;
+        }
+
+        public String getTenant() {
+            return tenant;
+        }
+
+        public void setTenant(String tenant) {
+            this.tenant = tenant;
+        }
+    }
+
 }

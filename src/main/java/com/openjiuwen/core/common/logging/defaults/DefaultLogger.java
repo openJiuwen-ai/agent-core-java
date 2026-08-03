@@ -4,19 +4,23 @@
 
 package com.openjiuwen.core.common.logging.defaults;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.LoggingUtils;
+import com.openjiuwen.core.common.logging.StructuredLoggerMixin;
 import com.openjiuwen.core.common.logging.events.BaseLogEvent;
 import com.openjiuwen.core.common.logging.events.EventClassRegistry;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.events.LogLevel;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -26,195 +30,163 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
 /**
- * Default logger implementation backed by SLF4J + Logback.
+ * Default logger implementation backed by provider-neutral SLF4J and a JUL mirror.
+ *
+ * <p>Mirrors Python's {@code DefaultLogger} in
+ * {@code openjiuwen/core/common/logging/default/default_impl.py}.</p>
  * <p>
  * Implements {@link LoggerProtocol} providing:
  * <ul>
- * <li>Console and file output (configured via Logback)</li>
- * <li>Structured event logging via JSON serialization</li>
- * <li>MDC-based context injection (trace_id, log_type)</li>
- * <li>Control character sanitization</li>
+ *   <li>Console and file output through the active SLF4J provider</li>
+ *   <li>Structured event logging via JSON serialization</li>
+ *   <li>MDC-based context injection (trace_id, log_type)</li>
+ *   <li>Control character sanitization</li>
  * </ul>
- * 
- * @since 0.1.7
  */
 public class DefaultLogger implements LoggerProtocol {
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final String logType;
     private Map<String, Object> config;
     private final Logger slf4jLogger;
     private final java.util.logging.Logger julLogger;
-
-    /**
-     * CopyOnWriteArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<Filter> filters = new CopyOnWriteArrayList<>();
+    private volatile int thresholdLevel = LogLevels.INFO;
 
-    /**
-     * DefaultLogger.
-     * 
-     * @param logType logType
-     * @param config config
-     * @since 0.1.7
-     */
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
-        this.config = config != null ? Map.copyOf(config) : Map.of();
+        this.config = config != null ? new LinkedHashMap<>(config) : Map.of();
+        ensureLogDirectory(this.config);
         this.slf4jLogger = LoggerFactory.getLogger(logType);
         this.julLogger = java.util.logging.Logger.getLogger(logType + ".jul");
         this.julLogger.setUseParentHandlers(false);
         this.julLogger.setFilter(record -> filters.stream().allMatch(filter -> filter.isLoggable(record)));
+        applyConfiguredLevel(this.config);
     }
 
     // ==================== LoggerProtocol Implementation ====================
 
-    /**
-     * debug.
-     * 
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void debug(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.DEBUG)) {
+            return;
+        }
         if (slf4jLogger.isDebugEnabled()) {
             setMdc();
-            slf4jLogger.debug(sanitize(msg), args);
-            publishToJul(Level.FINE, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.debug(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.FINE, msg, null, args);
     }
 
-    /**
-     * info.
-     * 
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void info(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.INFO)) {
+            return;
+        }
         if (slf4jLogger.isInfoEnabled()) {
             setMdc();
-            slf4jLogger.info(sanitize(msg), args);
-            publishToJul(Level.INFO, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.info(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.INFO, msg, null, args);
     }
 
-    /**
-     * warning.
-     * 
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void warning(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.WARNING)) {
+            return;
+        }
         if (slf4jLogger.isWarnEnabled()) {
             setMdc();
-            slf4jLogger.warn(sanitize(msg), args);
-            publishToJul(Level.WARNING, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.warn(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.WARNING, msg, null, args);
     }
 
-    /**
-     * error.
-     * 
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void error(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.ERROR)) {
+            return;
+        }
         if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            slf4jLogger.error(sanitize(msg), args);
-            publishToJul(Level.SEVERE, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.error(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.SEVERE, msg, null, args);
     }
 
-    /**
-     * critical.
-     * 
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void critical(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.CRITICAL)) {
+            return;
+        }
         // SLF4J has no CRITICAL level; use ERROR
         if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            slf4jLogger.error("[CRITICAL] " + sanitize(msg), args);
-            publishToJul(Level.SEVERE, "[CRITICAL] " + msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.error("[CRITICAL] " + sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.SEVERE, "[CRITICAL] " + msg, null, args);
     }
 
-    /**
-     * exception.
-     * 
-     * @param msg msg
-     * @param t t
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void exception(String msg, Throwable t, Object... args) {
-        setMdc();
-        slf4jLogger.error(sanitize(msg), t);
+        if (!isThresholdEnabled(LogLevels.ERROR)) {
+            return;
+        }
+        if (slf4jLogger.isErrorEnabled()) {
+            setMdc();
+            try {
+                slf4jLogger.error(sanitize(msg), t);
+            } finally {
+                clearMdc();
+            }
+        }
         publishToJul(Level.SEVERE, msg, t, args);
-        clearMdc();
     }
 
-    /**
-     * log.
-     * 
-     * @param level level
-     * @param msg msg
-     * @param args args
-     * @since 0.1.7
-     */
     @Override
     public void log(int level, String msg, Object... args) {
         // Map numeric levels to SLF4J methods
-        if (level >= 40) {
+        if (level >= LogLevels.CRITICAL) {
+            critical(msg, args);
+        } else if (level >= LogLevels.ERROR) {
             error(msg, args);
-        } else if (level >= 30) {
+        } else if (level >= LogLevels.WARNING) {
             warning(msg, args);
-        } else if (level >= 20) {
+        } else if (level >= LogLevels.INFO) {
             info(msg, args);
         } else {
             debug(msg, args);
         }
     }
 
-    /**
-     * setLevel.
-     * 
-     * @param level level
-     * @since 0.1.7
-     */
     @Override
     public void setLevel(int level) {
-        julLogger.setLevel(toJulLevel(level));
-        if (slf4jLogger instanceof ch.qos.logback.classic.Logger logbackLogger) {
-            logbackLogger.setLevel(toLogbackLevel(level));
-        }
+        int normalizedLevel = LogLevels.normalizeLogLevel(level, LogLevels.INFO);
+        thresholdLevel = normalizedLevel;
+        julLogger.setLevel(toJulLevel(normalizedLevel));
     }
 
-    /**
-     * addHandler.
-     * 
-     * @param handler handler
-     * @since 0.1.7
-     */
     @Override
     public void addHandler(Handler handler) {
         if (handler != null) {
@@ -222,12 +194,6 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    /**
-     * removeHandler.
-     * 
-     * @param handler handler
-     * @since 0.1.7
-     */
     @Override
     public void removeHandler(Handler handler) {
         if (handler != null) {
@@ -235,12 +201,6 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    /**
-     * addFilter.
-     * 
-     * @param filter filter
-     * @since 0.1.7
-     */
     @Override
     public void addFilter(Filter filter) {
         if (filter != null) {
@@ -248,12 +208,6 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    /**
-     * removeFilter.
-     * 
-     * @param filter filter
-     * @since 0.1.7
-     */
     @Override
     public void removeFilter(Filter filter) {
         if (filter != null) {
@@ -261,48 +215,27 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    /**
-     * logger.
-     *
-     * @return Logger
-     * @since 0.1.7
-     */
     @Override
     public java.util.logging.Logger logger() {
         return julLogger;
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> getConfig() {
         return config;
     }
 
-    /**
-     * reconfigure.
-     * 
-     * @param newConfig newConfig
-     * @since 0.1.7
-     */
     @Override
     public void reconfigure(Map<String, Object> newConfig) {
-        this.config = newConfig != null ? Map.copyOf(newConfig) : Map.of();
+        this.config = newConfig != null ? new LinkedHashMap<>(newConfig) : Map.of();
+        ensureLogDirectory(this.config);
+        applyConfiguredLevel(this.config);
     }
 
     // ==================== Structured Event Logging ====================
 
     /**
      * Log a structured event. Serializes the event to JSON and logs at the appropriate level.
-     * 
-     * @param msg msg
-     * @param eventType eventType
-     * @param event event
-     * @since 0.1.7
      */
     public void logEvent(String msg, LogEventType eventType, BaseLogEvent event) {
         if (event == null && eventType == null) {
@@ -320,12 +253,15 @@ public class DefaultLogger implements LoggerProtocol {
             }
             eventObj.setModuleId(logType);
             eventObj.setModuleName(logType);
+        } else {
+            eventObj.setMessage(sanitize(msg));
         }
+        enrichEventContext(eventObj);
 
         String json;
         try {
             json = OBJECT_MAPPER.writeValueAsString(eventObj.toMap());
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             json = eventObj.toMap().toString();
         }
 
@@ -333,40 +269,59 @@ public class DefaultLogger implements LoggerProtocol {
         switch (logLevel) {
             case DEBUG -> debug(json);
             case WARNING -> warning(json);
-            case ERROR, CRITICAL -> error(json);
+            case ERROR -> error(json);
+            case CRITICAL -> critical(json);
             default -> info(json);
         }
     }
 
-    /**
-     * setMdc.
-     * 
-     * @since 0.1.7
-     */
+    // ==================== Internal ====================
+
+    private void applyConfiguredLevel(Map<String, Object> currentConfig) {
+        if (currentConfig == null || !currentConfig.containsKey("level")) {
+            return;
+        }
+        setLevel(LogLevels.normalizeLogLevel(currentConfig.get("level"), LogLevels.INFO));
+    }
+
+    private boolean isThresholdEnabled(int level) {
+        return LogLevels.normalizeLogLevel(level, LogLevels.INFO) >= thresholdLevel;
+    }
+
+    private void enrichEventContext(BaseLogEvent eventObj) {
+        String traceId = LoggingUtils.getSessionId();
+        if (!"default_trace_id".equals(traceId) && eventObj.getTraceId() == null) {
+            eventObj.setTraceId(traceId);
+        }
+        if (eventObj.getModuleId() == null) {
+            eventObj.setModuleId(logType);
+        }
+        if (eventObj.getModuleName() == null) {
+            eventObj.setModuleName(logType);
+        }
+
+        Map<String, Object> metadata = eventObj.getMetadata() == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(eventObj.getMetadata());
+        Map<String, Object> logContext = new LinkedHashMap<>();
+        logContext.put("log_type", logType);
+        logContext.put("trace_id", traceId);
+        metadata.put("_log_context", logContext);
+        eventObj.setMetadata(metadata);
+    }
+
     private void setMdc() {
         MDC.put("trace_id", LoggingUtils.getSessionId());
+        MDC.put("member_id", LoggingUtils.getMemberId());
         MDC.put("log_type", logType);
     }
 
-    /**
-     * clearMdc.
-     * 
-     * @since 0.1.7
-     */
     private void clearMdc() {
         MDC.remove("trace_id");
+        MDC.remove("member_id");
         MDC.remove("log_type");
     }
 
-    /**
-     * publishToJul.
-     * 
-     * @param level level
-     * @param msg msg
-     * @param throwable throwable
-     * @param args args
-     * @since 0.1.7
-     */
     private void publishToJul(Level level, String msg, Throwable throwable, Object... args) {
         String formatted = sanitize(formatMessage(msg, args));
         LogRecord record = new LogRecord(level, formatted);
@@ -375,18 +330,14 @@ public class DefaultLogger implements LoggerProtocol {
         julLogger.log(record);
     }
 
-    /**
-     * toJulLevel.
-     * 
-     * @param level level
-     * @return the result
-     * @since 0.1.7
-     */
     private static Level toJulLevel(int level) {
         if (level >= 50) {
             return Level.SEVERE;
         }
         if (level >= 40) {
+            return Level.SEVERE;
+        }
+        if (level >= 30) {
             return Level.WARNING;
         }
         if (level >= 20) {
@@ -395,51 +346,55 @@ public class DefaultLogger implements LoggerProtocol {
         return Level.FINE;
     }
 
-    /**
-     * toLogbackLevel.
-     * 
-     * @param level level
-     * @return Level
-     * @since 0.1.7
-     */
-    private static ch.qos.logback.classic.Level toLogbackLevel(int level) {
-        if (level >= 50) {
-            return ch.qos.logback.classic.Level.ERROR;
-        }
-        if (level >= 40) {
-            return ch.qos.logback.classic.Level.WARN;
-        }
-        if (level >= 20) {
-            return ch.qos.logback.classic.Level.INFO;
-        }
-        return ch.qos.logback.classic.Level.DEBUG;
+    private static String formatMessage(String msg, Object... args) {
+        return StructuredLoggerMixin.autoFormatMessage(msg, args);
     }
 
-    /**
-     * formatMessage.
-     * 
-     * @param msg msg
-     * @param args args
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatMessage(String msg, Object... args) {
-        if (msg == null || args == null || args.length == 0) {
-            return msg;
+    private static void ensureLogDirectory(Map<String, Object> config) {
+        if (!usesFileOutput(config)) {
+            return;
         }
-        String formatted = msg;
-        for (Object arg : args) {
-            formatted = formatted.replaceFirst("\\{}", java.util.regex.Matcher.quoteReplacement(String.valueOf(arg)));
+        Object logFileValue = config.get("log_file");
+        if (logFileValue == null || String.valueOf(logFileValue).isBlank()) {
+            return;
         }
-        return formatted;
+        Path logFile = Path.of(expandUser(String.valueOf(logFileValue))).toAbsolutePath();
+        Path logDir = logFile.getParent();
+        if (logDir == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(logDir);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create log directory `" + logDir + "`", e);
+        }
+    }
+
+    private static boolean usesFileOutput(Map<String, Object> config) {
+        Object output = config.get("output");
+        if (output instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if ("file".equals(String.valueOf(item))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return output == null || "file".equals(String.valueOf(output));
+    }
+
+    private static String expandUser(String path) {
+        if ("~".equals(path)) {
+            return System.getProperty("user.home");
+        }
+        if (path.startsWith("~/") || path.startsWith("~\\")) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
+        return path;
     }
 
     /**
      * Sanitize control characters in log messages.
-     * 
-     * @param msg msg
-     * @return the result
-     * @since 0.1.7
      */
     private static String sanitize(String msg) {
         if (msg == null) {
@@ -450,18 +405,15 @@ public class DefaultLogger implements LoggerProtocol {
             char c = msg.charAt(i);
             int code = c;
             if (code < 32 || code == 127) {
-                if (c == '\n') {
-                    sb.append(c);
-                } else {
-                    sb.append(switch (c) {
-                        case '\r' -> "\\r";
-                        case '\t' -> "\\t";
-                        case '\b' -> "\\b";
-                        case '\f' -> "\\f";
-                        case '\0' -> "\\0";
-                        default -> String.format("\\x%02x", code);
-                    });
-                }
+                sb.append(switch (c) {
+                    case '\r' -> "\\r";
+                    case '\n' -> "\\n";
+                    case '\t' -> "\\t";
+                    case '\b' -> "\\b";
+                    case '\f' -> "\\f";
+                    case '\0' -> "\\0";
+                    default -> String.format("\\x%02x", code);
+                });
             } else {
                 sb.append(c);
             }
@@ -469,3 +421,5 @@ public class DefaultLogger implements LoggerProtocol {
         return sb.toString();
     }
 }
+
+

@@ -8,37 +8,45 @@ import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Graph;
 
 /**
- * Interface for workflow graph construction.
- * Separates graph construction logic from execution logic (ComponentExecutable).
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.component.ComponentComposable}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ComponentComposable} in
+ * {@code openjiuwen/core/workflow/components/component.py}.
  */
 public interface ComponentComposable {
+
     /**
-     * addComponent.
-     * 
-     * @param graph graph
-     * @param nodeId nodeId
-     * @param waitForAll waitForAll
-     * @since 0.1.7
+     * Add this component to a workflow graph.
+     *
+     * @param graph workflow graph
+     * @param nodeId component node id
+     * @param waitForAll whether the graph waits for all predecessor outputs
      */
     default void addComponent(Graph graph, String nodeId, boolean waitForAll) {
         graph.addNode(nodeId, toExecutable(), waitForAll);
     }
 
     /**
-     * Convert this composable component to an executable instance.
-     * 
-     * @return an Executable instance
-     * @since 0.1.7
+     * Add this component to a workflow graph with Python's default
+     * {@code wait_for_all=False}.
+     *
+     * @param graph workflow graph
+     * @param nodeId component node id
+     */
+    default void addComponent(Graph graph, String nodeId) {
+        addComponent(graph, nodeId, false);
+    }
+
+    /**
+     * Convert this workflow component to an executable instance.
+     *
+     * @return executable component
      */
     default Executable<?, ?> toExecutable() {
-        if (this instanceof Executable) {
-            return (Executable<?, ?>) this;
+        if (this instanceof Executable<?, ?> executable) {
+            return executable;
         }
+        String className = getClass().getSimpleName();
         throw new UnsupportedOperationException(
-                "Component '" + getClass().getSimpleName() + "' does not implement toExecutable().");
+                "Component '" + className + "' is missing required method: to_executable()\n"
+                        + "  -> Expected signature: def to_executable(self) -> Executable");
     }
 }

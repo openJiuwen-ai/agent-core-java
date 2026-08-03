@@ -6,46 +6,50 @@ package com.openjiuwen.core.graph.stream_actor;
 
 import com.openjiuwen.core.session.utils.SessionUtils;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Utility class for transforming stream data using schemas or transformers.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.manager.StreamTransform}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code StreamTransform} in
+ * {@code openjiuwen/core/graph/stream_actor/manager.py}.
  */
 public class StreamTransform {
+
     /**
-     * getByDefinedTransformer.
-     * 
-     * @param originMessage originMessage
-     * @param transformer transformer
-     * @return the result
-     * @since 0.1.7
+     * Applies a caller-defined transformer to the original stream message.
+     *
+     * @param originMessage original stream message
+     * @param transformer caller-defined transformer
+     * @return transformed message
      */
-    @SuppressWarnings("unchecked")
-    public Object getByDefinedTransformer(Object originMessage, Object transformer) {
-        if (transformer instanceof Function) {
-            return ((Function<Object, Object>) transformer).apply(originMessage);
-        }
-        return originMessage;
+    public Map<String, Object> getByDefinedTransformer(
+            Map<String, Object> originMessage,
+            Function<Map<String, Object>, Map<String, Object>> transformer) {
+        return transformer.apply(originMessage);
     }
 
     /**
-     * getByDefaultTransformer.
-     * 
-     * @param originMessage originMessage
-     * @param streamInputsSchema streamInputsSchema
-     * @return the result
-     * @since 0.1.7
+     * Resolves the stream input schema against the original stream message.
+     *
+     * @param originMessage original stream message
+     * @param streamInputsSchema stream input schema
+     * @return resolved stream message
      */
+    public Map<String, Object> getByDefaultTransformer(
+            Map<String, Object> originMessage,
+            Map<String, Object> streamInputsSchema) {
+        return castMap(SessionUtils.getBySchema(streamInputsSchema, originMessage));
+    }
+
     @SuppressWarnings("unchecked")
-    public Object getByDefaultTransformer(Object originMessage, Object streamInputsSchema) {
-        if (originMessage instanceof Map && streamInputsSchema != null) {
-            return SessionUtils.getBySchema(streamInputsSchema, (Map<String, Object>) originMessage);
+    private static Map<String, Object> castMap(Object value) {
+        if (value == null) {
+            return null;
         }
-        return originMessage;
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("stream transform result is invalid");
+        }
+        return new LinkedHashMap<>((Map<String, Object>) map);
     }
 }

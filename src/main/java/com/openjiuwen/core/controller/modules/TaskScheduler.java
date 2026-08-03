@@ -4,11 +4,13 @@
 
 package com.openjiuwen.core.controller.modules;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.schema.BaseCard;
-import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
@@ -20,9 +22,11 @@ import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.AbilityManager;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,35 +43,23 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p>
  * Workflow:
  * <ol>
- * <li>Periodically scan for tasks to be executed (status = SUBMITTED)</li>
- * <li>Execute multiple tasks concurrently using virtual threads</li>
- * <li>Stream output generated during task execution</li>
- * <li>Update task status based on output type</li>
+ *   <li>Periodically scan for tasks to be executed (status = SUBMITTED)</li>
+ *   <li>Execute multiple tasks concurrently using virtual threads</li>
+ *   <li>Stream output generated during task execution</li>
+ *   <li>Update task status based on output type</li>
  * </ol>
  * <p>
- * Mirrors Python's {@code TaskScheduler}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskScheduler} in
+ * {@code openjiuwen/core/controller/modules/task_scheduler.py}.
  */
 public class TaskScheduler {
+
     private ControllerConfig config;
     private final TaskManager taskManager;
     private final ContextEngine contextEngine;
     private final Object abilityManager;
     private final EventQueue eventQueue;
-
-    /**
-     * TaskExecutorRegistry.
-     * 
-     * @since 0.1.7
-     */
     private final TaskExecutorRegistry taskExecutorRegistry = new TaskExecutorRegistry();
-
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, AgentSessionApi> sessions = new ConcurrentHashMap<>();
     private final BaseCard card;
 
@@ -77,116 +69,79 @@ public class TaskScheduler {
 
     /**
      * Running tasks: taskId -> RunningTaskEntry (executor + future).
-     * 
-     * @since 0.1.7
      */
     private final Map<String, RunningTaskEntry> runningTasks = new ConcurrentHashMap<>();
-
-    /**
-     * ReentrantLock.
-     * 
-     * @since 0.1.7
-     */
     private final ReentrantLock lock = new ReentrantLock();
 
-    /**
-     * TaskScheduler.
-     * 
-     * @param config config
-     * @param taskManager taskManager
-     * @param contextEngine contextEngine
-     * @param abilityManager abilityManager
-     * @param eventQueue eventQueue
-     * @param card card
-     * @since 0.1.7
-     */
-    public TaskScheduler(ControllerConfig config, TaskManager taskManager, ContextEngine contextEngine,
-            Object abilityManager, EventQueue eventQueue, BaseCard card) {
+    public TaskScheduler(
+            ControllerConfig config,
+            TaskManager taskManager,
+            ContextEngine contextEngine,
+            Object abilityManager,
+            EventQueue eventQueue,
+            BaseCard card
+    ) {
         this.config = config;
         this.taskManager = taskManager;
         this.contextEngine = contextEngine;
         this.abilityManager = abilityManager;
         this.eventQueue = eventQueue;
         this.card = card;
+        this.taskManager.setOnTaskSubmitted(this::notifyTaskSubmitted);
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public ControllerConfig getConfig() {
         return config;
     }
 
-    /**
-     * setConfig.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public void setConfig(ControllerConfig config) {
         this.config = config;
     }
 
-    /**
-     * getSessions.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, AgentSessionApi> getSessions() {
         return sessions;
     }
 
-    /**
-     * getTaskManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public TaskManager getTaskManager() {
         return taskManager;
     }
 
-    /**
-     * getTaskExecutorRegistry.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public TaskExecutorRegistry getTaskExecutorRegistry() {
         return taskExecutorRegistry;
     }
 
+    /**
+     * Wake up the schedule loop when a task enters SUBMITTED status.
+     *
+     * <p>Mirrors Python's {@code TaskScheduler.notify_task_submitted} in
+     * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
+     */
+    public void notifyTaskSubmitted() {
+        ScheduledExecutorService currentScheduler = scheduler;
+        if (!running || currentScheduler == null || currentScheduler.isShutdown()) {
+            return;
+        }
+        currentScheduler.execute(this::scheduleLoop);
+    }
+
     // ==================== Task Execution ====================
 
-    /**
-     * handleTaskExecutionFailure.
-     * 
-     * @param taskId taskId
-     * @param session session
-     * @param errorMessage errorMessage
-     * @since 0.1.7
-     */
     private void handleTaskExecutionFailure(String taskId, AgentSessionApi session, String errorMessage) {
         taskManager.updateTaskStatus(taskId, TaskStatus.FAILED, errorMessage);
 
-        ControllerOutputChunk failedChunk =
-            new ControllerOutputChunk(0, new ControllerOutputPayload(EventType.TASK_FAILED.getValue(),
-                    List.of(new DataFrame.TextDataFrame(errorMessage)), null), false);
+        ControllerOutputChunk failedChunk = new ControllerOutputChunk(
+                0,
+                new ControllerOutputPayload(
+                        EventType.TASK_FAILED.getValue(),
+                        List.of(new DataFrame.TextDataFrame(errorMessage)),
+                        null
+                ),
+                false
+        );
         publishTaskEvent(taskId, session, failedChunk);
     }
 
     @SuppressWarnings("resource")
-    /**
-     * executeTaskWrapper.
-     * 
-     * @param taskId taskId
-     * @param session session
-     * @since 0.1.7
-     */
     private void executeTaskWrapper(String taskId, AgentSessionApi session) {
         try {
             if (config.getTaskTimeout() != null) {
@@ -197,8 +152,7 @@ public class TaskScheduler {
                     t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
                         @Override
                         public void uncaughtException(Thread t, Throwable e) {
-                            Loggers.CONTROLLER.error("executeTaskWrapper Error,Thread {} , {}", t.getName(),
-                                    e.getMessage());
+                            Loggers.CONTROLLER.error("executeTaskWrapper Error,Thread {} , {}", t.getName(),e.getMessage());
                         }
                     });
                     t.setDaemon(true);
@@ -239,27 +193,22 @@ public class TaskScheduler {
         }
     }
 
-    /**
-     * executeTask.
-     * 
-     * @param taskId taskId
-     * @param session session
-     * @since 0.1.7
-     */
     private void executeTask(String taskId, AgentSessionApi session) {
         // 1. Get task object
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
         if (tasks.isEmpty()) {
             Loggers.CONTROLLER.error("Task {} not found", taskId);
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR, "error_msg",
-                    "task " + taskId + " not found");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_EXECUTION_ERROR,
+                    "error_msg", "task " + taskId + " not found");
         }
         Task task = tasks.get(0);
         Loggers.CONTROLLER.info("Executing task {} (type: {})", taskId, task.getTaskType());
 
         // 2. Create TaskExecutor
-        TaskExecutorDependencies dependencies =
-            new TaskExecutorDependencies(config, abilityManager, contextEngine, taskManager, eventQueue);
+        AbilityManager executorAbilityManager = abilityManager instanceof AbilityManager manager ? manager : null;
+        TaskExecutorDependencies dependencies = new TaskExecutorDependencies(
+                config, executorAbilityManager, contextEngine, taskManager, eventQueue
+        );
         TaskExecutor executor = taskExecutorRegistry.getTaskExecutor(task.getTaskType(), dependencies);
 
         // Update running task entry with executor
@@ -280,7 +229,10 @@ public class TaskScheduler {
         Iterator<ControllerOutputChunk> chunks = executor.executeAbility(taskId, session);
         while (chunks.hasNext()) {
             ControllerOutputChunk chunk = chunks.next();
-            // 注意： ControllerOutputChunk中包含完整的流信息，谨慎打印和写入会话
+
+            // Write to session stream
+            session.writeStream(chunk);
+
             // Check output type
             if (chunk.getControllerPayload() != null && chunk.getControllerPayload().getType() != null) {
                 String payloadType = chunk.getControllerPayload().getType();
@@ -291,35 +243,28 @@ public class TaskScheduler {
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
-                    session.writeStream(chunk);
                     Loggers.CONTROLLER.info("Task {} requires interaction", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.INPUT_REQUIRED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
-                    session.writeStream(chunk);
                     Loggers.CONTROLLER.error("Task {} failed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 }
-                // "processing" -> continue, skip writeStream
+                // "processing" -> continue
             }
         }
     }
 
     // ==================== Completion Signal ====================
 
-    /**
-     * areAllTasksCompleted.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
     private boolean areAllTasksCompleted(String sessionId) {
         try {
-            List<Task> sessionTasks = taskManager.getTask(TaskFilter.bySessionId(sessionId));
+            List<Task> sessionTasks = taskManager.getTask(
+                    TaskFilter.bySessionId(sessionId)
+            );
             if (sessionTasks.isEmpty()) {
                 Loggers.CONTROLLER.warning("No tasks found for session {}", sessionId);
                 return true;
@@ -338,12 +283,17 @@ public class TaskScheduler {
     }
 
     /**
-     * ensureSessionCompletionSignal.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
+     * Ensure the session receives an all-tasks-processed signal when no active tasks remain.
+     *
+     * <p>Mirrors Python's {@code TaskScheduler.ensure_session_completion_signal} in
+     * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
+     *
+     * @param sessionId session ID
      */
-    private void ensureSessionCompletionSignal(String sessionId) {
+    public void ensureSessionCompletionSignal(String sessionId) {
+        if (config.isSuppressCompletionSignal()) {
+            return;
+        }
         try {
             if (!areAllTasksCompleted(sessionId)) {
                 Loggers.CONTROLLER.info("Not all tasks completed, continue");
@@ -357,8 +307,13 @@ public class TaskScheduler {
                 return;
             }
 
-            ControllerOutputChunk completionChunk = new ControllerOutputChunk(0,
-                    ControllerOutputPayload.allTasksProcessed("All tasks have been successfully processed"), true);
+            ControllerOutputChunk completionChunk = new ControllerOutputChunk(
+                    0,
+                    ControllerOutputPayload.allTasksProcessed(
+                            "All tasks have been successfully processed"
+                    ),
+                    true
+            );
             session.writeStream(completionChunk);
             Loggers.CONTROLLER.info("Completion signal sent for session {}", sessionId);
         } catch (Exception e) {
@@ -368,14 +323,6 @@ public class TaskScheduler {
 
     // ==================== Event Publishing ====================
 
-    /**
-     * publishTaskEvent.
-     * 
-     * @param taskId taskId
-     * @param session session
-     * @param chunk chunk
-     * @since 0.1.7
-     */
     private void publishTaskEvent(String taskId, AgentSessionApi session, ControllerOutputChunk chunk) {
         if (chunk.getControllerPayload() == null || chunk.getControllerPayload().getType() == null) {
             Loggers.CONTROLLER.error("Invalid chunk for task {}: missing payload or type", taskId);
@@ -389,22 +336,15 @@ public class TaskScheduler {
         }
         Task task = tasks.get(0);
         String payloadType = chunk.getControllerPayload().getType();
-        List<DataFrame> payloadData =
-            chunk.getControllerPayload().getData() != null ? chunk.getControllerPayload().getData() : List.of();
-
-        Map<String, Object> payloadMetadata = chunk.getControllerPayload().getMetadata() != null
-                ? new java.util.LinkedHashMap<>(chunk.getControllerPayload().getMetadata())
-                : Map.of();
+        List<DataFrame> payloadData = chunk.getControllerPayload().getData() != null
+                ? chunk.getControllerPayload().getData() : List.of();
+        Map<String, Object> payloadMetadata = chunk.getControllerPayload().getMetadata();
 
         com.openjiuwen.core.controller.schema.Event event;
         if (EventType.TASK_COMPLETION.getValue().equals(payloadType)) {
-            TaskCompletionEvent completionEvent = new TaskCompletionEvent(payloadData, task);
-            completionEvent.setMetadata(payloadMetadata);
-            event = completionEvent;
+            event = new TaskCompletionEvent(payloadData, task);
         } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
-            TaskInteractionEvent interactionEvent = new TaskInteractionEvent(payloadData, task);
-            interactionEvent.setMetadata(payloadMetadata);
-            event = interactionEvent;
+            event = new TaskInteractionEvent(payloadData, task);
         } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
             String errorMsg = "Unknown error";
             if (!payloadData.isEmpty() && payloadData.get(0) instanceof DataFrame.TextDataFrame tdf) {
@@ -417,18 +357,33 @@ public class TaskScheduler {
             return;
         }
 
+        mergeEventMetadata(event, payloadMetadata, task.getMetadata());
         eventQueue.publishEvent(card.getId(), session, event);
         Loggers.CONTROLLER.info("Published {} for task {}", payloadType, taskId);
+    }
+
+    private void mergeEventMetadata(com.openjiuwen.core.controller.schema.Event event,
+                                    Map<String, Object> payloadMetadata,
+                                    Map<String, Object> taskMetadata) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (payloadMetadata != null) {
+            merged.putAll(payloadMetadata);
+        }
+        if (taskMetadata != null) {
+            merged.putAll(taskMetadata);
+        }
+        if (!merged.isEmpty()) {
+            event.setMetadata(merged);
+        }
     }
 
     // ==================== Pause / Cancel ====================
 
     /**
      * Pause a running task.
-     * 
+     *
      * @param taskId task ID
      * @return whether pause succeeded
-     * @since 0.1.7
      */
     public boolean pauseTask(String taskId) {
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
@@ -494,10 +449,9 @@ public class TaskScheduler {
 
     /**
      * Cancel a running task.
-     * 
+     *
      * @param taskId task ID
      * @return whether cancel succeeded
-     * @since 0.1.7
      */
     public boolean cancelTask(String taskId) {
         List<Task> tasks = taskManager.getTask(TaskFilter.byTaskId(taskId));
@@ -510,6 +464,20 @@ public class TaskScheduler {
         AgentSessionApi session = sessions.get(task.getSessionId());
         if (session == null) {
             Loggers.CONTROLLER.error("Session {} not found for task {}", task.getSessionId(), taskId);
+            return false;
+        }
+
+        if (task.getStatus() == TaskStatus.SUBMITTED) {
+            taskManager.updateTaskStatus(taskId, TaskStatus.CANCELED);
+            Loggers.CONTROLLER.info("Task {} cancelled (was SUBMITTED, not yet started)", taskId);
+            return true;
+        }
+
+        if (task.getStatus() == TaskStatus.CANCELED
+                || task.getStatus() == TaskStatus.COMPLETED
+                || task.getStatus() == TaskStatus.FAILED) {
+            Loggers.CONTROLLER.info("Task {} already in terminal state {}, cannot cancel",
+                    taskId, task.getStatus());
             return false;
         }
 
@@ -562,31 +530,29 @@ public class TaskScheduler {
 
     // ==================== Schedule Loop ====================
 
-    /**
-     * scheduleLoop.
-     * 
-     * @since 0.1.7
-     */
     private void scheduleLoop() {
-        Loggers.CONTROLLER.debug("TaskScheduler schedule loop iteration");
+        Loggers.CONTROLLER.info("TaskScheduler schedule loop iteration");
         if (!running) {
             return;
         }
         try {
-            List<Task> submittedTasks = taskManager.getTask(TaskFilter.builder().status(TaskStatus.SUBMITTED).build());
+            List<Task> submittedTasks = taskManager.getTask(
+                    TaskFilter.builder().status(TaskStatus.SUBMITTED).build()
+            );
 
             for (Task task : submittedTasks) {
                 AgentSessionApi session = sessions.get(task.getSessionId());
                 if (session == null) {
-                    Loggers.CONTROLLER.warning("Task {} session {} not found, skipping", task.getTaskId(),
-                            task.getSessionId());
+                    Loggers.CONTROLLER.warning("Task {} session {} not found, skipping",
+                            task.getTaskId(), task.getSessionId());
                     continue;
                 }
 
                 lock.lock();
                 try {
                     if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
-                        Loggers.CONTROLLER.warning("Reached max concurrent tasks limit ({}), waiting for next schedule",
+                        Loggers.CONTROLLER.warning(
+                                "Reached max concurrent tasks limit ({}), waiting for next schedule",
                                 config.getMaxConcurrentTasks());
                         break;
                     }
@@ -594,15 +560,11 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on regular thread
+                    // Start task on a background thread.
                     String taskId = task.getTaskId();
-                    Thread regularThread = new Thread(() -> executeTaskWrapper(taskId, session), "task-" + taskId);
-                    regularThread.setDaemon(true);
-                    regularThread.setUncaughtExceptionHandler(
-                            (t, e) -> Loggers.CONTROLLER.error("Uncaught exception in task thread: " + t.getName(), e));
-                    regularThread.start();
+                    Thread virtualThread = VirtualThreadSupport.startThread("task-" + taskId, () -> executeTaskWrapper(taskId, session));
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, regularThread));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
                 } finally {
                     lock.unlock();
                 }
@@ -618,8 +580,6 @@ public class TaskScheduler {
 
     /**
      * Start task scheduler.
-     * 
-     * @since 0.1.7
      */
     public void start() {
         if (running) {
@@ -632,21 +592,24 @@ public class TaskScheduler {
             t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
                 @Override
                 public void uncaughtException(Thread t, Throwable e) {
-                    Loggers.CONTROLLER.error("start Error,Thread {} , {}", t.getName(), e.getMessage());
+                    Loggers.CONTROLLER.error("start Error,Thread {} , {}", t.getName(),e.getMessage());
                 }
             });
             t.setDaemon(true);
             return t;
         });
         long intervalMs = (long) (config.getScheduleInterval() * 1000);
-        schedulerFuture = scheduler.scheduleWithFixedDelay(this::scheduleLoop, 0, intervalMs, TimeUnit.MILLISECONDS);
+        schedulerFuture = scheduler.scheduleWithFixedDelay(
+                this::scheduleLoop,
+                0,
+                intervalMs,
+                TimeUnit.MILLISECONDS
+        );
         Loggers.CONTROLLER.info("TaskScheduler started");
     }
 
     /**
      * Stop task scheduler.
-     * 
-     * @since 0.1.7
      */
     public void stop() {
         if (!running) {
@@ -712,6 +675,7 @@ public class TaskScheduler {
         } finally {
             lock.unlock();
         }
+        sessions.clear();
 
         Loggers.CONTROLLER.info("TaskScheduler stopped");
     }
@@ -720,6 +684,9 @@ public class TaskScheduler {
 
     /**
      * Tracks a running task's executor and thread.
+     *
+     * <p>Mirrors Python's running task tuple values in
+     * {@code openjiuwen/core/controller/modules/task_scheduler.py}.</p>
      */
     private static class RunningTaskEntry {
         private volatile TaskExecutor executor;
@@ -743,3 +710,4 @@ public class TaskScheduler {
         }
     }
 }
+

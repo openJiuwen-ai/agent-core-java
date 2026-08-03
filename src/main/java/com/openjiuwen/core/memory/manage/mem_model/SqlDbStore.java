@@ -6,11 +6,10 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.spi.store.BaseDbStore;
+import com.openjiuwen.core.foundation.store.BaseDbStore;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -19,690 +18,507 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Locale;
-
-import javax.sql.DataSource;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
- * JDBC-based SQL CRUD wrapper for memory tables.
- * Translates Python's SQLAlchemy-based SqlDbStore to JDBC operations.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code SqlDbStore} in
+ * {@code openjiuwen/core/memory/manage/mem_model/sql_db_store.py}.
  */
 public class SqlDbStore {
-    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    private static final String ID_COLUMN = "id";
+    private static final String ASC = "ASC";
+    private static final String DESC = "DESC";
 
     private final BaseDbStore<?> dbStore;
+    private final Map<String, TableInfo> tableCache = new LinkedHashMap<>();
 
-    /**
-     * SqlDbStore.
-     * 
-     * @param dbStore dbStore
-     * @since 0.1.7
-     */
     public SqlDbStore(BaseDbStore<?> dbStore) {
         this.dbStore = dbStore;
     }
 
-    /**
-     * getDbStore.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseDbStore<?> getDbStore() {
-        return dbStore;
-    }
-
-    /**
-     * getEngine.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getEngine() {
-        return dbStore.getEngine();
-    }
-
-    /**
-     * getConnection.
-     * 
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
-     */
-    private Connection getConnection() throws SQLException {
-        Object engine = dbStore.getEngine();
-        if (engine instanceof DataSource) {
-            return ((DataSource) engine).getConnection();
-        }
-        if (engine instanceof Connection) {
-            return (Connection) engine;
-        }
-        throw new SQLException("Unsupported engine type: " + engine.getClass().getName());
-    }
-
-    /**
-     * Insert a row into the specified table.
-     * 
-     * @param table table
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean write(String table, Map<String, Object> data) {
-        if (data == null || data.isEmpty()) {
-            return false;
-        }
-        List<String> columns = new ArrayList<>(data.keySet());
-        String placeholders = String.join(", ", Collections.nCopies(columns.size(), "?"));
-        String columnNames = String.join(", ", columns);
-        String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", table, columnNames, placeholders);
-
-        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (int i = 0; i < columns.size(); i++) {
-                ps.setObject(i + 1, data.get(columns.get(i)));
-            }
-            ps.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Write failed for table {}: {}", LogEventType.MEMORY_STORE, table, e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Get a single record by id.
-     * 
-     * @param table table
-     * @param recordId recordId
-     * @param columns columns
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> get(String table, String recordId, List<String> columns) {
-        try (Connection conn = getConnection()) {
-            String cols = (columns == null || columns.isEmpty()) ? "*" : String.join(", ", columns);
-            String sql = String.format("SELECT %s FROM %s WHERE id = ?", cols, table);
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setString(1, recordId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        return resultSetToMap(rs);
-                    }
-                    return null;
+    public CompletableFuture<Boolean> write(String table, Map<String, Object> data) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                String sql = buildInsertSql(tableInfo.name(), data.keySet());
+                try (Connection connection = dataSource().getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    bindValues(statement, new ArrayList<>(data.values()));
+                    statement.executeUpdate();
+                    return true;
                 }
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Write failed, table_name={}", table, ex);
+                return false;
             }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Failed to get data from table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
-                    e.getMessage());
-            return null;
-        }
+        });
     }
 
-    /**
-     * Get rows with filters, sorting, and limit.
-     * 
-     * @param table table
-     * @param filters filters
-     * @param sortBy sortBy
-     * @param order order
-     * @param limit limit
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> getWithSort(String table, Map<String, Object> filters, String sortBy, String order,
-            int limit) {
-        try (Connection conn = getConnection()) {
-            if (sortBy != null && !hasColumn(conn, table, sortBy)) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "message",
-                        "error_msg", "sort column '" + sortBy + "' does not exist in db store table '" + table + "'");
+    public CompletableFuture<Map<String, Object>> get(String table, String recordId) {
+        return get(table, recordId, List.of());
+    }
+
+    public CompletableFuture<Map<String, Object>> get(String table, String recordId, List<String> columns) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                List<String> selectedColumns = normalizeColumns(columns, tableInfo);
+                String sql = "SELECT " + selectClause(selectedColumns) + " FROM " + tableInfo.name()
+                        + " WHERE " + ID_COLUMN + " = ?";
+                try (Connection connection = dataSource().getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setObject(1, recordId);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (!resultSet.next()) {
+                            return null;
+                        }
+                        return rowToMap(resultSet);
+                    }
+                }
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Failed to get data, table_name={}, record_id={}", table, recordId, ex);
+                return null;
             }
-            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
-            List<Object> params = new ArrayList<>();
-            if (filters != null && !filters.isEmpty()) {
-                sql.append(" WHERE ");
+        });
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getWithSort(String table, Map<String, Object> filters) {
+        return getWithSort(table, filters, "timestamp", ASC, 100);
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getWithSort(
+            String table,
+            Map<String, Object> filters,
+            String sortBy,
+            String order,
+            int limit
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                String sortColumn = requireKnownColumn(sortBy, tableInfo);
+                StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tableInfo.name());
+                List<Object> parameters = new ArrayList<>();
+                appendFilterWhere(sql, parameters, filters, tableInfo);
+                sql.append(" ORDER BY ").append(sortColumn).append(' ')
+                        .append(DESC.equalsIgnoreCase(order) ? DESC : ASC);
+                sql.append(" LIMIT ?");
+                parameters.add(limit);
+                return queryRows(sql.toString(), parameters);
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Failed to fetch filtered and sorted data, table_name={}", table, ex);
+                return List.of();
+            }
+        });
+    }
+
+    public CompletableFuture<Boolean> exist(String table, Map<String, Object> conditions) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                WhereClause where = buildEqualityWhere(conditions, tableInfo, Joiner.AND);
+                String sql = "SELECT 1 FROM " + tableInfo.name() + where.sql() + " LIMIT 1";
+                try (Connection connection = dataSource().getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    bindValues(statement, where.parameters());
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        return resultSet.next();
+                    }
+                }
+            } catch (Exception ex) {
+                throw new CompletionException(ex);
+            }
+        });
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> batchGet(
+            String table,
+            List<Map<String, Object>> conditionsList
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                List<Object> parameters = new ArrayList<>();
+                StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tableInfo.name());
+                if (conditionsList != null && !conditionsList.isEmpty()) {
+                    List<String> conditionClauses = new ArrayList<>();
+                    for (Map<String, Object> conditions : conditionsList) {
+                        WhereClause clause = buildEqualityWhere(conditions, tableInfo, Joiner.OR);
+                        if (!clause.sql().isBlank()) {
+                            conditionClauses.add(stripWhere(clause.sql()));
+                            parameters.addAll(clause.parameters());
+                        }
+                    }
+                    if (!conditionClauses.isEmpty()) {
+                        sql.append(" WHERE ").append(String.join(" OR ", conditionClauses));
+                    }
+                }
+                return queryRows(sql.toString(), parameters);
+            } catch (Exception ex) {
+                throw new CompletionException(ex);
+            }
+        });
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> conditionGet(
+            String table,
+            Map<String, ?> conditions,
+            List<String> columns
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                List<String> selectedColumns = normalizeColumns(columns, tableInfo);
+                StringBuilder sql = new StringBuilder("SELECT ")
+                        .append(selectClause(selectedColumns))
+                        .append(" FROM ")
+                        .append(tableInfo.name());
+                List<Object> parameters = new ArrayList<>();
                 List<String> clauses = new ArrayList<>();
-                for (Map.Entry<String, Object> entry : filters.entrySet()) {
-                    clauses.add(entry.getKey() + " = ?");
-                    params.add(entry.getValue());
-                }
-                sql.append(String.join(" AND ", clauses));
-            }
-            if (sortBy != null) {
-                sql.append(" ORDER BY ").append(sortBy);
-                if ("DESC".equalsIgnoreCase(order)) {
-                    sql.append(" DESC");
-                } else {
-                    sql.append(" ASC");
-                }
-            }
-            sql.append(" LIMIT ?");
-            params.add(limit);
-
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                try (ResultSet rs = ps.executeQuery()) {
-                    return resultSetToList(rs);
-                }
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Failed to fetch sorted data from table {}: {}", LogEventType.MEMORY_RETRIEVE,
-                    table, e.getMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Check if a record exists matching the given conditions.
-     * 
-     * @param table table
-     * @param conditions conditions
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean exist(String table, Map<String, Object> conditions) {
-        try (Connection conn = getConnection()) {
-            StringBuilder sql = new StringBuilder("SELECT 1 FROM ").append(table).append(" WHERE ");
-            List<Object> params = new ArrayList<>();
-            List<String> clauses = new ArrayList<>();
-            for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                clauses.add(entry.getKey() + " = ?");
-                params.add(entry.getValue());
-            }
-            sql.append(String.join(" AND ", clauses));
-            sql.append(" LIMIT 1");
-
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next();
-                }
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Exist check failed for table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
-                    e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Get rows matching any condition group in the provided list.
-     * 
-     * @param table table
-     * @param conditionsList conditionsList
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> batchGet(String table, List<Map<String, Object>> conditionsList) {
-        try (Connection conn = getConnection()) {
-            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
-            List<Object> params = new ArrayList<>();
-            List<String> groups = new ArrayList<>();
-
-            if (conditionsList != null) {
-                for (Map<String, Object> conditions : conditionsList) {
-                    if (conditions == null || conditions.isEmpty()) {
-                        continue;
+                if (conditions != null) {
+                    for (Map.Entry<String, ?> entry : conditions.entrySet()) {
+                        String column = requireKnownColumn(entry.getKey(), tableInfo);
+                        Object values = entry.getValue();
+                        if (!(values instanceof List<?> listValues)) {
+                            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                                    "memory_type", "message",
+                                    "error_msg", "db store condition[" + entry.getKey()
+                                            + "] must be a list, (got "
+                                            + values.getClass().getSimpleName() + ")");
+                        }
+                        clauses.add(inClause(column, listValues.size()));
+                        parameters.addAll(listValues);
                     }
-                    List<String> clauses = new ArrayList<>();
-                    for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                        clauses.add(entry.getKey() + " = ?");
-                        params.add(entry.getValue());
-                    }
-                    groups.add("(" + String.join(" OR ", clauses) + ")");
-                }
-            }
-
-            if (!groups.isEmpty()) {
-                sql.append(" WHERE ").append(String.join(" OR ", groups));
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                try (ResultSet rs = ps.executeQuery()) {
-                    return resultSetToList(rs);
-                }
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Batch get failed for table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
-                    e.getMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * conditionGet.
-     * 
-     * @param table table
-     * @param conditions conditions
-     * @param columns columns
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> conditionGet(String table, Map<String, ?> conditions, List<String> columns) {
-        try (Connection conn = getConnection()) {
-            String cols = (columns == null || columns.isEmpty()) ? "*" : String.join(", ", columns);
-            StringBuilder sql = new StringBuilder("SELECT ").append(cols).append(" FROM ").append(table);
-            List<Object> params = new ArrayList<>();
-
-            if (conditions != null && !conditions.isEmpty()) {
-                sql.append(" WHERE ");
-                List<String> clauses = new ArrayList<>();
-                for (Map.Entry<String, ?> entry : conditions.entrySet()) {
-                    Object rawValues = entry.getValue();
-                    if (!(rawValues instanceof List<?> rawList)) {
-                        throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type",
-                                "message", "error_msg", "db store condition[" + entry.getKey() + "] must be a list");
-                    }
-                    List<?> values = rawList;
-                    if (values.isEmpty()) {
-                        continue;
-                    }
-                    String placeholders = String.join(", ", Collections.nCopies(values.size(), "?"));
-                    clauses.add(entry.getKey() + " IN (" + placeholders + ")");
-                    params.addAll(values);
                 }
                 if (!clauses.isEmpty()) {
-                    sql.append(String.join(" AND ", clauses));
+                    sql.append(" WHERE ").append(String.join(" AND ", clauses));
                 }
+                return queryRows(sql.toString(), parameters);
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Failed to get data via condition_get, table_name={}", table, ex);
+                return null;
             }
-
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                try (ResultSet rs = ps.executeQuery()) {
-                    return resultSetToList(rs);
-                }
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Failed to conditionGet from table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
-                    e.getMessage());
-            return null;
-        }
+        });
     }
 
-    /**
-     * hasColumn.
-     * 
-     * @param conn conn
-     * @param table table
-     * @param columnName columnName
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
-     */
-    private boolean hasColumn(Connection conn, String table, String columnName) throws SQLException {
-        TableInfo tableInfo = reflectTable(conn, table);
-        if (tableInfo == null) {
-            return false;
-        }
-        for (ColumnInfo column : tableInfo.getColumns()) {
-            if (column.getName().equalsIgnoreCase(columnName)) {
+    public CompletableFuture<Boolean> update(
+            String table,
+            Map<String, ?> conditions,
+            Map<String, Object> data
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                WhereClause where = buildFlexibleWhere(conditions, tableInfo);
+                String sql = "UPDATE " + tableInfo.name() + " SET " + assignments(data.keySet())
+                        + where.sql();
+                List<Object> parameters = new ArrayList<>(data.values());
+                parameters.addAll(where.parameters());
+                try (Connection connection = dataSource().getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    bindValues(statement, parameters);
+                    statement.executeUpdate();
+                    return true;
+                }
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Update failed, table_name={}", table, ex);
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Boolean> delete(String table, Map<String, ?> conditions) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                TableInfo tableInfo = getTableBlocking(table);
+                WhereClause where = buildFlexibleWhere(conditions, tableInfo);
+                String sql = "DELETE FROM " + tableInfo.name() + where.sql();
+                try (Connection connection = dataSource().getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    bindValues(statement, where.parameters());
+                    statement.executeUpdate();
+                    return true;
+                }
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Delete failed, table_name={}", table, ex);
+                return false;
+            }
+        });
+    }
+
+    public CompletableFuture<Boolean> deleteTable(String tableName) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String table = requireIdentifier(tableName);
+                try (Connection connection = dataSource().getConnection();
+                     Statement statement = connection.createStatement()) {
+                    statement.execute("DROP TABLE IF EXISTS " + table);
+                }
+                invalidateTableCache(tableName);
                 return true;
+            } catch (Exception ex) {
+                Loggers.MEMORY.error("Delete table failed, table_name={}", tableName, ex);
+                return false;
             }
-        }
-        return false;
+        });
     }
 
-    /**
-     * update.
-     * 
-     * @param table table
-     * @param conditions conditions
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public boolean update(String table, Map<String, Object> conditions, Map<String, Object> data) {
-        try (Connection conn = getConnection()) {
-            List<Object> params = new ArrayList<>();
-            List<String> setClauses = new ArrayList<>();
-            for (Map.Entry<String, Object> entry : data.entrySet()) {
-                setClauses.add(entry.getKey() + " = ?");
-                params.add(entry.getValue());
+    public void invalidateTableCache(String tableName) {
+        if (tableName != null) {
+            synchronized (tableCache) {
+                tableCache.remove(tableName);
             }
+        }
+    }
 
-            List<String> whereClauses = new ArrayList<>();
-            for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                Object val = entry.getValue();
-                if (val instanceof List) {
-                    List<Object> list = (List<Object>) val;
-                    String placeholders = String.join(", ", Collections.nCopies(list.size(), "?"));
-                    whereClauses.add(entry.getKey() + " IN (" + placeholders + ")");
-                    params.addAll(list);
-                } else {
-                    whereClauses.add(entry.getKey() + " = ?");
-                    params.add(val);
+    public CompletableFuture<TableInfo> getTable(String tableName) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return getTableBlocking(tableName);
+            } catch (SQLException ex) {
+                throw new CompletionException(ex);
+            }
+        });
+    }
+
+    private TableInfo getTableBlocking(String tableName) throws SQLException {
+        synchronized (tableCache) {
+            TableInfo cached = tableCache.get(tableName);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        String table = requireIdentifier(tableName);
+        Set<String> columns = new LinkedHashSet<>();
+        try (Connection connection = dataSource().getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            try (ResultSet resultSet = metadata.getColumns(connection.getCatalog(), null, table, null)) {
+                while (resultSet.next()) {
+                    String columnName = resultSet.getString("COLUMN_NAME");
+                    if (columnName != null) {
+                        columns.add(columnName.toLowerCase(Locale.ROOT));
+                    }
                 }
             }
-
-            String sql = String.format("UPDATE %s SET %s WHERE %s", table, String.join(", ", setClauses),
-                    String.join(" AND ", whereClauses));
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                ps.executeUpdate();
-                return true;
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Update failed for table {}: {}", LogEventType.MEMORY_UPDATE, table,
-                    e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * delete.
-     * 
-     * @param table table
-     * @param conditions conditions
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public boolean delete(String table, Map<String, Object> conditions) {
-        try (Connection conn = getConnection()) {
-            List<Object> params = new ArrayList<>();
-            List<String> whereClauses = new ArrayList<>();
-            for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                Object val = entry.getValue();
-                if (val instanceof List) {
-                    List<Object> list = (List<Object>) val;
-                    String placeholders = String.join(", ", Collections.nCopies(list.size(), "?"));
-                    whereClauses.add(entry.getKey() + " IN (" + placeholders + ")");
-                    params.addAll(list);
-                } else {
-                    whereClauses.add(entry.getKey() + " = ?");
-                    params.add(val);
-                }
-            }
-
-            String sql = String.format("DELETE FROM %s WHERE %s", table, String.join(" AND ", whereClauses));
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
-                }
-                ps.executeUpdate();
-                return true;
-            }
-        } catch (SQLException e) {
-            MEMORY_LOGGER.error("[{}] Delete failed for table {}: {}", LogEventType.MEMORY_DELETE, table,
-                    e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Drop a table if it exists.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean deleteTable(String tableName) {
-        String sql = "DROP TABLE IF EXISTS " + tableName;
-        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-            return true;
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Delete table failed for {}: {}", LogEventType.MEMORY_DELETE, tableName,
-                    e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Reflect table metadata for public callers that need schema access.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    public TableInfo getTable(String tableName) {
-        try (Connection conn = getConnection()) {
-            return reflectTable(conn, tableName);
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to reflect table {}: {}", LogEventType.MEMORY_RETRIEVE, tableName,
-                    e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * reflectTable.
-     * 
-     * @param conn conn
-     * @param tableName tableName
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
-     */
-    private TableInfo reflectTable(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData metaData = conn.getMetaData();
-        String resolvedTableName = resolveTableName(metaData, tableName);
-        if (resolvedTableName == null) {
-            return null;
-        }
-        List<ColumnInfo> columns = new ArrayList<>();
-        try (ResultSet rs = metaData.getColumns(conn.getCatalog(), conn.getSchema(), resolvedTableName, null)) {
-            while (rs.next()) {
-                columns.add(new ColumnInfo(rs.getString("COLUMN_NAME"), rs.getString("TYPE_NAME"),
-                        rs.getInt("DATA_TYPE"), rs.getInt("COLUMN_SIZE"),
-                        rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable, rs.getString("COLUMN_DEF")));
-            }
-        }
-        return new TableInfo(resolvedTableName, columns);
-    }
-
-    /**
-     * resolveTableName.
-     * 
-     * @param metaData metaData
-     * @param tableName tableName
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
-     */
-    private String resolveTableName(DatabaseMetaData metaData, String tableName) throws SQLException {
-        try (ResultSet rs = metaData.getTables(null, null, null, new String[]{"TABLE"})) {
-            while (rs.next()) {
-                String candidate = rs.getString("TABLE_NAME");
-                if (candidate != null && candidate.equalsIgnoreCase(tableName)) {
-                    return candidate;
+            if (columns.isEmpty()) {
+                try (ResultSet resultSet = metadata.getColumns(connection.getCatalog(), null, table.toUpperCase(Locale.ROOT), null)) {
+                    while (resultSet.next()) {
+                        String columnName = resultSet.getString("COLUMN_NAME");
+                        if (columnName != null) {
+                            columns.add(columnName.toLowerCase(Locale.ROOT));
+                        }
+                    }
                 }
             }
         }
-        return null;
+        TableInfo tableInfo = new TableInfo(table, columns);
+        synchronized (tableCache) {
+            tableCache.put(tableName, tableInfo);
+        }
+        return tableInfo;
     }
 
     /**
-     * TableInfo.
-     * 
-     * @since 0.1.7
+     * Exposes the JDBC data source backing Python's SQLAlchemy async engine.
+     *
+     * <p>Mirrors Python's {@code SQLDBStore.sql_engine} usage in
+     * {@code openjiuwen/core/memory/manage/mem_model/sql_db_store.py}.</p>
+     *
+     * @return JDBC data source used by this store
      */
-    public static final class TableInfo {
-        private final String name;
-        private final List<ColumnInfo> columns;
-
-        /**
-         * TableInfo.
-         * 
-         * @param name name
-         * @param columns columns
-         * @since 0.1.7
-         */
-        public TableInfo(String name, List<ColumnInfo> columns) {
-            this.name = name;
-            this.columns = List.copyOf(columns);
+    public DataSource getDataSource() {
+        Object engine = dbStore.getAsyncEngine();
+        if (engine instanceof DataSource dataSource) {
+            return dataSource;
         }
+        throw new IllegalArgumentException("db_store.get_async_engine() must return a DataSource");
+    }
 
-        /**
-         * getName.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getName() {
-            return name;
-        }
+    private DataSource dataSource() {
+        return getDataSource();
+    }
 
-        /**
-         * getColumns.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public List<ColumnInfo> getColumns() {
-            return columns;
+    private List<Map<String, Object>> queryRows(String sql, List<Object> parameters) throws SQLException {
+        try (Connection connection = dataSource().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            bindValues(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<Map<String, Object>> rows = new ArrayList<>();
+                while (resultSet.next()) {
+                    rows.add(rowToMap(resultSet));
+                }
+                return rows;
+            }
         }
     }
 
-    /**
-     * ColumnInfo.
-     * 
-     * @since 0.1.7
-     */
-    public static final class ColumnInfo {
-        private final String name;
-        private final String typeName;
-        private final int jdbcType;
-        private final int size;
-        private final boolean nullable;
-        private final String defaultValue;
-
-        /**
-         * ColumnInfo.
-         * 
-         * @param name name
-         * @param typeName typeName
-         * @param jdbcType jdbcType
-         * @param size size
-         * @param nullable nullable
-         * @param defaultValue defaultValue
-         * @since 0.1.7
-         */
-        public ColumnInfo(String name, String typeName, int jdbcType, int size, boolean nullable, String defaultValue) {
-            this.name = name;
-            this.typeName = typeName;
-            this.jdbcType = jdbcType;
-            this.size = size;
-            this.nullable = nullable;
-            this.defaultValue = defaultValue;
+    private static void appendFilterWhere(
+            StringBuilder sql,
+            List<Object> parameters,
+            Map<String, Object> filters,
+            TableInfo tableInfo
+    ) {
+        if (filters == null || filters.isEmpty()) {
+            return;
         }
-
-        /**
-         * getName.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getName() {
-            return name;
+        List<String> clauses = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : filters.entrySet()) {
+            if (!tableInfo.containsColumn(entry.getKey())) {
+                continue;
+            }
+            clauses.add(requireIdentifier(entry.getKey()) + " = ?");
+            parameters.add(entry.getValue());
         }
-
-        /**
-         * getTypeName.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getTypeName() {
-            return typeName;
-        }
-
-        /**
-         * getJdbcType.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public int getJdbcType() {
-            return jdbcType;
-        }
-
-        /**
-         * getSize.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public int getSize() {
-            return size;
-        }
-
-        /**
-         * isNullable.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public boolean isNullable() {
-            return nullable;
-        }
-
-        /**
-         * getDefaultValue.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getDefaultValue() {
-            return defaultValue;
+        if (!clauses.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", clauses));
         }
     }
 
-    /**
-     * resultSetToMap.
-     * 
-     * @param rs rs
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
-     */
-    private Map<String, Object> resultSetToMap(ResultSet rs) throws SQLException {
-        ResultSetMetaData meta = rs.getMetaData();
+    private static WhereClause buildEqualityWhere(Map<String, ?> conditions, TableInfo tableInfo, Joiner joiner) {
+        if (conditions == null || conditions.isEmpty()) {
+            return new WhereClause("", List.of());
+        }
+        List<String> clauses = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : conditions.entrySet()) {
+            String column = requireKnownColumn(entry.getKey(), tableInfo);
+            clauses.add(column + " = ?");
+            parameters.add(entry.getValue());
+        }
+        return new WhereClause(" WHERE " + String.join(" " + joiner.name() + " ", clauses), parameters);
+    }
+
+    private static WhereClause buildFlexibleWhere(Map<String, ?> conditions, TableInfo tableInfo) {
+        if (conditions == null || conditions.isEmpty()) {
+            return new WhereClause("", List.of());
+        }
+        List<String> clauses = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : conditions.entrySet()) {
+            String column = requireKnownColumn(entry.getKey(), tableInfo);
+            Object value = entry.getValue();
+            if (value instanceof Collection<?> collection) {
+                clauses.add(inClause(column, collection.size()));
+                parameters.addAll(collection);
+            } else {
+                clauses.add(column + " = ?");
+                parameters.add(value);
+            }
+        }
+        return new WhereClause(" WHERE " + String.join(" AND ", clauses), parameters);
+    }
+
+    private static String assignments(Collection<String> columns) {
+        List<String> assignments = new ArrayList<>();
+        for (String column : columns) {
+            assignments.add(requireIdentifier(column) + " = ?");
+        }
+        return String.join(", ", assignments);
+    }
+
+    private static String buildInsertSql(String table, Collection<String> columns) {
+        List<String> names = columns.stream().map(SqlDbStore::requireIdentifier).toList();
+        return "INSERT INTO " + table + " (" + String.join(", ", names) + ") VALUES ("
+                + String.join(", ", Collections.nCopies(names.size(), "?")) + ")";
+    }
+
+    private static List<String> normalizeColumns(List<String> columns, TableInfo tableInfo) {
+        if (columns == null || columns.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String column : columns) {
+            result.add(requireKnownColumn(column, tableInfo));
+        }
+        return result;
+    }
+
+    private static String selectClause(List<String> columns) {
+        return columns == null || columns.isEmpty() ? "*" : String.join(", ", columns);
+    }
+
+    private static String inClause(String column, int size) {
+        if (size <= 0) {
+            return "1 = 0";
+        }
+        return column + " IN (" + String.join(", ", Collections.nCopies(size, "?")) + ")";
+    }
+
+    private static String stripWhere(String sql) {
+        return sql.startsWith(" WHERE ") ? sql.substring(" WHERE ".length()) : sql;
+    }
+
+    private static String requireKnownColumn(String columnName, TableInfo tableInfo) {
+        String column = requireIdentifier(columnName);
+        if (!tableInfo.columns().isEmpty() && !tableInfo.containsColumn(column)) {
+            throw new IllegalArgumentException("column does not exist: " + column);
+        }
+        return column;
+    }
+
+    private static String requireIdentifier(String identifier) {
+        if (identifier == null || !identifier.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("invalid SQL identifier: " + identifier);
+        }
+        return identifier;
+    }
+
+    private static void bindValues(PreparedStatement statement, List<?> values) throws SQLException {
+        for (int i = 0; i < values.size(); i++) {
+            statement.setObject(i + 1, values.get(i));
+        }
+    }
+
+    private static Map<String, Object> rowToMap(ResultSet resultSet) throws SQLException {
+        ResultSetMetaData metadata = resultSet.getMetaData();
         Map<String, Object> row = new LinkedHashMap<>();
-        for (int i = 1; i <= meta.getColumnCount(); i++) {
-            String columnName = meta.getColumnLabel(i);
-            if (columnName == null || columnName.isEmpty()) {
-                columnName = meta.getColumnName(i);
-            }
-            row.put(columnName.toLowerCase(Locale.ROOT), rs.getObject(i));
+        for (int i = 1; i <= metadata.getColumnCount(); i++) {
+            row.put(metadata.getColumnLabel(i).toLowerCase(Locale.ROOT), resultSet.getObject(i));
         }
         return row;
     }
 
+    private enum Joiner {
+        AND,
+        OR
+    }
+
+    private record WhereClause(String sql, List<Object> parameters) {
+    }
+
     /**
-     * resultSetToList.
-     * 
-     * @param rs rs
-     * @return the result
-     * @throws SQLException SQLException
-     * @since 0.1.7
+     * Mirrors Python's reflected SQLAlchemy {@code Table} cache entry in
+     * {@code openjiuwen/core/memory/manage/mem_model/sql_db_store.py}.
      */
-    private List<Map<String, Object>> resultSetToList(ResultSet rs) throws SQLException {
-        List<Map<String, Object>> list = new ArrayList<>();
-        while (rs.next()) {
-            list.add(resultSetToMap(rs));
+    public static final class TableInfo {
+        private final String name;
+        private final Set<String> columns;
+
+        public TableInfo(String name, Set<String> columns) {
+            this.name = name;
+            this.columns = columns == null ? Set.of() : Set.copyOf(columns);
         }
-        return list;
+
+        public String name() {
+            return name;
+        }
+
+        public Set<String> columns() {
+            return columns;
+        }
+
+        public boolean containsColumn(String column) {
+            return columns.isEmpty() || columns.contains(column.toLowerCase(Locale.ROOT));
+        }
     }
 }

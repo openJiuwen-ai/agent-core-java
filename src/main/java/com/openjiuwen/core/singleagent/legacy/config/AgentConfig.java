@@ -4,58 +4,86 @@
 
 package com.openjiuwen.core.singleagent.legacy.config;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
-import com.openjiuwen.core.workflow.WorkflowCard;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Legacy agent configuration.
- * 
- * @since 0.1.7
+ * Legacy agent base configuration.
+ *
+ * <p>Mirrors Python's {@code AgentConfig} in
+ * {@code openjiuwen/core/single_agent/legacy/config.py}.</p>
  */
-@Data
-@SuperBuilder
-@NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AgentConfig {
-    @Builder.Default
     private String id = "";
-
-    @Builder.Default
     private String version = "";
-
-    @Builder.Default
     private String description = "";
 
-    @Builder.Default
+    @JsonProperty("controller_type")
     private ControllerType controllerType = ControllerType.UNDEFINED;
 
-    /**
-     * Workflow list – accepts both {@link WorkflowSchema} and {@link WorkflowCard}
-     * to mirror Python's {@code List[Union[WorkflowSchema, WorkflowCard]]}.
-     * 
-     * @since 0.1.7
-     */
-    @Builder.Default
     private List<Object> workflows = new ArrayList<>();
-
     private ModelConfig model;
-
-    @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<String> tools = new ArrayList<>();
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id == null ? "" : id;
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version == null ? "" : version;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description == null ? "" : description;
+    }
+
+    public ControllerType getControllerType() {
+        return controllerType;
+    }
+
+    public void setControllerType(ControllerType controllerType) {
+        this.controllerType = controllerType == null ? ControllerType.UNDEFINED : controllerType;
+    }
+
+    public List<Object> getWorkflows() {
+        return workflows;
+    }
+
+    public void setWorkflows(List<?> workflows) {
+        this.workflows = workflows == null ? new ArrayList<>() : new ArrayList<>(workflows);
+    }
+
+    public ModelConfig getModel() {
+        return model;
+    }
+
+    public void setModel(ModelConfig model) {
+        this.model = model;
+    }
+
+    public List<String> getTools() {
+        return tools;
+    }
+
+    public void setTools(List<String> tools) {
+        this.tools = tools == null ? new ArrayList<>() : new ArrayList<>(tools);
+    }
 }

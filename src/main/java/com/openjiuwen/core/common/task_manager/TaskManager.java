@@ -4,304 +4,454 @@
 
 package com.openjiuwen.core.common.task_manager;
 
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.callback.CallbackFramework;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
-import java.util.AbstractMap;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
+import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 /**
- * Coroutine-task manager compatible layer.
- * 
- * @since 0.1.7
+ * Coroutine task manager singleton.
+ *
+ * <p>Mirrors Python's {@code TaskManager} and module-level helpers in
+ * {@code openjiuwen/core/common/task_manager/manager.py}.</p>
  */
 public class TaskManager {
-    private static final Logger log = LoggerFactory.getLogger(TaskManager.class);
 
+    private static final Logger LOGGER = Logger.getLogger(TaskManager.class.getName());
+    private static final Object INSTANCE_LOCK = new Object();
     private static volatile TaskManager instance;
 
-    /**
-     * TaskRegistry.
-     * 
-     * @since 0.1.7
-     */
     private final TaskRegistry registry = new TaskRegistry();
+    private final Object lock = new Object();
+    private final ExecutorService executorService;
+    private final ScheduledExecutorService timeoutScheduler;
+    private final Map<String, CopyOnWriteArrayList<Consumer<Task>>> callbacks = new LinkedHashMap<>();
 
-    /**
-     * ReentrantLock.
-     * 
-     * @since 0.1.7
-     */
-    private final ReentrantLock lock = new ReentrantLock();
-    private static final ThreadFactory TASK_THREAD_FACTORY = runnable -> {
-        Thread thread = new Thread(runnable, "task-manager-worker");
-        thread.setDaemon(true);
-        thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception in " + t.getName(), e));
-        return thread;
-    };
-    private static final ThreadFactory SCHEDULER_THREAD_FACTORY = runnable -> {
-        Thread thread = new Thread(runnable, "task-manager-scheduler");
-        thread.setDaemon(true);
-        thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception in " + t.getName(), e));
-        return thread;
-    };
+    public TaskManager() {
+        this(VirtualThreadSupport.newThreadPerTaskExecutor(), Executors.newSingleThreadScheduledExecutor());
+    }
 
-    /**
-     * ThreadPoolExecutor.
-     * 
-     * @param SynchronousQueue<>( SynchronousQueue<>(
-     * @since 0.1.7
-     */
-    private final ExecutorService executor = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
-            new SynchronousQueue<>(), TASK_THREAD_FACTORY);
+    TaskManager(ExecutorService executorService, ScheduledExecutorService timeoutScheduler) {
+        this.executorService = Objects.requireNonNull(executorService, "executorService");
+        this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler");
+        LOGGER.info("CoroutineTaskManager initialized with explicit registry cleanup");
+    }
 
-    /**
-     * ScheduledThreadPoolExecutor.
-     * 
-     * @since 0.1.7
-     */
-    private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1, SCHEDULER_THREAD_FACTORY);
-
-    /**
-     * Runner.callbackFramework.
-     * 
-     * @since 0.1.7
-     */
-    private final CallbackFramework callbackFramework = Runner.callbackFramework();
-
-    /**
-     * getInstance.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static TaskManager getInstance() {
-        if (instance == null) {
-            synchronized (TaskManager.class) {
-                if (instance == null) {
-                    instance = new TaskManager();
+        TaskManager current = instance;
+        if (current == null) {
+            synchronized (INSTANCE_LOCK) {
+                current = instance;
+                if (current == null) {
+                    current = new TaskManager();
+                    instance = current;
                 }
             }
         }
-        return instance;
+        return current;
     }
 
-    /**
-     * resetInstance.
-     * 
-     * @since 0.1.7
-     */
+    public static TaskManager getTaskManager() {
+        return getInstance();
+    }
+
     public static void resetInstance() {
-        synchronized (TaskManager.class) {
+        synchronized (INSTANCE_LOCK) {
             if (instance != null) {
                 instance.shutdown();
+                instance = null;
             }
-            instance = null;
         }
     }
 
-    /**
-     * getRegistry.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public Task createTask(Callable<?> callable) {
+        return createTask(callable, null, null, null, null, Map.of(), false);
+    }
+
+    public Task createTask(Callable<?> callable,
+                           String taskId,
+                           String name,
+                           String group,
+                           Double timeout,
+                           Map<String, Object> metadata,
+                           boolean catchExceptions) {
+        Objects.requireNonNull(callable, "callable");
+        String actualTaskId = taskId == null ? UUID.randomUUID().toString() : taskId;
+        Task task = new Task(actualTaskId, name, group, timeout, metadata == null ? Map.of() : metadata);
+
+        synchronized (lock) {
+            if (registry.contains(actualTaskId)) {
+                throw new DuplicateTaskError("Task " + actualTaskId + " already exists");
+            }
+            task.setParentTaskId(TaskContext.getCurrentTaskId());
+            registry.add(task);
+        }
+
+        CompletableFuture<Object> future = task.execute(callable, this::triggerStatusEvent, catchExceptions,
+                executorService);
+        scheduleTimeout(task, future);
+        trackInCurrentGroup(task, future);
+        triggerEvent(TaskManagerEvents.TASK_CREATED, task);
+        LOGGER.fine(() -> "Created task " + actualTaskId + " name=" + name + " parent=" + task.getParentTaskId());
+        return task;
+    }
+
+    public TaskGroupScope taskGroup() {
+        return new TaskGroupScope();
+    }
+
+    public TaskGroupContext createTaskGroup() {
+        return new TaskGroupContext(taskGroup());
+    }
+
+    public void cascadeCancel(String taskId) {
+        cascadeCancel(taskId, "parent_cancelled");
+    }
+
+    public void cascadeCancel(String taskId, String reason) {
+        Task task = registry.get(taskId);
+        if (task != null && !task.isTerminal()) {
+            cancelTask(taskId, reason == null ? "parent_cancelled" : reason, task.getCancelledBy());
+        }
+        cascadeCancelChildren(taskId, reason == null ? "parent_cancelled" : reason);
+    }
+
+    public boolean cancelTask(String taskId, String reason) {
+        return cancelTask(taskId, reason, null);
+    }
+
+    public boolean cancelTask(String taskId, String reason, String cancelledBy) {
+        Task task = registry.get(taskId);
+        if (task == null || task.isTerminal()) {
+            return false;
+        }
+        if (cancelledBy != null) {
+            task.setCancelledBy(cancelledBy);
+        }
+        task.markCancelled(reason == null ? "manual_cancel" : reason, cancelledBy);
+        CompletableFuture<?> future = task.getExecutionFuture();
+        if (future != null && !future.isDone()) {
+            future.cancel(true);
+        }
+        triggerEvent(TaskManagerEvents.TASK_CANCELLED, task);
+        return true;
+    }
+
+    public int cancelGroup(String group) {
+        List<Task> tasks = registry.getByGroup(group);
+        int count = 0;
+        for (Task task : tasks) {
+            if (cancelTask(task.getTaskId(), "manual_cancel")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public int cancelAll() {
+        int count = 0;
+        for (Task task : registry.getRunning()) {
+            if (cancelTask(task.getTaskId(), "manual_cancel")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public String getTaskTree(String taskId) {
+        List<String> lines = new ArrayList<>();
+        buildTreeRecursive(taskId, lines, 0);
+        return String.join(System.lineSeparator(), lines);
+    }
+
+    public CompletableFuture<List<Object>> waitGroup(String group) {
+        return waitGroup(group, null, false);
+    }
+
+    public CompletableFuture<List<Object>> waitGroup(String group, Duration timeout, boolean returnExceptions) {
+        List<String> taskIds;
+        synchronized (lock) {
+            taskIds = registry.getGroupTaskIds(group);
+        }
+        List<Task> tasks = new ArrayList<>();
+        for (String taskId : taskIds) {
+            Task task = registry.get(taskId);
+            if (task != null) {
+                tasks.add(task);
+            }
+        }
+        return CompletableFuture.supplyAsync(() -> waitForTasks(tasks, timeout, returnExceptions), executorService);
+    }
+
+    public CompletableFuture<List<Object>> waitAll() {
+        return waitAll(null, false);
+    }
+
+    public CompletableFuture<List<Object>> waitAll(Duration timeout, boolean returnExceptions) {
+        List<Task> tasks;
+        synchronized (lock) {
+            tasks = registry.keys().stream().map(registry::get).filter(Objects::nonNull).toList();
+        }
+        return CompletableFuture.supplyAsync(() -> waitForTasks(tasks, timeout, returnExceptions), executorService);
+    }
+
+    public List<TaskResult> asCompleted(List<Task> tasks) {
+        return asCompleted(tasks, null);
+    }
+
+    public List<TaskResult> asCompleted(List<Task> tasks, Duration timeout) {
+        if (tasks == null || tasks.isEmpty()) {
+            return List.of();
+        }
+        LinkedBlockingQueue<TaskResult> queue = new LinkedBlockingQueue<>();
+        for (Task task : tasks) {
+            task.waitResult().whenComplete((value, throwable) -> {
+                Throwable unwrapped = throwable == null ? null : Task.unwrap(throwable);
+                queue.add(new TaskResult(task, unwrapped == null ? value : unwrapped));
+            });
+        }
+        List<TaskResult> results = new ArrayList<>();
+        long deadline = timeout == null ? 0L : System.nanoTime() + timeout.toNanos();
+        while (results.size() < tasks.size()) {
+            try {
+                TaskResult result;
+                if (timeout == null) {
+                    result = queue.take();
+                } else {
+                    long remainingNanos = deadline - System.nanoTime();
+                    if (remainingNanos <= 0L) {
+                        throw new CompletionException(new TimeoutException("as_completed() timed out"));
+                    }
+                    result = queue.poll(remainingNanos, TimeUnit.NANOSECONDS);
+                    if (result == null) {
+                        throw new CompletionException(new TimeoutException("as_completed() timed out"));
+                    }
+                }
+                results.add(result);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException(interrupted);
+            }
+        }
+        return results;
+    }
+
+    public void on(String eventType, Consumer<Task> callback) {
+        callbacks.computeIfAbsent(eventType, ignored -> new CopyOnWriteArrayList<>()).add(callback);
+    }
+
+    public void onCreated(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_CREATED, callback);
+    }
+
+    public void onRunning(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_RUNNING, callback);
+    }
+
+    public void onCompleted(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_COMPLETED, callback);
+    }
+
+    public void onFailed(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_FAILED, callback);
+    }
+
+    public void onCancelled(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_CANCELLED, callback);
+    }
+
+    public void onTimeout(Consumer<Task> callback) {
+        on(TaskManagerEvents.TASK_TIMEOUT, callback);
+    }
+
+    public void off(String eventType, Consumer<Task> callback) {
+        List<Consumer<Task>> registered = callbacks.get(eventType);
+        if (registered != null) {
+            registered.remove(callback);
+        }
+    }
+
+    public boolean removeTask(String taskId) {
+        synchronized (lock) {
+            if (!registry.contains(taskId)) {
+                return false;
+            }
+            registry.removeUnsafe(taskId);
+            return true;
+        }
+    }
+
+    public int removeCompleted() {
+        synchronized (lock) {
+            List<String> completed = registry.items().stream()
+                    .filter(entry -> entry.getValue().isTerminal())
+                    .map(Map.Entry::getKey)
+                    .toList();
+            for (String taskId : completed) {
+                registry.removeUnsafe(taskId);
+            }
+            return completed.size();
+        }
+    }
+
+    public void printTaskTree() {
+        for (Task task : registry.getAll()) {
+            if (task.getParentTaskId() == null) {
+                LOGGER.fine(getTaskTree(task.getTaskId()));
+            }
+        }
+    }
+
+    public void printTaskTree(String taskId) {
+        LOGGER.fine(getTaskTree(taskId));
+    }
+
+    public ScheduledExecutorService getTimeoutScheduler() {
+        return timeoutScheduler;
+    }
+
+    public void shutdown() {
+        executorService.shutdownNow();
+        timeoutScheduler.shutdownNow();
+    }
+
     public TaskRegistry getRegistry() {
         return registry;
     }
 
-    /**
-     * taskGroup.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TaskGroupScope taskGroup() {
-        return new TaskGroupScope(this, null);
+    public Task getTask(String taskId) {
+        return registry.get(taskId);
     }
 
-    /**
-     * taskGroup.
-     * 
-     * @param name name
-     * @return the result
-     * @since 0.1.7
-     */
-    public TaskGroupScope taskGroup(String name) {
-        return new TaskGroupScope(this, name);
+    public List<Task> getAllTasks() {
+        return registry.getAll();
     }
 
-    /**
-     * createTask.
-     * 
-     * @param callable callable
-     * @return the result
-     * @since 0.1.7
-     */
-    public <T> Task createTask(Callable<T> callable) {
-        return createTask(callable, null, null, null, null, Map.of(), false);
+    public List<Task> getTasksByGroup(String group) {
+        return registry.getByGroup(group);
     }
 
-    /**
-     * createTask.
-     * 
-     * @param callable callable
-     * @param taskId taskId
-     * @param name name
-     * @param group group
-     * @param timeout timeout
-     * @param metadata metadata
-     * @param isCatchExceptionsEnabled isCatchExceptionsEnabled
-     * @return the result
-     * @since 0.1.7
-     */
-    public <T> Task createTask(Callable<T> callable, String taskId, String name, String group, Double timeout,
-            Map<String, Object> metadata, boolean isCatchExceptionsEnabled) {
-        if (callable == null) {
-            throw new IllegalArgumentException("callable must not be null");
+    public List<Task> getTasksByStatus(TaskStatus status) {
+        return registry.getByStatus(status);
+    }
+
+    public Map<String, Integer> getStats() {
+        Map<String, Integer> stats = new LinkedHashMap<>();
+        stats.put("total", registry.getAll().size());
+        for (TaskStatus status : TaskStatus.values()) {
+            stats.put(status.getValue(), 0);
         }
-        String resolvedTaskId = taskId != null && !taskId.isBlank() ? taskId : UUID.randomUUID().toString();
-        String resolvedGroup = group;
-        if ((resolvedGroup == null || resolvedGroup.isBlank()) && TaskContext.getTaskGroup() != null) {
-            resolvedGroup = TaskContext.getTaskGroup().getName();
+        for (Task task : registry.getAll()) {
+            stats.computeIfPresent(task.getStatus().getValue(), (ignored, count) -> count + 1);
         }
+        return stats;
+    }
 
-        Task task = new Task(this, resolvedTaskId, name, resolvedGroup, timeout, metadata);
-        lock.lock();
-        try {
-            if (registry.contains(resolvedTaskId)) {
-                throw new DuplicateTaskError("Task " + resolvedTaskId + " already exists");
+    public static Task createTaskGlobal(Callable<?> callable,
+                                        String taskId,
+                                        String name,
+                                        String group,
+                                        Double timeout,
+                                        Map<String, Object> metadata,
+                                        boolean catchExceptions) {
+        return getInstance().createTask(callable, taskId, name, group, timeout, metadata, catchExceptions);
+    }
+
+    public static int cancelGroupGlobal(String group) {
+        return getInstance().cancelGroup(group);
+    }
+
+    public static int cancelAllGlobal() {
+        return getInstance().cancelAll();
+    }
+
+    private void scheduleTimeout(Task task, CompletableFuture<?> future) {
+        Double timeout = task.getTimeout();
+        if (timeout == null || timeout <= 0) {
+            return;
+        }
+        long timeoutMillis = Math.max(1L, (long) Math.ceil(timeout * 1000D));
+        timeoutScheduler.schedule(() -> {
+            if (future.isDone() || task.isTerminal()) {
+                return;
             }
-            task.setParentTaskId(TaskContext.getCurrentTaskId());
-            registry.add(task);
-        } finally {
-            lock.unlock();
-        }
-
-        Future<?> future = executor.submit(() -> task.execute(callable, this::handleStatus, isCatchExceptionsEnabled));
-        task.setRunningFuture(future);
-        log.info("TaskManager createTask submitted: taskId={} name={} group={} timeout={}", task.getTaskId(),
-                task.getName(), task.getGroup(), timeout);
-        if (timeout != null && timeout > 0) {
-            task.setTimeoutHandle(
-                    scheduler.schedule(task::triggerTimeout, Math.round(timeout * 1000), TimeUnit.MILLISECONDS));
-        }
-        triggerEvent(TaskManagerEvents.TASK_CREATED, task);
-        return task;
+            task.markTimeout();
+            future.cancel(true);
+            triggerEvent(TaskManagerEvents.TASK_TIMEOUT, task);
+        }, timeoutMillis, TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * cancelGroup.
-     * 
-     * @param group group
-     * @return the result
-     * @since 0.1.7
-     */
-    public int cancelGroup(String group) {
-        int count = 0;
-        for (Task task : registry.getByGroup(group)) {
-            if (task.cancel(false, "manual_cancel", null)) {
-                count++;
-            }
+    private void trackInCurrentGroup(Task task, CompletableFuture<?> future) {
+        Object currentGroup = TaskContext.getTaskGroup();
+        if (currentGroup instanceof TaskGroupScope scope) {
+            scope.track(task, future);
         }
-        return count;
     }
 
-    /**
-     * Schedule a one-shot runnable after the given delay; used by TaskGroupScope.failAfter().
-     *
-     * @param task Runnable
-     * @param delayMillis long
-     * @param unit TimeUnit
-     * @return ScheduledFuture<?>
-     */
-    java.util.concurrent.ScheduledFuture<?> schedule(Runnable task, long delayMillis, TimeUnit unit) {
-        return scheduler.schedule(task, delayMillis, unit);
-    }
-
-    /**
-     * cancelAll.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int cancelAll() {
-        int count = 0;
-        for (Task task : registry.getRunning()) {
-            if (task.cancel(false, "manual_cancel", null)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    void cascadeCancel(String parentId, String reason) {
+    private void cascadeCancelChildren(String parentId, String reason) {
         for (Task child : registry.getByParent(parentId)) {
             if (!child.isTerminal()) {
-                child.cancel(false, reason, parentId);
-                cascadeCancel(child.getTaskId(), reason);
+                cancelTask(child.getTaskId(), reason == null ? "parent_cancelled" : reason, parentId);
             }
+            cascadeCancelChildren(child.getTaskId(), reason);
         }
     }
 
-    /**
-     * getTaskTree.
-     * 
-     * @param taskId taskId
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getTaskTree(String taskId) {
-        List<String> lines = new ArrayList<>();
-        buildTreeRecursive(taskId, lines, 0);
-        return String.join("\n", lines);
+    private String buildCancelChain(String taskId) {
+        List<String> chain = new ArrayList<>();
+        String currentId = taskId;
+        while (currentId != null) {
+            Task task = registry.get(currentId);
+            if (task == null) {
+                break;
+            }
+            chain.add(task.getDisplayName() + "(" + currentId.substring(0, Math.min(8, currentId.length())) + ")");
+            currentId = task.getCancelledBy();
+        }
+        if (chain.isEmpty()) {
+            return taskId.substring(0, Math.min(8, taskId.length()));
+        }
+        List<String> reversedChain = new ArrayList<>(chain);
+        java.util.Collections.reverse(reversedChain);
+        return String.join(" -> ", reversedChain);
     }
 
-    /**
-     * buildTreeRecursive.
-     * 
-     * @param taskId taskId
-     * @param lines lines
-     * @param indent indent
-     * @since 0.1.7
-     */
     private void buildTreeRecursive(String taskId, List<String> lines, int indent) {
         Task task = registry.get(taskId);
         if (task == null) {
             return;
         }
-        String prefix = "  ".repeat(Math.max(0, indent)) + (indent > 0 ? "+- " : "");
-        String statusInfo = "[" + task.getStatus().getValue() + "]";
+        String prefix = "  ".repeat(Math.max(0, indent)) + (indent == 0 ? "" : "+- ");
+        StringBuilder statusInfo = new StringBuilder("[").append(task.getStatus().getValue()).append("]");
         if (task.getCancelledBy() != null) {
-            statusInfo += " (cancelled by: " + task.getCancelledBy() + ", reason: " + task.getCancelReason() + ")";
+            Task cancelledByTask = registry.get(task.getCancelledBy());
+            String cancelledByName = cancelledByTask == null
+                    ? task.getCancelledBy().substring(0, Math.min(8, task.getCancelledBy().length()))
+                    : cancelledByTask.getDisplayName();
+            statusInfo.append(" (cancelled by: ").append(cancelledByName)
+                    .append(", reason: ").append(task.getCancelReason()).append(")");
         } else if (task.getCancelReason() != null) {
-            statusInfo += " (reason: " + task.getCancelReason() + ")";
-        } else {
-            // no additional status suffix
+            statusInfo.append(" (reason: ").append(task.getCancelReason()).append(")");
         }
         lines.add(prefix + task.getDisplayName() + " " + statusInfo);
         for (Task child : registry.getByParent(taskId)) {
@@ -309,276 +459,141 @@ public class TaskManager {
         }
     }
 
-    /**
-     * waitGroup.
-     * 
-     * @param group group
-     * @param isReturnExceptions isReturnExceptions
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public List<Object> waitGroup(String group, boolean isReturnExceptions) throws Exception {
+    private List<Object> waitForTasks(List<Task> tasks, Duration timeout, boolean returnExceptions) {
         List<Object> results = new ArrayList<>();
         Exception firstException = null;
-        for (String taskId : registry.getGroupTaskIds(group)) {
-            Task task = registry.get(taskId);
+        for (int index = 0; index < tasks.size(); index++) {
+            Task task = tasks.get(index);
             if (task == null) {
-                continue;
-            }
-            try {
-                results.add(task.waitFor());
-            } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
-                if (isReturnExceptions) {
-                    results.add(e);
-                } else {
-                    firstException = e;
-                    break;
-                }
-            }
-        }
-        if (firstException != null && !isReturnExceptions) {
-            throw firstException;
-        }
-        return results;
-    }
-
-    /**
-     * waitAll.
-     * 
-     * @param isReturnExceptions isReturnExceptions
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public List<Object> waitAll(boolean isReturnExceptions) throws Exception {
-        List<Object> results = new ArrayList<>();
-        Exception firstException = null;
-        List<String> taskIds = new ArrayList<>(registry.keys());
-        log.info("TaskManager waitAll start: taskCount={} returnExceptions={}", taskIds.size(), isReturnExceptions);
-        for (String taskId : taskIds) {
-            Task task = registry.get(taskId);
-            if (task == null) {
-                log.info("TaskManager waitAll skip-null-task: taskId={}", taskId);
                 results.add(null);
                 continue;
             }
-            if (firstException != null && !isReturnExceptions) {
-                log.info("TaskManager waitAll cancel-due-to-first-exception: taskId={}", taskId);
+            if (firstException != null && !returnExceptions) {
                 task.cancel(false, "other_task_failed", null);
                 results.add(null);
                 continue;
             }
             try {
-                log.info("TaskManager waitAll waiting: taskId={} name={} status={}", task.getTaskId(), task.getName(),
-                        task.getStatus());
-                results.add(task.waitFor());
-                log.info("TaskManager waitAll done: taskId={} name={} status={}", task.getTaskId(), task.getName(),
-                        task.getStatus());
-            } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
-                log.info("TaskManager waitAll exception: taskId={} name={} errorType={} message={}", task.getTaskId(),
-                        task.getName(), e.getClass().getSimpleName(), e.getMessage());
-                if (isReturnExceptions) {
-                    results.add(e);
+                Object result = timeout == null
+                        ? task.waitResult().get()
+                        : task.waitResult().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                results.add(result);
+            } catch (Exception exception) {
+                Exception normalized = normalizeWaitException(exception);
+                if (returnExceptions) {
+                    results.add(normalized);
                 } else {
-                    firstException = e;
+                    firstException = normalized;
                     results.add(null);
+                    cancelRemaining(tasks, index + 1);
                 }
             }
         }
-        if (firstException != null && !isReturnExceptions) {
-            throw firstException;
+        if (firstException != null && !returnExceptions) {
+            throw new CompletionException(firstException);
         }
-        log.info("TaskManager waitAll end: resultCount={}", results.size());
         return results;
     }
 
-    /**
-     * asCompleted.
-     * 
-     * @param tasks tasks
-     * @param timeoutSeconds timeoutSeconds
-     * @return the result
-     * @since 0.1.7
-     */
-    public Iterable<Map.Entry<Task, Object>> asCompleted(List<Task> tasks, Double timeoutSeconds) {
-        if (tasks == null || tasks.isEmpty()) {
-            return List.of();
-        }
-        BlockingQueue<Map.Entry<Task, Object>> queue = new LinkedBlockingQueue<>();
-        CountDownLatch remaining = new CountDownLatch(tasks.size());
-        for (Task task : tasks) {
-            executor.submit(() -> {
-                try {
-                    Object result = task.waitFor();
-                    queue.put(new AbstractMap.SimpleEntry<>(task, result));
-                } catch (Exception e) {
-                    try {
-                        queue.put(new AbstractMap.SimpleEntry<>(task, e));
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                    }
-                } finally {
-                    remaining.countDown();
-                }
-            });
-        }
-
-        return () -> new Iterator<>() {
-            private int emitted;
-            private Map.Entry<Task, Object> next;
-            @Override
-            public boolean hasNext() {
-                if (emitted >= tasks.size()) {
-                    return false;
-                }
-                if (next != null) {
-                    return true;
-                }
-                try {
-                    next = timeoutSeconds != null && timeoutSeconds > 0
-                            ? queue.poll(Math.round(timeoutSeconds * 1000), TimeUnit.MILLISECONDS)
-                            : queue.take();
-                    if (next == null) {
-                        throw new IllegalStateException(
-                                new TimeoutException("asCompleted() timed out after " + timeoutSeconds + " second(s)"));
-                    }
-                    return true;
-                } catch (InterruptedException e) {
-                    throw new IllegalStateException(e);
-                }
+    private void cancelRemaining(List<Task> tasks, int startIndex) {
+        for (int index = startIndex; index < tasks.size(); index++) {
+            Task task = tasks.get(index);
+            if (task != null) {
+                task.cancel(false, "other_task_failed", null);
             }
-
-            @Override
-            public Map.Entry<Task, Object> next() {
-                if (!hasNext()) {
-                    throw new java.util.NoSuchElementException();
-                }
-                Map.Entry<Task, Object> current = next;
-                next = null;
-                emitted += 1;
-                return current;
-            }
-        };
-    }
-
-    /**
-     * removeTask.
-     * 
-     * @param taskId taskId
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean removeTask(String taskId) {
-        lock.lock();
-        try {
-            if (!registry.contains(taskId)) {
-                return false;
-            }
-            registry.removeUnsafe(taskId);
-            return true;
-        } finally {
-            lock.unlock();
         }
     }
 
-    /**
-     * removeCompleted.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int removeCompleted() {
-        int count = 0;
-        lock.lock();
-        try {
-            List<String> done = new ArrayList<>();
-            for (Map.Entry<String, Task> entry : registry.items()) {
-                if (entry.getValue().isTerminal()) {
-                    done.add(entry.getKey());
-                }
-            }
-            for (String taskId : done) {
-                registry.removeUnsafe(taskId);
-                count++;
-            }
-        } finally {
-            lock.unlock();
+    private static Exception normalizeWaitException(Exception exception) {
+        Throwable throwable = exception;
+        if (exception instanceof java.util.concurrent.ExecutionException executionException
+                && executionException.getCause() != null) {
+            throwable = executionException.getCause();
         }
-        return count;
-    }
-
-    /**
-     * on.
-     * 
-     * @param eventType eventType
-     * @param callback callback
-     * @since 0.1.7
-     */
-    public void on(String eventType, Function<Map<String, Object>, Object> callback) {
-        callbackFramework.registerSync(eventType, callback, 0, false, "default", null, null, null, null, 0, 0.0, null,
-                eventType + "_callback");
-    }
-
-    /**
-     * off.
-     * 
-     * @param eventType eventType
-     * @param callback callback
-     * @since 0.1.7
-     */
-    public void off(String eventType, Function<Map<String, Object>, Object> callback) {
-        callbackFramework.unregister(eventType, callback);
-    }
-
-    void handleStatus(Task task, String status) {
-        String eventType = switch (status) {
-            case "running" -> TaskManagerEvents.TASK_RUNNING;
-            case "completed" -> TaskManagerEvents.TASK_COMPLETED;
-            case "cancelled" -> TaskManagerEvents.TASK_CANCELLED;
-            case "timeout" -> TaskManagerEvents.TASK_TIMEOUT;
-            case "failed" -> TaskManagerEvents.TASK_FAILED;
-            default -> null;
-        };
-        if (eventType != null) {
-            triggerEvent(eventType, task);
+        if (throwable instanceof Exception checkedException) {
+            return checkedException;
         }
+        return new RuntimeException(throwable);
     }
 
-    /**
-     * triggerEvent.
-     * 
-     * @param eventType eventType
-     * @param task task
-     * @since 0.1.7
-     */
     private void triggerEvent(String eventType, Task task) {
-        if (callbackFramework == null) {
-            return;
+        List<Consumer<Task>> registered = callbacks.getOrDefault(eventType, new CopyOnWriteArrayList<>());
+        for (Consumer<Task> callback : registered) {
+            try {
+                callback.accept(task);
+            } catch (RuntimeException exception) {
+                LOGGER.fine(() -> "Task callback failed for event " + eventType + ": " + exception.getMessage());
+            }
         }
-        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-        payload.put("task", task);
-        payload.put("task_id", task.getTaskId());
-        payload.put("name", task.getName());
-        payload.put("group", task.getGroup());
-        payload.put("status", task.getStatus().getValue());
-        callbackFramework.trigger(eventType, payload);
+    }
+
+    private void triggerStatusEvent(Task task, String status) {
+        switch (status) {
+            case "running" -> triggerEvent(TaskManagerEvents.TASK_RUNNING, task);
+            case "completed" -> triggerEvent(TaskManagerEvents.TASK_COMPLETED, task);
+            case "cancelled" -> triggerEvent(TaskManagerEvents.TASK_CANCELLED, task);
+            case "timeout" -> triggerEvent(TaskManagerEvents.TASK_TIMEOUT, task);
+            case "failed" -> triggerEvent(TaskManagerEvents.TASK_FAILED, task);
+            default -> {
+            }
+        }
     }
 
     /**
-     * shutdown.
-     * 
-     * @since 0.1.7
+     * Auto-closeable task-group scope for Java try-with-resources usage.
+     *
+     * <p>Mirrors Python's {@code TaskManager.task_group} in
+     * {@code openjiuwen/core/common/task_manager/manager.py}.</p>
      */
-    private void shutdown() {
-        executor.shutdownNow();
-        scheduler.shutdownNow();
-        try {
-            executor.awaitTermination(3, TimeUnit.SECONDS);
-            scheduler.awaitTermination(3, TimeUnit.SECONDS);
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
+    public final class TaskGroupScope implements AutoCloseable {
+        private final TaskContext.ContextToken<Object> token;
+        private final List<CompletableFuture<?>> trackedFutures = new CopyOnWriteArrayList<>();
+        private final List<Task> trackedTasks = new CopyOnWriteArrayList<>();
+        private volatile boolean cancelled;
+
+        private TaskGroupScope() {
+            this.token = TaskContext.setTaskGroup(this);
         }
-        registry.clear();
+
+        private void track(Task task, CompletableFuture<?> future) {
+            trackedTasks.add(task);
+            trackedFutures.add(future);
+        }
+
+        public void cancel() {
+            cancelled = true;
+            List<String> trackedIds = trackedTasks.stream().map(Task::getTaskId).toList();
+            for (Task task : trackedTasks) {
+                String parentTaskId = task.getParentTaskId();
+                if (parentTaskId == null || !trackedIds.contains(parentTaskId)) {
+                    cancelTask(task.getTaskId(), "manual_cancel", null);
+                    cascadeCancel(task.getTaskId(), "parent_cancelled");
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                try {
+                    CompletableFuture.allOf(trackedFutures.toArray(CompletableFuture[]::new)).join();
+                } catch (CancellationException | CompletionException exception) {
+                    if (!cancelled) {
+                        throw exception;
+                    }
+                }
+            } finally {
+                TaskContext.resetTaskGroup(token);
+            }
+        }
+    }
+
+    /**
+     * Pair yielded by {@link #asCompleted(List, Duration)}.
+     *
+     * <p>Mirrors Python's {@code TaskManager.as_completed} tuple in
+     * {@code openjiuwen/core/common/task_manager/manager.py}.</p>
+     */
+    public record TaskResult(Task task, Object result) {
     }
 }

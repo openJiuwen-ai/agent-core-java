@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.legacy.BaseGroupController
+# com.openjiuwen.core.multi_agent.legacy.BaseGroupController
 
 ## abstract class BaseGroupController
 

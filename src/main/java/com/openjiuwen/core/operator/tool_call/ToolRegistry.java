@@ -4,43 +4,20 @@
 
 package com.openjiuwen.core.operator.tool_call;
 
-import com.openjiuwen.core.foundation.tool.Tool;
-
-import java.util.List;
-import java.util.Map;
+import com.openjiuwen.core.session.Session;
 
 /**
- * Minimal tool registry contract required by {@link ToolCallOperator}.
- * 
+ * Registry interface for tool description overrides.
+ *
  * @since 0.1.7
  */
 public interface ToolRegistry {
-    /**
-     * getToolDefs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    default List<Map<String, Object>> getToolDefs() {
-        return List.of();
-    }
 
     /**
-     * getTools.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    default Map<String, Tool> getTools() {
-        return Map.of();
-    }
-
-    /**
-     * setToolDescription.
-     * 
-     * @param toolName toolName
-     * @param description description
-     * @since 0.1.7
+     * Override a registered tool description in memory.
+     *
+     * @param toolName    tool name
+     * @param description replacement description
      */
     void setToolDescription(String toolName, String description);
 }

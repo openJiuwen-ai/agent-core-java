@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.agents.ReActAgentConfig
+# com.openjiuwen.core.single_agent.agents.ReActAgentConfig
 
 ## 类 ReActAgentConfig
 

@@ -2,7 +2,7 @@
 
 `Runner` 是 Java 版 openJiuwen 的全局执行门面。它把 `Workflow`、`Agent`、`AgentGroup` 的运行入口统一到一组静态方法里，并把资源注册、回调框架、消息队列和检查点初始化放到同一处管理。
 
-如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`CallbackFramework` 与后续几页。
+如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`AsyncCallbackFramework` 与后续几页。
 
 > 这里聚焦 Java 当前公开 API 与示例，不展开底层 MQ 或 distributed server adapter 的实现细节。
 
@@ -15,7 +15,7 @@
 | `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID 和 `checkpointerConfig` | 启动前配置时 |
 | `DistributedConfig` | 分布式运行相关参数，如 topic 模板、超时、并发数和消息队列配置 | 需要跨进程执行时 |
 | `ResourceMgr` | 统一管理 workflow、agent、group、tool、model、prompt、sysop 等资源 | 你想按 ID 注册 / 获取资源时 |
-| `CallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
+| `AsyncCallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
 
 ## `Runner` 与 `RunnerImpl` 的关系
 
@@ -229,7 +229,7 @@ while (stream.hasNext()) {
 }
 ```
 
-在 `examples/workflow_agent/WorkflowAgentExampleSupport.java` 里，命令行示例就是通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
+Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同类命令行路径可参考 `src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java`，它通过 `Runner.runAgentStreaming(...)` 消费 Agent 输出。工作流中断与交互恢复行为可参考 `src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java`。
 
 ## Runner 会怎样准备 session
 
@@ -250,7 +250,7 @@ while (stream.hasNext()) {
 
 ## 回调框架：如何观察运行过程
 
-`Runner.callbackFramework()` 暴露的是一个功能较完整的事件框架，而不只是简单的事件总线。Java 当前实现已经支持：
+`Runner.getCallbackFramework()` 暴露的是一个功能较完整的事件框架，而不只是简单的事件总线；`Runner.callbackFramework` 也保留为同一全局实例的静态字段。Java 当前实现已经支持：
 
 - callback priority
 - event / callback filter
@@ -268,7 +268,7 @@ while (stream.hasNext()) {
 - 某类事件统一日志
 - 执行失败后的回滚 / 降级
 
-就应该从 `CallbackFramework` 和 `runner/callback` 子包继续往下看。
+就应该从 `AsyncCallbackFramework` 和 `runner/callback` 子包继续往下看。
 
 ## 清理：`release(sessionId)` 做什么
 
@@ -280,24 +280,19 @@ while (stream.hasNext()) {
 
 因此，`release(...)` 更像“结束一个执行会话并回收状态”，而不是“关闭 Runner 本身”。真正的全局资源回收仍然要看 `Runner.stop()`。
 
-## 对照示例看 Runner
+## 对照现有入口看 Runner
 
-### `examples/workflow_agent`
+### CLI 本地 Agent 入口
 
-这个示例展示了最典型的 Runner 用法：
+`src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java` 是当前 Java 仓库中最接近命令行示例的入口：它把用户输入整理成 `query`，再调用 `Runner.runAgentStreaming(...)` 取得流式输出。需要接入命令行、WebSocket 或其他前端时，可以沿用这个“外层收集输入，Runner 统一执行”的结构。
 
-1. 创建 `WorkflowAgent`
-2. 注册多个 workflow
-3. 使用 `Runner.runAgentStreaming(...)` 执行
-4. 收到 `__interaction__` 事件后，用同一个 `conversation_id` 继续调用
-5. 退出时调用 `Runner.release(conversationId)` 与 `Runner.stop()`
+### WorkflowAgent 交互恢复测试
 
-### `examples/interact`
+`src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java`、`WorkflowAgentInterruptInvokeMissingTest.java` 和 `WorkflowAgentConcurrentMissingTest.java` 覆盖了 Python 文档里强调的 `conversation_id`、`__interaction__`、中断后继续调用等场景。它们不是面向用户的示例工程，但比旧的 `examples/workflow_agent` 链接更能反映 Java 0.1.14 实际行为。
 
-这个示例更多展示原生 `Workflow.invoke(...)` + `Checkpointer` 的恢复路径，而不是直接通过 `Runner` 运行。但它和本页并不冲突：
+### 原生 Workflow + checkpointer 路径
 
-- `Runner` 负责“全局执行门面”；
-- 原生 `Workflow` + checkpointer 更适合展示底层恢复语义。
+当前 Java 文档中没有 `examples/interact` 对应目录；如果要理解底层恢复语义，应从 `RunnerImpl.createWorkflowSession(...)`、checkpointer 相关 API 文档，以及 `WorkflowAgent*Interrupt*` 测试里的会话复用方式入手。这个路径和 `Runner` 的定位并不冲突：`Runner` 负责统一入口，原生 `Workflow` + checkpointer 更适合解释恢复机制。
 
 ## 当前 Java 能力边界
 
@@ -314,6 +309,7 @@ while (stream.hasNext()) {
 - [API 文档：RunnerConfig](../API文档/com.openjiuwen.core/runner/RunnerConfig.md)
 - [API 文档：DistributedConfig](../API文档/com.openjiuwen.core/runner/DistributedConfig.md)
 - [API 文档：ResourceMgr](../API文档/com.openjiuwen.core/runner/resourcemanager/ResourceMgr.md)
-- [API 文档：CallbackFramework](../API文档/com.openjiuwen.core/runner/callback/CallbackFramework.md)
-- [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
-- [示例：interact](../../../../examples/interact/README.md)
+- [API 文档：AsyncCallbackFramework](../API文档/com.openjiuwen.core/runner/callback/AsyncCallbackFramework.md)
+- [源码：Runner](../../../../src/main/java/com/openjiuwen/core/runner/Runner.java)
+- [源码：CLI LocalBackend](../../../../src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java)
+- [测试：WorkflowAgent 流式中断恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)

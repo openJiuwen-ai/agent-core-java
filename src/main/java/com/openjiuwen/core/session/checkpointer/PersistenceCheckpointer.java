@@ -7,667 +7,750 @@ package com.openjiuwen.core.session.checkpointer;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
+import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
+import com.openjiuwen.core.foundation.store.kv.DbBasedKVStore;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
+import com.openjiuwen.core.foundation.store.kv.ShelveStore;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
+import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
-import com.openjiuwen.core.session.state.CommitStateLike;
+import com.openjiuwen.core.session.state.AgentStateCollection;
+import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
-import com.openjiuwen.spi.store.BaseKVStore;
-import com.openjiuwen.spi.store.KVStorePipeline;
 
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.logging.Logger;
+
+import javax.sql.DataSource;
 
 /**
- * Persistence-based checkpointer implementation using BaseKVStore.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.checkpointer.persistence.PersistenceCheckpointer}.
- * <p>
- * This checkpointer delegates to {@link PersistenceAgentStorage}, {@link PersistenceWorkflowStorage},
- * and {@link PersistenceGraphStore} for saving/recovering agent, workflow, and graph state respectively.
- * 
- * @since 0.1.7
+ * Persistent checkpointer backed by the shared {@link BaseKVStore} abstraction.
+ *
+ * <p>Mirrors Python's {@code PersistenceCheckpointer} in
+ * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
  */
 public class PersistenceCheckpointer extends Checkpointer {
-    private final BaseKVStore kvStore;
-    private final PersistenceAgentStorage agentStorage;
-    private final PersistenceWorkflowStorage workflowStorage;
-    private final PersistenceGraphStore graphStoreField;
 
-    /**
-     * PersistenceCheckpointer.
-     * 
-     * @param kvStore kvStore
-     * @since 0.1.7
-     */
+    private final BaseKVStore kvStore;
+    private final AgentStorage agentStorage;
+    private final AgentTeamStorage agentTeamStorage;
+    private final WorkflowStorage workflowStorage;
+    private final PersistenceGraphStore graphStore;
+
     public PersistenceCheckpointer(BaseKVStore kvStore) {
-        this.kvStore = kvStore;
-        this.agentStorage = new PersistenceAgentStorage(kvStore);
-        this.workflowStorage = new PersistenceWorkflowStorage(kvStore);
-        this.graphStoreField = new PersistenceGraphStore(kvStore);
+        this.kvStore = Objects.requireNonNull(kvStore, "kvStore");
+        this.agentStorage = new AgentStorage(kvStore);
+        this.agentTeamStorage = new AgentTeamStorage(kvStore);
+        this.workflowStorage = new WorkflowStorage(kvStore);
+        this.graphStore = new PersistenceGraphStore(kvStore);
     }
 
-    /**
-     * preAgentExecute.
-     * 
-     * @param session session
-     * @param inputs inputs
-     * @since 0.1.7
-     */
+    static Checkpointer createFromConfig(Map<String, Object> conf) {
+        Map<String, Object> actualConf = conf == null ? Map.of() : conf;
+        Object explicitStore = firstPresent(actualConf, "kv_store", "kvStore", "store");
+        if (explicitStore instanceof BaseKVStore typedStore) {
+            return new PersistenceCheckpointer(typedStore);
+        }
+        Object dbClient = firstPresent(actualConf, "db_client", "dbClient", "data_source", "dataSource");
+        if (dbClient instanceof BaseKVStore typedStore) {
+            return new PersistenceCheckpointer(typedStore);
+        }
+        if (dbClient instanceof DataSource dataSource) {
+            return new PersistenceCheckpointer(new DbBasedKVStore(dataSource));
+        }
+
+        String dbType = String.valueOf(actualConf.getOrDefault("db_type", actualConf.getOrDefault("dbType", "sqlite")));
+        String dbPath = String.valueOf(actualConf.getOrDefault("db_path", actualConf.getOrDefault("dbPath", "checkpointer")));
+        return switch (dbType) {
+            case "memory", "in_memory", "inmemory" -> new PersistenceCheckpointer(new InMemoryKVStore());
+            case "shelve" -> new PersistenceCheckpointer(new ShelveStore(stripDbSuffix(dbPath)));
+            case "sqlite" -> new PersistenceCheckpointer(new DbBasedKVStore(sqliteDataSource(normalizeSqlitePath(dbPath))));
+            default -> throw ErrorHelper.buildError(
+                    StatusCode.CHECKPOINTER_CONFIG_ERROR,
+                    "reason",
+                    "db type[" + dbType + "] is not supported"
+            );
+        };
+    }
+
     @Override
     public void preAgentExecute(BaseSession session, Object inputs) {
-        String sessionId = session.sessionId();
-        Loggers.SESSION.info("Agent checkpoint restore initiated, sessionId={}", sessionId);
-        agentStorage.recover(session);
-
-        if (inputs != null) {
-            session.state().update(Map.of(Constant.INTERACTIVE_INPUT, List.of(inputs)));
+        agentStorage.recover(session, null);
+        if (inputs != null && session.state() != null) {
+            session.state().update(mapOf(Constant.INTERACTIVE_INPUT, new ArrayList<>(List.of(inputs))));
         }
     }
 
-    /**
-     * interruptAgentExecute.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
+    @Override
+    public void preAgentTeamExecute(BaseSession session, Object inputs) {
+        agentTeamStorage.recover(session, null);
+        if (inputs != null && session.state() != null) {
+            session.state().updateGlobal(mapOf(Constant.INTERACTIVE_INPUT, new ArrayList<>(List.of(inputs))));
+        }
+    }
+
     @Override
     public void interruptAgentExecute(BaseSession session) {
-        String sessionId = session.sessionId();
-        Loggers.SESSION.info("Agent checkpoint save on interrupt, sessionId={}", sessionId);
         agentStorage.save(session);
     }
 
-    /**
-     * postAgentExecute.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
     @Override
     public void postAgentExecute(BaseSession session) {
-        String sessionId = session.sessionId();
-        Loggers.SESSION.info("Agent checkpoint save on completion, sessionId={}", sessionId);
         agentStorage.save(session);
     }
 
-    /**
-     * preWorkflowExecute.
-     * 
-     * @param session session
-     * @param inputs inputs
-     * @since 0.1.7
-     */
     @Override
-    @SuppressWarnings("unchecked")
-    public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
-        String workflowId = getWorkflowId(session);
-        String sessionId = session.sessionId();
-        Loggers.SESSION.info("Workflow checkpoint restore initiated, sessionId={}, workflowId={}", sessionId,
-                workflowId);
-
-        if (inputs != null) {
-            workflowStorage.recover(session, inputs);
-        } else {
-            if (!workflowStorage.isExists(session)) {
-                return;
-            }
-            Object forceDelete = session.config() != null
-                    ? session.config().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false)
-                    : false;
-            if (Boolean.TRUE.equals(forceDelete)) {
-                Loggers.SESSION.info("Force clearing workflow checkpoints, sessionId={}, workflowId={}", sessionId,
-                        workflowId);
-                graphStoreField.delete(sessionId, workflowId);
-                workflowStorage.clear(workflowId, sessionId);
-            } else {
-                throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR, "session_id",
-                        sessionId, "workflow", workflowId, "reason",
-                        "workflow state exists but non-interactive input and cleanup is disabled");
-            }
-        }
+    public void postAgentTeamExecute(BaseSession session) {
+        agentTeamStorage.save(session);
     }
 
-    /**
-     * postWorkflowExecute.
-     * 
-     * @param session session
-     * @param result result
-     * @param exception exception
-     * @since 0.1.7
-     */
     @Override
-    @SuppressWarnings("unchecked")
-    public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
-        String workflowId = getWorkflowId(session);
-        String sessionId = session.sessionId();
+    public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
+        if (inputs != null) {
+            workflowStorage.recover(session, inputs);
+            return;
+        }
+        preWorkflowExecute(session, (Object) null);
+    }
 
+    @Override
+    public void preWorkflowExecute(BaseSession session, Object inputs) {
+        if (inputs instanceof InteractiveInput interactiveInput) {
+            workflowStorage.recover(session, interactiveInput);
+            return;
+        }
+        if (!workflowStorage.exists(session)) {
+            return;
+        }
+        String workflowId = session.workflowId();
+        String sessionId = session.sessionId();
+        if (Boolean.TRUE.equals(session.config().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false))) {
+            graphStore.delete(sessionId, workflowId).toCompletableFuture().join();
+            workflowStorage.clear(workflowId, sessionId);
+            return;
+        }
+        // Workflow state exists and input is a non-InteractiveInput query (e.g. String).
+        // Recover the saved state without interactive input processing so the workflow
+        // can resume with the new query input. This mirrors Python's behavior where
+        // a query recovery is treated as a valid resumption path.
+        workflowStorage.recover(session, null);
+    }
+
+    @Override
+    public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
+        String workflowId = session.workflowId();
+        String sessionId = session.sessionId();
         if (exception != null) {
-            Loggers.SESSION.info("Workflow checkpoint save on exception, sessionId={}, workflowId={}", sessionId,
-                    workflowId);
             workflowStorage.save(session);
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
-            throw new RuntimeException(exception);
+            throw new IllegalStateException(exception);
         }
-
-        if (result instanceof Map<?, ?> resultMap && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
-            Loggers.SESSION.info("Workflow checkpoint save on interrupt, sessionId={}, workflowId={}", sessionId,
-                    workflowId);
-            workflowStorage.save(session);
+        if (!containsInterrupt(result)) {
+            graphStore.delete(sessionId, workflowId).toCompletableFuture().join();
+            workflowStorage.clear(workflowId, sessionId);
             return;
         }
-
-        // Normal completion — clear checkpoints
-        Loggers.SESSION.info("Workflow checkpoint cleared on completion, sessionId={}, workflowId={}", sessionId,
-                workflowId);
-        graphStoreField.delete(sessionId, workflowId);
-        workflowStorage.clear(workflowId, sessionId);
+        workflowStorage.save(session);
     }
 
-    /**
-     * sessionExists.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean sessionExists(String sessionId) {
-        if (kvStore == null) {
+        if (sessionId == null || sessionId.isEmpty()) {
             return false;
         }
-        String prefix = sessionId + ":";
-        Map<String, Object> keys = kvStore.getByPrefix(prefix);
+        Map<String, Object> keys = kvStore.getByPrefix(sessionId + ":").join();
         return keys != null && !keys.isEmpty();
     }
 
-    /**
-     * release.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     @Override
     public void release(String sessionId) {
-        if (kvStore == null) {
-            Loggers.SESSION.warning("Cannot release resources: KV store is null, sessionId={}", sessionId);
-            return;
-        }
-        Loggers.SESSION.info("Session cleared, sessionId={}", sessionId);
-        String prefix = sessionId + ":";
-        kvStore.deleteByPrefix(prefix, null);
-        Loggers.SESSION.info("All session resources released, sessionId={}", sessionId);
+        release(sessionId, null);
     }
 
-    /**
-     * Release resources for a specific agent under a session.
-     * 
-     * @param sessionId the session ID
-     * @param agentId the agent ID
-     * @since 0.1.7
-     */
     public void release(String sessionId, String agentId) {
-        if (kvStore == null) {
+        if (sessionId == null || sessionId.isEmpty()) {
             return;
         }
         if (agentId != null) {
-            Loggers.SESSION.info("Agent checkpoint cleared, sessionId={}, agentId={}", sessionId, agentId);
             agentStorage.clear(agentId, sessionId);
-        } else {
-            release(sessionId);
+            return;
         }
+        kvStore.deleteByPrefix(sessionId + ":", null).join();
     }
 
-    /**
-     * graphStore.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Store graphStore() {
-        return graphStoreField;
+        return graphStore;
+    }
+
+    BaseKVStore kvStore() {
+        return kvStore;
+    }
+
+    private static boolean containsInterrupt(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            return map.get(PregelConstants.TASK_STATUS_INTERRUPT) != null;
+        }
+        return false;
+    }
+
+    private static Object firstPresent(Map<String, Object> values, String... keys) {
+        for (String key : keys) {
+            if (values.containsKey(key)) {
+                return values.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static String stripDbSuffix(String dbPath) {
+        if (dbPath != null && dbPath.endsWith(".db")) {
+            return dbPath.substring(0, dbPath.length() - 3);
+        }
+        return dbPath == null || dbPath.isBlank() ? "checkpointer" : dbPath;
+    }
+
+    private static String normalizeSqlitePath(String dbPath) {
+        String actual = dbPath == null || dbPath.isBlank() ? "checkpointer" : dbPath;
+        if (actual.startsWith("jdbc:")) {
+            return actual;
+        }
+        if (!actual.endsWith(".db")) {
+            actual = actual + ".db";
+        }
+        if (!actual.startsWith(":memory:")) {
+            try {
+                Path parent = Path.of(actual).toAbsolutePath().getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+            } catch (Exception exception) {
+                throw new IllegalStateException("Failed to initialize sqlite checkpointer path", exception);
+            }
+        }
+        return actual;
+    }
+
+    private static DataSource sqliteDataSource(String dbPath) {
+        String jdbcUrl = dbPath.startsWith("jdbc:") ? dbPath : "jdbc:sqlite:" + dbPath;
+        return new DriverManagerDataSource(jdbcUrl);
+    }
+
+    private static Map<String, Object> mapOf(String key, Object value) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put(key, value);
+        return map;
     }
 
     /**
-     * Persistence-based agent state storage.
+     * Shared serializer and KV helpers.
+     *
+     * <p>Mirrors Python's {@code BaseStorage} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
      */
-    static class PersistenceAgentStorage extends Storage {
-        private static final String STATE_BLOBS = "agent_state_blobs";
-        private static final String STATE_BLOBS_DUMP_TYPE = "agent_state_blobs_dump_type";
-        private static final int KEY_NUMS = 2;
+    private abstract static class BaseStorage {
+        private static final String EMPTY_TYPE = "empty";
 
-        private final BaseKVStore kvStore;
+        protected final BaseKVStore kvStore;
+        private final Serializer serializer = Serializer.create("java");
 
-        PersistenceAgentStorage(BaseKVStore kvStore) {
+        BaseStorage(BaseKVStore kvStore) {
             this.kvStore = kvStore;
         }
 
-        /**
-         * save.
-         * 
-         * @param session session
-         * @since 0.1.7
-         */
-        @Override
-        public void save(BaseSession session) {
-            Map<String, Object> state = session.state().getState();
-            String sessionId = session.sessionId();
-            String agentId = getAgentId(session);
-
-            String dumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.set(dumpTypeKey, "java_serialized");
-            pipeline.set(blobKey, state);
-            pipeline.execute();
-
-            Loggers.SESSION.debug("Agent state saved, sessionId={}, agentId={}", sessionId, agentId);
+        protected Serializer.TypedBytes serializeState(Object state) {
+            return serializer.dumpsTyped(state);
         }
 
-        /**
-         * recover.
-         * 
-         * @param session session
-         * @param inputs inputs
-         * @since 0.1.7
-         */
-        @Override
+        protected Object deserializeState(Object dumpType, Object blob) {
+            String type = decodeDumpType(dumpType);
+            if (type.isEmpty() || EMPTY_TYPE.equals(type) || blob == null) {
+                return null;
+            }
+            byte[] bytes = blob instanceof byte[] byteArray ? byteArray : decodeBlob(String.valueOf(blob));
+            return serializer.loadsTyped(new Serializer.TypedBytes(type, bytes));
+        }
+
+        protected String decodeDumpType(Object dumpType) {
+            if (dumpType == null) {
+                return "";
+            }
+            if (dumpType instanceof byte[] bytes) {
+                return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            }
+            return String.valueOf(dumpType);
+        }
+
+        protected List<Object> execute(BasedKVStorePipeline pipeline) {
+            return pipeline.execute().join();
+        }
+
+        protected void set(BasedKVStorePipeline pipeline, String key, Object value) {
+            pipeline.set(key, value, null).join();
+        }
+
         @SuppressWarnings("unchecked")
-        public void recover(BaseSession session, InteractiveInput inputs) {
-            String sessionId = session.sessionId();
-            String agentId = getAgentId(session);
-
-            String dumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.get(dumpTypeKey);
-            pipeline.get(blobKey);
-            List<Object> results = pipeline.execute();
-
-            if (results == null || results.size() != KEY_NUMS) {
-                Loggers.SESSION.debug("No agent state found, sessionId={}, agentId={}", sessionId, agentId);
-                return;
+        protected Map<String, Object> toMap(Object value) {
+            if (!(value instanceof Map<?, ?> map)) {
+                return new LinkedHashMap<>();
             }
-
-            Object blob = results.get(1);
-            if (blob instanceof Map) {
-                session.state().setState((Map<String, Object>) blob);
-                Loggers.SESSION.debug("Agent state recovered, sessionId={}, agentId={}", sessionId, agentId);
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                copy.put(String.valueOf(entry.getKey()), entry.getValue());
             }
+            return copy;
         }
 
-        /**
-         * clear.
-         * 
-         * @param id id
-         * @since 0.1.7
-         */
-        @Override
-        public void clear(String id) {
-            // id is agentId here — needs sessionId too; use clear(agentId, sessionId)
-        }
-
-        /**
-         * clear.
-         * 
-         * @param agentId agentId
-         * @param sessionId sessionId
-         * @since 0.1.7
-         */
-        public void clear(String agentId, String sessionId) {
-            String dumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
-            kvStore.delete(dumpTypeKey);
-            kvStore.delete(blobKey);
-            Loggers.SESSION.debug("Agent checkpoint cleared, sessionId={}, agentId={}", sessionId, agentId);
-        }
-
-        /**
-         * isExists.
-         * 
-         * @param session session
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public boolean isExists(BaseSession session) {
-            String sessionId = session.sessionId();
-            String agentId = getAgentId(session);
-
-            String dumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
-
-            return kvStore.isExists(dumpTypeKey) && kvStore.isExists(blobKey);
-        }
-
-        /**
-         * getAgentId.
-         * 
-         * @param session session
-         * @return the result
-         * @since 0.1.7
-         */
-        private static String getAgentId(BaseSession session) {
+        private byte[] decodeBlob(String blob) {
             try {
-                return (String) session.getClass().getMethod("agentId").invoke(session);
-            } catch (Exception e) {
-                return session.sessionId();
+                return Base64.getDecoder().decode(blob);
+            } catch (IllegalArgumentException ignored) {
+                return blob.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             }
         }
     }
 
     /**
-     * Persistence-based workflow state storage.
+     * Common storage behavior for single entity state.
+     *
+     * <p>Mirrors Python's {@code BaseSingleStateStorage} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
      */
-    static class PersistenceWorkflowStorage extends Storage {
+    private abstract static class BaseSingleStateStorage extends BaseStorage {
+        private static final int KEY_COUNT = 2;
+
+        BaseSingleStateStorage(BaseKVStore kvStore) {
+            super(kvStore);
+        }
+
+        abstract String namespace();
+
+        abstract String stateBlobsKey();
+
+        abstract String stateDumpTypeKey();
+
+        abstract String entityId(BaseSession session);
+
+        abstract Object stateToSave(BaseSession session);
+
+        abstract void restoreState(BaseSession session, Object state);
+
+        void save(BaseSession session) {
+            if (session == null) {
+                return;
+            }
+            Serializer.TypedBytes typedBytes = serializeState(stateToSave(session));
+            String sessionId = session.sessionId();
+            String entityId = entityId(session);
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            set(pipeline, stateDumpTypeKey(sessionId, entityId), typedBytes.type());
+            set(pipeline, stateBlobKey(sessionId, entityId), typedBytes.data());
+            execute(pipeline);
+        }
+
+        void recover(BaseSession session, InteractiveInput inputs) {
+            if (session == null) {
+                return;
+            }
+            String sessionId = session.sessionId();
+            String entityId = entityId(session);
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.get(stateDumpTypeKey(sessionId, entityId)).join();
+            pipeline.get(stateBlobKey(sessionId, entityId)).join();
+            List<Object> result = execute(pipeline);
+            if (result.size() != KEY_COUNT) {
+                return;
+            }
+            Object state = deserializeState(result.get(0), result.get(1));
+            if (state != null) {
+                restoreState(session, state);
+            }
+        }
+
+        void clear(String entityId, String sessionId) {
+            kvStore.batchDelete(List.of(
+                    stateDumpTypeKey(sessionId, entityId),
+                    stateBlobKey(sessionId, entityId)
+            ), null).join();
+        }
+
+        boolean exists(BaseSession session) {
+            String sessionId = session.sessionId();
+            String entityId = entityId(session);
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.exists(stateDumpTypeKey(sessionId, entityId)).join();
+            pipeline.exists(stateBlobKey(sessionId, entityId)).join();
+            List<Object> result = execute(pipeline);
+            return result.size() == KEY_COUNT
+                    && Boolean.TRUE.equals(result.get(0))
+                    && Boolean.TRUE.equals(result.get(1));
+        }
+
+        private String stateBlobKey(String sessionId, String entityId) {
+            return Checkpointer.buildKeyWithNamespace(sessionId, namespace(), entityId, stateBlobsKey());
+        }
+
+        private String stateDumpTypeKey(String sessionId, String entityId) {
+            return Checkpointer.buildKeyWithNamespace(sessionId, namespace(), entityId, stateDumpTypeKey());
+        }
+    }
+
+    /**
+     * Agent state storage.
+     *
+     * <p>Mirrors Python's {@code AgentStorage} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
+     */
+    private static final class AgentStorage extends BaseSingleStateStorage {
+        AgentStorage(BaseKVStore kvStore) {
+            super(kvStore);
+        }
+
+        @Override
+        String namespace() {
+            return SESSION_NAMESPACE_AGENT;
+        }
+
+        @Override
+        String stateBlobsKey() {
+            return "agent_state_blobs";
+        }
+
+        @Override
+        String stateDumpTypeKey() {
+            return "agent_state_blobs_dump_type";
+        }
+
+        @Override
+        String entityId(BaseSession session) {
+            return session.agentId();
+        }
+
+        @Override
+        Object stateToSave(BaseSession session) {
+            return session.state() == null ? Map.of() : session.state().getState();
+        }
+
+        @Override
+        void restoreState(BaseSession session, Object state) {
+            SessionStateAccess sessionState = session.state();
+            if (sessionState != null) {
+                sessionState.setState(toMap(state));
+            }
+        }
+    }
+
+    /**
+     * Agent-team global state storage.
+     *
+     * <p>Mirrors Python's {@code AgentTeamStorage} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
+     */
+    private static final class AgentTeamStorage extends BaseSingleStateStorage {
+        AgentTeamStorage(BaseKVStore kvStore) {
+            super(kvStore);
+        }
+
+        @Override
+        String namespace() {
+            return SESSION_NAMESPACE_AGENT_TEAM;
+        }
+
+        @Override
+        String stateBlobsKey() {
+            return "agent_team_state_blobs";
+        }
+
+        @Override
+        String stateDumpTypeKey() {
+            return "agent_team_state_blobs_dump_type";
+        }
+
+        @Override
+        String entityId(BaseSession session) {
+            return session.teamId();
+        }
+
+        @Override
+        Object stateToSave(BaseSession session) {
+            return session.state() == null ? Map.of() : session.state().getGlobal(null);
+        }
+
+        @Override
+        void restoreState(BaseSession session, Object state) {
+            SessionStateAccess sessionState = session.state();
+            if (sessionState instanceof AgentStateCollection agentStateCollection) {
+                agentStateCollection.getGlobalStateLike().setState(toMap(state));
+                return;
+            }
+            if (sessionState != null) {
+                sessionState.updateGlobal(toMap(state));
+            }
+        }
+    }
+
+    /**
+     * Workflow state and update storage.
+     *
+     * <p>Mirrors Python's {@code WorkflowStorage} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
+     */
+    private static final class WorkflowStorage extends BaseStorage {
         private static final String STATE_BLOBS = "workflow_state_blobs";
         private static final String STATE_BLOBS_DUMP_TYPE = "workflow_state_blobs_dump_type";
         private static final String UPDATE_BLOBS = "workflow_update_blobs";
         private static final String UPDATE_BLOBS_DUMP_TYPE = "workflow_update_blobs_dump_type";
-        private static final int KEY_NUMS = 4;
+        private static final int KEY_COUNT = 4;
 
-        private final BaseKVStore kvStore;
-
-        PersistenceWorkflowStorage(BaseKVStore kvStore) {
-            this.kvStore = kvStore;
+        WorkflowStorage(BaseKVStore kvStore) {
+            super(kvStore);
         }
 
-        /**
-         * save.
-         * 
-         * @param session session
-         * @since 0.1.7
-         */
-        @Override
-        public void save(BaseSession session) {
-            Map<String, Object> state = session.state().getState();
-            String workflowId = getWorkflowId(session);
-            String sessionId = session.sessionId();
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-
-            // Save main state
-            String dumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            pipeline.set(dumpTypeKey, "java_serialized");
-            pipeline.set(blobKey, state);
-
-            // Save updates if state supports commits
-            if (session.state() instanceof CommitStateLike commitState) {
-                Map<String, Object> updates = commitState.getUpdates();
-                if (updates != null) {
-                    String updatesDumpTypeKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId,
-                            UPDATE_BLOBS_DUMP_TYPE);
-                    String updatesBlobKey =
-                        buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
-                    pipeline.set(updatesDumpTypeKey, "java_serialized");
-                    pipeline.set(updatesBlobKey, updates);
-                }
-            }
-
-            pipeline.execute();
-            Loggers.SESSION.debug("Workflow state saved, sessionId={}, workflowId={}", sessionId, workflowId);
-        }
-
-        /**
-         * recover.
-         * 
-         * @param session session
-         * @param inputs inputs
-         * @since 0.1.7
-         */
-        @Override
-        @SuppressWarnings("unchecked")
-        public void recover(BaseSession session, InteractiveInput inputs) {
-            String workflowId = getWorkflowId(session);
-            String sessionId = session.sessionId();
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-            String stateDumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
-
-            pipeline.get(stateDumpTypeKey);
-            pipeline.get(stateBlobKey);
-            pipeline.get(updatesDumpTypeKey);
-            pipeline.get(updatesBlobKey);
-            List<Object> results = pipeline.execute();
-
-            if (results == null || results.size() != KEY_NUMS) {
-                Loggers.SESSION.warning("Unexpected key count during workflow recovery, sessionId={}, workflowId={}",
-                        sessionId, workflowId);
+        void save(BaseSession session) {
+            if (session == null || session.state() == null) {
                 return;
             }
-
-            // Recover state
-            Object stateBlob = results.get(1);
-            if (stateBlob instanceof Map) {
-                session.state().setState((Map<String, Object>) stateBlob);
+            String sessionId = session.sessionId();
+            String workflowId = session.workflowId();
+            Serializer.TypedBytes stateBlob = serializeState(session.state().getState());
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            set(pipeline, key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE), stateBlob.type());
+            set(pipeline, key(sessionId, workflowId, STATE_BLOBS), stateBlob.data());
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                Serializer.TypedBytes updateBlob = serializeState(workflowState.getUpdates());
+                set(pipeline, key(sessionId, workflowId, UPDATE_BLOBS_DUMP_TYPE), updateBlob.type());
+                set(pipeline, key(sessionId, workflowId, UPDATE_BLOBS), updateBlob.data());
             }
+            execute(pipeline);
+        }
 
-            // Process interactive inputs
+        void recover(BaseSession session, InteractiveInput inputs) {
+            if (session == null || session.state() == null) {
+                return;
+            }
+            String sessionId = session.sessionId();
+            String workflowId = session.workflowId();
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.get(key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE)).join();
+            pipeline.get(key(sessionId, workflowId, STATE_BLOBS)).join();
+            pipeline.get(key(sessionId, workflowId, UPDATE_BLOBS_DUMP_TYPE)).join();
+            pipeline.get(key(sessionId, workflowId, UPDATE_BLOBS)).join();
+            List<Object> result = execute(pipeline);
+            if (result.size() != KEY_COUNT) {
+                return;
+            }
+            Object state = deserializeState(result.get(0), result.get(1));
+            if (state != null) {
+                session.state().setState(toMap(state));
+            }
             if (inputs != null) {
                 processInteractiveInputs(session, inputs);
             }
-
-            // Recover updates
-            Object updatesBlob = results.get(3);
-            if (updatesBlob instanceof Map && session.state() instanceof CommitStateLike commitState) {
-                commitState.setUpdates((Map<String, Object>) updatesBlob);
+            Object updates = deserializeState(result.get(2), result.get(3));
+            if (updates != null && session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.setUpdates(toMap(updates));
             }
         }
 
-        /**
-         * clear.
-         * 
-         * @param id id
-         * @since 0.1.7
-         */
-        @Override
-        public void clear(String id) {
-            // id is workflowId here — needs sessionId too
+        void clear(String workflowId, String sessionId) {
+            kvStore.batchDelete(List.of(
+                    key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE),
+                    key(sessionId, workflowId, STATE_BLOBS),
+                    key(sessionId, workflowId, UPDATE_BLOBS_DUMP_TYPE),
+                    key(sessionId, workflowId, UPDATE_BLOBS)
+            ), null).join();
         }
 
-        /**
-         * clear.
-         * 
-         * @param workflowId workflowId
-         * @param sessionId sessionId
-         * @since 0.1.7
-         */
-        public void clear(String workflowId, String sessionId) {
-            String stateDumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
-
-            kvStore.delete(stateDumpTypeKey);
-            kvStore.delete(stateBlobKey);
-            kvStore.delete(updatesDumpTypeKey);
-            kvStore.delete(updatesBlobKey);
-
-            Loggers.SESSION.debug("Workflow checkpoint cleared, sessionId={}, workflowId={}", sessionId, workflowId);
-        }
-
-        /**
-         * isExists.
-         * 
-         * @param session session
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public boolean isExists(BaseSession session) {
-            String workflowId = getWorkflowId(session);
+        boolean exists(BaseSession session) {
             String sessionId = session.sessionId();
-
-            String stateDumpTypeKey =
-                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-
-            return kvStore.isExists(stateDumpTypeKey) && kvStore.isExists(stateBlobKey);
+            String workflowId = session.workflowId();
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.exists(key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE)).join();
+            pipeline.exists(key(sessionId, workflowId, STATE_BLOBS)).join();
+            List<Object> result = execute(pipeline);
+            return result.size() == 2 && Boolean.TRUE.equals(result.get(0)) && Boolean.TRUE.equals(result.get(1));
         }
 
-        /**
-         * isExists.
-         * 
-         * @param workflowId workflowId
-         * @return the result
-         * @since 0.1.7
-         */
-        public boolean isExists(String workflowId) {
-            // Without session context, can't fully determine — check by prefix pattern
-            return false;
-        }
-
-        @SuppressWarnings("unchecked")
-        /**
-         * processInteractiveInputs.
-         * 
-         * @param session session
-         * @param inputs inputs
-         * @since 0.1.7
-         */
         private void processInteractiveInputs(BaseSession session, InteractiveInput inputs) {
             if (inputs.getRawInputs() != null) {
-                if (session.state() instanceof WorkflowCommitState wcs) {
-                    wcs.updateAndCommitWorkflowState(Map.of(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
+                if (session.state() instanceof WorkflowCommitState workflowState) {
+                    workflowState.updateAndCommitWorkflowState(mapOf(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
+                } else {
+                    session.state().update(mapOf(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
                 }
                 return;
             }
-
             Map<String, Object> userInputs = inputs.getUserInputs();
             if (userInputs == null || userInputs.isEmpty()) {
                 return;
             }
-
+            // Also store at workflow level so popWorkflowInteractiveInput can find it.
+            // Store userInputs values as a List, matching the rawInputs format.
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                Object existing = workflowState.getWorkflowState(Constant.INTERACTIVE_INPUT);
+                List<Object> values = existing instanceof List<?> list ? new ArrayList<>(list) : new ArrayList<>();
+                values.addAll(userInputs.values());
+                workflowState.updateAndCommitWorkflowState(mapOf(Constant.INTERACTIVE_INPUT, values));
+            }
             for (Map.Entry<String, Object> entry : userInputs.entrySet()) {
                 NodeSession nodeSession = new NodeSession(session, entry.getKey());
-                Object interactiveInput = nodeSession.state().get(Constant.INTERACTIVE_INPUT);
-                List<Object> inputList;
-                if (interactiveInput instanceof List<?> existingInputs) {
-                    inputList = new java.util.ArrayList<>(existingInputs.size() + 1);
-                    inputList.addAll((List<Object>) existingInputs);
-                    inputList.add(entry.getValue());
-                } else {
-                    inputList = List.of(entry.getValue());
+                Object interactiveInput = nodeSession.state() == null
+                        ? null
+                        : nodeSession.state().get(Constant.INTERACTIVE_INPUT);
+                List<Object> values = interactiveInput instanceof List<?> list
+                        ? new ArrayList<>(list)
+                        : new ArrayList<>();
+                values.add(entry.getValue());
+                if (nodeSession.state() != null) {
+                    nodeSession.state().update(mapOf(Constant.INTERACTIVE_INPUT, values));
                 }
-                nodeSession.state().update(Map.of(Constant.INTERACTIVE_INPUT, inputList));
             }
-            if (session.state() instanceof CommitStateLike commitState) {
-                commitState.commit();
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                workflowState.commit();
             }
+        }
+
+        private String key(String sessionId, String workflowId, String suffix) {
+            return Checkpointer.buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, suffix);
         }
     }
 
     /**
-     * Graph state store implementation using BaseKVStore.
+     * Graph checkpoint storage backed by the persistence KV store.
+     *
+     * <p>Mirrors Python's {@code GraphStore} in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
      */
-    static class PersistenceGraphStore implements Store {
+    private static final class PersistenceGraphStore extends BaseStorage implements Store {
         private static final String DATA_TYPE = "checkpoint_data_type";
         private static final String DATA_VALUE = "checkpoint_data_value";
 
-        private final BaseKVStore kvStore;
-
         PersistenceGraphStore(BaseKVStore kvStore) {
-            this.kvStore = kvStore;
+            super(kvStore);
         }
 
-        /**
-         * get.
-         * 
-         * @param sessionId sessionId
-         * @param ns ns
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
-        public Optional<GraphStoreState> get(String sessionId, String ns) {
-            String keyType = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.get(keyType);
-            pipeline.get(keyValue);
-            List<Object> results = pipeline.execute();
-
-            if (results == null || results.size() != 2) {
-                return Optional.empty();
+        public CompletionStage<Optional<GraphStoreState>> get(String sessionId, String ns) {
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            pipeline.get(key(sessionId, ns, DATA_TYPE)).join();
+            pipeline.get(key(sessionId, ns, DATA_VALUE)).join();
+            List<Object> result = execute(pipeline);
+            if (result.size() != 2) {
+                return CompletableFuture.completedFuture(Optional.empty());
             }
-
-            Object typeVal = results.get(0);
-            Object valueVal = results.get(1);
-            if (typeVal == null || valueVal == null) {
-                return Optional.empty();
+            Object graphState = deserializeState(result.get(0), result.get(1));
+            if (graphState instanceof GraphStoreState typedState) {
+                return CompletableFuture.completedFuture(Optional.of(typedState));
             }
-
-            if (valueVal instanceof GraphStoreState gs) {
-                return Optional.of(gs);
-            }
-            return Optional.empty();
+            return CompletableFuture.completedFuture(Optional.empty());
         }
 
-        /**
-         * save.
-         * 
-         * @param sessionId sessionId
-         * @param ns ns
-         * @param state state
-         * @since 0.1.7
-         */
         @Override
-        public void save(String sessionId, String ns, GraphStoreState state) {
-            String keyType = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
-
-            KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.set(keyType, "java_serialized");
-            pipeline.set(keyValue, state);
-            pipeline.execute();
-
-            Loggers.SESSION.debug("Graph state saved, sessionId={}, ns={}", sessionId, ns);
+        public CompletionStage<Void> save(String sessionId, String ns, GraphStoreState state) {
+            Serializer.TypedBytes typedBytes = serializeState(state);
+            BasedKVStorePipeline pipeline = kvStore.pipeline();
+            set(pipeline, key(sessionId, ns, DATA_TYPE), typedBytes.type());
+            set(pipeline, key(sessionId, ns, DATA_VALUE), typedBytes.data());
+            execute(pipeline);
+            return CompletableFuture.completedFuture(null);
         }
 
-        /**
-         * delete.
-         * 
-         * @param sessionId sessionId
-         * @param ns ns
-         * @since 0.1.7
-         */
         @Override
-        public void delete(String sessionId, String ns) {
-            if (ns == null || ns.isEmpty()) {
-                String prefix = buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH);
-                kvStore.deleteByPrefix(prefix, null);
-            } else {
-                String prefix = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns);
-                kvStore.deleteByPrefix(prefix, null);
+        public CompletionStage<Void> delete(String sessionId, String ns) {
+            String prefix = ns == null || ns.isBlank()
+                    ? Checkpointer.buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH)
+                    : Checkpointer.buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns);
+            kvStore.deleteByPrefix(prefix, null).join();
+            return CompletableFuture.completedFuture(null);
+        }
+
+        private String key(String sessionId, String ns, String suffix) {
+            return Checkpointer.buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, suffix);
+        }
+    }
+
+    /**
+     * Minimal JDBC data source for sqlite-style checkpointer configuration.
+     *
+     * <p>Mirrors Python's sqlite engine creation in
+     * {@code openjiuwen/core/session/checkpointer/persistence.py}.</p>
+     */
+    private static final class DriverManagerDataSource implements DataSource {
+        private final String jdbcUrl;
+
+        DriverManagerDataSource(String jdbcUrl) {
+            this.jdbcUrl = jdbcUrl;
+        }
+
+        @Override
+        public Connection getConnection() throws SQLException {
+            return DriverManager.getConnection(jdbcUrl);
+        }
+
+        @Override
+        public Connection getConnection(String username, String password) throws SQLException {
+            return DriverManager.getConnection(jdbcUrl, username, password);
+        }
+
+        @Override
+        public PrintWriter getLogWriter() throws SQLException {
+            return DriverManager.getLogWriter();
+        }
+
+        @Override
+        public void setLogWriter(PrintWriter out) throws SQLException {
+            DriverManager.setLogWriter(out);
+        }
+
+        @Override
+        public void setLoginTimeout(int seconds) throws SQLException {
+            DriverManager.setLoginTimeout(seconds);
+        }
+
+        @Override
+        public int getLoginTimeout() throws SQLException {
+            return DriverManager.getLoginTimeout();
+        }
+
+        @Override
+        public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+            throw new SQLFeatureNotSupportedException();
+        }
+
+        @Override
+        public <T> T unwrap(Class<T> iface) throws SQLException {
+            if (iface.isInstance(this)) {
+                return iface.cast(this);
             }
-            Loggers.SESSION.debug("Graph checkpoint cleared, sessionId={}, ns={}", sessionId, ns);
+            throw new SQLException("DataSource cannot unwrap " + iface);
+        }
+
+        @Override
+        public boolean isWrapperFor(Class<?> iface) {
+            return iface.isInstance(this);
         }
     }
 }

@@ -133,7 +133,7 @@ agent 执行前会：
 - 进程退出后状态全部丢失；
 - 非常适合本地开发、示例和单元测试。
 
-`examples/interact` 默认就是围绕这种“同进程内恢复”的思路来展示交互与 retry 语义的。
+Python 文档中的 `interact` 示例就是围绕这种“同进程内恢复”的思路来展示交互与 retry 语义的；Java 0.1.14 仓库当前没有对应的独立 `examples/interact` 目录。
 
 ## `PersistenceCheckpointer`：持久化工作流 / agent 状态
 
@@ -246,9 +246,9 @@ CheckpointerFactory.setDefaultCheckpointer(checkpointer);
 
 ## 把 checkpointer 放回交互恢复主线里看
 
-### 在 `examples/interact` 里
+### 在原生 workflow 恢复路径里
 
-天气示例完整展示了这条路径：
+按 Python 文档中的天气示例语义，Java 侧恢复路径应理解为：
 
 1. `workflow.invoke(...)` 执行
 2. workflow 进入 `INPUT_REQUIRED`，保存 workflow / graph 状态
@@ -257,9 +257,9 @@ CheckpointerFactory.setDefaultCheckpointer(checkpointer);
 5. 天气节点首次失败，再通过 `new InteractiveInput("retry")` 用同一 `sessionId` 恢复
 6. 完成后显式 `checkpointer.release(sessionId)`
 
-### 在 `examples/workflow_agent` 里
+### 在 `WorkflowAgent` 路径里
 
-`WorkflowAgent` 示例展示的是 agent 级状态回收：
+`WorkflowAgent` 路径展示的是 agent 级状态回收：
 
 - 每轮都复用同一个 `conversation_id`
 - 结束时调用 `Runner.release(conversationId)`
@@ -292,5 +292,5 @@ CheckpointerFactory.setDefaultCheckpointer(checkpointer);
 - [API 文档：CheckpointerFactory](../API文档/com.openjiuwen.core/session/checkpointer/CheckpointerFactory.md)
 - [API 文档：InMemoryCheckpointer](../API文档/com.openjiuwen.core/session/checkpointer/InMemoryCheckpointer.md)
 - [API 文档：PersistenceCheckpointer](../API文档/com.openjiuwen.core/session/checkpointer/PersistenceCheckpointer.md)
-- [示例：interact](../../../../examples/interact/README.md)
-- [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
+- [测试：WorkflowAgent 流式中断恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
+- [源码：Runner.release](../../../../src/main/java/com/openjiuwen/core/runner/Runner.java)

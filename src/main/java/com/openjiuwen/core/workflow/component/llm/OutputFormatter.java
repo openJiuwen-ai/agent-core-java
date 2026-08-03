@@ -14,29 +14,24 @@ import java.util.Map;
  * Formats LLM response content according to response type and output configuration.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.OutputFormatter}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public final class OutputFormatter {
-    /**
-     * OutputFormatter.
-     * 
-     * @since 0.1.7
-     */
+
     private OutputFormatter() {
     }
 
     /**
      * Format the LLM response into a structured output.
-     * 
+     *
      * @param responseContent the raw response content
-     * @param responseFormat response format configuration (with "type" key)
-     * @param outputsConfig output parameter configuration
+     * @param responseFormat  response format configuration (with "type" key)
+     * @param outputsConfig   output parameter configuration
      * @return formatted output map
-     * @since 0.1.7
      */
-    public static Map<String, Object> formatResponse(String responseContent, Map<String, Object> responseFormat,
-            Map<String, Object> outputsConfig) {
+    public static Map<String, Object> formatResponse(String responseContent,
+                                                      Map<String, Object> responseFormat,
+                                                      Map<String, Object> outputsConfig) {
         String responseType = (String) responseFormat.get("type");
         ValidationUtils.validateOutputsConfig(outputsConfig);
 
@@ -50,35 +45,17 @@ public final class OutputFormatter {
         };
     }
 
-    /**
-     * formatTextResponse.
-     * 
-     * @param responseContent responseContent
-     * @param outputsConfig outputsConfig
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> formatTextResponse(String responseContent, Map<String, Object> outputsConfig) {
         if (outputsConfig.size() != 1) {
-            ValidationUtils
-                    .raiseInvalidParamsError("text/markdown response type, outputs_config must contain only one field");
+            ValidationUtils.raiseInvalidParamsError("text/markdown response type, outputs_config must contain only one field");
         }
         String fieldName = outputsConfig.keySet().iterator().next();
         return Map.of(fieldName, responseContent);
     }
 
-    /**
-     * formatJsonResponse.
-     * 
-     * @param responseContent responseContent
-     * @param outputsConfig outputsConfig
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> formatJsonResponse(String responseContent, Map<String, Object> outputsConfig) {
         if (outputsConfig.isEmpty()) {
-            ValidationUtils
-                    .raiseInvalidParamsError("json response format, output config should contain at least one field");
+            ValidationUtils.raiseInvalidParamsError("json response format, output config should contain at least one field");
         }
 
         Map<String, Object> parsedJson = JsonParser.parseJsonContent(responseContent);
@@ -101,16 +78,8 @@ public final class OutputFormatter {
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * extractConfiguredFields.
-     * 
-     * @param parsedJson parsedJson
-     * @param outputsConfig outputsConfig
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> extractConfiguredFields(Map<String, Object> parsedJson,
-            Map<String, Object> outputsConfig) {
+                                                                Map<String, Object> outputsConfig) {
         Map<String, Object> output = new LinkedHashMap<>();
 
         for (Map.Entry<String, Object> entry : outputsConfig.entrySet()) {

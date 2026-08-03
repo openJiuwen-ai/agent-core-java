@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.memory.team;
 
-import com.openjiuwen.agentteams.tools.database.TeamDatabase;
+import com.openjiuwen.agent_teams.tools.database.TeamDatabase;
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -41,7 +41,7 @@ public class TeamMemoryManagerParams {
     private boolean isAutoExtractEnabled = true;
     private String readOnlySourceWorkspace;
     private TeamDatabase db;
-    private com.openjiuwen.agentteams.tools.TeamTaskManager taskManager;
+    private com.openjiuwen.agent_teams.tools.TeamTaskManager taskManager;
     private Model extractionModel;
     @Builder.Default
     private double timezoneOffsetHours = 8.0;

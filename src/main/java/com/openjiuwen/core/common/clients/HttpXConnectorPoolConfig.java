@@ -5,145 +5,167 @@
 package com.openjiuwen.core.common.clients;
 
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
- * HTTPX-style connector pool configuration.
- * 
- * @since 0.1.7
+ * Configuration class for HTTPX connector pools.
+ *
+ * <p>Mirrors Python's {@code HttpXConnectorPoolConfig} in
+ * {@code openjiuwen/core/common/clients/llm_client.py}.</p>
  */
 public class HttpXConnectorPoolConfig extends ConnectorPoolConfig {
-    private final int maxKeepaliveConnections;
-    private final String localAddress;
-    private final String proxy;
-    private final boolean isNeedAsync;
 
-    /**
-     * HttpXConnectorPoolConfig.
-     * 
-     * @since 0.1.7
-     */
+    private int maxKeepaliveConnections = 20;
+    private String localAddress;
+    private String proxy;
+    private boolean needAsync = true;
+
     public HttpXConnectorPoolConfig() {
-        this(100, 30, true, null, false, 60.0, 3600, 300, Map.of(), 20, null, null, true);
+        super();
     }
 
-    /**
-     * HttpXConnectorPoolConfig.
-     * 
-     * @param limit limit
-     * @param limitPerHost limitPerHost
-     * @param isSslVerify isSslVerify
-     * @param sslCert sslCert
-     * @param isForceClose isForceClose
-     * @param keepaliveTimeout keepaliveTimeout
-     * @param ttl ttl
-     * @param maxIdleTime maxIdleTime
-     * @param extendParams extendParams
-     * @param maxKeepaliveConnections maxKeepaliveConnections
-     * @param localAddress localAddress
-     * @param proxy proxy
-     * @param isNeedAsync isNeedAsync
-     * @since 0.1.7
-     */
-    public HttpXConnectorPoolConfig(int limit, int limitPerHost, boolean isSslVerify, String sslCert,
-            boolean isForceClose, Double keepaliveTimeout, Integer ttl, Integer maxIdleTime,
-            Map<String, Object> extendParams, int maxKeepaliveConnections, String localAddress, String proxy,
-            boolean isNeedAsync) {
-        super(limit, limitPerHost, isSslVerify, sslCert, isForceClose, keepaliveTimeout, ttl, maxIdleTime,
-                extendParams);
-        validatePositive("max_keepalive_connections", maxKeepaliveConnections);
-        this.maxKeepaliveConnections = maxKeepaliveConnections;
-        this.localAddress = localAddress;
-        this.proxy = proxy;
-        this.isNeedAsync = isNeedAsync;
+    public HttpXConnectorPoolConfig(Map<String, Object> values) {
+        super();
+        apply(values);
     }
 
-    /**
-     * getMaxKeepaliveConnections.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public final void apply(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        if (values.containsKey("limit")) {
+            setLimit(intValue(values.get("limit"), getLimit()));
+        }
+        if (values.containsKey("limit_per_host") || values.containsKey("limitPerHost")) {
+            setLimitPerHost(intValue(first(values, "limit_per_host", "limitPerHost"), getLimitPerHost()));
+        }
+        if (values.containsKey("ssl_verify") || values.containsKey("sslVerify")) {
+            setSslVerify(booleanValue(first(values, "ssl_verify", "sslVerify"), isSslVerify()));
+        }
+        if (values.containsKey("ssl_cert") || values.containsKey("sslCert")) {
+            setSslCert(stringValue(first(values, "ssl_cert", "sslCert")));
+        }
+        if (values.containsKey("force_close") || values.containsKey("forceClose")) {
+            setForceClose(booleanValue(first(values, "force_close", "forceClose"), isForceClose()));
+        }
+        if (values.containsKey("keepalive_timeout") || values.containsKey("keepaliveTimeout")) {
+            setKeepaliveTimeout(doubleValue(first(values, "keepalive_timeout", "keepaliveTimeout")));
+        }
+        if (values.containsKey("max_keepalive_connections") || values.containsKey("maxKeepaliveConnections")) {
+            setMaxKeepaliveConnections(intValue(
+                    first(values, "max_keepalive_connections", "maxKeepaliveConnections"),
+                    maxKeepaliveConnections));
+        }
+        if (values.containsKey("local_address") || values.containsKey("localAddress")) {
+            setLocalAddress(stringValue(first(values, "local_address", "localAddress")));
+        }
+        if (values.containsKey("proxy")) {
+            setProxy(stringValue(values.get("proxy")));
+        }
+        if (values.containsKey("need_async") || values.containsKey("needAsync")) {
+            setNeedAsync(booleanValue(first(values, "need_async", "needAsync"), needAsync));
+        }
+        if (values.containsKey("extend_params") || values.containsKey("extendParams")) {
+            Object extend = first(values, "extend_params", "extendParams");
+            if (extend instanceof Map<?, ?> map) {
+                setExtendParams(toObjectMap(map));
+            }
+        }
+    }
+
+    @Override
+    public String generateKey() {
+        return super.generateKey()
+                + "&max_keepalive_connections:" + maxKeepaliveConnections
+                + (localAddress == null ? "" : "&local_address:" + localAddress)
+                + (proxy == null ? "" : "&proxy:" + proxy)
+                + "&need_async:" + String.valueOf(needAsync).toLowerCase();
+    }
+
     public int getMaxKeepaliveConnections() {
         return maxKeepaliveConnections;
     }
 
-    /**
-     * getLocalAddress.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setMaxKeepaliveConnections(int maxKeepaliveConnections) {
+        if (maxKeepaliveConnections < 1) {
+            throw new IllegalArgumentException("max_keepalive_connections must be >= 1");
+        }
+        this.maxKeepaliveConnections = maxKeepaliveConnections;
+    }
+
     public String getLocalAddress() {
         return localAddress;
     }
 
-    /**
-     * getProxy.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setLocalAddress(String localAddress) {
+        this.localAddress = localAddress;
+    }
+
     public String getProxy() {
         return proxy;
     }
 
-    /**
-     * isNeedAsync.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setProxy(String proxy) {
+        this.proxy = proxy;
+    }
+
     public boolean isNeedAsync() {
-        return isNeedAsync;
+        return needAsync;
     }
 
-    /**
-     * generateKey.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String generateKey() {
-        Map<String, Object> normalized = new TreeMap<>();
-        normalized.put("base", super.generateKey());
-        normalized.put("max_keepalive_connections", maxKeepaliveConnections);
-        normalized.put("local_address", localAddress);
-        normalized.put("proxy", proxy);
-        normalized.put("need_async", isNeedAsync);
-        return md5Hex(normalized.toString());
+    public void setNeedAsync(boolean needAsync) {
+        this.needAsync = needAsync;
     }
 
-    /**
-     * from.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    public static HttpXConnectorPoolConfig from(Object value) {
-        if (value instanceof HttpXConnectorPoolConfig config) {
-            return config;
+    private static Object first(Map<String, Object> values, String... keys) {
+        for (String key : keys) {
+            if (values.containsKey(key)) {
+                return values.get(key);
+            }
         }
-        Map<String, Object> map = ClientConfigSupport.asObjectMap(value);
-        return new HttpXConnectorPoolConfig(ClientConfigSupport.asInt(map.get("limit"), 100),
-                ClientConfigSupport.asInt(map.get("limit_per_host"), 30),
-                ClientConfigSupport.asBoolean(map.get("ssl_verify"), true),
-                ClientConfigSupport.asString(map.get("ssl_cert")),
-                ClientConfigSupport.asBoolean(map.get("force_close"), false),
-                ClientConfigSupport.asNullableDouble(map.get("keepalive_timeout")) != null
-                        ? ClientConfigSupport.asNullableDouble(map.get("keepalive_timeout"))
-                        : 60.0,
-                ClientConfigSupport.asNullableInt(map.get("ttl")) != null
-                        ? ClientConfigSupport.asNullableInt(map.get("ttl"))
-                        : 3600,
-                ClientConfigSupport.asNullableInt(map.get("max_idle_time")) != null
-                        ? ClientConfigSupport.asNullableInt(map.get("max_idle_time"))
-                        : 300,
-                ClientConfigSupport.asObjectMap(map.get("extend_params")),
-                ClientConfigSupport.asInt(map.get("max_keepalive_connections"), 20),
-                ClientConfigSupport.asString(map.get("local_address")), ClientConfigSupport.asString(map.get("proxy")),
-                ClientConfigSupport.asBoolean(map.get("need_async"), true));
+        return null;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Double doubleValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        return Double.parseDouble(String.valueOf(value));
+    }
+
+    private static int intValue(Object value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+    private static boolean booleanValue(Object value, boolean defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static Map<String, Object> toObjectMap(Map<?, ?> values) {
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        values.forEach((key, value) -> {
+            if (key != null) {
+                result.put(String.valueOf(key), value);
+            }
+        });
+        return result;
     }
 }

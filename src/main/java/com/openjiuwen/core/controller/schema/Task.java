@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.controller.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,60 +16,61 @@ import java.util.Map;
  * Defines the structure of a task, including basic information, status,
  * input/output, and hierarchical relationships.
  * <p>
- * Mirrors Python's {@code Task(BaseModel)}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Task} in
+ * {@code openjiuwen/core/controller/schema/task.py}.
  */
 public class Task {
+
+    @JsonProperty("session_id")
     private String sessionId;
+
+    @JsonProperty("task_id")
     private String taskId;
+
+    @JsonProperty("task_type")
     private String taskType;
+
     private String description;
+
     private int priority;
-    private List<Object> inputs;
+
+    private List<Event> inputs;
+
     private List<ControllerOutputChunk> outputs;
+
     private TaskStatus status;
+
+    @JsonProperty("parent_task_id")
     private String parentTaskId;
+
+    @JsonProperty("context_id")
     private String contextId;
+
+    @JsonProperty("input_required_fields")
     private Object inputRequiredFields;
+
+    @JsonProperty("error_message")
     private String errorMessage;
+
     private Map<String, Object> metadata;
+
     private Map<String, Object> extensions;
 
-    /**
-     * Task.
-     * 
-     * @since 0.1.7
-     */
     public Task() {
         this.priority = 1;
         this.outputs = new ArrayList<>();
         this.status = TaskStatus.UNKNOWN;
     }
 
-    /**
-     * Task.
-     * 
-     * @param sessionId sessionId
-     * @param taskId taskId
-     * @param taskType taskType
-     * @since 0.1.7
-     */
     public Task(String sessionId, String taskId, String taskType) {
         this();
-        validateRequiredString(sessionId, "sessionId");
-        validateRequiredString(taskId, "taskId");
-        validateRequiredString(taskType, "taskType");
-        this.sessionId = sessionId.strip();
-        this.taskId = taskId.strip();
-        this.taskType = taskType.strip();
+        setSessionId(sessionId);
+        setTaskId(taskId);
+        setTaskType(taskType);
     }
 
     /**
      * Deep copy of this task.
-     * 
-     * @return the result
-     * @since 0.1.7
      */
     public Task copy() {
         Task copy = new Task();
@@ -78,30 +79,36 @@ public class Task {
         copy.taskType = this.taskType;
         copy.description = this.description;
         copy.priority = this.priority;
-        copy.inputs = this.inputs != null ? new ArrayList<Object>(this.inputs) : null;
+        copy.inputs = this.inputs != null ? new ArrayList<>(this.inputs) : null;
         copy.outputs = new ArrayList<>(this.outputs);
         copy.status = this.status;
         copy.parentTaskId = this.parentTaskId;
         copy.contextId = this.contextId;
         copy.inputRequiredFields = this.inputRequiredFields;
         copy.errorMessage = this.errorMessage;
-        copy.metadata = this.metadata != null ? new HashMap<>(this.metadata) : null;
-        copy.extensions = this.extensions != null ? new HashMap<>(this.extensions) : null;
+        copy.metadata = this.metadata != null ? new LinkedHashMap<>(this.metadata) : null;
+        copy.extensions = this.extensions != null ? new LinkedHashMap<>(this.extensions) : null;
         return copy;
     }
 
     /**
      * Validate the task for consistency.
-     * 
-     * @since 0.1.7
      */
     public void validate() {
-        validateRequiredString(sessionId, "sessionId");
-        validateRequiredString(taskId, "taskId");
-        validateRequiredString(taskType, "taskType");
+        validateRequiredString(sessionId);
+        validateRequiredString(taskId);
+        validateRequiredString(taskType);
 
         if (priority < 0) {
             throw new IllegalArgumentException("Priority must be a non-negative integer");
+        }
+
+        if (outputs == null) {
+            throw new IllegalArgumentException("outputs cannot be null");
+        }
+
+        if (status == null) {
+            throw new IllegalArgumentException("status cannot be null");
         }
 
         if (parentTaskId != null && parentTaskId.isBlank()) {
@@ -121,306 +128,145 @@ public class Task {
         }
     }
 
-    /**
-     * validateRequiredString.
-     * 
-     * @param value value
-     * @param fieldName fieldName
-     * @since 0.1.7
-     */
-    private static void validateRequiredString(String value, String fieldName) {
+    private static void validateRequiredString(String value) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " field cannot be empty");
+            throw new IllegalArgumentException("Task field cannot be empty");
         }
+    }
+
+    private static String normalizeRequiredString(String value) {
+        validateRequiredString(value);
+        return value.strip();
     }
 
     // Getters and setters
 
-    /**
-     * getSessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getSessionId() {
         return sessionId;
     }
 
-    /**
-     * setSessionId.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
+        this.sessionId = normalizeRequiredString(sessionId);
     }
 
-    /**
-     * getTaskId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getTaskId() {
         return taskId;
     }
 
-    /**
-     * setTaskId.
-     * 
-     * @param taskId taskId
-     * @since 0.1.7
-     */
     public void setTaskId(String taskId) {
-        this.taskId = taskId;
+        this.taskId = normalizeRequiredString(taskId);
     }
 
-    /**
-     * getTaskType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getTaskType() {
         return taskType;
     }
 
-    /**
-     * setTaskType.
-     * 
-     * @param taskType taskType
-     * @since 0.1.7
-     */
     public void setTaskType(String taskType) {
-        this.taskType = taskType;
+        this.taskType = normalizeRequiredString(taskType);
     }
 
-    /**
-     * getDescription.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getDescription() {
         return description;
     }
 
-    /**
-     * setDescription.
-     * 
-     * @param description description
-     * @since 0.1.7
-     */
     public void setDescription(String description) {
         this.description = description;
     }
 
-    /**
-     * getPriority.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int getPriority() {
         return priority;
     }
 
-    /**
-     * setPriority.
-     * 
-     * @param priority priority
-     * @since 0.1.7
-     */
     public void setPriority(int priority) {
+        if (priority < 0) {
+            throw new IllegalArgumentException("Priority must be a non-negative integer");
+        }
         this.priority = priority;
     }
 
-    /**
-     * getInputs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Object> getInputs() {
+    public List<Event> getInputs() {
         return inputs;
     }
 
-    /**
-     * setInputs.
-     * 
-     * @param inputs inputs
-     * @since 0.1.7
-     */
-    public void setInputs(List<Object> inputs) {
-        this.inputs = inputs;
+    public void setInputs(List<Event> inputs) {
+        this.inputs = inputs != null ? new ArrayList<>(inputs) : null;
     }
 
-    /**
-     * getOutputs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<ControllerOutputChunk> getOutputs() {
         return outputs;
     }
 
-    /**
-     * setOutputs.
-     * 
-     * @param outputs outputs
-     * @since 0.1.7
-     */
     public void setOutputs(List<ControllerOutputChunk> outputs) {
-        this.outputs = outputs;
+        if (outputs == null) {
+            throw new IllegalArgumentException("outputs cannot be null");
+        }
+        this.outputs = new ArrayList<>(outputs);
     }
 
-    /**
-     * getStatus.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public TaskStatus getStatus() {
         return status;
     }
 
-    /**
-     * setStatus.
-     * 
-     * @param status status
-     * @since 0.1.7
-     */
     public void setStatus(TaskStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("status cannot be null");
+        }
         this.status = status;
     }
 
-    /**
-     * getParentTaskId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getParentTaskId() {
         return parentTaskId;
     }
 
-    /**
-     * setParentTaskId.
-     * 
-     * @param parentTaskId parentTaskId
-     * @since 0.1.7
-     */
     public void setParentTaskId(String parentTaskId) {
-        this.parentTaskId = parentTaskId != null && !parentTaskId.isBlank() ? parentTaskId.strip() : null;
+        if (parentTaskId != null && parentTaskId.isBlank()) {
+            throw new IllegalArgumentException("parent_task_id cannot be an empty string if provided");
+        }
+        this.parentTaskId = parentTaskId != null ? parentTaskId.strip() : null;
     }
 
-    /**
-     * getContextId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getContextId() {
         return contextId;
     }
 
-    /**
-     * setContextId.
-     * 
-     * @param contextId contextId
-     * @since 0.1.7
-     */
     public void setContextId(String contextId) {
         this.contextId = contextId;
     }
 
-    /**
-     * getInputRequiredFields.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Object getInputRequiredFields() {
         return inputRequiredFields;
     }
 
-    /**
-     * setInputRequiredFields.
-     * 
-     * @param inputRequiredFields inputRequiredFields
-     * @since 0.1.7
-     */
     public void setInputRequiredFields(Object inputRequiredFields) {
         this.inputRequiredFields = inputRequiredFields;
     }
 
-    /**
-     * getErrorMessage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getErrorMessage() {
         return errorMessage;
     }
 
-    /**
-     * setErrorMessage.
-     * 
-     * @param errorMessage errorMessage
-     * @since 0.1.7
-     */
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
-    /**
-     * getMetadata.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
-    /**
-     * setMetadata.
-     * 
-     * @param metadata metadata
-     * @since 0.1.7
-     */
     public void setMetadata(Map<String, Object> metadata) {
-        this.metadata = metadata;
+        this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : null;
     }
 
-    /**
-     * getExtensions.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getExtensions() {
         return extensions;
     }
 
-    /**
-     * setExtensions.
-     * 
-     * @param extensions extensions
-     * @since 0.1.7
-     */
     public void setExtensions(Map<String, Object> extensions) {
-        this.extensions = extensions;
+        this.extensions = extensions != null ? new LinkedHashMap<>(extensions) : null;
     }
 
     /**
      * Serialize task to a plain map for persistence.
-     * 
-     * @return the result
-     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
@@ -429,9 +275,12 @@ public class Task {
         map.put("task_type", taskType);
         map.put("description", description);
         map.put("priority", priority);
-        map.put("status", status != null ? status.name() : null);
+        map.put("inputs", inputs);
+        map.put("outputs", outputs);
+        map.put("status", status != null ? status.getValue() : null);
         map.put("parent_task_id", parentTaskId);
         map.put("context_id", contextId);
+        map.put("input_required_fields", inputRequiredFields);
         map.put("error_message", errorMessage);
         map.put("metadata", metadata);
         map.put("extensions", extensions);
@@ -439,11 +288,7 @@ public class Task {
     }
 
     /**
-     * fromMap.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
+     * Deserialize task from a plain map.
      */
     @SuppressWarnings("unchecked")
     public static Task fromMap(Map<String, Object> map) {
@@ -455,14 +300,87 @@ public class Task {
         if (map.get("priority") != null) {
             task.setPriority(((Number) map.get("priority")).intValue());
         }
+        if (map.containsKey("inputs")) {
+            task.setInputs(coerceEvents(map.get("inputs")));
+        }
+        if (map.containsKey("outputs")) {
+            task.setOutputs(coerceOutputChunks(map.get("outputs")));
+        }
         if (map.get("status") != null) {
-            task.setStatus(TaskStatus.valueOf((String) map.get("status")));
+            task.setStatus(TaskStatus.fromValue((String) map.get("status")));
         }
         task.setParentTaskId((String) map.get("parent_task_id"));
         task.setContextId((String) map.get("context_id"));
+        task.setInputRequiredFields(map.get("input_required_fields"));
         task.setErrorMessage((String) map.get("error_message"));
         task.setMetadata((Map<String, Object>) map.get("metadata"));
         task.setExtensions((Map<String, Object>) map.get("extensions"));
         return task;
+    }
+
+    private static List<Event> coerceEvents(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof List<?> rawList)) {
+            throw new IllegalArgumentException("inputs must be a list when provided");
+        }
+        List<Event> events = new ArrayList<>(rawList.size());
+        for (Object item : rawList) {
+            events.add(coerceEvent(item));
+        }
+        return events;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Event coerceEvent(Object value) {
+        if (value instanceof Event event) {
+            return event;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Event event = new Event();
+            Object eventType = map.get("event_type");
+            if (eventType == null) {
+                eventType = map.get("eventType");
+            }
+            if (eventType != null) {
+                event.setEventType(EventType.fromValue(String.valueOf(eventType)));
+            }
+            Object eventId = map.get("event_id");
+            if (eventId == null) {
+                eventId = map.get("eventId");
+            }
+            if (eventId != null) {
+                event.setEventId(String.valueOf(eventId));
+            }
+            Object metadata = map.get("metadata");
+            if (metadata instanceof Map<?, ?> metadataMap) {
+                event.setMetadata((Map<String, Object>) metadataMap);
+            } else if (metadata == null) {
+                event.setMetadata(null);
+            } else {
+                throw new IllegalArgumentException("event metadata must be a map when provided");
+            }
+            return event;
+        }
+        throw new IllegalArgumentException("inputs must contain Event values");
+    }
+
+    private static List<ControllerOutputChunk> coerceOutputChunks(Object value) {
+        if (value == null) {
+            throw new IllegalArgumentException("outputs cannot be null");
+        }
+        if (!(value instanceof List<?> rawList)) {
+            throw new IllegalArgumentException("outputs must be a list");
+        }
+        List<ControllerOutputChunk> chunks = new ArrayList<>(rawList.size());
+        for (Object item : rawList) {
+            if (item instanceof ControllerOutputChunk chunk) {
+                chunks.add(chunk);
+            } else {
+                throw new IllegalArgumentException("outputs must contain ControllerOutputChunk values");
+            }
+        }
+        return chunks;
     }
 }

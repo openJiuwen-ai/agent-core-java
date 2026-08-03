@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.foundation.llm.schema;
@@ -8,22 +8,19 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Model request configuration (per-request parameters).
- * <p>
- * Mirrors Python's {@code ModelRequestConfig} model.
- * Supports extra fields via {@link #extraFields}.
- * 
- * @since 0.1.7
+ * Per-request model generation configuration.
+ *
+ * <p>Mirrors Python's {@code ModelRequestConfig} in
+ * {@code openjiuwen/core/foundation/llm/schema/config.py}.</p>
  */
 @Data
 @Builder
@@ -31,56 +28,39 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelRequestConfig {
+
     @Builder.Default
     @JsonProperty("model")
     private String modelName = "";
 
     @Builder.Default
-    private Double temperature = 0.95;
+    private double temperature = 0.95;
 
     @Builder.Default
     @JsonProperty("top_p")
-    private Double topP = 0.1;
+    private double topP = 0.1;
 
     @JsonProperty("max_tokens")
     private Integer maxTokens;
-
-    private String stop;
 
     private String user;
 
     private Integer seed;
 
-    /**
-     * Extra fields that are not part of the standard config.
-     * 
-     * @since 0.1.7
-     */
-    @Builder.Default
-    private Map<String, Object> extraFields = new HashMap<>();
+    private String stop;
 
-    /**
-     * getExtraFields.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Builder.Default
+    private Map<String, Object> extraFields = new LinkedHashMap<>();
+
     @JsonAnyGetter
     public Map<String, Object> getExtraFields() {
         return extraFields;
     }
 
-    /**
-     * setExtraField.
-     * 
-     * @param key key
-     * @param value value
-     * @since 0.1.7
-     */
     @JsonAnySetter
     public void setExtraField(String key, Object value) {
         if (extraFields == null) {
-            extraFields = new HashMap<>();
+            extraFields = new LinkedHashMap<>();
         }
         extraFields.put(key, value);
     }

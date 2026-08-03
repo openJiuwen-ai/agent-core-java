@@ -4,19 +4,22 @@
 
 package com.openjiuwen.core.graph;
 
-import java.util.function.Function;
-
 /**
- * Functional interface for a graph router that determines conditional edge targets.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.base.Router} type alias.
- * <p>
- * A router receives some context and returns either a single target node ID (Hashable)
- * or a list of target node IDs.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Router} type alias in
+ * {@code openjiuwen/core/graph/base.py}.
+ *
+ * <p>The Python alias accepts sync or async callables that return a single
+ * hashable route or a list of hashable routes. Java callers may return either a
+ * scalar, a collection, or a future-like object from this functional interface.</p>
  */
 @FunctionalInterface
-public interface Router extends Function<Object, Object> {
-    // Inherits apply(Object) -> Object from Function
+public interface Router {
+
+    /**
+     * Route using Python-style variadic arguments.
+     *
+     * @param args router arguments
+     * @return route id, route id collection, or asynchronous route result
+     */
+    Object route(Object... args);
 }

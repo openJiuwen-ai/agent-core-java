@@ -5,64 +5,58 @@
 package com.openjiuwen.core.singleagent.legacy;
 
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
 
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
  * Legacy session wrapper for backward compatibility.
- * <p>
- * Mirrors Python's {@code TaskSession(StateSession)} in
- * {@code single_agent/legacy/react_agent.py}.
- * </p>
- * <p>
- * Wraps an {@link AgentSessionApi} and exposes the subset of
- * methods that legacy code expects (session id, state, post-run).
- * </p>
- * 
+ *
+ * <p>Mirrors Python's {@code TaskSession(StateSession)} in
+ * {@code single_agent/legacy/react_agent.py}.</p>
+ *
+ * <p>Wraps an {@link AgentSessionApi} and exposes the subset of
+ * methods that legacy code expects (session id, state, post-run).</p>
+ *
  * @deprecated Use {@link AgentSessionApi} directly instead.
- * @since 0.1.7
  */
 @Deprecated(since = "0.1.7", forRemoval = true)
-public class TaskSession implements Session {
+public class TaskSession implements AgentSessionApi {
+
     private final AgentSessionApi inner;
 
     /**
      * Create a TaskSession wrapping the given agent session.
-     * 
+     *
      * @param inner the underlying {@link AgentSessionApi}
-     * @since 0.1.7
      */
-    @SuppressWarnings({"deprecation", "removal"})
     public TaskSession(AgentSessionApi inner) {
         LegacyApi.emitDeprecationWarning("TaskSession", "AgentSessionApi");
         this.inner = inner;
     }
 
     /**
-     * Create a TaskSession with the given session ID.
-     * 
+     * Create a TaskSession with the given session ID using a minimal stub.
+     *
      * @param sessionId the session identifier
-     * @since 0.1.7
      */
     public TaskSession(String sessionId) {
-        this(new AgentSessionApi(sessionId));
+        LegacyApi.emitDeprecationWarning("TaskSession", "AgentSessionApi");
+        this.inner = new StubSession(sessionId);
     }
 
     /**
      * Create a TaskSession with default session ID.
-     * 
-     * @since 0.1.7
      */
     public TaskSession() {
-        this(new AgentSessionApi());
+        this("default");
     }
 
     /**
      * Get the underlying {@link AgentSessionApi}.
-     * 
+     *
      * @return the inner session
-     * @since 0.1.7
      */
     public AgentSessionApi getInnerSession() {
         return inner;
@@ -70,46 +64,78 @@ public class TaskSession implements Session {
 
     /**
      * Run post-execution hooks (mirrors Python's {@code post_run}).
-     * 
-     * @since 0.1.7
      */
     public void postRun() {
-        inner.postRun();
+        if (inner instanceof StubSession) {
+            return;
+        }
+        try {
+            inner.getClass().getMethod("postRun").invoke(inner);
+        } catch (ReflectiveOperationException ignored) {
+            // Not all AgentSessionApi implementations expose postRun.
+        }
     }
 
-    // ==================== Session interface delegation ====================
+    // ==================== AgentSessionApi interface delegation ====================
 
-    /**
-     * getSessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String getSessionId() {
         return inner.getSessionId();
     }
 
-    /**
-     * getState.
-     * 
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Object getState(String key) {
         return inner.getState(key);
     }
 
-    /**
-     * updateState.
-     * 
-     * @param state state
-     * @since 0.1.7
-     */
     @Override
-    public void updateState(Map<String, Object> state) {
-        inner.updateState(state);
+    public void updateState(Map<String, Object> data) {
+        inner.updateState(data);
+    }
+
+    @Override
+    public void writeStream(Object data) {
+        inner.writeStream(data);
+    }
+
+    @Override
+    public Iterator<Object> streamIterator() {
+        return inner.streamIterator();
+    }
+
+    // ==================== Session interface delegation ====================
+
+    /**
+     * Minimal stub session for legacy constructors.
+     */
+    private static final class StubSession implements AgentSessionApi {
+        private final String sessionId;
+
+        StubSession(String sessionId) {
+            this.sessionId = sessionId != null ? sessionId : "default";
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return null;
+        }
+
+        @Override
+        public void updateState(Map<String, Object> data) {
+        }
+
+        @Override
+        public void writeStream(Object data) {
+        }
+
+        @Override
+        public Iterator<Object> streamIterator() {
+            return Collections.emptyIterator();
+        }
     }
 }

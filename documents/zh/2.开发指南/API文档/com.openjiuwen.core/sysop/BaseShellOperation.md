@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.BaseShellOperation
+# com.openjiuwen.core.sys_operation.BaseShellOperation
 
 ## 类 BaseShellOperation
 

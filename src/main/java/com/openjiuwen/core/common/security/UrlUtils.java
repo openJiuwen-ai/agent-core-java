@@ -10,262 +10,214 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.Function;
 
 /**
- * URL validation and proxy utilities — protects against SSRF attacks.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code UrlUtils} in
+ * {@code openjiuwen/core/common/security/url_utils.py}.
  */
 public final class UrlUtils {
-    /**
-     * UrlUtils.
-     * 
-     * @since 0.1.7
-     */
+
+    private static volatile Function<String, String> envReader = System::getenv;
+
     private UrlUtils() {
     }
 
-    /**
-     * Validate that a URL is well-formed, uses http(s), and does not resolve to an internal IP.
-     * 
-     * @param url url
-     * @since 0.1.7
-     */
     public static void checkUrlIsValid(String url) {
-        if (url == null || url.isBlank()) {
-            ErrorHelper.raiseError(StatusCode.COMMON_URL_INPUT_INVALID, "url is empty", null, null, null);
+        if (url == null || url.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_URL_INPUT_INVALID,
+                    "error_msg",
+                    "url is empty"
+            );
         }
         if (!url.matches("^https?://.*$")) {
-            ErrorHelper.raiseError(StatusCode.COMMON_URL_INPUT_INVALID, "illegal url protocol", null, null, null);
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_URL_INPUT_INVALID,
+                    "error_msg",
+                    "illegal url protocol"
+            );
         }
         try {
-            URI uri = new URI(sanitizeUrl(url));
-            String hostname = uri.getHost();
-            InetAddress addr = InetAddress.getByName(hostname);
-            if (isInnerIpAddress(addr)) {
-                ErrorHelper.raiseError(StatusCode.COMMON_URL_INPUT_INVALID, "illegal ip address", null, null, null);
+            URI parsedUrl = new URI(url);
+            String hostname = parsedUrl.getHost();
+            String ipAddress = InetAddress.getByName(hostname).getHostAddress();
+            if (isInnerIpAddress(ipAddress)) {
+                throw ErrorHelper.buildError(
+                        StatusCode.COMMON_URL_INPUT_INVALID,
+                        "error_msg",
+                        "illegal ip address"
+                );
             }
-        } catch (URISyntaxException | UnknownHostException e) {
-            throw ErrorHelper.buildError(StatusCode.COMMON_URL_INPUT_INVALID, "resolving IP address failed", null, e,
-                    null);
+        } catch (URISyntaxException | NullPointerException | java.net.UnknownHostException error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_URL_INPUT_INVALID,
+                    "error_msg",
+                    "resolving IP address failed"
+            );
         }
     }
 
-    /**
-     * Get the global proxy URL from environment variables, respecting NO_PROXY.
-     * 
-     * @param url url
-     * @return the result
-     * @since 0.1.7
-     */
     public static String getGlobalProxyUrl(String url) {
         if (url != null && shouldBypassProxy(url)) {
             return null;
         }
-        String proxy = System.getenv("http_proxy");
-        if (proxy == null) {
-            proxy = System.getenv("https_proxy");
-        }
-        if (proxy == null) {
-            proxy = System.getenv("HTTP_PROXY");
-        }
-        if (proxy == null) {
-            proxy = System.getenv("HTTPS_PROXY");
-        }
-        return proxy != null ? proxy.trim() : null;
+        String proxy = firstNonEmpty(
+                envReader.apply("http_proxy"),
+                envReader.apply("https_proxy"),
+                envReader.apply("HTTP_PROXY"),
+                envReader.apply("HTTPS_PROXY")
+        );
+        return proxy == null ? null : proxy.trim();
     }
 
-    /**
-     * Get global proxies as a map (http → proxy, https → proxy).
-     * 
-     * @param url url
-     * @return the result
-     * @since 0.1.7
-     */
     public static Map<String, String> getGlobalProxies(String url) {
-        String proxy = getGlobalProxyUrl(url);
-        if (proxy != null) {
-            return Map.of("http", proxy, "https", proxy);
+        String globalProxyUrl = getGlobalProxyUrl(url);
+        if (globalProxyUrl == null) {
+            return null;
         }
-        return null;
+        Map<String, String> proxies = new LinkedHashMap<>();
+        proxies.put("http", globalProxyUrl);
+        proxies.put("https", globalProxyUrl);
+        return proxies;
     }
 
-    /**
-     * Check if the URL should bypass proxying based on NO_PROXY.
-     * 
-     * @param url url
-     * @return the result
-     * @since 0.1.7
-     */
     public static boolean shouldBypassProxy(String url) {
         try {
-            URI uri = new URI(url);
-            String hostname = uri.getHost();
-            if (hostname == null || hostname.isBlank()) {
+            URI parsedUrl = new URI(url);
+            String hostname = parsedUrl.getHost();
+            if (hostname == null || hostname.isEmpty()) {
                 return false;
             }
             List<String> noProxyList = getNoProxyList();
-            return !noProxyList.isEmpty() && hostnameMatchesNoProxy(hostname.toLowerCase(Locale.ROOT), noProxyList);
-        } catch (URISyntaxException e) {
+            if (noProxyList.isEmpty()) {
+                return false;
+            }
+            return hostnameMatchesNoProxy(hostname, noProxyList);
+        } catch (Exception ignored) {
             return false;
         }
     }
 
-    /**
-     * isInnerIpAddress.
-     * 
-     * @param addr addr
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean isInnerIpAddress(InetAddress addr) {
-        String ssrfEnabled = System.getenv("SSRF_PROTECT_ENABLED");
-        if (ssrfEnabled == null || ssrfEnabled.isBlank()) {
-            ssrfEnabled = System.getProperty("SSRF_PROTECT_ENABLED");
-        }
-        if ("false".equalsIgnoreCase(ssrfEnabled)) {
+    static void setEnvReaderForTests(Function<String, String> reader) {
+        envReader = reader != null ? reader : System::getenv;
+    }
+
+    static void resetEnvReaderForTests() {
+        envReader = System::getenv;
+    }
+
+    private static boolean isInnerIpAddress(String ip) {
+        String protectEnabled = envReader.apply("SSRF_PROTECT_ENABLED");
+        if ("false".equalsIgnoreCase(protectEnabled != null ? protectEnabled.toLowerCase(Locale.ROOT) : null)) {
             return false;
         }
-        return addr.isLoopbackAddress() || addr.isSiteLocalAddress() || addr.isLinkLocalAddress()
-                || addr.isAnyLocalAddress();
+        long ipLong = ipToLong(ip);
+        return (ipToLong("10.0.0.0") <= ipLong && ipLong <= ipToLong("10.255.255.255"))
+                || (ipToLong("172.16.0.0") <= ipLong && ipLong <= ipToLong("172.31.255.255"))
+                || (ipToLong("192.168.0.0") <= ipLong && ipLong <= ipToLong("192.168.255.255"))
+                || (ipToLong("127.0.0.0") <= ipLong && ipLong <= ipToLong("127.255.255.255"))
+                || ipLong == ipToLong("0.0.0.0");
     }
 
-    /**
-     * sanitizeUrl.
-     * 
-     * @param url url
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String sanitizeUrl(String url) {
-        return url.replaceAll("\\{[^/{}]+}", "placeholder");
+    private static long ipToLong(String ipAddress) {
+        try {
+            return ByteBuffer.wrap(InetAddress.getByName(ipAddress).getAddress()).getInt() & 0xFFFF_FFFFL;
+        } catch (Exception error) {
+            throw new IllegalArgumentException("invalid ip address", error);
+        }
     }
 
-    /**
-     * getNoProxyList.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private static List<String> getNoProxyList() {
-        Set<String> seen = new LinkedHashSet<>();
-        processProxyStr(System.getenv("NO_PROXY"), seen);
-        processProxyStr(System.getenv("no_proxy"), seen);
-        return new ArrayList<>(seen);
+        List<String> result = new ArrayList<>();
+        processProxyString(envReader.apply("NO_PROXY"), result);
+        processProxyString(envReader.apply("no_proxy"), result);
+        return result;
     }
 
-    /**
-     * processProxyStr.
-     * 
-     * @param proxyStr proxyStr
-     * @param seen seen
-     * @since 0.1.7
-     */
-    private static void processProxyStr(String proxyStr, Set<String> seen) {
-        if (proxyStr == null || proxyStr.isBlank()) {
+    private static void processProxyString(String proxyString, List<String> result) {
+        if (proxyString == null || proxyString.isEmpty()) {
             return;
         }
-        String normalized = proxyStr.replace(" ", ",").replace(";", ",");
+        String normalized = proxyString.replace(" ", ",").replace(";", ",");
         for (String item : normalized.split(",")) {
-            String trimmed = item.trim().toLowerCase(Locale.ROOT);
-            if (!trimmed.isEmpty()) {
-                seen.add(trimmed);
+            String candidate = item.trim().toLowerCase(Locale.ROOT);
+            if (!candidate.isEmpty() && !result.contains(candidate)) {
+                result.add(candidate);
             }
         }
     }
 
-    /**
-     * hostnameMatchesNoProxy.
-     * 
-     * @param hostname hostname
-     * @param noProxyList noProxyList
-     * @return the result
-     * @since 0.1.7
-     */
     private static boolean hostnameMatchesNoProxy(String hostname, List<String> noProxyList) {
+        String hostnameLower = hostname.toLowerCase(Locale.ROOT);
         for (String entry : noProxyList) {
             if ("*".equals(entry)) {
                 return true;
             }
-            if (entry.equals(hostname)) {
+            if (entry.equals(hostnameLower)) {
                 return true;
             }
-            if (entry.startsWith(".") && hostname.endsWith(entry)) {
+            if (entry.startsWith(".") && hostnameLower.endsWith(entry)) {
                 return true;
             }
-            if (isIpMatch(hostname, entry)) {
+            if (isIpMatch(hostnameLower, entry)) {
                 return true;
             }
         }
         return false;
     }
 
-    /**
-     * isIpMatch.
-     * 
-     * @param hostname hostname
-     * @param entry entry
-     * @return the result
-     * @since 0.1.7
-     */
     private static boolean isIpMatch(String hostname, String entry) {
         try {
-            InetAddress hostIp = InetAddress.getByName(hostname);
+            InetAddress hostAddress = InetAddress.getByName(hostname);
             if (entry.contains("/")) {
-                // CIDR match
-                return isInCidr(hostIp, entry);
-            } else {
-                InetAddress entryIp = InetAddress.getByName(entry);
-                return hostIp.equals(entryIp);
+                return isInCidr(hostAddress, entry);
             }
-        } catch (Exception e) {
+            return hostAddress.equals(InetAddress.getByName(entry));
+        } catch (Exception ignored) {
             return false;
         }
     }
 
-    /**
-     * isInCidr.
-     * 
-     * @param addr addr
-     * @param cidr cidr
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean isInCidr(InetAddress addr, String cidr) {
+    private static boolean isInCidr(InetAddress address, String cidr) {
         try {
-            String[] parts = cidr.split("/");
+            String[] parts = cidr.split("/", 2);
             InetAddress network = InetAddress.getByName(parts[0]);
-            int prefixLen = Integer.parseInt(parts[1]);
-
-            byte[] addrBytes = addr.getAddress();
+            int prefixLength = Integer.parseInt(parts[1]);
+            byte[] addressBytes = address.getAddress();
             byte[] networkBytes = network.getAddress();
-            if (addrBytes.length != networkBytes.length) {
+            if (addressBytes.length != networkBytes.length) {
                 return false;
             }
-
-            int fullBytes = prefixLen / 8;
-            int remainBits = prefixLen % 8;
+            int fullBytes = prefixLength / 8;
+            int remainingBits = prefixLength % 8;
             for (int i = 0; i < fullBytes; i++) {
-                if (addrBytes[i] != networkBytes[i]) {
+                if (addressBytes[i] != networkBytes[i]) {
                     return false;
                 }
             }
-            if (remainBits > 0 && fullBytes < addrBytes.length) {
-                int mask = 0xFF << (8 - remainBits);
-                if ((addrBytes[fullBytes] & mask) != (networkBytes[fullBytes] & mask)) {
-                    return false;
-                }
+            if (remainingBits == 0 || fullBytes >= addressBytes.length) {
+                return true;
             }
-            return true;
-        } catch (Exception e) {
+            int mask = 0xFF << (8 - remainingBits);
+            return (addressBytes[fullBytes] & mask) == (networkBytes[fullBytes] & mask);
+        } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private static String firstNonEmpty(String... values) {
+        for (String value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 }

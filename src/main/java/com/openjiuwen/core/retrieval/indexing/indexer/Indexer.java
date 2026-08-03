@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.indexer;
@@ -10,74 +10,36 @@ import com.openjiuwen.core.retrieval.embedding.Embedding;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Index manager abstraction.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Indexer} in
+ * {@code openjiuwen/core/retrieval/indexing/indexer/base.py}.
  */
-public interface Indexer extends IndexBackendConfig, AutoCloseable {
-    /**
-     * buildIndex.
-     * 
-     * @param chunks chunks
-     * @param config config
-     * @param embedModel embedModel
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel, Map<String, Object> options);
+public abstract class Indexer {
 
-    /**
-     * updateIndex.
-     * 
-     * @param chunks chunks
-     * @param docId docId
-     * @param config config
-     * @param embedModel embedModel
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean updateIndex(List<TextChunk> chunks, String docId, IndexConfig config, Embedding embedModel,
-            Map<String, Object> options);
+    public abstract CompletableFuture<Boolean> buildIndex(
+            List<TextChunk> chunks,
+            IndexConfig config,
+            Embedding embedModel,
+            Map<String, Object> kwargs
+    );
 
-    /**
-     * deleteIndex.
-     * 
-     * @param docId docId
-     * @param indexName indexName
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean deleteIndex(String docId, String indexName, Map<String, Object> options);
+    public abstract CompletableFuture<Boolean> updateIndex(
+            List<TextChunk> chunks,
+            String docId,
+            IndexConfig config,
+            Embedding embedModel,
+            Map<String, Object> kwargs
+    );
 
-    /**
-     * indexExists.
-     * 
-     * @param indexName indexName
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean indexExists(String indexName);
+    public abstract CompletableFuture<Boolean> deleteIndex(
+            String docId,
+            String indexName,
+            Map<String, Object> kwargs
+    );
 
-    /**
-     * getIndexInfo.
-     * 
-     * @param indexName indexName
-     * @return the result
-     * @since 0.1.7
-     */
-    Map<String, Object> getIndexInfo(String indexName);
+    public abstract CompletableFuture<Boolean> indexExists(String indexName);
 
-    @Override
-    /**
-     * close.
-     * 
-     * @since 0.1.7
-     */
-    default void close() {
-    }
+    public abstract CompletableFuture<Map<String, Object>> getIndexInfo(String indexName);
 }

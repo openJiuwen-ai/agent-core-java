@@ -15,25 +15,15 @@ import java.util.Optional;
 
 /**
  * Reflection-based extractor that turns Java method signatures into JSON Schema.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code CallableSchemaExtractor} in
+ * {@code openjiuwen/core/foundation/tool/utils/callable_schema_extractor.py}.</p>
  */
 public final class CallableSchemaExtractor {
-    /**
-     * CallableSchemaExtractor.
-     * 
-     * @since 0.1.7
-     */
+
     private CallableSchemaExtractor() {
     }
 
-    /**
-     * generateSchema.
-     * 
-     * @param method method
-     * @return the result
-     * @since 0.1.7
-     */
     public static Map<String, Object> generateSchema(Method method) {
         Map<String, Object> schema = new LinkedHashMap<>();
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -49,22 +39,15 @@ public final class CallableSchemaExtractor {
         }
 
         schema.put("type", "object");
-        schema.put("title", humanizeName(method.getName()));
         schema.put("properties", properties);
         schema.put("additionalProperties", false);
+        schema.put("title", humanizeName(method.getName()));
         if (!required.isEmpty()) {
             schema.put("required", required);
         }
         return schema;
     }
 
-    /**
-     * extractFunctionDescription.
-     * 
-     * @param method method
-     * @return the result
-     * @since 0.1.7
-     */
     public static String extractFunctionDescription(Method method) {
         return humanizeName(method.getName());
     }

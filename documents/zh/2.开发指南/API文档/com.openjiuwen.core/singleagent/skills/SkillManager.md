@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.skills.SkillManager
+# com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.SkillManager
 
 ## 类 SkillManager
 

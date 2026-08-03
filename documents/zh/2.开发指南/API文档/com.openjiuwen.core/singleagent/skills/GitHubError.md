@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.skills.GitHubError
+# com.openjiuwen.core.single_agent.skills.GitHubError
 
 ## 类 GitHubError
 

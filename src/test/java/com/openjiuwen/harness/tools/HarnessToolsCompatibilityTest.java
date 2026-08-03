@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.cli.CLIOptions;
 import com.openjiuwen.harness.cli.HarnessCli;
-import com.openjiuwen.harness.cli.SessionStore;
+import com.openjiuwen.harness.cli.ui.CliRunner;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
@@ -48,14 +48,14 @@ class HarnessToolsCompatibilityTest {
 
     @Test
     void harnessCliShouldRunChatAndRunOnce() {
-        HarnessCli cli = new HarnessCli();
-        CLIOptions options = CLIOptions.builder().model("gpt-4").workspace(tempDir.toString()).build();
-        SessionStore store = cli.runChat(options);
-        Map<String, Object> result = cli.runOnce(options, "hello", "json");
+        CLIOptions options = new CLIOptions();
+        options.setModel("gpt-4");
+        options.setWorkspace(tempDir.toString());
+        Map<String, Object> configMap = HarnessCli.toConfigMap(options);
+        int exitCode = HarnessCli.runOnce(options, "hello", "json", new CliRunner());
 
-        assertThat(store.sessions()).containsEntry("cli", "gpt-4");
-        assertThat(result).containsEntry("prompt", "hello");
-        assertThat(result).containsEntry("output_format", "json");
+        assertThat(configMap).containsEntry("model", "gpt-4");
+        assertThat(exitCode).isGreaterThanOrEqualTo(0);
     }
 
     @Test

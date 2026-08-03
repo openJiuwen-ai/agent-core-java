@@ -6,8 +6,9 @@ package com.openjiuwen.core.workflow.component.llm;
 
 /**
  * Questioner response type.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code ResponseType} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public enum ResponseType {
     REPLY_DIRECTLY("reply_directly");
@@ -18,23 +19,10 @@ public enum ResponseType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * isValid.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     public static boolean isValid(String value) {
         for (ResponseType t : values()) {
             if (t.value.equals(value)) {

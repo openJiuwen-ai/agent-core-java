@@ -5,23 +5,23 @@
 package com.openjiuwen.core.graph.store;
 
 import com.openjiuwen.core.graph.pregel.Message;
-
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Persisted state of a Pregel graph execution for recovery/resume.
+ * Persisted graph execution state for recovery and resume.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphState}.
- * Named {@code GraphStoreState} to avoid conflict with the graph node state class.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code GraphState} in
+ * {@code openjiuwen/core/graph/store/base.py}.
+ * Named {@code GraphStoreState} to avoid conflicting with
+ * {@code com.openjiuwen.core.graph.GraphState}.
  */
 public class GraphStoreState implements Serializable {
+
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -32,101 +32,54 @@ public class GraphStoreState implements Serializable {
     private final Map<String, PendingNode> pendingNode;
     private final Map<String, Integer> nodeVersion;
 
-    /**
-     * GraphStoreState.
-     * 
-     * @param ns ns
-     * @param step step
-     * @param channelValues channelValues
-     * @param pendingBuffer pendingBuffer
-     * @param pendingNode pendingNode
-     * @param nodeVersion nodeVersion
-     * @since 0.1.7
-     */
-    public GraphStoreState(String ns, int step, Map<String, Object> channelValues, List<Message> pendingBuffer,
-            Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion) {
+    public GraphStoreState(
+            String ns,
+            int step,
+            Map<String, Object> channelValues,
+            List<Message> pendingBuffer,
+            Map<String, PendingNode> pendingNode,
+            Map<String, Integer> nodeVersion
+    ) {
         this.ns = ns;
         this.step = step;
-        this.channelValues = channelValues != null ? channelValues : new HashMap<>();
-        this.pendingBuffer = pendingBuffer != null ? pendingBuffer : Collections.emptyList();
-        this.pendingNode = pendingNode != null ? pendingNode : new HashMap<>();
-        this.nodeVersion = nodeVersion != null ? nodeVersion : new HashMap<>();
+        this.channelValues = channelValues != null ? new LinkedHashMap<>(channelValues) : new LinkedHashMap<>();
+        this.pendingBuffer = pendingBuffer != null ? new ArrayList<>(pendingBuffer) : new ArrayList<>();
+        this.pendingNode = pendingNode != null ? new LinkedHashMap<>(pendingNode) : new LinkedHashMap<>();
+        this.nodeVersion = nodeVersion != null ? new LinkedHashMap<>(nodeVersion) : new LinkedHashMap<>();
     }
 
-    /**
-     * getNs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public static GraphStoreState create(
+            String ns,
+            int step,
+            Map<String, Object> channelSnapshot,
+            List<Message> pendingBuffer,
+            Map<String, PendingNode> pendingNode,
+            Map<String, Integer> nodeVersion
+    ) {
+        return new GraphStoreState(ns, step, channelSnapshot, pendingBuffer, pendingNode, nodeVersion);
+    }
+
     public String getNs() {
         return ns;
     }
 
-    /**
-     * getStep.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int getStep() {
         return step;
     }
 
-    /**
-     * getChannelValues.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Object> getChannelValues() {
-        return channelValues;
+        return new LinkedHashMap<>(channelValues);
     }
 
-    /**
-     * getPendingBuffer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Message> getPendingBuffer() {
-        return pendingBuffer;
+        return new ArrayList<>(pendingBuffer);
     }
 
-    /**
-     * getPendingNode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, PendingNode> getPendingNode() {
-        return pendingNode;
+        return new LinkedHashMap<>(pendingNode);
     }
 
-    /**
-     * getNodeVersion.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, Integer> getNodeVersion() {
-        return nodeVersion;
-    }
-
-    /**
-     * Factory method to create a new GraphStoreState.
-     * 
-     * @param ns ns
-     * @param step step
-     * @param channelSnapshot channelSnapshot
-     * @param pendingBuffer pendingBuffer
-     * @param pendingNode pendingNode
-     * @param nodeVersion nodeVersion
-     * @return the result
-     * @since 0.1.7
-     */
-    public static GraphStoreState create(String ns, int step, Map<String, Object> channelSnapshot,
-            List<Message> pendingBuffer, Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion) {
-        return new GraphStoreState(ns, step, channelSnapshot, pendingBuffer, pendingNode, nodeVersion);
+        return new LinkedHashMap<>(nodeVersion);
     }
 }

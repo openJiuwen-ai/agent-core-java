@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow.component;
 
-import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.BaseSession;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -16,33 +16,20 @@ import java.util.Map;
  * Collects inputs from multiple data sources and renders the template
  * once all inputs are available.
  * <p>
- * Mirrors Python's {@code TemplateBatchProcessor} from {@code end_comp.py}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TemplateBatchProcessor} in
+ * {@code openjiuwen/core/workflow/components/flow/end_comp.py}.
  */
 public class TemplateBatchProcessor {
+
     private final TemplateProcessor template;
     private final Map<String, Object> inputs;
     private volatile boolean rendered = false;
 
-    /**
-     * TemplateBatchProcessor.
-     * 
-     * @param template template
-     * @param inputs inputs
-     * @since 0.1.7
-     */
     public TemplateBatchProcessor(TemplateProcessor template, Map<String, Object> inputs) {
         this.template = template;
         this.inputs = inputs != null ? new HashMap<>(inputs) : new HashMap<>();
     }
 
-    /**
-     * isRendered.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isRendered() {
         return rendered;
     }
@@ -52,13 +39,8 @@ public class TemplateBatchProcessor {
      * Streams through the template processor and concatenates all frame data.
      * <p>
      * Mirrors Python's {@code TemplateBatchProcessor.render(inputs, session)}.
-     * 
-     * @param additionalInputs additionalInputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
      */
-    public String render(Map<String, Object> additionalInputs, NodeSessionApi session) {
+    public String render(Map<String, Object> additionalInputs, BaseSession session) {
         rendered = true;
         Map<String, Object> mergedInputs = new HashMap<>(this.inputs);
         if (additionalInputs != null) {
@@ -70,7 +52,7 @@ public class TemplateBatchProcessor {
             Map<String, Object> frame = frames.next();
             Object data = frame.get("data");
             if (data != null) {
-                answer.append(data);
+                answer.append(TemplateUtils.stringifyTemplateValue(data));
             }
         }
         return answer.toString();

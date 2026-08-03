@@ -7,7 +7,7 @@ Java 版 `WorkflowAgent` 的“多工作流跳转”不是单条 graph 内部的
 1. `WorkflowAgent`：负责把多条 workflow 注册到 agent 与全局资源管理器；
 2. `WorkflowEventHandler`：负责意图识别、保存中断任务、根据用户回复恢复对应 workflow。
 
-这里以 `examples/workflow_agent` 为主线，解释 Java 当前已经可验证的多 workflow 选择与恢复路径。更适合把它理解成多 workflow 入口与恢复机制，而不是一个超出仓库实现范围的“通用任务编排平台”。
+这里沿用 Python 文档中 `workflow_agent` 示例的业务语义，并对照 Java 当前源码和测试解释已经可验证的多 workflow 选择与恢复路径。Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录，因此不要把旧示例路径当成可打开的 Java 入口。
 
 ## 先区分两种“跳转”
 
@@ -20,9 +20,9 @@ Java 版 `WorkflowAgent` 的“多工作流跳转”不是单条 graph 内部的
 
 如果你的问题是“在一条 workflow 里，满足某个条件后应该走哪个节点”，那应该回到 [工作流 / 构建工作流](../工作流/构建工作流.md) 和条件边文档。
 
-## 示例里实际注册了什么
+## 多 workflow 场景里通常注册什么
 
-`examples/workflow_agent/WorkflowAgentExampleSupport.java` 当前注册了三条 workflow：
+Python 文档的示例主线注册了三条 workflow；Java 侧可以按同样结构映射成三条 `Workflow`：
 
 - `transfer_flow_multi`：转账服务
 - `invest_flow_multi`：理财服务
@@ -60,9 +60,9 @@ start -> questioner -> end
 - 通过资源 ID 取回真正的 workflow 实例；
 - 把“workflow 选择”和“workflow 执行”连接起来。
 
-## 示例主线：先创建 agent，再注册 workflow
+## 主线：先创建 agent，再注册 workflow
 
-示意代码与 example 基本一致：
+示意代码沿用 Python 文档的多 workflow 结构，并映射到 Java API：
 
 ```java
 WorkflowAgentConfig config = WorkflowAgentConfig.builder()
@@ -128,9 +128,9 @@ workflow_controller.interrupted_tasks
 
 这里的 `component_id` 很关键，因为下一次用户回复时，事件处理器就是靠它把回答路由回正确的 workflow。
 
-## 结合示例看完整交互链路
+## 结合 Python 示例语义看完整交互链路
 
-`examples/workflow_agent/WorkflowAgentExampleSupport.java` 的命令行示例使用同一个 `conversationId` 贯穿全程：
+完整交互链路应使用同一个 `conversationId` 贯穿全程：
 
 ### 第一步：用户发起新请求
 
@@ -199,7 +199,7 @@ reply> 62220001
 assistant> 余额查询完成，登记的账户号码为 62220001。
 ```
 
-这正是示例 README 已实际跑通的三条主业务流。
+这正是 Python 文档示例希望表达的三条主业务流；Java 文档描述时应以当前源码和测试可验证的机制为边界。
 
 ## 为什么这里强调 `conversation_id`
 
@@ -234,22 +234,22 @@ Runner / WorkflowAgent
 - workflow 内部仍然使用 `InteractiveInput`、`InteractionOutput`、checkpointer 这些基础机制；
 - `WorkflowAgent` 做的是“多条 workflow 之间的选择与恢复调度”。
 
-## 当前 Java 示例真正验证了什么
+## 当前 Java 源码和测试可验证什么
 
-基于当前 example、源码和 API 文档，可以确认以下事实：
+基于当前源码、测试和 API 文档，可以确认以下事实：
 
 - `WorkflowAgent` 可以注册多条 workflow；
 - Java 侧用 workflow 描述文本进行 LLM 意图路由；
 - `QuestionerComponent` 中断后，可以在同一会话中继续执行；
 - 恢复时通过 `InteractiveInput.update(nodeId, userInput)` 把回答送回对应 workflow；
-- 示例命令行会在结束时调用 `Runner.release(conversationId)` 清掉会话状态。
+- 会话结束时应调用 `Runner.release(conversationId)` 清掉会话状态。
 
 ## 当前 Java 能力边界
 
 为了避免写出超出实现范围的承诺，这里明确几点：
 
 - 这里讨论的是 **`WorkflowAgent` 管理多条顶层 workflow**，不是单条 workflow 内部的任意节点跳转。
-- `examples/workflow_agent` 的命令行界面重点展示“多 workflow 注册 + 单轮补问恢复”主线；更细粒度的多中断并存行为主要由 `WorkflowEventHandler` 的状态管理逻辑保证。
+- 当前 Java 文档不再引用不存在的 `examples/workflow_agent` 命令行目录；更细粒度的多中断并存行为主要由 `WorkflowEventHandler` 的状态管理逻辑保证。
 - Java 当前流式路径里，交互回放存在边界：`stream` 路径只保证当前需要展示的交互能返回给调用方，不应把它理解成复杂中断集合一定能够完整重放。
 - `QuestionerComponent` 触发时底层可能打印 `GraphInterrupt` 的 `ERROR` 日志；按照示例 README，这属于正常等待输入行为，不代表示例失败。
 
@@ -261,5 +261,6 @@ Runner / WorkflowAgent
 - [API 文档：WorkflowAgent](../API文档/com.openjiuwen.core/application/workflow/WorkflowAgent.md)
 - [API 文档：WorkflowEventHandler](../API文档/com.openjiuwen.core/application/workflow/WorkflowEventHandler.md)
 - [API 文档：WorkflowController](../API文档/com.openjiuwen.core/application/workflow/WorkflowController.md)
-- [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
-- [示例：workflow_agent/multi_workflow_agent_demo](../../../../examples/workflow_agent/multi_workflow_agent_demo/README.md)
+- [源码：WorkflowAgent](../../../../src/main/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgent.java)
+- [源码：WorkflowEventHandler](../../../../src/main/java/com/openjiuwen/core/application/workflow_agent/WorkflowEventHandler.java)
+- [测试：WorkflowAgent 多工作流](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentMultiWorkflowMissingTest.java)

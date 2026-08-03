@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.graph.stream_actor;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -12,147 +13,90 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 /**
- * Manages the stream lifecycle for a single graph vertex, coordinating stream-in
- * abilities (COLLECT/TRANSFORM) with message producers.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamActor}.
- * Uses Virtual Threads and CompletableFuture instead of asyncio tasks.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code StreamActor} in
+ * {@code openjiuwen/core/graph/stream_actor/base.py}.
  */
 public class StreamActor {
-    private static final LoggerProtocol logger = Loggers.GRAPH;
-    private static final long SHUTDOWN_TIMEOUT_MS = 5000;
 
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
+    private static final LoggerProtocol LOGGER = Loggers.GRAPH;
+    private static final long SHUTDOWN_TIMEOUT_MS = 5000L;
+    private static final ExecutorService VIRTUAL_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
 
-    /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
+    private final StreamConsumer vertex;
+    private final String nodeId;
+    private final List<RunningTask> runningTasks = new ArrayList<>();
+
     private Future<?> task;
     private CompletableFuture<Void> taskCompletion;
     private CompletableFuture<Void> taskError;
-    private final StreamConsumer vertex;
-    private final String nodeId;
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<RunningTask> runningTasks = new ArrayList<>();
-
-    /**
-     * StreamActor.
-     * 
-     * @param nodeId nodeId
-     * @param vertex vertex
-     * @param abilities abilities
-     * @param sources sources
-     * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
-     * @since 0.1.7
-     */
-    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities, List<String> sources,
-            long streamGeneratorTimeoutSeconds) {
+    public StreamActor(
+            String nodeId,
+            StreamConsumer vertex,
+            List<ComponentAbility> abilities,
+            List<List<String>> sourceGroups,
+            double streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
         this.vertex = vertex;
         for (ComponentAbility ability : abilities) {
-            processors.put(ability, new StreamProcessor(nodeId, sources, streamGeneratorTimeoutSeconds));
+            processors.put(ability, new StreamProcessor(nodeId, sourceGroups, streamGeneratorTimeoutSeconds));
         }
     }
 
     /**
-     * Send a stream message to this actor.
-     * 
-     * @param message the stream message (Map with single producer→content entry)
-     * @param sourceAbility the ability that produced this message (STREAM/TRANSFORM)
-     * @param firstFrame whether this is the first frame of a new stream
-     * @param producerId the ID of the producer node
-     * @since 0.1.7
+     * Sends a stream message to the actor, starting the vertex stream call on the first valid frame.
+     *
+     * @param message stream message
+     * @param sourceAbility source component ability
+     * @param firstFrame whether this is the first frame
+     * @param producerId producer node id for logging
      */
-    public synchronized void send(Object message, ComponentAbility sourceAbility, boolean firstFrame,
+    public synchronized void send(
+            Object message,
+            ComponentAbility sourceAbility,
+            boolean firstFrame,
             String producerId) {
+        String abilityName = sourceAbility.getAbilityName();
         if (!vertex.shouldHandleMessage()) {
-            logger.warning("Discard chunk send from [{}], {}[{}] unable to handle", producerId, nodeId,
-                    sourceAbility.name());
+            LOGGER.warning("Discard chunk send from [{}], {}[{}] unable to handle",
+                    producerId, nodeId, abilityName);
             return;
         }
 
-        // Check if we need to start a new stream task
         if (task == null || task.isDone()) {
-            if (task != null && task.isDone() && taskFailure(task) != null) {
-                logger.warning("Exception occurred while sending chunk of node [{}]", nodeId, taskFailure(task));
-            }
+            taskFailure(task).ifPresent(failure ->
+                    LOGGER.warning("Exception occurred while sending chunk of node [{}]", nodeId, failure));
             if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] occur exception", producerId, nodeId,
-                        sourceAbility.name());
+                LOGGER.warning("Discard chunk send from [{}], {}[{}] occur exception",
+                        producerId, nodeId, abilityName);
                 return;
             }
-            if (!firstFrame || !vertex.isDone()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] vertex is done", producerId, nodeId,
-                        sourceAbility.name());
-                return;
-            }
-
-            // Start stream call on the vertex
-            CountDownLatch latch = new CountDownLatch(1);
-            taskError = new CompletableFuture<>();
-            taskCompletion = new CompletableFuture<>();
-            task = VIRTUAL_EXECUTOR.submit(() -> {
-                try {
-                    vertex.streamCall(latch, this::errorCallback);
-                } finally {
-                    taskCompletion.complete(null);
+            if (hasActiveProcessorTasks()) {
+                LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
+                        producerId, nodeId, abilityName);
+            } else {
+                if (!firstFrame || !vertex.isDone()) {
+                    LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
+                            producerId, nodeId, abilityName);
+                    return;
                 }
-            });
-
-            try {
-                latch.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-
-            logger.debug("Stream actor task node [{}] started", nodeId);
-
-            // Start processors
-            for (Map.Entry<ComponentAbility, StreamProcessor> entry : processors.entrySet()) {
-                ComponentAbility ability = entry.getKey();
-                StreamProcessor processor = entry.getValue();
-                CompletableFuture<Void> completion = new CompletableFuture<>();
-                Future<?> processorTask = VIRTUAL_EXECUTOR.submit(() -> {
-                    try {
-                        processor.run(ability);
-                    } finally {
-                        completion.complete(null);
-                    }
-                });
-                runningTasks.add(new RunningTask(ability, processorTask, completion));
+                startStreamCall();
             }
         }
 
-        logger.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, sourceAbility.name());
-
-        // Dispatch to all processors
+        LOGGER.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, abilityName);
         StreamPayload payload = new StreamPayload(message, sourceAbility);
         for (StreamProcessor processor : processors.values()) {
             processor.receive(payload);
@@ -160,17 +104,17 @@ public class StreamActor {
     }
 
     /**
-     * generator.
-     * 
-     * @param ability ability
-     * @param schema schema
-     * @param streamCallback streamCallback
-     * @return the result
-     * @since 0.1.7
+     * Returns generator iterators for a consumer ability.
+     *
+     * @param ability consumer ability
+     * @param schema stream input schema
+     * @param streamCallback optional callback invoked after each yielded chunk
+     * @return generator map or empty map when the ability has no processor
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> generator(ComponentAbility ability, Map<String, Object> schema,
-            Consumer<Object> streamCallback) {
+    public Map<String, Object> generator(
+            ComponentAbility ability,
+            Map<String, Object> schema,
+            Consumer<Map<String, Object>> streamCallback) {
         StreamProcessor processor = processors.get(ability);
         if (processor == null) {
             return Map.of();
@@ -179,9 +123,7 @@ public class StreamActor {
     }
 
     /**
-     * Wait until the stream call and all processor tasks complete.
-     * 
-     * @since 0.1.7
+     * Waits for the stream call and processor tasks to complete.
      */
     public synchronized void awaitCompletion() {
         if (taskCompletion != null) {
@@ -192,13 +134,21 @@ public class StreamActor {
         }
     }
 
+    private boolean hasActiveProcessorTasks() {
+        for (RunningTask runningTask : runningTasks) {
+            Future<?> future = runningTask.future();
+            if (future != null && !future.isDone() && !future.isCancelled()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Shutdown the stream actor, cancelling all running tasks.
-     * 
-     * @since 0.1.7
+     * Cancels the stream call and all processor tasks.
      */
     public synchronized void shutdown() {
-        logger.debug("Begin to shutdown stream actor task for {}", nodeId);
+        LOGGER.debug("Begin to shutdown stream actor task for {}", nodeId);
         try {
             if (task != null && !task.isDone() && !task.isCancelled()) {
                 task.cancel(true);
@@ -219,7 +169,7 @@ public class StreamActor {
             for (RunningTask runningTask : runningTasks) {
                 awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
             }
-            logger.debug("Succeed to shutdown stream actor task for {}", nodeId);
+            LOGGER.debug("Succeed to shutdown stream actor task for {}", nodeId);
         } finally {
             task = null;
             taskCompletion = null;
@@ -227,68 +177,85 @@ public class StreamActor {
         }
     }
 
-    /**
-     * errorCallback.
-     * 
-     * @param error error
-     * @since 0.1.7
-     */
+    private void startStreamCall() {
+        CountDownLatch latch = new CountDownLatch(1);
+        taskError = new CompletableFuture<>();
+        taskCompletion = new CompletableFuture<>();
+        task = VIRTUAL_EXECUTOR.submit(() -> {
+            try {
+                vertex.streamCall(latch, this::errorCallback);
+                taskCompletion.complete(null);
+            } catch (Throwable throwable) {
+                taskCompletion.completeExceptionally(throwable);
+                throw throwable;
+            }
+        });
+
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+
+        LOGGER.debug("Stream actor task node [{}] started", nodeId);
+        for (Map.Entry<ComponentAbility, StreamProcessor> entry : processors.entrySet()) {
+            ComponentAbility ability = entry.getKey();
+            StreamProcessor processor = entry.getValue();
+            CompletableFuture<Void> completion = new CompletableFuture<>();
+            Future<?> processorTask = VIRTUAL_EXECUTOR.submit(() -> {
+                try {
+                    processor.run(ability);
+                    completion.complete(null);
+                } catch (Throwable throwable) {
+                    completion.completeExceptionally(throwable);
+                    throw throwable;
+                }
+            });
+            runningTasks.add(new RunningTask(ability, processorTask, completion));
+        }
+    }
+
     private void errorCallback(Exception error) {
         if (error != null && taskError != null && !taskError.isDone()) {
             taskError.completeExceptionally(error);
         }
     }
 
-    /**
-     * taskFailure.
-     * 
-     * @param future future
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Throwable taskFailure(Future<?> future) {
+    private static Optional<Throwable> taskFailure(Future<?> future) {
+        if (future == null) {
+            return Optional.empty();
+        }
         try {
             future.get();
-            return null;
-        } catch (InterruptedException e) {
+            return Optional.empty();
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            return e;
-        } catch (ExecutionException e) {
-            return e.getCause() != null ? e.getCause() : e;
-        } catch (Exception e) {
-            return null;
+            return Optional.of(exception);
+        } catch (ExecutionException exception) {
+            return Optional.of(exception.getCause() == null ? exception : exception.getCause());
+        } catch (RuntimeException exception) {
+            return Optional.of(exception);
         }
     }
 
-    /**
-     * awaitCompletion.
-     * 
-     * @param completion completion
-     * @param taskName taskName
-     * @since 0.1.7
-     */
     private void awaitCompletion(CompletableFuture<Void> completion, String taskName) {
         try {
             completion.get(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            logger.warning("Timed out waiting for {} of node [{}] to stop", taskName, nodeId);
-        } catch (InterruptedException e) {
+        } catch (TimeoutException exception) {
+            LOGGER.warning("Timed out waiting for {} of node [{}] to stop", taskName, nodeId);
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            logger.warning("Interrupted while waiting for {} of node [{}] to stop", taskName, nodeId);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            logger.warning("Failed while waiting for {} of node [{}] to stop", taskName, nodeId, cause);
+            LOGGER.warning("Interrupted while waiting for {} of node [{}] to stop", taskName, nodeId);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+            LOGGER.warning("Failed while waiting for {} of node [{}] to stop", taskName, nodeId, cause);
         }
     }
 
-    /**
-     * RunningTask.
-     * 
-     * @param ability ability
-     * @param future future
-     * @param completion completion
-     * @since 0.1.7
-     */
-    private record RunningTask(ComponentAbility ability, Future<?> future, CompletableFuture<Void> completion) {
+    private record RunningTask(
+            ComponentAbility ability,
+            Future<?> future,
+            CompletableFuture<Void> completion) {
     }
 }

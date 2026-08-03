@@ -1,4 +1,4 @@
-﻿# com.openjiuwen.core.application.schema.ConstrainConfig
+﻿# com.openjiuwen.core.single_agent.legacy.config.ConstrainConfig
 
 ## class ConstrainConfig
 

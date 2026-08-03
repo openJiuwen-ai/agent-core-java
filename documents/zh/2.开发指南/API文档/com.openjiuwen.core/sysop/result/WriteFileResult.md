@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.WriteFileResult
+# com.openjiuwen.core.sys_operation.result.WriteFileResult
 
 ## 类 WriteFileResult
 

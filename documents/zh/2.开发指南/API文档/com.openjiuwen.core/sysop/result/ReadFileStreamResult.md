@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.ReadFileStreamResult
+# com.openjiuwen.core.sys_operation.result.ReadFileStreamResult
 
 ## 类 ReadFileStreamResult
 

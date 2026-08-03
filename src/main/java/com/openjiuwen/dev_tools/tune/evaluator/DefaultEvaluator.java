@@ -6,6 +6,7 @@ package com.openjiuwen.dev_tools.tune.evaluator;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
@@ -13,152 +14,170 @@ import com.openjiuwen.dev_tools.tune.Case;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import com.openjiuwen.dev_tools.tune.TuneUtils;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 
 /**
- * Default evaluator using an LLM to judge predictions.
- * <p>
- * Mirrors Python's {@code DefaultEvaluator} in
- * {@code openjiuwen.dev_tools.tune.evaluator.evaluator}.
- * 
- * @since 0.1.7
+ * LLM-as-judge evaluator for comparing model output with expected answers.
+ *
+ * <p>Mirrors Python's {@code DefaultEvaluator} in
+ * {@code openjiuwen/dev_tools/tune/evaluator/evaluator.py}.</p>
  */
 public class DefaultEvaluator extends BaseEvaluator {
+
     private final Model model;
-    private final PromptTemplate metricTemplate;
-    private final ModelRequestConfig modelConfig;
-    private final ModelClientConfig modelClientConfig;
     private final String metric;
+    private final PromptTemplate metricTemplate;
 
-    /**
-     * DefaultEvaluator.
-     * 
-     * @param modelConfig modelConfig
-     * @param modelClientConfig modelClientConfig
-     * @param metric metric
-     * @since 0.1.7
-     */
-    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig, String metric) {
-        this.modelConfig = modelConfig;
-        this.modelClientConfig = modelClientConfig;
-        this.metric = metric != null ? metric : "";
-        this.model = new Model(modelClientConfig, modelConfig);
-        this.metricTemplate = buildMetricTemplate(this.metric);
-    }
-
-    /**
-     * DefaultEvaluator.
-     * 
-     * @param modelConfig modelConfig
-     * @param modelClientConfig modelClientConfig
-     * @since 0.1.7
-     */
     public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(modelConfig, modelClientConfig, "");
     }
 
-    /**
-     * getModelConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public ModelRequestConfig getModelConfig() {
-        return modelConfig;
+    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig, String metric) {
+        this(new Model(modelClientConfig, modelConfig), metric);
     }
 
-    /**
-     * getModelClientConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public ModelClientConfig getModelClientConfig() {
-        return modelClientConfig;
+    DefaultEvaluator(Model model, String metric) {
+        this.model = Objects.requireNonNull(model, "model");
+        this.metric = metric == null ? "" : metric;
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("user_metrics", this.metric);
+        this.metricTemplate = EvaluatorTemplates.LLM_METRIC_TEMPLATE.format(keywords);
     }
 
-    /**
-     * getMetric.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getMetric() {
         return metric;
     }
 
-    /**
-     * evaluate.
-     * 
-     * @param case_ case_
-     * @param predict predict
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public EvaluatedCase evaluate(Case case_, Map<String, Object> predict) {
-        EvaluatedCase evaluatedCase =
-            EvaluatedCase.builder().case_(case_).answer(predict).score(0.0f).reason("").build();
-
+    public EvaluatedCase evaluate(Case caseValue, Map<String, Object> predict) {
+        List<BaseMessage> messages = metricTemplate.format(metricKeywords(caseValue, predict)).toMessages();
+        EvaluatedCase evaluatedCase = new EvaluatedCase(caseValue, predict, 0.0d, "");
+        String response;
         try {
-            var messages =
-                metricTemplate
-                        .format(Map.of("question", String.valueOf(case_.getInputs()), "expected_answer",
-                                String.valueOf(case_.getLabel()), "model_answer", String.valueOf(predict)))
-                        .toMessages();
-            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
-            Optional<Map<String, Object>> evaluatedResult =
-                TuneUtils.parseJsonFromLlmResponse(response != null ? response.getContentAsString() : "");
-
-            if (evaluatedResult.isEmpty()) {
-                evaluatedCase.setReason("Failed to evaluate case due to parsing error");
-                return evaluatedCase;
-            }
-
-            Object result = evaluatedResult.get().getOrDefault("result", false);
-            evaluatedCase.setReason(String.valueOf(evaluatedResult.get().getOrDefault("reason", "")));
-            if (Boolean.TRUE.equals(result)
-                    || (result instanceof String resultText && "true".equalsIgnoreCase(resultText.trim()))) {
-                evaluatedCase.setScore(1.0f);
-            }
-        } catch (Exception e) {
-            evaluatedCase.setReason("Failed to evaluate case due to model error: " + e.getMessage());
+            response = invokeModel(messages);
+        } catch (RuntimeException exception) {
+            evaluatedCase.setReason("Failed to evaluate case due to model error");
+            return evaluatedCase;
         }
 
+        Map<String, Object> evaluatedResult = extractEvaluateResult(response, caseValue, predict);
+        if (evaluatedResult == null || evaluatedResult.isEmpty()) {
+            evaluatedCase.setReason("Failed to evaluate case due to parsing error");
+            return evaluatedCase;
+        }
+        evaluatedCase.setReason(stringValue(evaluatedResult.get("reason")));
+        if (isPassResult(evaluatedResult.getOrDefault("result", false))) {
+            evaluatedCase.setScore(1.0d);
+            return evaluatedCase;
+        }
         return evaluatedCase;
     }
 
-    /**
-     * buildMetricTemplate.
-     * 
-     * @param metric metric
-     * @return the result
-     * @since 0.1.7
-     */
-    private PromptTemplate buildMetricTemplate(String metric) {
-        return PromptTemplate.builder().content(METRIC_TEMPLATE.formatted(metric)).build();
+    Map<String, Object> extractEvaluateResult(String response, Case caseValue, Map<String, Object> predict) {
+        Map<String, Object> parsed = TuneUtils.parseJsonFromLlmResponse(response);
+        if (parsed != null && parsed.containsKey("result") && parsed.containsKey("reason")) {
+            return parsed;
+        }
+
+        List<BaseMessage> messages = EvaluatorTemplates.LLM_METRIC_RETRY_TEMPLATE
+                .format(retryKeywords(caseValue, predict, response))
+                .toMessages();
+        String retryResponse;
+        try {
+            retryResponse = invokeModel(messages);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+        return TuneUtils.parseJsonFromLlmResponse(retryResponse);
     }
 
-    private static final String METRIC_TEMPLATE = """
-            浣犳槸涓€涓瓟妗堟牎楠屼笓瀹讹紝璐熻矗鏍￠獙缁欏畾鐨勬ā鍨嬪洖绛斿拰鏍囧噯绛旀涔嬮棿鐨勫惈涔夊拰缁撹涓€鑷存€с€?
+    boolean isPassResult(Object result) {
+        if (Boolean.TRUE.equals(result)) {
+            return true;
+        }
+        if (result instanceof String text) {
+            return "true".equalsIgnoreCase(text.strip());
+        }
+        return false;
+    }
 
-            - 濡傛灉妯″瀷鍥炵瓟鍜屾爣鍑嗙瓟妗堝惈涔変竴鑷达紝杩斿洖`true`銆?
-            - 濡傛灉妯″瀷鍥炵瓟鍜屾爣鍑嗙瓟妗堝惈涔変笉涓€鑷达紝杩斿洖`false`銆?
+    private String invokeModel(List<BaseMessage> messages) {
+        CompletionStage<AssistantMessage> stage = model.invoke(messages);
+        AssistantMessage assistantMessage = stage.toCompletableFuture().join();
+        return assistantMessage == null ? "" : assistantMessage.getContentAsString();
+    }
 
-            鐢ㄦ埛鑷畾涔夋牎楠岃鍒欙細
-            %s
+    private static Map<String, Object> metricKeywords(Case caseValue, Map<String, Object> predict) {
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("question", pythonString(caseValue.getInputs()));
+        keywords.put("expected_answer", pythonString(caseValue.getLabel()));
+        keywords.put("model_answer", pythonString(predict));
+        return keywords;
+    }
 
-            杈撳嚭JSON鏍煎紡锛?
-            ```json
-            {
-              "result": true/false,
-              "reason": "鏍￠獙鐞嗙敱"
+    private static Map<String, Object> retryKeywords(Case caseValue, Map<String, Object> predict, String response) {
+        Map<String, Object> keywords = metricKeywords(caseValue, predict);
+        keywords.put("nonstandard_evaluated_result", response);
+        return keywords;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Character character) {
+            return character.toString();
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .map(entry -> pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()))
+                    .collect(Collectors.joining(", ", "{", "}"));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<String> parts = new ArrayList<>();
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                parts.add(pythonRepr(iterator.next()));
             }
-            ```
+            return "[" + String.join(", ", parts) + "]";
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            List<String> parts = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                parts.add(pythonRepr(Array.get(value, index)));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        return String.valueOf(value);
+    }
 
-            [闂]锛歿{{question}}
-            [鏍囧噯绛旀]锛歿{{expected_answer}}
-            [妯″瀷鍥炵瓟]锛歿{{model_answer}}
-            """;
+    private static String pythonRepr(Object value) {
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Character character) {
+            String text = character.toString();
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        return pythonString(value);
+    }
 }

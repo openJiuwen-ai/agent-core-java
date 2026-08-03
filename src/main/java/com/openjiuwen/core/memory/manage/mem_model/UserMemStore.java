@@ -9,545 +9,403 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
-import com.openjiuwen.spi.store.BaseKVStore;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * KV-based memory data storage with ID index management.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code UserMemStore} in
+ * {@code openjiuwen/core/memory/manage/mem_model/user_mem_store.py}.
  */
 public class UserMemStore {
-    private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
-    /**
-     * ObjectMapper.
-     * 
-     * @since 0.1.7
-     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
-    /**
-     * BYTE_NUM_PER_ID.
-     * 
-     * @since 0.1.7
-     */
     public static final int BYTE_NUM_PER_ID = 24;
-
-    /**
-     * IDS_STR.
-     * 
-     * @since 0.1.7
-     */
     public static final String IDS_STR = "ids";
-
-    /**
-     * USER_PROFILE_TOPIC_STR.
-     * 
-     * @since 0.1.7
-     */
     public static final String USER_PROFILE_TOPIC_STR = "UPT";
-
-    /**
-     * KEY_PREFIX_STR.
-     * 
-     * @since 0.1.7
-     */
     public static final String KEY_PREFIX_STR = "UMD";
-
-    /**
-     * MEM_TYPE_FIELD_KEY.
-     * 
-     * @since 0.1.7
-     */
+    public static final List<String> LEGACY_PREFIXES = List.of();
     public static final String MEM_TYPE_FIELD_KEY = "mem_type";
-
-    /**
-     * TOPIC_FIELD_KEY.
-     * 
-     * @since 0.1.7
-     */
-    public static final String TOPIC_FIELD_KEY = "profile_type";
-
-    /**
-     * SEPARATOR.
-     * 
-     * @since 0.1.7
-     */
+    public static final List<String> FRAGMENT_MEMORY_TYPE = List.of(
+            MemoryType.USER_PROFILE.getValue(),
+            MemoryType.SEMANTIC_MEMORY.getValue(),
+            MemoryType.EPISODIC_MEMORY.getValue()
+    );
     public static final String SEPARATOR = "/";
-
-    /**
-     * FRAGMENT_MEMORY_TYPES.
-     * 
-     * @since 0.1.7
-     */
-    public static final List<String> FRAGMENT_MEMORY_TYPES = List.of(MemoryType.USER_PROFILE.getValue(),
-            MemoryType.SEMANTIC_MEMORY.getValue(), MemoryType.EPISODIC_MEMORY.getValue());
 
     private final BaseKVStore kvStore;
 
-    /**
-     * UserMemStore.
-     * 
-     * @param kvStore kvStore
-     * @since 0.1.7
-     */
-    public UserMemStore(BaseKVStore kvStore) {
-        if (kvStore == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_STORE_INIT_FAILED, "store_type", "user mem store",
-                    "error_msg", "kv store instance is None in UserMemStore");
+    public UserMemStore(BaseKVStore kvStoreInstance) {
+        if (kvStoreInstance == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_STORE_INIT_FAILED,
+                    "store_type",
+                    "user mem store",
+                    "error_msg",
+                    "kv store instance is None in UserMemStore"
+            );
         }
-        this.kvStore = kvStore;
+        this.kvStore = kvStoreInstance;
         KvPrefixRegistry.getInstance().registerCurrent(KEY_PREFIX_STR);
+        for (String legacyPrefix : LEGACY_PREFIXES) {
+            KvPrefixRegistry.getInstance().registerLegacy(legacyPrefix);
+        }
     }
 
-    /**
-     * write.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean write(String userId, String scopeId, String memId, Map<String, Object> data) {
+    public CompletableFuture<Boolean> write(String userId, String scopeId, String memId, Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
-            MEMORY_LOGGER.error("[{}] Write failed, because data is empty. memId={}", LogEventType.MEMORY_STORE, memId);
-            return false;
+            Loggers.MEMORY.error(
+                    "Write failed, because data is empty. event_type={} memory_id={} user_id={} scope_id={}",
+                    LogEventType.MEMORY_STORE.getValue(),
+                    memId,
+                    userId,
+                    scopeId
+            );
+            return CompletableFuture.completedFuture(false);
         }
+
         String userMemKey = getUserMemKey(userId, scopeId, memId);
-        if (kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.error("[{}] Write failed, user memory already exists. memId={}", LogEventType.MEMORY_STORE,
-                    memId);
-            return false;
-        }
-
-        kvStore.set(userMemKey, toJson(data));
-
-        // Append id to mem_type ids
-        if (data.containsKey(MEM_TYPE_FIELD_KEY)) {
-            String memType = String.valueOf(data.get(MEM_TYPE_FIELD_KEY));
-            String userMemIdsKey = getUserIdsKey(userId, scopeId, memType);
-            String userMemIdsValue = getStringOrDefault(userMemIdsKey, "");
-            kvStore.set(userMemIdsKey, writeId(userMemIdsValue, memId));
-
-            // user profile topic ids
-            if (FRAGMENT_MEMORY_TYPES.contains(memType)) {
-                String topicKey = getUserProfileTopicIdsKey(userId, scopeId);
-                String topicValue = getStringOrDefault(topicKey, "");
-                kvStore.set(topicKey, writeId(topicValue, memId));
+        return kvStore.exists(userMemKey).thenCompose(exists -> {
+            if (exists) {
+                Loggers.MEMORY.error(
+                        "Write failed, user memory already exists. event_type={} memory_id={} user_id={} scope_id={}",
+                        LogEventType.MEMORY_STORE.getValue(),
+                        memId,
+                        userId,
+                        scopeId
+                );
+                return CompletableFuture.completedFuture(false);
             }
-        }
 
-        // Append id to user ids
-        String userIdsKey = getUserIdsKey(userId, scopeId, null);
-        String userIdsValue = getStringOrDefault(userIdsKey, "");
-        kvStore.set(userIdsKey, writeId(userIdsValue, memId));
-        return true;
+            return kvStore.set(userMemKey, toJson(data))
+                    .thenCompose(ignored -> appendIdsForWrite(userId, scopeId, memId, data))
+                    .thenApply(ignored -> true);
+        });
     }
 
-    /**
-     * update.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean update(String userId, String scopeId, String memId, Map<String, Object> data) {
+    public CompletableFuture<Boolean> update(String userId, String scopeId, String memId, Map<String, Object> data) {
         String userMemKey = getUserMemKey(userId, scopeId, memId);
-        if (!kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.error("[{}] Update failed, user memory does not exist. memId={}", LogEventType.MEMORY_UPDATE,
-                    memId);
-            return false;
-        }
-        String oldData = getStringOrDefault(userMemKey, "");
-        if (oldData.isEmpty()) {
-            kvStore.set(userMemKey, toJson(data));
-            return true;
-        }
-        Map<String, Object> dictValue = fromJson(oldData);
-        dictValue.putAll(data);
-        kvStore.set(userMemKey, toJson(dictValue));
-        return true;
+        return kvStore.exists(userMemKey).thenCompose(exists -> {
+            if (!exists) {
+                Loggers.MEMORY.error(
+                        "Update failed, user memory does not exists. event_type={} memory_id={} user_id={} scope_id={}",
+                        LogEventType.MEMORY_UPDATE.getValue(),
+                        memId,
+                        userId,
+                        scopeId
+                );
+                return CompletableFuture.completedFuture(false);
+            }
+
+            return kvStore.get(userMemKey).thenCompose(oldData -> {
+                String oldDataText = readStringValue(oldData);
+                if (oldDataText == null || oldDataText.isEmpty()) {
+                    return kvStore.set(userMemKey, toJson(data)).thenApply(ignored -> true);
+                }
+
+                Map<String, Object> merged = fromJson(oldDataText);
+                if (data != null) {
+                    merged.putAll(data);
+                }
+                return kvStore.set(userMemKey, toJson(merged)).thenApply(ignored -> true);
+            });
+        });
     }
 
-    /**
-     * delete.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @since 0.1.7
-     */
-    public void delete(String userId, String scopeId, String memId) {
-        innerDelete(userId, scopeId, memId);
+    public CompletableFuture<Void> delete(String userId, String scopeId, String memId) {
+        return innerDelete(userId, scopeId, memId);
     }
 
-    /**
-     * batchDelete.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memIds memIds
-     * @since 0.1.7
-     */
-    public void batchDelete(String userId, String scopeId, List<String> memIds) {
+    public CompletableFuture<Void> batchDelete(String userId, String scopeId, List<String> memIds) {
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         for (String memId : memIds) {
-            innerDelete(userId, scopeId, memId);
+            chain = chain.thenCompose(ignored -> innerDelete(userId, scopeId, memId));
         }
+        return chain;
     }
 
-    /**
-     * get.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> get(String userId, String scopeId, String memId) {
-        String userMemKey = getUserMemKey(userId, scopeId, memId);
-        return getMap(userMemKey);
+    public CompletableFuture<Map<String, Object>> get(String userId, String scopeId, String memId) {
+        return get(getUserMemKey(userId, scopeId, memId));
     }
 
-    /**
-     * batchGet.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memIds memIds
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> batchGet(String userId, String scopeId, List<String> memIds) {
-        List<String> keys = new ArrayList<>();
+    public CompletableFuture<List<Map<String, Object>>> batchGet(String userId, String scopeId, List<String> memIds) {
+        List<String> keys = new ArrayList<>(memIds.size());
         for (String memId : memIds) {
             keys.add(getUserMemKey(userId, scopeId, memId));
         }
-        List<Object> values = kvStore.mget(keys);
-        if (values == null) {
-            return Collections.emptyList();
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Object val : values) {
-            if (val != null) {
-                result.add(fromJson(String.valueOf(val)));
+        return kvStore.mget(keys).thenApply(values -> {
+            if (values == null || values.isEmpty()) {
+                return List.of();
             }
-        }
-        return result;
-    }
-
-    /**
-     * getAll.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> getAll(String userId, String scopeId, String memType) {
-        String userIdsKey = getUserIdsKey(userId, scopeId, memType);
-        if (!kvStore.isExists(userIdsKey)) {
-            return null;
-        }
-        String userIdsValue = getStringOrDefault(userIdsKey, "");
-        if (userIdsValue.isEmpty()) {
-            return null;
-        }
-        List<String> allIds = getAllIds(userIdsValue);
-        return batchGet(userId, scopeId, allIds);
-    }
-
-    /**
-     * getByTopic.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param topic topic
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> getByTopic(String userId, String scopeId, String topic) {
-        String topicKey = getConcatenationKey(Arrays.asList(userId, scopeId, USER_PROFILE_TOPIC_STR, topic, IDS_STR));
-        if (!kvStore.isExists(topicKey)) {
-            return null;
-        }
-        String topicValue = getStringOrDefault(topicKey, "");
-        if (topicValue.isEmpty()) {
-            return null;
-        }
-        List<String> allIds = getAllIds(topicValue);
-        return batchGet(userId, scopeId, allIds);
-    }
-
-    /**
-     * getInRange.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param startIdx startIdx
-     * @param endIdx endIdx
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> getInRange(String userId, String scopeId, int startIdx, int endIdx,
-            String memType) {
-        String userIdsKey = getUserIdsKey(userId, scopeId, memType);
-        if (!kvStore.isExists(userIdsKey)) {
-            return null;
-        }
-        String userIdsValue = getStringOrDefault(userIdsKey, "");
-        if (userIdsValue.isEmpty()) {
-            return null;
-        }
-        List<String> memIds = getIdsInRange(userIdsValue, startIdx, endIdx);
-        return batchGet(userId, scopeId, memIds);
-    }
-
-    // ---- Private Helpers ----
-
-    /**
-     * getUserIdsKey.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getUserIdsKey(String userId, String scopeId, String memType) {
-        if (memType == null) {
-            return getConcatenationKey(Arrays.asList(userId, scopeId, IDS_STR));
-        } else {
-            return getConcatenationKey(Arrays.asList(userId, scopeId, memType, IDS_STR));
-        }
-    }
-
-    /**
-     * getUserMemKey.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getUserMemKey(String userId, String scopeId, String memId) {
-        return getConcatenationKey(Arrays.asList(userId, scopeId, memId));
-    }
-
-    /**
-     * getUserProfileTopicIdsKey.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getUserProfileTopicIdsKey(String userId, String scopeId) {
-        return getConcatenationKey(Arrays.asList(userId, scopeId, USER_PROFILE_TOPIC_STR, IDS_STR));
-    }
-
-    /**
-     * getConcatenationKey.
-     * 
-     * @param fields fields
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getConcatenationKey(List<String> fields) {
-        StringBuilder keyStr = new StringBuilder(KEY_PREFIX_STR);
-        for (String field : fields) {
-            keyStr.append(SEPARATOR).append(field);
-        }
-        return keyStr.toString();
-    }
-
-    /**
-     * innerDelete.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @since 0.1.7
-     */
-    private void innerDelete(String userId, String scopeId, String memId) {
-        String userMemKey = getUserMemKey(userId, scopeId, memId);
-        if (!kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.warn("[{}] Delete failed, user memory does not exist. memId={}", LogEventType.MEMORY_STORE,
-                    memId);
-            return;
-        }
-        String dataStr = getStringOrDefault(userMemKey, "");
-        if (!dataStr.isEmpty()) {
-            Map<String, Object> dictValue = fromJson(dataStr);
-            if (dictValue.containsKey(MEM_TYPE_FIELD_KEY)) {
-                String memType = String.valueOf(dictValue.get(MEM_TYPE_FIELD_KEY));
-                String userMemIdsKey = getUserIdsKey(userId, scopeId, memType);
-                deleteMemId(userMemIdsKey, memId);
-
-                if (FRAGMENT_MEMORY_TYPES.contains(memType)) {
-                    String topicKey = getUserProfileTopicIdsKey(userId, scopeId);
-                    deleteMemId(topicKey, memId);
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Object value : values) {
+                String text = readStringValue(value);
+                if (text != null) {
+                    result.add(fromJson(text));
                 }
             }
-        }
-
-        // Delete user ids
-        String userIdsKey = getUserIdsKey(userId, scopeId, null);
-        deleteMemId(userIdsKey, memId);
-
-        // Delete user mem
-        kvStore.delete(userMemKey);
+            return result;
+        });
     }
 
-    /**
-     * deleteMemId.
-     * 
-     * @param idsKey idsKey
-     * @param memId memId
-     * @since 0.1.7
-     */
-    private void deleteMemId(String idsKey, String memId) {
-        String idsValue = getStringOrDefault(idsKey, "");
-        if (idsValue.isEmpty()) {
-            return;
-        }
-        // Remove the memId from the concatenated IDs string
-        int idLen = BYTE_NUM_PER_ID;
-        StringBuilder newIds = new StringBuilder();
-        for (int i = 0; i + idLen <= idsValue.length(); i += idLen) {
-            String id = idsValue.substring(i, i + idLen);
-            if (!id.equals(memId)) {
-                newIds.append(id);
+    public CompletableFuture<List<Map<String, Object>>> getAll(String userId, String scopeId) {
+        return getAll(userId, scopeId, null);
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getAll(String userId, String scopeId, String memType) {
+        String userIdsKey = getUserIdsKey(userId, scopeId, memType);
+        return kvStore.exists(userIdsKey).thenCompose(exists -> {
+            if (!exists) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return kvStore.get(userIdsKey).thenCompose(userIdsValue -> {
+                String idsValue = readStringValue(userIdsValue);
+                if (idsValue == null || idsValue.isEmpty()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return batchGet(userId, scopeId, getAllIds(idsValue));
+            });
+        });
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getByTopic(String userId, String scopeId, String topic) {
+        String userMemTopicKey = getConcatenationKey(List.of(userId, scopeId, USER_PROFILE_TOPIC_STR, topic, IDS_STR));
+        return kvStore.exists(userMemTopicKey).thenCompose(exists -> {
+            if (!exists) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return kvStore.get(userMemTopicKey).thenCompose(value -> {
+                String topicValue = readStringValue(value);
+                if (topicValue == null || topicValue.isEmpty()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return batchGet(userId, scopeId, getAllIds(topicValue));
+            });
+        });
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getInRange(
+            String userId,
+            String scopeId,
+            int startIdx,
+            int endIdx
+    ) {
+        return getInRange(userId, scopeId, startIdx, endIdx, null);
+    }
+
+    public CompletableFuture<List<Map<String, Object>>> getInRange(
+            String userId,
+            String scopeId,
+            int startIdx,
+            int endIdx,
+            String memType
+    ) {
+        String userIdsKey = getUserIdsKey(userId, scopeId, memType);
+        return kvStore.exists(userIdsKey).thenCompose(exists -> {
+            if (!exists) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return kvStore.get(userIdsKey).thenCompose(userIdsValue -> {
+                String idsValue = readStringValue(userIdsValue);
+                if (idsValue == null || idsValue.isEmpty()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return batchGet(userId, scopeId, getIdsInRange(idsValue, startIdx, endIdx));
+            });
+        });
+    }
+
+    private CompletableFuture<Void> appendIdsForWrite(
+            String userId,
+            String scopeId,
+            String memId,
+            Map<String, Object> data
+    ) {
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+
+        if (data.containsKey(MEM_TYPE_FIELD_KEY)) {
+            String memType = String.valueOf(data.get(MEM_TYPE_FIELD_KEY));
+            String userMemIdsKey = getUserIdsKey(userId, scopeId, memType);
+            chain = chain.thenCompose(ignored -> kvStore.get(userMemIdsKey)).thenCompose(userMemIdsValue -> {
+                String idsValue = readStringValue(userMemIdsValue);
+                return kvStore.set(userMemIdsKey, writeId(idsValue == null ? "" : idsValue, memId));
+            });
+
+            if (FRAGMENT_MEMORY_TYPE.contains(memType)) {
+                String userMemTopicKey = getConcatenationKey(List.of(userId, scopeId, USER_PROFILE_TOPIC_STR, IDS_STR));
+                chain = chain.thenCompose(ignored -> kvStore.get(userMemTopicKey)).thenCompose(userMemTopicValue -> {
+                    String topicValue = readStringValue(userMemTopicValue);
+                    return kvStore.set(userMemTopicKey, writeId(topicValue == null ? "" : topicValue, memId));
+                });
             }
         }
-        if (newIds.isEmpty()) {
-            kvStore.delete(idsKey);
-            return;
+
+        String userIdsKey = getUserIdsKey(userId, scopeId, null);
+        return chain.thenCompose(ignored -> kvStore.get(userIdsKey)).thenCompose(userIdsValue -> {
+            String idsValue = readStringValue(userIdsValue);
+            return kvStore.set(userIdsKey, writeId(idsValue == null ? "" : idsValue, memId));
+        });
+    }
+
+    private String getUserIdsKey(String userId, String scopeId, String memType) {
+        if (memType == null) {
+            return getConcatenationKey(List.of(userId, scopeId, IDS_STR));
         }
-        kvStore.set(idsKey, newIds.toString());
+        return getConcatenationKey(List.of(userId, scopeId, memType, IDS_STR));
     }
 
-    /**
-     * writeId.
-     * 
-     * @param existingIds existingIds
-     * @param newId newId
-     * @return the result
-     * @since 0.1.7
-     */
-    private String writeId(String existingIds, String newId) {
-        return existingIds + newId;
+    private String getUserMemKey(String userId, String scopeId, String memId) {
+        return getConcatenationKey(List.of(userId, scopeId, memId));
     }
 
-    /**
-     * getAllIds.
-     * 
-     * @param idsValue idsValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> getAllIds(String idsValue) {
-        List<String> ids = new ArrayList<>();
-        int idLen = BYTE_NUM_PER_ID;
-        for (int i = 0; i + idLen <= idsValue.length(); i += idLen) {
-            ids.add(idsValue.substring(i, i + idLen));
+    private String getConcatenationKey(List<String> fields) {
+        StringBuilder key = new StringBuilder(KEY_PREFIX_STR);
+        for (String field : fields) {
+            key.append(SEPARATOR).append(field);
+        }
+        return key.toString();
+    }
+
+    private CompletableFuture<Void> innerDelete(String userId, String scopeId, String memId) {
+        String userMemKey = getUserMemKey(userId, scopeId, memId);
+        return kvStore.exists(userMemKey).thenCompose(exists -> {
+            if (!exists) {
+                Loggers.MEMORY.warning(
+                        "Delete failed, user memory does not exists. event_type={} memory_id={} user_id={} scope_id={}",
+                        LogEventType.MEMORY_STORE.getValue(),
+                        memId,
+                        userId,
+                        scopeId
+                );
+                return CompletableFuture.completedFuture(null);
+            }
+
+            return kvStore.get(userMemKey).thenCompose(data -> {
+                String dataText = readStringValue(data);
+                CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+                if (dataText != null && !dataText.isEmpty()) {
+                    Map<String, Object> dictValue = fromJson(dataText);
+                    if (dictValue.containsKey(MEM_TYPE_FIELD_KEY)) {
+                        String memType = String.valueOf(dictValue.get(MEM_TYPE_FIELD_KEY));
+                        String userMemIdsKey = getUserIdsKey(userId, scopeId, memType);
+                        chain = chain.thenCompose(ignored -> deleteMemId(userMemIdsKey, memId));
+
+                        if (FRAGMENT_MEMORY_TYPE.contains(memType)) {
+                            String userMemTopicKey =
+                                    getConcatenationKey(List.of(userId, scopeId, USER_PROFILE_TOPIC_STR, IDS_STR));
+                            chain = chain.thenCompose(ignored -> deleteMemId(userMemTopicKey, memId));
+                        }
+                    }
+                }
+
+                String userIdsKey = getUserIdsKey(userId, scopeId, null);
+                return chain.thenCompose(ignored -> deleteMemId(userIdsKey, memId))
+                        .thenCompose(ignored -> kvStore.delete(userMemKey));
+            });
+        });
+    }
+
+    private CompletableFuture<Void> deleteMemId(String idsKey, String memId) {
+        return kvStore.exists(idsKey).thenCompose(exists -> {
+            if (!exists) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return kvStore.get(idsKey).thenCompose(idsValue -> {
+                String idsText = readStringValue(idsValue);
+                String newIdsValue = deleteIdByValue(idsText == null ? "" : idsText, memId);
+                if (!newIdsValue.isEmpty()) {
+                    return kvStore.set(idsKey, newIdsValue);
+                }
+                return kvStore.delete(idsKey);
+            });
+        });
+    }
+
+    private CompletableFuture<Map<String, Object>> get(String memKey) {
+        return kvStore.get(memKey).thenApply(memValue -> {
+            String text = readStringValue(memValue);
+            if (text == null || text.isEmpty()) {
+                return null;
+            }
+            return fromJson(text);
+        });
+    }
+
+    private static String writeId(String dataList, String num) {
+        return dataList + num;
+    }
+
+    private String deleteIdByValue(String dataList, String idStr) {
+        int total = dataList.length() / BYTE_NUM_PER_ID;
+        for (int index = 0; index < total; index++) {
+            String chunk = dataList.substring(index * BYTE_NUM_PER_ID, (index + 1) * BYTE_NUM_PER_ID);
+            if (Objects.equals(chunk, idStr)) {
+                return dataList.substring(0, index * BYTE_NUM_PER_ID)
+                        + dataList.substring((index + 1) * BYTE_NUM_PER_ID);
+            }
+        }
+        return dataList;
+    }
+
+    private List<String> getAllIds(String dataList) {
+        int total = dataList.length() / BYTE_NUM_PER_ID;
+        List<String> ids = new ArrayList<>(total);
+        for (int index = 0; index < total; index++) {
+            ids.add(dataList.substring(index * BYTE_NUM_PER_ID, (index + 1) * BYTE_NUM_PER_ID));
         }
         return ids;
     }
 
-    /**
-     * getIdsInRange.
-     * 
-     * @param idsValue idsValue
-     * @param startIdx startIdx
-     * @param endIdx endIdx
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> getIdsInRange(String idsValue, int startIdx, int endIdx) {
-        List<String> allIds = getAllIds(idsValue);
-        int start = Math.max(0, startIdx);
-        int end = Math.min(allIds.size(), endIdx);
-        if (start >= end) {
-            return Collections.emptyList();
+    private List<String> getIdsInRange(String dataList, int startIdx, int endIdx) {
+        int total = dataList.length() / BYTE_NUM_PER_ID;
+        int safeStart = Math.max(startIdx, 0);
+        int safeEnd = Math.min(endIdx, total);
+        if (safeStart >= safeEnd) {
+            return List.of();
         }
-        return allIds.subList(start, end);
+
+        List<String> ids = new ArrayList<>(safeEnd - safeStart);
+        for (int index = safeStart; index < safeEnd; index++) {
+            ids.add(dataList.substring(index * BYTE_NUM_PER_ID, (index + 1) * BYTE_NUM_PER_ID));
+        }
+        return ids;
     }
 
-    /**
-     * getStringOrDefault.
-     * 
-     * @param key key
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getStringOrDefault(String key, String defaultValue) {
-        Object val = kvStore.get(key);
-        return val != null ? String.valueOf(val) : defaultValue;
-    }
-
-    /**
-     * getMap.
-     * 
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> getMap(String key) {
-        Object val = kvStore.get(key);
-        if (val == null) {
+    private static String readStringValue(Object value) {
+        if (value == null) {
             return null;
         }
-        return fromJson(String.valueOf(val));
+        if (value instanceof byte[] bytes) {
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return String.valueOf(value);
     }
 
-    /**
-     * toJson.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    private String toJson(Map<String, Object> data) {
+    private static String toJson(Map<String, Object> data) {
         try {
             return MAPPER.writeValueAsString(data);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize to JSON", e);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize user memory data", exception);
         }
     }
 
-    /**
-     * fromJson.
-     * 
-     * @param json json
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> fromJson(String json) {
+    private static Map<String, Object> fromJson(String json) {
         try {
-            return MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {
-            });
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to deserialize from JSON", e);
+            return MAPPER.readValue(json, MAP_TYPE);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to deserialize user memory data", exception);
         }
     }
 }

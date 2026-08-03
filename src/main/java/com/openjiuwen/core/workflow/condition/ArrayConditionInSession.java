@@ -7,6 +7,7 @@ package com.openjiuwen.core.workflow.condition;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.BaseSession;
 
+import java.lang.reflect.Array;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,21 +15,15 @@ import java.util.Map;
 /**
  * Loop condition over array items already stored in session (not from schema).
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.array.ArrayConditionInSession}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ArrayConditionInSession} in
+ * {@code openjiuwen/core/workflow/components/condition/array.py}.
  */
 public class ArrayConditionInSession extends Condition {
+
     private static final int DEFAULT_MAX_LOOP_NUMBER = 1000;
     private final Map<String, Object> arrays;
     private final int minLength;
 
-    /**
-     * ArrayConditionInSession.
-     * 
-     * @param arrays arrays
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public ArrayConditionInSession(Map<String, Object> arrays) {
         super();
@@ -36,17 +31,9 @@ public class ArrayConditionInSession extends Condition {
         this.minLength = checkArrays(arrays);
     }
 
-    /**
-     * doInvoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Object doInvoke(Object inputs, BaseSession session) {
-        Object currentIdxObj = session.state().get(Constant.INDEX);
+        Object currentIdxObj = stateValue(session, Constant.INDEX);
         int currentIdx = (currentIdxObj instanceof Number) ? ((Number) currentIdxObj).intValue() : 0;
 
         if (currentIdx >= minLength) {
@@ -57,39 +44,55 @@ public class ArrayConditionInSession extends Condition {
         for (Map.Entry<String, Object> entry : arrays.entrySet()) {
             String key = entry.getKey();
             Object arrayInfo = entry.getValue();
-            if (!(arrayInfo instanceof List)) {
+            if (!isListOrArray(arrayInfo)) {
                 throw new IllegalArgumentException(
-                        "Expected list for '" + key + "' in loop_array, got " + arrayInfo.getClass().getSimpleName());
+                        "Expected list/tuple for '" + key + "' in loop_array, got " + typeName(arrayInfo));
             }
-            List<?> list = (List<?>) arrayInfo;
-            updates.put(key, list.get(currentIdx));
+            updates.put(key, sequenceValue(arrayInfo, currentIdx));
         }
-        session.state().update(updates);
+        updateState(session, updates);
         Map<String, Object> ioUpdates = new HashMap<>(updates);
         return new Object[]{true, ioUpdates};
     }
 
-    /**
-     * checkArrays.
-     * 
-     * @param arrays arrays
-     * @return the result
-     * @since 0.1.7
-     */
     private static int checkArrays(Map<String, Object> arrays) {
+        if (arrays == null || arrays.isEmpty()) {
+            return 0;
+        }
         int min = DEFAULT_MAX_LOOP_NUMBER;
         for (Map.Entry<String, Object> entry : arrays.entrySet()) {
             Object arrayInfo = entry.getValue();
             if (arrayInfo == null) {
+                throw new IllegalArgumentException("Value for key '" + entry.getKey() + "' in loop_array cannot be None");
+            }
+            if (!isListOrArray(arrayInfo)) {
                 throw new IllegalArgumentException(
-                        "Value for key '" + entry.getKey() + "' in loop_array cannot be None");
+                        "Expected list/tuple for '" + entry.getKey() + "' in loop_array, got " + typeName(arrayInfo));
             }
-            if (!(arrayInfo instanceof List)) {
-                throw new IllegalArgumentException("Expected list for '" + entry.getKey() + "' in loop_array, got "
-                        + arrayInfo.getClass().getSimpleName());
-            }
-            min = Math.min(((List<?>) arrayInfo).size(), min);
+            min = Math.min(sequenceLength(arrayInfo), min);
         }
         return min;
+    }
+
+    private static boolean isListOrArray(Object value) {
+        return value instanceof List<?> || value != null && value.getClass().isArray();
+    }
+
+    private static int sequenceLength(Object value) {
+        if (value instanceof List<?> list) {
+            return list.size();
+        }
+        return Array.getLength(value);
+    }
+
+    private static Object sequenceValue(Object value, int index) {
+        if (value instanceof List<?> list) {
+            return list.get(index);
+        }
+        return Array.get(value, index);
+    }
+
+    private static String typeName(Object value) {
+        return value == null ? "NoneType" : value.getClass().getSimpleName();
     }
 }

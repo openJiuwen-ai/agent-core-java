@@ -10,29 +10,24 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Base model for file/directory common properties.
- * 
- * @since 0.1.7
+ * Backward-compatible file-system item for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code FileSystemItem} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.FileSystemItem}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class FileSystemItem {
+
     private String name;
-
-    /** Full absolute path of the file/directory. */
     private String path;
-
-    /** Size in bytes. */
-    private long size;
-
-    /** Last modification time (ISO format). */
+    private int size;
     private String modifiedTime;
-
-    /** Whether the item is a directory. */
-    private boolean directory;
-
-    /** File extension (only for files). */
+    private boolean isDirectory;
     private String type;
 }

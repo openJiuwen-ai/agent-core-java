@@ -1,1861 +1,794 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.vector_store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonNull;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
-import com.openjiuwen.core.foundation.store.vector.VectorStoreUtils;
-import com.openjiuwen.core.retrieval.common.RRFRankConfig;
-import com.openjiuwen.core.retrieval.common.ResultRankRegistry;
-import com.openjiuwen.core.retrieval.common.RetrievalValidation;
-import com.openjiuwen.core.retrieval.common.SearchResult;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.store.query.QueryExpr;
+import com.openjiuwen.core.foundation.store.vector_fields.MilvusAUTO;
+import com.openjiuwen.core.foundation.store.vector_fields.MilvusVectorField;
+import com.openjiuwen.core.foundation.store.vector_fields.VectorField;
+import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.common.WeightedRankConfig;
+import com.openjiuwen.core.retrieval.utils.CommonUtils;
 import com.openjiuwen.core.retrieval.utils.FusionUtils;
-import com.openjiuwen.spi.store.vector.CollectionSchema;
-import com.openjiuwen.spi.store.vector.FieldSchema;
-import com.openjiuwen.spi.store.vector.VectorDataType;
-
-import io.milvus.common.clientenum.FunctionType;
-import io.milvus.orm.iterator.QueryIterator;
-import io.milvus.response.QueryResultsWrapper;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
-import io.milvus.v2.service.collection.request.AlterCollectionPropertiesReq;
-import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.request.DropCollectionReq;
-import io.milvus.v2.service.collection.request.GetCollectionStatsReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
-import io.milvus.v2.service.collection.request.ReleaseCollectionReq;
-import io.milvus.v2.service.collection.request.RenameCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import io.milvus.v2.service.database.request.CreateDatabaseReq;
+import io.milvus.v2.service.index.request.DescribeIndexReq;
+import io.milvus.v2.service.index.response.DescribeIndexResp;
 import io.milvus.v2.service.utility.request.FlushReq;
 import io.milvus.v2.service.vector.request.AnnSearchReq;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.HybridSearchReq;
 import io.milvus.v2.service.vector.request.InsertReq;
-import io.milvus.v2.service.vector.request.QueryIteratorReq;
-import io.milvus.v2.service.vector.request.QueryReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.request.ranker.RRFRanker;
-import io.milvus.v2.service.vector.request.ranker.WeightedRanker;
 import io.milvus.v2.service.vector.response.DeleteResp;
-import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
+import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.common.VirtualThreadSupport;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Milvus-backed vector store for retrieval.
- * 
- * @since 0.1.7
+ * Milvus vector store implementation.
+ *
+ * <p>Mirrors Python's {@code MilvusVectorStore} in
+ * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.</p>
  */
-public class MilvusVectorStore implements VectorStore, SchemaMutableVectorStore {
+public class MilvusVectorStore implements VectorStore {
+
+    public static final String PYTHON_MODULE = "openjiuwen/core/retrieval/vector_store/milvus_store.py";
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-retrieval-vector-store-io");
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+    private static final Gson GSON = new Gson();
+    private static final Logger LOGGER = Logger.getLogger(MilvusVectorStore.class.getName());
+    private static final int DEFAULT_BATCH_SIZE = 128;
+    private static final int RRF_K = 60;
+    private static final double DEFAULT_L2_MAX_DISTANCE = 4.0d;
 
-    static {
-        ResultRankRegistry.registerResultRankerClass("milvus", WeightedRanker.class, RRFRanker.class, Map.of());
-    }
-
-    private final MilvusClientV2 client;
-    private final boolean ownsClient;
-    private final Set<String> loadedCollections;
-    private final Set<String> knownCollections;
-    private final Map<String, Map<String, Object>> collectionMetadata;
-    private final Map<String, CollectionSchema> collectionSchemas;
-    private final String databaseName;
-    private final String distanceMetric;
-    private final String indexType;
+    private final VectorStoreConfig config;
     private final String milvusUri;
     private final String milvusToken;
     private final String textField;
-    private final String vectorField;
+    private final MilvusVectorField vectorField;
     private final String sparseVectorField;
     private final String metadataField;
     private final String docIdField;
+    private final String databaseName;
+    private final String distanceMetric;
+    private final String milvusMetricType;
+    private final String indexType;
+    private final Map<String, Object> constructConfig;
+    private final Map<String, Object> searchConfig;
+    private final String milvusAlias;
+    private final MilvusClientFacade client;
+    private boolean collectionLoaded;
 
-    private String collectionName;
-
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param config config
-     * @param milvusUri milvusUri
-     * @since 0.1.7
-     */
     public MilvusVectorStore(VectorStoreConfig config, String milvusUri) {
-        this(config, milvusUri, null, "hybrid");
+        this(config, milvusUri, null);
     }
 
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param config config
-     * @param milvusUri milvusUri
-     * @param indexType indexType
-     * @since 0.1.7
-     */
-    public MilvusVectorStore(VectorStoreConfig config, String milvusUri, String indexType) {
-        this(config, milvusUri, null, indexType);
+    public MilvusVectorStore(VectorStoreConfig config, String milvusUri, String milvusToken) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                "content",
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                null,
+                Map.of()
+        );
     }
 
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param config config
-     * @param milvusUri milvusUri
-     * @param milvusToken milvusToken
-     * @param indexType indexType
-     * @since 0.1.7
-     */
-    public MilvusVectorStore(VectorStoreConfig config, String milvusUri, String milvusToken, String indexType) {
-        this(createClient(config.getDatabaseName(), milvusUri, milvusToken), true, ConcurrentHashMap.newKeySet(),
-                ConcurrentHashMap.newKeySet(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), config, milvusUri,
-                milvusToken, indexType, "text", "vector", "sparse_vector", "metadata", "doc_id");
+    public MilvusVectorStore(VectorStoreConfig config, String milvusUri, String milvusToken, String textField) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                resolveLegacyTextField(textField),
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                null,
+                Map.of()
+        );
     }
 
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param client client
-     * @param config config
-     * @param indexType indexType
-     * @since 0.1.7
-     */
     public MilvusVectorStore(MilvusClientV2 client, VectorStoreConfig config, String indexType) {
-        this(client, config, indexType, Map.of());
+        this(
+                config,
+                "mock://milvus",
+                null,
+                indexType,
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                null,
+                new DefaultMilvusClientFacade(config == null ? "" : config.getDatabaseName(), client)
+        );
     }
 
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param client client
-     * @param config config
-     * @param indexType indexType
-     * @param options options
-     * @since 0.1.7
-     */
-    public MilvusVectorStore(MilvusClientV2 client, VectorStoreConfig config, String indexType,
-            Map<String, Object> options) {
-        this(client, false, ConcurrentHashMap.newKeySet(), ConcurrentHashMap.newKeySet(), new ConcurrentHashMap<>(),
-                new ConcurrentHashMap<>(), config, "", null, indexType, optionString(options, "text_field", "text"),
-                optionString(options, "vector_field", "vector"),
-                optionString(options, "sparse_vector_field", "sparse_vector"),
-                optionString(options, "metadata_field", "metadata"), optionString(options, "doc_id_field", "doc_id"));
+    public MilvusVectorStore(
+            VectorStoreConfig config,
+            String milvusUri,
+            String milvusToken,
+            String textField,
+            String vectorField,
+            String sparseVectorField,
+            String metadataField,
+            String docIdField,
+            String milvusAlias,
+            Map<String, Object> kwargs
+    ) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                textField,
+                (Object) vectorField,
+                sparseVectorField,
+                metadataField,
+                docIdField,
+                milvusAlias,
+                kwargs
+        );
     }
 
-    /**
-     * MilvusVectorStore.
-     * 
-     * @param client client
-     * @param ownsClient ownsClient
-     * @param loadedCollections loadedCollections
-     * @param knownCollections knownCollections
-     * @param collectionMetadata collectionMetadata
-     * @param collectionSchemas collectionSchemas
-     * @param config config
-     * @param milvusUri milvusUri
-     * @param milvusToken milvusToken
-     * @param indexType indexType
-     * @param textField textField
-     * @param vectorField vectorField
-     * @param sparseVectorField sparseVectorField
-     * @param metadataField metadataField
-     * @param docIdField docIdField
-     * @since 0.1.7
-     */
-    private MilvusVectorStore(MilvusClientV2 client, boolean ownsClient, Set<String> loadedCollections,
-            Set<String> knownCollections, Map<String, Map<String, Object>> collectionMetadata,
-            Map<String, CollectionSchema> collectionSchemas, VectorStoreConfig config, String milvusUri,
-            String milvusToken, String indexType, String textField, String vectorField, String sparseVectorField,
-            String metadataField, String docIdField) {
-        Objects.requireNonNull(client, "client");
-        Objects.requireNonNull(config, "config");
-        config.validate();
-        this.client = client;
-        this.ownsClient = ownsClient;
-        this.loadedCollections = loadedCollections;
-        this.knownCollections = knownCollections;
-        this.collectionMetadata = collectionMetadata;
-        this.collectionSchemas = collectionSchemas;
-        this.databaseName = config.getDatabaseName();
-        this.collectionName = config.getCollectionName();
-        this.distanceMetric = config.getDistanceMetric();
-        this.indexType = RetrievalValidation.validateIndexType(indexType, "indexType");
-        this.milvusUri = milvusUri == null ? "" : milvusUri;
+    public MilvusVectorStore(
+            VectorStoreConfig config,
+            String milvusUri,
+            String milvusToken,
+            String textField,
+            MilvusVectorField vectorField,
+            String sparseVectorField,
+            String metadataField,
+            String docIdField,
+            String milvusAlias,
+            Map<String, Object> kwargs
+    ) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                textField,
+                (Object) vectorField,
+                sparseVectorField,
+                metadataField,
+                docIdField,
+                milvusAlias,
+                kwargs
+        );
+    }
+
+    MilvusVectorStore(
+            VectorStoreConfig config,
+            String milvusUri,
+            String milvusToken,
+            String textField,
+            Object vectorField,
+            String sparseVectorField,
+            String metadataField,
+            String docIdField,
+            String milvusAlias,
+            Map<String, Object> kwargs
+    ) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                textField,
+                vectorField,
+                sparseVectorField,
+                metadataField,
+                docIdField,
+                milvusAlias,
+                new DefaultMilvusClientFacade(
+                        config == null ? "" : config.getDatabaseName(),
+                        milvusUri,
+                        milvusToken,
+                        kwargs
+                )
+        );
+    }
+
+    MilvusVectorStore(
+            VectorStoreConfig config,
+            String milvusUri,
+            String milvusToken,
+            String textField,
+            Object vectorField,
+            String sparseVectorField,
+            String metadataField,
+            String docIdField,
+            String milvusAlias,
+            MilvusClientFacade client
+    ) {
+        this.config = Objects.requireNonNull(config, "config");
+        this.milvusUri = Objects.requireNonNull(milvusUri, "milvusUri");
         this.milvusToken = milvusToken;
-        this.textField = textField;
-        this.vectorField = vectorField;
-        this.sparseVectorField = sparseVectorField;
-        this.metadataField = metadataField;
-        this.docIdField = docIdField;
+        this.textField = defaultIfBlank(textField, "content");
+        this.vectorField = resolveVectorField(vectorField);
+        this.sparseVectorField = defaultIfBlank(sparseVectorField, "sparse_vector");
+        this.metadataField = defaultIfBlank(metadataField, "metadata");
+        this.docIdField = defaultIfBlank(docIdField, "document_id");
+        this.databaseName = config.getDatabaseName() == null ? "" : config.getDatabaseName();
+        this.distanceMetric = normalizeDistanceMetricLabel(config.getDistanceMetric());
+        this.milvusMetricType = toMilvusMetricType(distanceMetric);
+        this.indexType = resolveLegacyIndexType(textField, this.vectorField);
+        this.constructConfig = buildConstructConfig(this.vectorField, milvusMetricType);
+        this.searchConfig = new LinkedHashMap<>(this.vectorField.toDict(VectorField.STAGE_SEARCH));
+        this.milvusAlias = CommonUtils.createMilvusAlias(milvusAlias, milvusUri, "", milvusToken);
+        this.client = Objects.requireNonNull(client, "client");
     }
 
-    /**
-     * createClient.
-     * 
-     * @param databaseName databaseName
-     * @param milvusUri milvusUri
-     * @param milvusToken milvusToken
-     * @return the result
-     * @since 0.1.7
-     */
-    public static MilvusClientV2 createClient(String databaseName, String milvusUri, String milvusToken) {
-        ConnectConfig.ConnectConfigBuilder builder = ConnectConfig.builder().uri(milvusUri);
-        if (milvusToken != null && !milvusToken.isBlank()) {
-            builder.token(milvusToken);
+    public static MilvusClientV2 createClient(String databaseName, String pathOrUri, String token) {
+        return createClient(databaseName, pathOrUri, token, Map.of());
+    }
+
+    public static MilvusClientV2 createClient(
+            String databaseName,
+            String pathOrUri,
+            String token,
+            Map<String, Object> kwargs
+    ) {
+        Map<String, Object> safeKwargs = kwargs == null ? Map.of() : new LinkedHashMap<>(kwargs);
+        long timeoutMs = Math.max(1L, Math.round(doubleValue(safeKwargs.get("timeout"), 3.0d) * 1000.0d));
+        String dbName = databaseName == null || databaseName.isBlank() ? "default" : databaseName;
+        ConnectConfig.ConnectConfigBuilder builder = ConnectConfig.builder()
+                .uri(pathOrUri)
+                .connectTimeoutMs(timeoutMs)
+                .rpcDeadlineMs(timeoutMs)
+                .enablePrecheck(false);
+        if (token != null && !token.isBlank()) {
+            builder.token(token);
         }
-        MilvusClientV2 client = new MilvusClientV2(builder.build());
-        if (databaseName != null && !databaseName.isBlank() && !"default".equals(databaseName)) {
-            List<String> databaseNames = client.listDatabases().getDatabaseNames();
-            if (databaseNames == null || !databaseNames.contains(databaseName)) {
-                client.createDatabase(CreateDatabaseReq.builder().databaseName(databaseName).build());
+        if (!"default".equals(dbName)) {
+            builder.dbName(dbName);
+        }
+        MilvusClientV2 createdClient = new MilvusClientV2(builder.build());
+        if (!"default".equals(dbName)) {
+            if (!createdClient.listDatabases().getDatabaseNames().contains(dbName)) {
+                createdClient.createDatabase(CreateDatabaseReq.builder().databaseName(dbName).build());
             }
             try {
-                client.useDatabase(databaseName);
-            } catch (InterruptedException ex) {
+                createdClient.useDatabase(dbName);
+            } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException("failed to switch Milvus database", ex);
+                throw new IllegalStateException("Interrupted while switching Milvus database", error);
             }
         }
+        return createdClient;
+    }
+
+    public MilvusClientFacade getClient() {
         return client;
     }
 
-    /**
-     * getClient.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public MilvusClientV2 getClient() {
-        return client;
+    public String getCollectionName() {
+        return config.getCollectionName();
     }
 
-    /**
-     * getMilvusUri.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getMilvusUri() {
         return milvusUri;
     }
 
-    /**
-     * getMilvusToken.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getMilvusToken() {
         return milvusToken;
     }
 
-    /**
-     * getCollectionName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getCollectionName() {
-        return collectionName;
-    }
-
-    /**
-     * setCollectionName.
-     * 
-     * @param collectionName collectionName
-     * @since 0.1.7
-     */
-    @Override
-    public void setCollectionName(String collectionName) {
-        this.collectionName = collectionName;
-    }
-
-    /**
-     * withCollection.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public VectorStore withCollection(String collectionName) {
-        VectorStoreConfig scopedConfig = new VectorStoreConfig("milvus", databaseName, collectionName, distanceMetric);
-        return new MilvusVectorStore(client, false, loadedCollections, knownCollections, collectionMetadata,
-                collectionSchemas, scopedConfig, milvusUri, milvusToken, indexType, textField, vectorField,
-                sparseVectorField, metadataField, docIdField);
-    }
-
-    /**
-     * optionString.
-     * 
-     * @param options options
-     * @param key key
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String optionString(Map<String, Object> options, String key, String defaultValue) {
-        if (options == null || !options.containsKey(key) || options.get(key) == null) {
-            return defaultValue;
-        }
-        String value = String.valueOf(options.get(key));
-        return value.isBlank() ? defaultValue : value;
-    }
-
-    /**
-     * add.
-     * 
-     * @param data data
-     * @param batchSize batchSize
-     * @param options options
-     * @since 0.1.7
-     */
-    @Override
-    public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
-        if (data == null || data.isEmpty()) {
-            return;
-        }
-        ensureCollectionForWrite(data, options);
-        int safeBatchSize = batchSize == null || batchSize <= 0 ? 128 : batchSize;
-        for (int start = 0; start < data.size(); start += safeBatchSize) {
-            int end = Math.min(start + safeBatchSize, data.size());
-            List<JsonObject> batch = new ArrayList<>(end - start);
-            for (Map<String, Object> record : data.subList(start, end)) {
-                batch.add(toInsertRecord(record));
-            }
-            InsertReq.InsertReqBuilder builder = InsertReq.builder().collectionName(collectionName).data(batch);
-            if (hasDatabase()) {
-                builder.databaseName(databaseName);
-            }
-            client.insert(builder.build());
-        }
-        flush(collectionName);
-    }
-
-    /**
-     * ensureCollection.
-     * 
-     * @param targetCollection targetCollection
-     * @param requestedIndexType requestedIndexType
-     * @param dimension dimension
-     * @since 0.1.7
-     */
-    public void ensureCollection(String targetCollection, String requestedIndexType, Integer dimension) {
-        ensureCollection(targetCollection, requestedIndexType, dimension, Map.of());
-    }
-
-    /**
-     * ensureCollection.
-     * 
-     * @param targetCollection targetCollection
-     * @param requestedIndexType requestedIndexType
-     * @param dimension dimension
-     * @param options options
-     * @since 0.1.7
-     */
-    @Override
-    public void ensureCollection(String targetCollection, String requestedIndexType, Integer dimension,
-            Map<String, Object> options) {
-        String safeCollection = firstNonBlank(targetCollection, collectionName);
-        if (safeCollection == null || safeCollection.isBlank()) {
-            throw new IllegalArgumentException("collectionName is required for Milvus collection bootstrap");
-        }
-        if (tableExists(safeCollection)) {
-            return;
-        }
-
-        String safeIndexType = RetrievalValidation.validateIndexType(firstNonBlank(requestedIndexType, indexType),
-                "MilvusVectorStore.indexType");
-        boolean enableSparse = !"vector".equals(safeIndexType);
-        boolean enableDense = !"bm25".equals(safeIndexType);
-        if (enableDense && (dimension == null || dimension <= 0)) {
-            throw new IllegalArgumentException("vector dimension is required to bootstrap Milvus collection");
-        }
-
-        CreateCollectionReq.CollectionSchema schema = client.createSchema();
-        schema.setEnableDynamicField(false);
-        schema.addField(
-                AddFieldReq.builder().fieldName("pk").dataType(DataType.Int64).isPrimaryKey(true).autoID(true).build());
-        schema.addField(AddFieldReq.builder().fieldName(docIdField).dataType(DataType.VarChar).maxLength(256).build());
-        schema.addField(AddFieldReq.builder().fieldName("chunk_id").dataType(DataType.VarChar).maxLength(256).build());
-
-        AddFieldReq.AddFieldReqBuilder<?> textFieldBuilder =
-            AddFieldReq.builder().fieldName(textField).dataType(DataType.VarChar).maxLength(65535);
-        if (enableSparse) {
-            textFieldBuilder.enableAnalyzer(true).enableMatch(true).analyzerParams(Map.of("tokenizer", "jieba"));
-        }
-        schema.addField(textFieldBuilder.build());
-
-        List<IndexParam> indexParams = new ArrayList<>();
-        indexParams.add(IndexParam.builder().fieldName(docIdField).indexType(IndexParam.IndexType.INVERTED).build());
-        indexParams.add(IndexParam.builder().fieldName("chunk_id").indexType(IndexParam.IndexType.INVERTED).build());
-
-        if (enableSparse) {
-            schema.addField(
-                    AddFieldReq.builder().fieldName(sparseVectorField).dataType(DataType.SparseFloatVector).build());
-            schema.addFunction(
-                    CreateCollectionReq.Function.builder().name("text_bm25_emb").functionType(FunctionType.BM25)
-                            .inputFieldNames(List.of(textField)).outputFieldNames(List.of(sparseVectorField)).build());
-            indexParams.add(IndexParam.builder().fieldName(sparseVectorField)
-                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX).metricType(IndexParam.MetricType.BM25)
-                    .build());
-        }
-
-        if (enableDense) {
-            schema.addField(AddFieldReq.builder().fieldName(vectorField).dataType(DataType.FloatVector)
-                    .dimension(dimension).build());
-            indexParams.add(IndexParam.builder().fieldName(vectorField).indexType(IndexParam.IndexType.AUTOINDEX)
-                    .metricType(metricType()).build());
-        }
-
-        schema.addField(AddFieldReq.builder().fieldName(metadataField).dataType(DataType.JSON).build());
-
-        CreateCollectionReq.CreateCollectionReqBuilder builder =
-            CreateCollectionReq.builder().collectionName(safeCollection).enableDynamicField(false)
-                    .collectionSchema(schema).indexParams(indexParams);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.createCollection(builder.build());
-        knownCollections.add(safeCollection);
-    }
-
-    /**
-     * createCollection.
-     * 
-     * @param targetCollection targetCollection
-     * @param schema schema
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    public void createCollection(String targetCollection, CollectionSchema schema, Map<String, Object> metadata) {
-        if (schema == null) {
-            throw new IllegalArgumentException("schema is required for Milvus collection creation");
-        }
-        createCollectionFromSchema(targetCollection, schema, metadata == null ? Map.of() : metadata);
-    }
-
-    /**
-     * search.
-     * 
-     * @param queryVector queryVector
-     * @param topK topK
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
-            Map<String, Object> options) {
-        if (queryVector == null || queryVector.isEmpty() || topK <= 0 || !tableExists(collectionName)) {
-            return List.of();
-        }
-        ensureLoaded(collectionName);
-        SearchReq.SearchReqBuilder builder = SearchReq.builder().collectionName(collectionName).annsField(vectorField)
-                .metricType(metricType()).topK(topK).limit(topK).data(List.of(new FloatVec(queryVector)))
-                .outputFields(outputFields()).searchParams(resolveDenseSearchParams(topK, options));
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        String filterExpr = toFilterExpression(filters);
-        if (filterExpr != null && !filterExpr.isBlank()) {
-            builder.filter(filterExpr);
-        }
-        SearchResp response = client.search(builder.build());
-        return toSearchResults(firstSearchResults(response), SearchMode.VECTOR);
-    }
-
-    /**
-     * sparseSearch.
-     * 
-     * @param queryText queryText
-     * @param topK topK
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
-            Map<String, Object> options) {
-        if (queryText == null || queryText.isBlank() || topK <= 0 || !tableExists(collectionName)) {
-            return List.of();
-        }
-        ensureLoaded(collectionName);
-        SearchReq.SearchReqBuilder builder = SearchReq.builder().collectionName(collectionName)
-                .annsField(sparseVectorField).metricType(IndexParam.MetricType.BM25).topK(topK).limit(topK)
-                .data(List.of(new EmbeddedText(queryText))).outputFields(outputFields()).searchParams(Map.of());
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        String filterExpr = toFilterExpression(filters);
-        if (filterExpr != null && !filterExpr.isBlank()) {
-            builder.filter(filterExpr);
-        }
-        SearchResp response = client.search(builder.build());
-        return toSearchResults(firstSearchResults(response), SearchMode.SPARSE);
-    }
-
-    /**
-     * hybridSearch.
-     * 
-     * @param queryText queryText
-     * @param queryVector queryVector
-     * @param topK topK
-     * @param alpha alpha
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
-            Map<String, Object> filters, Map<String, Object> options) {
-        if (topK <= 0 || !tableExists(collectionName)) {
-            return List.of();
-        }
-        if (queryVector == null || queryVector.isEmpty()) {
-            return sparseSearch(queryText, topK, filters, options);
-        }
-        if (queryText == null || queryText.isBlank()) {
-            return search(queryVector, topK, filters, options);
-        }
-        ensureLoaded(collectionName);
-        String filterExpr = toFilterExpression(filters);
-        try {
-            AnnSearchReq.AnnSearchReqBuilder denseBuilder = AnnSearchReq.builder().vectorFieldName(vectorField)
-                    .topK(topK).limit(topK).metricType(metricType()).vectors(List.of(new FloatVec(queryVector)))
-                    .params(toJson(resolveDenseSearchParams(topK, options)));
-            AnnSearchReq.AnnSearchReqBuilder sparseBuilder = AnnSearchReq.builder().vectorFieldName(sparseVectorField)
-                    .topK(topK).limit(topK).metricType(IndexParam.MetricType.BM25)
-                    .vectors(List.of(new EmbeddedText(queryText))).params("{}");
-            if (filterExpr != null && !filterExpr.isBlank()) {
-                denseBuilder.filter(filterExpr);
-                sparseBuilder.filter(filterExpr);
-            }
-            HybridSearchReq.HybridSearchReqBuilder builder = HybridSearchReq.builder().collectionName(collectionName)
-                    .searchRequests(List.of(denseBuilder.build(), sparseBuilder.build()))
-                    .ranker(resolveNativeRanker(alpha, options)).topK(topK).limit(topK).outFields(outputFields());
-            if (hasDatabase()) {
-                builder.databaseName(databaseName);
-            }
-            SearchResp response = client.hybridSearch(builder.build());
-            return toSearchResults(firstSearchResults(response), SearchMode.HYBRID);
-        } catch (RuntimeException ex) {
-            return hybridFallback(queryText, queryVector, topK, alpha, filters, options);
-        }
-    }
-
-    /**
-     * delete.
-     * 
-     * @param ids ids
-     * @param filterExpr filterExpr
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
-        if (!tableExists(collectionName)) {
-            return false;
-        }
-        List<String> clauses = new ArrayList<>();
-        if (ids != null && !ids.isEmpty()) {
-            clauses.add("chunk_id in " + formatCollection(ids));
-        }
-        String extraFilter = toFilterExpression(filterExpr);
-        if (extraFilter != null && !extraFilter.isBlank()) {
-            clauses.add(extraFilter);
-        }
-        if (clauses.isEmpty()) {
-            return false;
-        }
-        DeleteReq.DeleteReqBuilder builder =
-            DeleteReq.builder().collectionName(collectionName).filter(String.join(" && ", clauses));
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        DeleteResp response = client.delete(builder.build());
-        flush(collectionName);
-        return response != null && response.getDeleteCnt() > 0;
-    }
-
-    /**
-     * tableExists.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean tableExists(String tableName) {
-        if (tableName == null || tableName.isBlank()) {
-            return false;
-        }
-        if (knownCollections.contains(tableName)) {
-            return true;
-        }
-        HasCollectionReq.HasCollectionReqBuilder builder = HasCollectionReq.builder().collectionName(tableName);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        boolean exists = Boolean.TRUE.equals(client.hasCollection(builder.build()));
-        if (exists) {
-            knownCollections.add(tableName);
-        }
-        return exists;
-    }
-
-    /**
-     * deleteTable.
-     * 
-     * @param tableName tableName
-     * @since 0.1.7
-     */
-    @Override
-    public void deleteTable(String tableName) {
-        if (!tableExists(tableName)) {
-            return;
-        }
-        DropCollectionReq.DropCollectionReqBuilder builder = DropCollectionReq.builder().collectionName(tableName);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.dropCollection(builder.build());
-        knownCollections.remove(tableName);
-        loadedCollections.remove(tableName);
-        collectionMetadata.remove(tableName);
-        collectionSchemas.remove(tableName);
-    }
-
-    /**
-     * listCollectionNames.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<String> listCollectionNames() {
-        LinkedHashSet<String> names = new LinkedHashSet<>(knownCollections);
-        try {
-            var response = client.listCollections();
-            if (response != null && response.getCollectionNames() != null) {
-                names.addAll(response.getCollectionNames());
-            }
-        } catch (RuntimeException ignored) {
-            // Keep the locally known collection cache when Milvus listing is unavailable.
-        }
-        return new ArrayList<>(names);
-    }
-
-    /**
-     * getCollectionMetadata.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, Object> getCollectionMetadata(String collectionName) {
-        Map<String, Object> cached = collectionMetadata.get(collectionName);
-        if (cached != null) {
-            return new LinkedHashMap<>(cached);
-        }
-        try {
-            DescribeCollectionResp resp = describeCollection(collectionName);
-            Map<String, Object> metadata = new LinkedHashMap<>();
-            if (resp.getProperties() != null) {
-                metadata.putAll(resp.getProperties());
-            }
-            metadata.put("schema_version", parseSchemaVersion(metadata.get("schema_version")));
-            collectionMetadata.put(collectionName, new ConcurrentHashMap<>(metadata));
-            return metadata;
-        } catch (RuntimeException e) {
-            Map<String, Object> metadata = new LinkedHashMap<>();
-            metadata.put("schema_version", 0);
-            return metadata;
-        }
-    }
-
-    /**
-     * updateCollectionMetadata.
-     * 
-     * @param collectionName collectionName
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    @Override
-    public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
-        if (metadata == null || metadata.isEmpty()) {
-            return;
-        }
-        Map<String, String> stringMetadata = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : metadata.entrySet()) {
-            stringMetadata.put(entry.getKey(), String.valueOf(entry.getValue()));
-        }
-        AlterCollectionPropertiesReq.AlterCollectionPropertiesReqBuilder builder =
-            AlterCollectionPropertiesReq.builder().collectionName(collectionName).properties(stringMetadata);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.alterCollectionProperties(builder.build());
-        collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>()).putAll(metadata);
-    }
-
-    /**
-     * updateSchema.
-     * 
-     * @param collectionName collectionName
-     * @param operations operations
-     * @since 0.1.7
-     */
-    @Override
-    public void updateSchema(String collectionName, List<?> operations) {
-        if (operations == null || operations.isEmpty()) {
-            return;
-        }
-        CollectionSchema oldSchema = describeCollectionSchema(collectionName);
-        CollectionSchema newSchema = VectorStoreUtils.computeNewSchema(oldSchema, operations);
-        Function<Map<String, Object>, Map<String, Object>> transformFunc =
-            VectorStoreUtils.buildTransformFuncForOperations(operations);
-        Map<String, Object> metadata = getCollectionMetadata(collectionName);
-        executeSchemaMigration(collectionName, newSchema, transformFunc, metadata);
-    }
-
-    /**
-     * getSchema.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public CollectionSchema getSchema(String collectionName) {
-        return describeCollectionSchema(collectionName);
-    }
-
-    /**
-     * queryByFilters.
-     * 
-     * @param filters filters
-     * @param limit limit
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
-        if (limit <= 0 || !tableExists(collectionName)) {
-            return List.of();
-        }
-        ensureLoaded(collectionName);
-        QueryReq.QueryReqBuilder builder =
-            new QueryReq.QueryReqBuilder().collectionName(collectionName).limit(limit).outputFields(outputFields());
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        String filterExpr = toFilterExpression(filters);
-        if (filterExpr != null && !filterExpr.isBlank()) {
-            builder.filter(filterExpr);
-        }
-        QueryResp response = client.query(builder.build());
-        return toQueryResults(response == null ? List.of() : response.getQueryResults());
-    }
-
-    /**
-     * count.
-     * 
-     * @param tableName tableName
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public long count(String tableName) {
-        if (!tableExists(tableName)) {
-            return 0L;
-        }
-        GetCollectionStatsReq.GetCollectionStatsReqBuilder builder =
-            GetCollectionStatsReq.builder().collectionName(tableName);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        Long numOfEntities = client.getCollectionStats(builder.build()).getNumOfEntities();
-        return numOfEntities == null ? 0L : numOfEntities;
-    }
-
-    /**
-     * close.
-     * 
-     * @since 0.1.7
-     */
-    @Override
-    public void close() {
-        if (!ownsClient) {
-            return;
-        }
-        client.close();
-    }
-
-    /**
-     * getDatabaseName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getDatabaseName() {
-        return databaseName;
-    }
-
-    /**
-     * getDistanceMetric.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getDistanceMetric() {
-        return distanceMetric;
-    }
-
-    /**
-     * getIndexType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getIndexType() {
-        return indexType;
-    }
-
-    /**
-     * getTextField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public String getTextField() {
         return textField;
     }
 
-    /**
-     * getVectorField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String getVectorField() {
+    public MilvusVectorField getVectorFieldConfig() {
         return vectorField;
     }
 
-    /**
-     * getSparseVectorField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
+    public String getVectorField() {
+        return vectorField.getVectorField();
+    }
+
     public String getSparseVectorField() {
         return sparseVectorField;
     }
 
-    /**
-     * getMetadataField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public String getMetadataField() {
         return metadataField;
     }
 
-    /**
-     * getDocIdField.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
     public String getDocIdField() {
         return docIdField;
     }
 
-    /**
-     * describeCollection.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    private DescribeCollectionResp describeCollection(String collectionName) {
-        DescribeCollectionReq.DescribeCollectionReqBuilder builder =
-            DescribeCollectionReq.builder().collectionName(collectionName);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        return client.describeCollection(builder.build());
+    public String getDatabaseName() {
+        return databaseName;
     }
 
-    /**
-     * describeCollectionSchema.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @since 0.1.7
-     */
-    private CollectionSchema describeCollectionSchema(String collectionName) {
-        DescribeCollectionResp resp = describeCollection(collectionName);
-        CreateCollectionReq.CollectionSchema milvusSchema = resp.getCollectionSchema();
-        List<FieldSchema> fields = new ArrayList<>();
-        if (milvusSchema != null && milvusSchema.getFieldSchemaList() != null) {
-            for (CreateCollectionReq.FieldSchema fieldSchema : milvusSchema.getFieldSchemaList()) {
-                fields.add(toSpiFieldSchema(fieldSchema));
-            }
-        }
-        return CollectionSchema.fromFields(fields, resp.getDescription(),
-                milvusSchema != null && milvusSchema.isEnableDynamicField());
+    public String getDistanceMetric() {
+        return distanceMetric;
     }
 
-    /**
-     * toSpiFieldSchema.
-     * 
-     * @param fieldSchema fieldSchema
-     * @return the result
-     * @since 0.1.7
-     */
-    private FieldSchema toSpiFieldSchema(CreateCollectionReq.FieldSchema fieldSchema) {
-        FieldSchema.Builder builder =
-            FieldSchema.builder().name(fieldSchema.getName()).dtype(toSpiDataType(fieldSchema.getDataType()))
-                    .isPrimary(Boolean.TRUE.equals(fieldSchema.getIsPrimaryKey()))
-                    .autoId(Boolean.TRUE.equals(fieldSchema.getAutoID()));
-        if (fieldSchema.getMaxLength() != null) {
-            builder.maxLength(fieldSchema.getMaxLength());
-        }
-        if (fieldSchema.getDimension() != null) {
-            builder.dim(fieldSchema.getDimension());
-        }
-        if (fieldSchema.getElementType() != null) {
-            builder.elementType(toSpiDataType(fieldSchema.getElementType()));
-        }
-        if (fieldSchema.getMaxCapacity() != null) {
-            builder.maxCapacity(fieldSchema.getMaxCapacity());
-        }
-        if (fieldSchema.getDescription() != null) {
-            builder.description(fieldSchema.getDescription());
-        }
-        if (fieldSchema.getDefaultValue() != null) {
-            builder.defaultValue(fieldSchema.getDefaultValue());
-        }
-        return builder.build();
+    public String getIndexType() {
+        return indexType;
     }
 
-    /**
-     * toMilvusDataType.
-     * 
-     * @param dataType dataType
-     * @return the result
-     * @since 0.1.7
-     */
-    private DataType toMilvusDataType(VectorDataType dataType) {
-        return switch (dataType) {
-            case VARCHAR -> DataType.VarChar;
-            case FLOAT_VECTOR -> DataType.FloatVector;
-            case INT64 -> DataType.Int64;
-            case INT32 -> DataType.Int32;
-            case INT16 -> DataType.Int16;
-            case INT8 -> DataType.Int8;
-            case FLOAT -> DataType.Float;
-            case DOUBLE -> DataType.Double;
-            case BOOL -> DataType.Bool;
-            case JSON -> DataType.JSON;
-            case ARRAY -> DataType.Array;
-            default -> throw new IllegalStateException("Unexpected vector data type: " + dataType);
-        };
+    public Map<String, Object> getConstructConfig() {
+        return new LinkedHashMap<>(constructConfig);
     }
 
-    /**
-     * toSpiDataType.
-     * 
-     * @param dataType dataType
-     * @return the result
-     * @since 0.1.7
-     */
-    private VectorDataType toSpiDataType(DataType dataType) {
-        return switch (dataType) {
-            case VarChar -> VectorDataType.VARCHAR;
-            case FloatVector -> VectorDataType.FLOAT_VECTOR;
-            case Int64 -> VectorDataType.INT64;
-            case Int32 -> VectorDataType.INT32;
-            case Int16 -> VectorDataType.INT16;
-            case Int8 -> VectorDataType.INT8;
-            case Float -> VectorDataType.FLOAT;
-            case Double -> VectorDataType.DOUBLE;
-            case Bool -> VectorDataType.BOOL;
-            case JSON -> VectorDataType.JSON;
-            case Array -> VectorDataType.ARRAY;
-            default -> VectorDataType.VARCHAR;
-        };
+    public Map<String, Object> getSearchConfig() {
+        return new LinkedHashMap<>(searchConfig);
     }
 
-    /**
-     * executeSchemaMigration.
-     * 
-     * @param collectionName collectionName
-     * @param newSchema newSchema
-     * @param transformFunc transformFunc
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    private void executeSchemaMigration(String collectionName, CollectionSchema newSchema,
-            Function<Map<String, Object>, Map<String, Object>> transformFunc, Map<String, Object> metadata) {
-        String tempCollectionName = collectionName + "_migration_" + System.currentTimeMillis();
-        try {
-            createCollectionFromSchema(tempCollectionName, newSchema, metadata);
-            copyCollectionData(collectionName, tempCollectionName, newSchema, transformFunc);
-
-            ReleaseCollectionReq.ReleaseCollectionReqBuilder releaseBuilder =
-                ReleaseCollectionReq.builder().collectionName(collectionName);
-            if (hasDatabase()) {
-                releaseBuilder.databaseName(databaseName);
-            }
-            client.releaseCollection(releaseBuilder.build());
-
-            deleteTable(collectionName);
-
-            RenameCollectionReq.RenameCollectionReqBuilder renameBuilder =
-                RenameCollectionReq.builder().collectionName(tempCollectionName).newCollectionName(collectionName);
-            if (hasDatabase()) {
-                renameBuilder.databaseName(databaseName);
-            }
-            client.renameCollection(renameBuilder.build());
-
-            collectionSchemas.put(collectionName, newSchema);
-            collectionMetadata.put(collectionName, new ConcurrentHashMap<>(metadata));
-            knownCollections.add(collectionName);
-            loadedCollections.remove(collectionName);
-            knownCollections.remove(tempCollectionName);
-            loadedCollections.remove(tempCollectionName);
-            collectionSchemas.remove(tempCollectionName);
-            collectionMetadata.remove(tempCollectionName);
-        } catch (RuntimeException e) {
-            if (tableExists(tempCollectionName)) {
-                deleteTable(tempCollectionName);
-            }
-            throw e;
-        }
+    public String getMilvusAlias() {
+        return milvusAlias;
     }
 
-    /**
-     * createCollectionFromSchema.
-     * 
-     * @param collectionName collectionName
-     * @param schema schema
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    private void createCollectionFromSchema(String collectionName, CollectionSchema schema,
-            Map<String, Object> metadata) {
-        CreateCollectionReq.CollectionSchema milvusSchema = client.createSchema();
-        milvusSchema.setEnableDynamicField(schema.isEnableDynamicField());
-        List<IndexParam> indexParams = new ArrayList<>();
-        IndexParam.MetricType metricType = metricTypeFromMetadata(metadata);
-        for (FieldSchema field : schema.getFields()) {
-            AddFieldReq.AddFieldReqBuilder<?> builder =
-                AddFieldReq.builder().fieldName(field.getName()).dataType(toMilvusDataType(field.getDtype()));
-            if (field.getDescription() != null) {
-                builder.description(field.getDescription());
-            }
-            if (field.getMaxLength() != null) {
-                builder.maxLength(field.getMaxLength());
-            }
-            if (field.getDim() != null) {
-                builder.dimension(field.getDim());
-            }
-            if (field.getElementType() != null) {
-                builder.elementType(toMilvusDataType(field.getElementType()));
-            }
-            if (field.getMaxCapacity() != null) {
-                builder.maxCapacity(field.getMaxCapacity());
-            }
-            if (field.getDefaultValue() != null) {
-                builder.defaultValue(field.getDefaultValue());
-            }
-            builder.isPrimaryKey(field.isPrimary());
-            builder.autoID(field.isAutoId());
-            milvusSchema.addField(builder.build());
-
-            if (field.getDtype() == VectorDataType.FLOAT_VECTOR) {
-                indexParams.add(IndexParam.builder().fieldName(field.getName())
-                        .indexType(IndexParam.IndexType.AUTOINDEX).metricType(metricType).build());
-            }
-        }
-
-        CreateCollectionReq.CreateCollectionReqBuilder builder = CreateCollectionReq.builder()
-                .collectionName(collectionName).enableDynamicField(schema.isEnableDynamicField())
-                .collectionSchema(milvusSchema).indexParams(indexParams);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.createCollection(builder.build());
-        knownCollections.add(collectionName);
-        collectionSchemas.put(collectionName, schema);
-    }
-
-    /**
-     * copyCollectionData.
-     * 
-     * @param sourceCollection sourceCollection
-     * @param targetCollection targetCollection
-     * @param targetSchema targetSchema
-     * @param transformFunc transformFunc
-     * @since 0.1.7
-     */
-    private void copyCollectionData(String sourceCollection, String targetCollection, CollectionSchema targetSchema,
-            Function<Map<String, Object>, Map<String, Object>> transformFunc) {
-        QueryIteratorReq.QueryIteratorReqBuilder builder = QueryIteratorReq.builder().collectionName(sourceCollection)
-                .outputFields(List.of("*")).expr("").batchSize(100);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        QueryIterator iterator = client.queryIterator(builder.build());
-        try {
-            List<Map<String, Object>> batch = new ArrayList<>();
-            while (true) {
-                List<QueryResultsWrapper.RowRecord> rows = iterator.next();
-                if (rows == null || rows.isEmpty()) {
-                    break;
-                }
-                for (QueryResultsWrapper.RowRecord row : rows) {
-                    Map<String, Object> record = new LinkedHashMap<>(row.getFieldValues());
-                    Map<String, Object> transformed = transformFunc.apply(record);
-                    batch.add(prepareMigrationRecord(targetSchema, transformed));
-                    if (batch.size() >= 100) {
-                        insertMigrationBatch(targetCollection, batch);
-                        batch.clear();
-                    }
-                }
-            }
-            if (!batch.isEmpty()) {
-                insertMigrationBatch(targetCollection, batch);
-            }
-            flush(targetCollection);
-        } finally {
-            iterator.close();
-        }
-    }
-
-    /**
-     * prepareMigrationRecord.
-     * 
-     * @param schema schema
-     * @param record record
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> prepareMigrationRecord(CollectionSchema schema, Map<String, Object> record) {
-        Map<String, Object> prepared = new LinkedHashMap<>(record);
-        for (FieldSchema field : schema.getFields()) {
-            if (field.isPrimary() && field.isAutoId()) {
-                prepared.remove(field.getName());
-            }
-        }
-        return prepared;
-    }
-
-    /**
-     * insertMigrationBatch.
-     * 
-     * @param collectionName collectionName
-     * @param batch batch
-     * @since 0.1.7
-     */
-    private void insertMigrationBatch(String collectionName, List<Map<String, Object>> batch) {
-        List<JsonObject> payload = new ArrayList<>(batch.size());
-        for (Map<String, Object> record : batch) {
-            payload.add(toJsonObject(record));
-        }
-        InsertReq.InsertReqBuilder builder = InsertReq.builder().collectionName(collectionName).data(payload);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.insert(builder.build());
-    }
-
-    /**
-     * metricTypeFromMetadata.
-     * 
-     * @param metadata metadata
-     * @return the result
-     * @since 0.1.7
-     */
-    private IndexParam.MetricType metricTypeFromMetadata(Map<String, Object> metadata) {
-        String metric = metadata == null ? null : stringValue(metadata.get("distance_metric"));
-        if (metric == null || metric.isBlank()) {
-            return metricType();
-        }
-        return switch (metric.toUpperCase(Locale.ROOT)) {
-            case "L2", "EUCLIDEAN" -> IndexParam.MetricType.L2;
-            case "IP", "DOT", "INNER_PRODUCT" -> IndexParam.MetricType.IP;
-            default -> IndexParam.MetricType.COSINE;
-        };
-    }
-
-    /**
-     * parseSchemaVersion.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static int parseSchemaVersion(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value == null) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    static String toFilterExpression(Map<String, Object> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return null;
-        }
-        List<String> clauses = new ArrayList<>();
-        for (Map.Entry<String, Object> entry : filters.entrySet()) {
-            if (entry.getValue() instanceof Collection<?> values) {
-                if (values.isEmpty()) {
-                    return null;
-                }
-                clauses.add(entry.getKey() + " in " + formatCollection(values));
-                continue;
-            }
-            clauses.add(entry.getKey() + " == " + formatLiteral(entry.getValue()));
-        }
-        return clauses.isEmpty() ? null : String.join(" && ", clauses);
-    }
-
-    /**
-     * hasDatabase.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean hasDatabase() {
-        return databaseName != null && !databaseName.isBlank();
-    }
-
-    /**
-     * ensureCollectionForWrite.
-     * 
-     * @param data data
-     * @param options options
-     * @since 0.1.7
-     */
-    private void ensureCollectionForWrite(List<Map<String, Object>> data, Map<String, Object> options) {
-        Integer dimension = extractDimension(options);
-        if (dimension == null || dimension <= 0) {
-            dimension = inferDimension(data);
-        }
-        ensureCollection(collectionName, resolveBootstrapIndexType(options), dimension,
-                options == null ? Map.of() : options);
-    }
-
-    /**
-     * ensureLoaded.
-     * 
-     * @param targetCollection targetCollection
-     * @since 0.1.7
-     */
-    private void ensureLoaded(String targetCollection) {
-        if (loadedCollections.contains(targetCollection) || !tableExists(targetCollection)) {
-            return;
-        }
-        LoadCollectionReq.LoadCollectionReqBuilder builder =
-            LoadCollectionReq.builder().collectionName(targetCollection).sync(true);
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.loadCollection(builder.build());
-        loadedCollections.add(targetCollection);
-    }
-
-    /**
-     * flush.
-     * 
-     * @param targetCollection targetCollection
-     * @since 0.1.7
-     */
-    private void flush(String targetCollection) {
-        FlushReq.FlushReqBuilder builder = FlushReq.builder().collectionNames(List.of(targetCollection));
-        if (hasDatabase()) {
-            builder.databaseName(databaseName);
-        }
-        client.flush(builder.build());
-    }
-
-    /**
-     * outputFields.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> outputFields() {
-        LinkedHashSet<String> fields = new LinkedHashSet<>();
-        fields.add(textField);
-        fields.add(metadataField);
-        fields.add(docIdField);
-        fields.add("chunk_id");
-        return new ArrayList<>(fields);
-    }
-
-    /**
-     * resolveDenseSearchParams.
-     * 
-     * @param topK topK
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> resolveDenseSearchParams(int topK, Map<String, Object> options) {
-        Map<String, Object> params = new LinkedHashMap<>();
-        Map<String, Object> raw = extractMap(options, List.of("search_params", "searchParams"));
-        if (raw != null) {
-            params.putAll(raw);
-        }
-        Object factor = options == null ? null : options.get("efSearchFactor");
+    public Map<String, Object> getSearchParams(int topK) {
+        Map<String, Object> params = new LinkedHashMap<>(searchConfig);
+        Object factor = params.remove("efSearchFactor");
         if (factor instanceof Number number) {
-            params.put("ef", Math.max(topK, (int) Math.round(topK * number.doubleValue())));
+            params.put("ef", Math.round(topK * number.doubleValue()));
         }
         return params;
     }
 
-    /**
-     * resolveNativeRanker.
-     * 
-     * @param alpha alpha
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    private CreateCollectionReq.Function resolveNativeRanker(double alpha, Map<String, Object> options) {
-        Object rankConfig = options == null ? null : firstPresent(options, List.of("rank_config", "rankConfig"));
-        if (rankConfig instanceof RRFRankConfig rrf) {
-            return new RRFRanker(rrf.getK());
+    @Override
+    public void checkVectorField() {
+        String collectionName = getCollectionName();
+        if (!client.hasCollection(collectionName)) {
+            return;
         }
-        if (rankConfig instanceof WeightedRankConfig weighted) {
-            float denseWeight = (float) Math.max(0.0,
-                    weighted.getDenseContent() > 0.0 ? weighted.getDenseContent() : weighted.getDenseName());
-            float sparseWeight = (float) Math.max(0.0, weighted.getSparseContent());
-            return new WeightedRanker(normalizeWeights(denseWeight, sparseWeight));
+        Map<String, Object> actual = client.describeIndex(collectionName, getVectorField());
+        if (actual.isEmpty()) {
+            List<FieldDescription> vectorFields = client.describeCollection(collectionName).fields().stream()
+                    .filter(FieldDescription::isFloatVector)
+                    .toList();
+            StringBuilder vectorFieldList = new StringBuilder();
+            for (int index = 0; index < vectorFields.size(); index++) {
+                FieldDescription field = vectorFields.get(index);
+                vectorFieldList.append("- [")
+                        .append(index)
+                        .append("] ")
+                        .append(field.name())
+                        .append(": ")
+                        .append(field.params())
+                        .append(System.lineSeparator());
+            }
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "error_msg",
+                    "MilvusVectorStore has vector_field at " + getVectorField()
+                            + " while actual database has vector field(s) at:" + System.lineSeparator()
+                            + vectorFieldList + "You may want to call delete_collection method on collection \""
+                            + collectionName + "\""
+            );
         }
-        return new WeightedRanker(normalizeWeights((float) alpha, (float) (1.0 - alpha)));
+        String indexType = vectorField.getIndexType();
+        String variant = vectorField.getVariant() == null ? "" : vectorField.getVariant();
+        if (!"auto".equals(indexType)) {
+            String returnedType = String.valueOf(actual.getOrDefault("index_type", "unknown"));
+            String expectedPrefix = indexType.toUpperCase(Locale.ROOT);
+            if (!(returnedType.startsWith(expectedPrefix) && returnedType.endsWith(variant))) {
+                throw ErrorHelper.buildError(
+                        StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                        "error_msg",
+                        "MilvusVectorStore has index_type of " + indexType
+                                + " while actual database has index_type of " + returnedType
+                                + ", do not change index_type after Knowledge Base is constructed."
+                );
+            }
+        }
+        VectorStore.checkConfigsMatching(constructConfig, actual);
     }
 
-    /**
-     * hybridFallback.
-     * 
-     * @param queryText queryText
-     * @param queryVector queryVector
-     * @param topK topK
-     * @param alpha alpha
-     * @param filters filters
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<SearchResult> hybridFallback(String queryText, List<Float> queryVector, int topK, double alpha,
-            Map<String, Object> filters, Map<String, Object> options) {
-        List<SearchResult> denseResults = search(queryVector, topK, filters, options);
-        List<SearchResult> sparseResults = sparseSearch(queryText, topK, filters, options);
-        Object rankConfig = options == null ? null : firstPresent(options, List.of("rank_config", "rankConfig"));
-        if (rankConfig instanceof RRFRankConfig rrf) {
-            return trim(FusionUtils.rrfFusionSearch(List.of(denseResults, sparseResults), rrf), topK);
-        }
-        float denseWeight = (float) alpha;
-        float sparseWeight = (float) (1.0 - alpha);
-        if (rankConfig instanceof WeightedRankConfig weighted) {
-            denseWeight = (float) Math.max(0.0,
-                    weighted.getDenseContent() > 0.0 ? weighted.getDenseContent() : weighted.getDenseName());
-            sparseWeight = (float) Math.max(0.0, weighted.getSparseContent());
-        }
-        return trim(weightedFusion(denseResults, sparseResults, denseWeight, sparseWeight), topK);
+    @Override
+    public CompletableFuture<Void> add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> kwargs) {
+        return CompletableFuture.runAsync(() -> {
+            if (data == null || data.isEmpty()) {
+                return;
+            }
+            ensureLoaded();
+            int safeBatchSize = batchSize == null || batchSize <= 0 ? DEFAULT_BATCH_SIZE : batchSize;
+            client.insert(getCollectionName(), data, safeBatchSize);
+            client.flush(getCollectionName());
+            LOGGER.info("Writing completed, total " + data.size() + "/" + data.size()
+                    + " records to " + getCollectionName());
+        }, IO_EXECUTOR);
     }
 
-    /**
-     * trim.
-     * 
-     * @param results results
-     * @param topK topK
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<SearchResult> trim(List<SearchResult> results, int topK) {
+    @Override
+    public CompletableFuture<List<RetrievalResult>> search(
+            List<Double> queryVector,
+            int topK,
+            VectorStoreFilter filters,
+            Map<String, Object> kwargs
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (queryVector == null || queryVector.isEmpty() || topK <= 0) {
+                return List.of();
+            }
+            ensureLoaded();
+            List<SearchHit> hits = client.search(
+                    getCollectionName(),
+                    SearchRequest.vector(getVectorField(), queryVector),
+                    milvusMetricType,
+                    topK,
+                    List.of(textField, metadataField, docIdField, "chunk_id"),
+                    getSearchParams(topK),
+                    toFilterExpression(filters)
+            );
+            return toRetrievalResults(hits, SearchMode.VECTOR);
+        }, IO_EXECUTOR);
+    }
+
+    @Override
+    public CompletableFuture<List<RetrievalResult>> sparseSearch(
+            String queryText,
+            int topK,
+            VectorStoreFilter filters,
+            Map<String, Object> kwargs
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (queryText == null || queryText.isBlank() || topK <= 0) {
+                return List.of();
+            }
+            ensureLoaded();
+            try {
+                List<SearchHit> hits = client.search(
+                        getCollectionName(),
+                        SearchRequest.text(sparseVectorField, queryText),
+                        "BM25",
+                        topK,
+                        List.of(textField, metadataField, docIdField),
+                        Map.of(),
+                        toFilterExpression(filters)
+                );
+                return toRetrievalResults(hits, SearchMode.SPARSE);
+            } catch (RuntimeException error) {
+                LOGGER.log(Level.WARNING, "BM25 text search failed: " + error.getMessage(), error);
+                return List.of();
+            }
+        }, IO_EXECUTOR);
+    }
+
+    @Override
+    public CompletableFuture<List<RetrievalResult>> hybridSearch(
+            String queryText,
+            List<Double> queryVector,
+            int topK,
+            double alpha,
+            VectorStoreFilter filters,
+            Map<String, Object> kwargs
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (queryText == null || queryText.isBlank() || topK <= 0) {
+                return List.of();
+            }
+            ensureLoaded();
+            String filterExpression = toFilterExpression(filters);
+            List<SearchRequest> requests = new ArrayList<>();
+            if (queryVector != null && !queryVector.isEmpty()) {
+                requests.add(SearchRequest.vector(getVectorField(), queryVector)
+                        .withMetricType(milvusMetricType)
+                        .withParams(getSearchParams(topK))
+                        .withFilter(filterExpression));
+            }
+            requests.add(SearchRequest.text(sparseVectorField, queryText)
+                    .withMetricType("BM25")
+                    .withParams(Map.of())
+                    .withFilter(filterExpression));
+            try {
+                List<SearchHit> hits = client.hybridSearch(
+                        getCollectionName(),
+                        requests,
+                        topK,
+                        List.of(textField, metadataField, docIdField)
+                );
+                return toRetrievalResults(hits, SearchMode.HYBRID);
+            } catch (RuntimeException error) {
+                LOGGER.log(Level.WARNING,
+                        "Hybrid search failed, falling back to separate searches: " + error.getMessage(),
+                        error);
+                return hybridFallback(queryText, queryVector, topK);
+            }
+        }, IO_EXECUTOR);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> delete(List<String> ids, DeleteFilter filterExpr, Map<String, Object> kwargs) {
+        return CompletableFuture.supplyAsync(() -> {
+            ensureLoaded();
+            try {
+                String filter = toDeleteFilterExpression(filterExpr);
+                if ((ids == null || ids.isEmpty()) && (filter == null || filter.isBlank())) {
+                    return Boolean.FALSE;
+                }
+                long deleteCount = client.delete(getCollectionName(), ids, filter);
+                client.flush(getCollectionName());
+                return deleteCount > 0;
+            } catch (RuntimeException error) {
+                LOGGER.log(Level.SEVERE, "Failed to delete vectors: " + error.getMessage(), error);
+                return Boolean.FALSE;
+            }
+        }, IO_EXECUTOR);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tableExists(String tableName) {
+        return CompletableFuture.supplyAsync(() -> client.hasCollection(tableName), IO_EXECUTOR);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteTable(String tableName) {
+        return CompletableFuture.runAsync(() -> client.dropCollection(tableName), IO_EXECUTOR);
+    }
+
+    @Override
+    public void close() {
+        try {
+            client.close();
+        } catch (RuntimeException error) {
+            LOGGER.log(Level.WARNING, "Failed to close Milvus client: " + error.getMessage(), error);
+        }
+    }
+
+    private List<RetrievalResult> hybridFallback(String queryText, List<Double> queryVector, int topK) {
+        List<RetrievalResult> vectorResults = queryVector == null || queryVector.isEmpty()
+                ? List.of()
+                : search(queryVector, topK, VectorStoreFilter.none(), Map.of()).join();
+        List<RetrievalResult> sparseResults = sparseSearch(queryText, topK, VectorStoreFilter.none(), Map.of()).join();
+        List<RetrievalResult> fused = FusionUtils.rrfFusionRetrieval(List.of(vectorResults, sparseResults), RRF_K);
+        return trim(fused, topK);
+    }
+
+    private List<RetrievalResult> toRetrievalResults(List<SearchHit> hits, SearchMode mode) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        List<RetrievalResult> results = new ArrayList<>(hits.size());
+        for (SearchHit hit : hits) {
+            Map<String, Object> item = normalizeMilvusHit(hit);
+            String resultId = stringValue(firstNonNull(item.get("id"), item.get("pk"), ""));
+            String text = stringValue(item.getOrDefault(textField, ""));
+            Map<String, Object> metadata = parseMetadata(item.get(metadataField));
+            if (!metadata.containsKey("doc_id")) {
+                Object fieldDocId = item.remove(docIdField);
+                Object metadataDocId = metadata.remove(docIdField);
+                metadata.put("doc_id", firstNonNull(fieldDocId, metadataDocId));
+            }
+            if (item.get("chunk_id") != null) {
+                metadata.putIfAbsent("chunk_id", item.get("chunk_id"));
+            }
+
+            Double rawScore = doubleValueOrNull(firstNonNull(item.get("score"), item.get("distance")));
+            Double rawScoreScaled = null;
+            double finalScore = 0.0d;
+            if (rawScore != null) {
+                if (mode == SearchMode.VECTOR) {
+                    rawScoreScaled = normalizeVectorScore(rawScore);
+                    finalScore = rawScoreScaled;
+                } else {
+                    finalScore = rawScore;
+                }
+            }
+            metadata.putIfAbsent("raw_score", rawScore);
+            if (rawScoreScaled != null) {
+                metadata.putIfAbsent("raw_score_scaled", rawScoreScaled);
+            }
+            String docId = stringValue(metadata.get("doc_id"));
+            String chunkId = firstNonBlank(stringValue(metadata.get("chunk_id")), resultId);
+            results.add(new RetrievalResult(text, finalScore, metadata, docId, chunkId));
+        }
+        return results;
+    }
+
+    private Map<String, Object> normalizeMilvusHit(SearchHit hit) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        if (hit.entity() != null) {
+            item.putAll(hit.entity());
+        }
+        if (hit.id() != null) {
+            item.putIfAbsent("id", hit.id());
+        }
+        if (hit.primaryKey() != null) {
+            item.putIfAbsent("pk", hit.primaryKey());
+        }
+        if (hit.score() != null) {
+            item.putIfAbsent("score", hit.score());
+        }
+        if (hit.distance() != null) {
+            item.putIfAbsent("distance", hit.distance());
+        }
+        return item;
+    }
+
+    private String toFilterExpression(VectorStoreFilter filters) {
+        if (filters == null) {
+            return null;
+        }
+        if (filters.queryExpr() != null) {
+            Object expression = filters.queryExpr().toExpr("milvus");
+            return expression == null ? null : String.valueOf(expression);
+        }
+        Map<String, Object> mapping = filters.mapping();
+        if (mapping == null || mapping.isEmpty()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : mapping.entrySet()) {
+            Object value = entry.getValue();
+            parts.add(entry.getKey() + " == " + formatMilvusLiteral(value));
+        }
+        return String.join(" && ", parts);
+    }
+
+    private String toDeleteFilterExpression(DeleteFilter filterExpr) {
+        if (filterExpr == null) {
+            return null;
+        }
+        if (filterExpr.queryExpr() != null) {
+            Object expression = filterExpr.queryExpr().toExpr("milvus");
+            return expression == null ? null : String.valueOf(expression);
+        }
+        return filterExpr.expression();
+    }
+
+    private void ensureLoaded() {
+        if (collectionLoaded) {
+            return;
+        }
+        String collectionName = getCollectionName();
+        if (client.hasCollection(collectionName)) {
+            LOGGER.info("Retrieval Milvus Store: loading collection " + collectionName);
+            client.loadCollection(collectionName);
+            LOGGER.info("Retrieval Milvus Store: " + collectionName + " collection loaded");
+            collectionLoaded = true;
+        }
+    }
+
+    private double normalizeVectorScore(double rawScore) {
+        return switch (milvusMetricType) {
+            case "L2" -> Math.max(0.0d, (DEFAULT_L2_MAX_DISTANCE - rawScore) / DEFAULT_L2_MAX_DISTANCE);
+            case "COSINE" -> (rawScore + 1.0d) / 2.0d;
+            default -> Math.max(0.0d, Math.min(1.0d, (rawScore + 1.0d) / 2.0d));
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseMetadata(Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return result;
+        }
+        if (raw instanceof String json) {
+            try {
+                Map<String, Object> parsed = OBJECT_MAPPER.readValue(json, MAP_TYPE);
+                return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
+            } catch (JsonProcessingException error) {
+                return new LinkedHashMap<>();
+            }
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private static MilvusVectorField resolveVectorField(Object vectorField) {
+        if (vectorField instanceof String fieldName) {
+            MilvusAUTO auto = new MilvusAUTO();
+            auto.setVectorField(fieldName);
+            return auto;
+        }
+        if (vectorField instanceof MilvusVectorField milvusVectorField) {
+            return milvusVectorField;
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.RETRIEVAL_INDEXING_VECTOR_FIELD_INVALID,
+                "error_msg",
+                "vector_field must be either a str or MilvusVectorField instance"
+        );
+    }
+
+    private static Map<String, Object> buildConstructConfig(MilvusVectorField vectorField, String distanceMetric) {
+        Map<String, Object> result = "auto".equals(vectorField.getIndexType())
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(vectorField.toDict(VectorField.STAGE_CONSTRUCT));
+        result.put("metric_type", distanceMetric);
+        return result;
+    }
+
+    private static String normalizeDistanceMetricLabel(String distanceMetric) {
+        String value = distanceMetric == null || distanceMetric.isBlank() ? "cosine" : distanceMetric;
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "ip" -> "dot";
+            case "l2" -> "euclidean";
+            case "cosine", "euclidean", "dot" -> value.toLowerCase(Locale.ROOT);
+            default -> value;
+        };
+    }
+
+    private static String toMilvusMetricType(String distanceMetric) {
+        String value = distanceMetric == null || distanceMetric.isBlank() ? "cosine" : distanceMetric;
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "dot", "ip" -> "IP";
+            case "euclidean", "l2" -> "L2";
+            default -> value.toUpperCase(Locale.ROOT);
+        };
+    }
+
+    private static String resolveLegacyTextField(String value) {
+        return isLegacyIndexType(value) ? "content" : value;
+    }
+
+    private static String resolveLegacyIndexType(String textField, MilvusVectorField vectorField) {
+        return isLegacyIndexType(textField) ? textField : vectorField.getIndexType();
+    }
+
+    private static boolean isLegacyIndexType(String value) {
+        return "hybrid".equals(value);
+    }
+
+    private static String formatMilvusLiteral(Object value) {
+        if (value instanceof String string) {
+            return QueryExpr.sanitizeStr(string);
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value == null) {
+            return "None";
+        }
+        return String.valueOf(value);
+    }
+
+    private static List<RetrievalResult> trim(List<RetrievalResult> results, int topK) {
         if (results.size() <= topK) {
             return results;
         }
         return new ArrayList<>(results.subList(0, topK));
     }
 
-    /**
-     * weightedFusion.
-     * 
-     * @param denseResults denseResults
-     * @param sparseResults sparseResults
-     * @param denseWeight denseWeight
-     * @param sparseWeight sparseWeight
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<SearchResult> weightedFusion(List<SearchResult> denseResults, List<SearchResult> sparseResults,
-            float denseWeight, float sparseWeight) {
-        List<Float> weights = normalizeWeights(denseWeight, sparseWeight);
-        Map<String, Double> scores = new LinkedHashMap<>();
-        Map<String, SearchResult> byText = new LinkedHashMap<>();
-        mergeWeighted(scores, byText, denseResults, weights.get(0));
-        mergeWeighted(scores, byText, sparseResults, weights.get(1));
-        List<Map.Entry<String, Double>> ordered = new ArrayList<>(scores.entrySet());
-        ordered.sort((left, right) -> Double.compare(right.getValue(), left.getValue()));
-        List<SearchResult> fused = new ArrayList<>(ordered.size());
-        for (Map.Entry<String, Double> entry : ordered) {
-            SearchResult result = byText.get(entry.getKey());
-            fused.add(new SearchResult(result.getId(), result.getText(), entry.getValue(), result.getMetadata()));
-        }
-        return fused;
+    private static String defaultIfBlank(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    /**
-     * mergeWeighted.
-     * 
-     * @param scores scores
-     * @param byText byText
-     * @param results results
-     * @param weight weight
-     * @since 0.1.7
-     */
-    private static void mergeWeighted(Map<String, Double> scores, Map<String, SearchResult> byText,
-            List<SearchResult> results, float weight) {
-        if (results == null || results.isEmpty() || weight <= 0.0f) {
-            return;
-        }
-        for (SearchResult result : results) {
-            scores.merge(result.getText(), result.getScore() * weight, Double::sum);
-            byText.putIfAbsent(result.getText(), result);
-        }
-    }
-
-    /**
-     * normalizeWeights.
-     * 
-     * @param denseWeight denseWeight
-     * @param sparseWeight sparseWeight
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<Float> normalizeWeights(float denseWeight, float sparseWeight) {
-        float safeDense = Math.max(0.0f, denseWeight);
-        float safeSparse = Math.max(0.0f, sparseWeight);
-        float sum = safeDense + safeSparse;
-        if (sum <= 0.0f) {
-            return List.of(0.5f, 0.5f);
-        }
-        return List.of(safeDense / sum, safeSparse / sum);
-    }
-
-    /**
-     * toInsertRecord.
-     * 
-     * @param record record
-     * @return the result
-     * @since 0.1.7
-     */
-    private JsonObject toInsertRecord(Map<String, Object> record) {
-        Map<String, Object> metadata = castMap(record.get(metadataField));
-        String chunkId = firstNonBlank(stringValue(record.get("chunk_id")), stringValue(record.get("id")),
-                stringValue(metadata.get("chunk_id")), UUID.randomUUID().toString());
-        String docId = firstNonBlank(stringValue(record.get(docIdField)), stringValue(metadata.get("doc_id")), chunkId);
-        metadata.putIfAbsent("doc_id", docId);
-        metadata.putIfAbsent("chunk_id", chunkId);
-
-        Map<String, Object> normalized = new LinkedHashMap<>();
-        normalized.put("chunk_id", chunkId);
-        normalized.put(docIdField, docId);
-        normalized.put(textField, firstNonBlank(stringValue(record.get(textField)), ""));
-        normalized.put(metadataField, metadata);
-
-        List<Float> vector = castFloatList(record.get(vectorField));
-        if (vector != null && !vector.isEmpty()) {
-            normalized.put(vectorField, vector);
-        }
-        CollectionSchema schema = collectionSchemas.get(collectionName);
-        if (schema != null) {
-            for (FieldSchema field : schema.getFields()) {
-                String fieldName = field.getName();
-                if (record.containsKey(fieldName) && !normalized.containsKey(fieldName)) {
-                    normalized.put(fieldName, record.get(fieldName));
-                }
-            }
-        }
-        return toJsonObject(normalized);
-    }
-
-    /**
-     * toJsonObject.
-     * 
-     * @param values values
-     * @return the result
-     * @since 0.1.7
-     */
-    private JsonObject toJsonObject(Map<String, Object> values) {
-        JsonObject object = new JsonObject();
-        for (Map.Entry<String, Object> entry : values.entrySet()) {
-            object.add(entry.getKey(), toJsonValue(entry.getValue()));
-        }
-        return object;
-    }
-
-    /**
-     * toJsonValue.
-     * 
-     * @param value value
-     * @return JsonElement
-     * @since 0.1.7
-     */
-    private com.google.gson.JsonElement toJsonValue(Object value) {
-        if (value == null) {
-            return JsonNull.INSTANCE;
-        }
-        if (value instanceof String string) {
-            return new JsonPrimitive(string);
-        }
-        if (value instanceof Number number) {
-            return new JsonPrimitive(number);
-        }
-        if (value instanceof Boolean bool) {
-            return new JsonPrimitive(bool);
-        }
-        if (value instanceof Map<?, ?> map) {
-            JsonObject object = new JsonObject();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                object.add(String.valueOf(entry.getKey()), toJsonValue(entry.getValue()));
-            }
-            return object;
-        }
-        if (value instanceof Collection<?> collection) {
-            JsonArray array = new JsonArray();
-            for (Object item : collection) {
-                array.add(toJsonValue(item));
-            }
-            return array;
-        }
-        return new JsonPrimitive(String.valueOf(value));
-    }
-
-    /**
-     * toSearchResults.
-     * 
-     * @param results results
-     * @param mode mode
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<SearchResult> toSearchResults(List<SearchResp.SearchResult> results, SearchMode mode) {
-        if (results == null || results.isEmpty()) {
-            return List.of();
-        }
-        List<SearchResult> mapped = new ArrayList<>(results.size());
-        for (SearchResp.SearchResult raw : results) {
-            Map<String, Object> entity =
-                raw.getEntity() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(raw.getEntity());
-            Map<String, Object> metadata = castMap(entity.get(metadataField));
-            String docId = firstNonBlank(stringValue(entity.get(docIdField)), stringValue(metadata.get("doc_id")));
-            String chunkId = firstNonBlank(stringValue(entity.get("chunk_id")), stringValue(metadata.get("chunk_id")));
-            if (docId != null) {
-                metadata.putIfAbsent("doc_id", docId);
-            }
-            if (chunkId != null) {
-                metadata.putIfAbsent("chunk_id", chunkId);
-            }
-            Double rawScore = raw.getScore() == null ? null : raw.getScore().doubleValue();
-            double finalScore = rawScore == null ? 0.0 : rawScore;
-            if (mode == SearchMode.VECTOR && rawScore != null) {
-                double scaled = normalizeVectorScore(rawScore);
-                metadata.putIfAbsent("raw_score_scaled", scaled);
-                finalScore = scaled;
-            }
-            metadata.putIfAbsent("raw_score", rawScore);
-            mapped.add(new SearchResult(
-                    firstNonBlank(chunkId, raw.getPrimaryKey(), stringValue(raw.getId()), UUID.randomUUID().toString()),
-                    stringValue(entity.getOrDefault(textField, "")), finalScore, metadata));
-        }
-        return mapped;
-    }
-
-    /**
-     * toQueryResults.
-     * 
-     * @param results results
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<SearchResult> toQueryResults(List<QueryResp.QueryResult> results) {
-        if (results == null || results.isEmpty()) {
-            return List.of();
-        }
-        List<SearchResult> mapped = new ArrayList<>(results.size());
-        for (QueryResp.QueryResult raw : results) {
-            Map<String, Object> entity = raw.getEntity() == null ? Map.of() : raw.getEntity();
-            Map<String, Object> metadata = castMap(entity.get(metadataField));
-            String docId = firstNonBlank(stringValue(entity.get(docIdField)), stringValue(metadata.get("doc_id")));
-            String chunkId = firstNonBlank(stringValue(entity.get("chunk_id")), stringValue(metadata.get("chunk_id")));
-            if (docId != null) {
-                metadata.putIfAbsent("doc_id", docId);
-            }
-            if (chunkId != null) {
-                metadata.putIfAbsent("chunk_id", chunkId);
-            }
-            mapped.add(new SearchResult(firstNonBlank(chunkId, UUID.randomUUID().toString()),
-                    stringValue(entity.getOrDefault(textField, "")), 0.0, metadata));
-        }
-        return mapped;
-    }
-
-    /**
-     * firstSearchResults.
-     * 
-     * @param response response
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<SearchResp.SearchResult> firstSearchResults(SearchResp response) {
-        List<List<SearchResp.SearchResult>> results = response == null ? null : response.getSearchResults();
-        if (results == null || results.isEmpty()) {
-            return List.of();
-        }
-        return results.get(0) == null ? List.of() : results.get(0);
-    }
-
-    /**
-     * metricType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private IndexParam.MetricType metricType() {
-        return switch (distanceMetric) {
-            case "dot" -> IndexParam.MetricType.IP;
-            case "euclidean" -> IndexParam.MetricType.L2;
-            default -> IndexParam.MetricType.COSINE;
-        };
-    }
-
-    /**
-     * normalizeVectorScore.
-     * 
-     * @param rawScore rawScore
-     * @return the result
-     * @since 0.1.7
-     */
-    private double normalizeVectorScore(double rawScore) {
-        return switch (metricType()) {
-            case L2 -> 1.0 / (1.0 + Math.max(rawScore, 0.0));
-            default -> clamp((rawScore + 1.0) / 2.0);
-        };
-    }
-
-    /**
-     * clamp.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static double clamp(double value) {
-        return Math.max(0.0, Math.min(1.0, value));
-    }
-
-    /**
-     * toJson.
-     * 
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String toJson(Map<String, Object> params) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(params == null ? Map.of() : params);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("failed to serialize search params", ex);
-        }
-    }
-
-    /**
-     * formatCollection.
-     * 
-     * @param values values
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatCollection(Collection<?> values) {
-        List<String> literals = new ArrayList<>(values.size());
-        for (Object value : values) {
-            literals.add(formatLiteral(value));
-        }
-        return "[" + String.join(", ", literals) + "]";
-    }
-
-    /**
-     * formatLiteral.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatLiteral(Object value) {
-        if (value == null) {
-            return "null";
-        }
-        if (value instanceof Number || value instanceof Boolean) {
-            return String.valueOf(value);
-        }
-        return "\"" + String.valueOf(value).replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
-
-    /**
-     * firstPresent.
-     * 
-     * @param source source
-     * @param keys keys
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object firstPresent(Map<String, Object> source, List<String> keys) {
-        if (source == null) {
-            return null;
-        }
-        for (String key : keys) {
-            if (source.containsKey(key)) {
-                return source.get(key);
-            }
-        }
-        return null;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * extractMap.
-     * 
-     * @param source source
-     * @param keys keys
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> extractMap(Map<String, Object> source, List<String> keys) {
-        Object value = source == null ? null : firstPresent(source, keys);
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * castMap.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> castMap(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return new LinkedHashMap<>();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            result.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return result;
-    }
-
-    /**
-     * castFloatList.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<Float> castFloatList(Object value) {
-        if (value instanceof float[] array) {
-            List<Float> floats = new ArrayList<>(array.length);
-            for (float item : array) {
-                floats.add(item);
-            }
-            return floats;
-        }
-        if (!(value instanceof Collection<?> values)) {
-            return java.util.Collections.emptyList();
-        }
-        List<Float> floats = new ArrayList<>(values.size());
-        for (Object item : values) {
-            if (item instanceof Number number) {
-                floats.add(number.floatValue());
-            }
-        }
-        return floats;
-    }
-
-    /**
-     * stringValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String stringValue(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
-    /**
-     * firstNonBlank.
-     * 
-     * @param values values
-     * @return the result
-     * @since 0.1.7
-     */
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -1865,58 +798,393 @@ public class MilvusVectorStore implements VectorStore, SchemaMutableVectorStore 
         return null;
     }
 
-    /**
-     * resolveBootstrapIndexType.
-     * 
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveBootstrapIndexType(Map<String, Object> options) {
-        Object requested =
-            firstPresent(options, List.of("bootstrap_index_type", "bootstrapIndexType", "index_type", "indexType"));
-        return requested == null ? indexType : String.valueOf(requested);
-    }
-
-    /**
-     * extractDimension.
-     * 
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Integer extractDimension(Map<String, Object> options) {
-        Object value = firstPresent(options, List.of("dimension", "vector_dimension", "vectorDimension"));
-        if (value instanceof Number number) {
-            int dimension = number.intValue();
-            return dimension > 0 ? dimension : null;
+    private static Object firstNonNull(Object... values) {
+        for (Object value : values) {
+            if (value != null) {
+                return value;
+            }
         }
         return null;
     }
 
-    /**
-     * inferDimension.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    private int inferDimension(List<Map<String, Object>> data) {
-        if (data == null) {
-            return 0;
-        }
-        for (Map<String, Object> record : data) {
-            List<Float> vector = castFloatList(record.get(vectorField));
-            if (vector != null && !vector.isEmpty()) {
-                return vector.size();
-            }
-        }
-        return 0;
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
+    private static Double doubleValueOrNull(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        return Double.parseDouble(String.valueOf(value));
+    }
+
+    private static double doubleValue(Object value, double defaultValue) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value == null) {
+            return defaultValue;
+        }
+        return Double.parseDouble(String.valueOf(value));
+    }
+
+    private static String toJson(Map<String, Object> params) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(params == null ? Map.of() : params);
+        } catch (JsonProcessingException error) {
+            throw new IllegalArgumentException("failed to serialize Milvus search params", error);
+        }
+    }
+
+    private static List<Float> toFloatVector(List<Double> queryVector) {
+        List<Float> floats = new ArrayList<>(queryVector.size());
+        for (Double value : queryVector) {
+            floats.add(value == null ? 0.0f : value.floatValue());
+        }
+        return floats;
+    }
+
+    /**
+     * Mirrors Python's Milvus client boundary in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    public interface MilvusClientFacade extends AutoCloseable {
+        boolean hasCollection(String collectionName);
+
+        void loadCollection(String collectionName);
+
+        void insert(String collectionName, List<Map<String, Object>> rows, int batchSize);
+
+        List<SearchHit> search(
+                String collectionName,
+                SearchRequest request,
+                String metricType,
+                int topK,
+                List<String> outputFields,
+                Map<String, Object> searchParams,
+                String filter
+        );
+
+        List<SearchHit> hybridSearch(
+                String collectionName,
+                List<SearchRequest> requests,
+                int topK,
+                List<String> outputFields
+        );
+
+        long delete(String collectionName, List<String> ids, String filter);
+
+        void flush(String collectionName);
+
+        void dropCollection(String collectionName);
+
+        Map<String, Object> describeIndex(String collectionName, String fieldName);
+
+        CollectionDescription describeCollection(String collectionName);
+
+        @Override
+        void close();
+    }
+
+    /**
+     * Mirrors Python's search hit normalization boundary in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    public record SearchHit(Object id,
+                            Object primaryKey,
+                            Double score,
+                            Double distance,
+                            Map<String, Object> entity) {
+    }
+
+    /**
+     * Mirrors Python's Milvus collection description usage in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    public record CollectionDescription(List<FieldDescription> fields) {
+    }
+
+    /**
+     * Mirrors Python's Milvus field description usage in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    public record FieldDescription(String name, DataType dataType, Map<String, Object> params) {
+        boolean isFloatVector() {
+            return dataType == DataType.FloatVector;
+        }
+    }
+
+    /**
+     * Mirrors Python's AnnSearchRequest inputs in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    public record SearchRequest(String annsField,
+                                List<Double> vector,
+                                String text,
+                                String metricType,
+                                Map<String, Object> params,
+                                String filter) {
+        static SearchRequest vector(String annsField, List<Double> vector) {
+            return new SearchRequest(annsField, new ArrayList<>(vector), null, null, Map.of(), null);
+        }
+
+        static SearchRequest text(String annsField, String text) {
+            return new SearchRequest(annsField, null, text, null, Map.of(), null);
+        }
+
+        SearchRequest withMetricType(String value) {
+            return new SearchRequest(annsField, vector, text, value, params, filter);
+        }
+
+        SearchRequest withParams(Map<String, Object> value) {
+            return new SearchRequest(annsField, vector, text, metricType,
+                    value == null ? Map.of() : new LinkedHashMap<>(value), filter);
+        }
+
+        SearchRequest withFilter(String value) {
+            return new SearchRequest(annsField, vector, text, metricType, params, value);
+        }
+    }
+
+    /**
+     * Mirrors Python's search result mode branches in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
     private enum SearchMode {
         VECTOR,
         SPARSE,
         HYBRID
+    }
+
+    /**
+     * Mirrors Python's default MilvusClient usage in
+     * {@code openjiuwen/core/retrieval/vector_store/milvus_store.py}.
+     */
+    private static final class DefaultMilvusClientFacade implements MilvusClientFacade {
+        private final String databaseName;
+        private final MilvusClientV2 delegate;
+
+        private DefaultMilvusClientFacade(
+                String databaseName,
+                String milvusUri,
+                String milvusToken,
+                Map<String, Object> kwargs
+        ) {
+            this.databaseName = databaseName == null || databaseName.isBlank() ? "default" : databaseName;
+            this.delegate = createClient(this.databaseName, milvusUri, milvusToken, kwargs);
+        }
+
+        private DefaultMilvusClientFacade(String databaseName, MilvusClientV2 delegate) {
+            this.databaseName = databaseName == null || databaseName.isBlank() ? "default" : databaseName;
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public boolean hasCollection(String collectionName) {
+            return delegate.hasCollection(HasCollectionReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .build());
+        }
+
+        @Override
+        public void loadCollection(String collectionName) {
+            delegate.loadCollection(LoadCollectionReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .sync(true)
+                    .build());
+        }
+
+        @Override
+        public void insert(String collectionName, List<Map<String, Object>> rows, int batchSize) {
+            int safeBatchSize = Math.max(1, batchSize);
+            for (int start = 0; start < rows.size(); start += safeBatchSize) {
+                List<JsonObject> payload = rows.subList(start, Math.min(start + safeBatchSize, rows.size()))
+                        .stream()
+                        .map(row -> GSON.toJsonTree(row).getAsJsonObject())
+                        .toList();
+                delegate.insert(InsertReq.builder()
+                        .databaseName(databaseName)
+                        .collectionName(collectionName)
+                        .data(payload)
+                        .build());
+            }
+        }
+
+        @Override
+        public List<SearchHit> search(
+                String collectionName,
+                SearchRequest request,
+                String metricType,
+                int topK,
+                List<String> outputFields,
+                Map<String, Object> searchParams,
+                String filter
+        ) {
+            SearchReq.SearchReqBuilder builder = SearchReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .annsField(request.annsField())
+                    .topK(topK)
+                    .limit(topK)
+                    .outputFields(outputFields)
+                    .searchParams(searchParams == null ? Map.of() : searchParams)
+                    .metricType(IndexParam.MetricType.valueOf(metricType));
+            if (request.vector() != null) {
+                builder.data(List.of(new FloatVec(toFloatVector(request.vector()))));
+            } else {
+                builder.data(List.of(new EmbeddedText(request.text())));
+            }
+            if (filter != null && !filter.isBlank()) {
+                builder.filter(filter);
+            }
+            return firstSearchHits(delegate.search(builder.build()));
+        }
+
+        @Override
+        public List<SearchHit> hybridSearch(
+                String collectionName,
+                List<SearchRequest> requests,
+                int topK,
+                List<String> outputFields
+        ) {
+            List<AnnSearchReq> annRequests = new ArrayList<>(requests.size());
+            for (SearchRequest request : requests) {
+                AnnSearchReq.AnnSearchReqBuilder builder = AnnSearchReq.builder()
+                        .vectorFieldName(request.annsField())
+                        .topK(topK)
+                        .limit(topK)
+                        .metricType(IndexParam.MetricType.valueOf(request.metricType()))
+                        .params(toJson(request.params()));
+                if (request.vector() != null) {
+                    builder.vectors(List.of(new FloatVec(toFloatVector(request.vector()))));
+                } else {
+                    builder.vectors(List.of(new EmbeddedText(request.text())));
+                }
+                if (request.filter() != null && !request.filter().isBlank()) {
+                    builder.filter(request.filter());
+                }
+                annRequests.add(builder.build());
+            }
+            SearchResp response = delegate.hybridSearch(HybridSearchReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .searchRequests(annRequests)
+                    .ranker(new RRFRanker(RRF_K))
+                    .topK(topK)
+                    .limit(topK)
+                    .outFields(outputFields)
+                    .build());
+            return firstSearchHits(response);
+        }
+
+        @Override
+        public long delete(String collectionName, List<String> ids, String filter) {
+            DeleteReq.DeleteReqBuilder builder = DeleteReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName);
+            if (ids != null && !ids.isEmpty()) {
+                builder.ids(new ArrayList<>(ids));
+            }
+            if (filter != null && !filter.isBlank()) {
+                builder.filter(filter);
+            }
+            DeleteResp response = delegate.delete(builder.build());
+            return response.getDeleteCnt();
+        }
+
+        @Override
+        public void flush(String collectionName) {
+            delegate.flush(FlushReq.builder()
+                    .databaseName(databaseName)
+                    .collectionNames(List.of(collectionName))
+                    .build());
+        }
+
+        @Override
+        public void dropCollection(String collectionName) {
+            delegate.dropCollection(DropCollectionReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .build());
+        }
+
+        @Override
+        public Map<String, Object> describeIndex(String collectionName, String fieldName) {
+            DescribeIndexResp response = delegate.describeIndex(DescribeIndexReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .indexName(fieldName)
+                    .build());
+            DescribeIndexResp.IndexDesc index = response.getIndexDescByFieldName(fieldName);
+            if (index == null && !response.getIndexDescriptions().isEmpty()) {
+                index = response.getIndexDescriptions().get(0);
+            }
+            if (index == null) {
+                return Map.of();
+            }
+            Map<String, Object> actual = new LinkedHashMap<>();
+            actual.put("index_type", index.getIndexType() == null ? null : index.getIndexType().name());
+            actual.put("metric_type", index.getMetricType() == null ? null : index.getMetricType().name());
+            if (index.getExtraParams() != null) {
+                actual.putAll(index.getExtraParams());
+            }
+            if (index.getProperties() != null) {
+                actual.putAll(index.getProperties());
+            }
+            return actual;
+        }
+
+        @Override
+        public CollectionDescription describeCollection(String collectionName) {
+            DescribeCollectionResp response = delegate.describeCollection(DescribeCollectionReq.builder()
+                    .databaseName(databaseName)
+                    .collectionName(collectionName)
+                    .build());
+            List<FieldDescription> fields = new ArrayList<>();
+            if (response.getCollectionSchema() != null) {
+                for (CreateCollectionReq.FieldSchema field : response.getCollectionSchema().getFieldSchemaList()) {
+                    Map<String, Object> params = new LinkedHashMap<>();
+                    if (field.getDimension() != null) {
+                        params.put("dim", field.getDimension());
+                    }
+                    if (field.getMaxLength() != null) {
+                        params.put("max_length", field.getMaxLength());
+                    }
+                    fields.add(new FieldDescription(field.getName(), field.getDataType(), params));
+                }
+            }
+            return new CollectionDescription(fields);
+        }
+
+        @Override
+        public void close() {
+            delegate.close();
+        }
+
+        private List<SearchHit> firstSearchHits(SearchResp response) {
+            List<List<SearchResp.SearchResult>> searchResults = response == null ? null : response.getSearchResults();
+            if (searchResults == null || searchResults.isEmpty() || searchResults.get(0) == null) {
+                return List.of();
+            }
+            List<SearchHit> hits = new ArrayList<>(searchResults.get(0).size());
+            for (SearchResp.SearchResult result : searchResults.get(0)) {
+                Map<String, Object> entity = result.getEntity() == null
+                        ? Map.of()
+                        : new LinkedHashMap<>(result.getEntity());
+                hits.add(new SearchHit(
+                        result.getId(),
+                        result.getPrimaryKey(),
+                        result.getScore() == null ? null : result.getScore().doubleValue(),
+                        null,
+                        entity
+                ));
+            }
+            return hits;
+        }
     }
 }

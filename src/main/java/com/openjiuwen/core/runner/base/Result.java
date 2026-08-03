@@ -5,42 +5,30 @@
 package com.openjiuwen.core.runner.base;
 
 /**
- * Result type for type-safe error handling.
- * <p>
- * Mirrors Python's {@code Result = Ok | Error} pattern.
- * 
- * @since 0.1.7
+ * Backward-compatible single-generic result contract for runner resource APIs.
+ *
+ * <p>Mirrors Python's {@code Result} alias in
+ * {@code openjiuwen/core/runner/resources_manager/base.py}.</p>
+ *
+ * @param <T> success value type
  */
-public sealed interface Result<T> permits Ok, Error {
-    /**
-     * isOk.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+public interface Result<T> {
+
     boolean isOk();
 
-    /**
-     * isError.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    boolean isError();
+    boolean isErr();
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    T getValue();
+    Object msg();
 
-    /**
-     * getError.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    Exception getError();
+    default T getValue() {
+        return isOk() ? (T) msg() : null;
+    }
+
+    default boolean isError() {
+        return isErr();
+    }
+
+    default Object getError() {
+        return isErr() ? msg() : null;
+    }
 }

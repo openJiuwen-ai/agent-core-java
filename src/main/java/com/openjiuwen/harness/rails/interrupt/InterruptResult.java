@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness.rails.interrupt;
@@ -7,30 +7,12 @@ package com.openjiuwen.harness.rails.interrupt;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 
 /**
- * Interrupt tool execution and wait for user input.
- * 
- * @since 0.1.7
+ * Decision to interrupt and wait for user input.
+ *
+ * <p>Mirrors Python's {@code InterruptResult} in
+ * {@code openjiuwen/harness/rails/interrupt/interrupt_base.py}.</p>
+ *
+ * @param request interrupt request payload
  */
-public class InterruptResult extends InterruptDecision {
-    private final InterruptRequest request;
-
-    /**
-     * Create an interrupt decision.
-     * 
-     * @param request interruption request
-     * @since 0.1.7
-     */
-    public InterruptResult(InterruptRequest request) {
-        this.request = request;
-    }
-
-    /**
-     * Return the interruption request payload.
-     * 
-     * @return interruption request
-     * @since 0.1.7
-     */
-    public InterruptRequest getRequest() {
-        return request;
-    }
+public record InterruptResult(InterruptRequest request) implements InterruptDecision {
 }

@@ -13,28 +13,16 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * Creates a {@link QuestionerExecutable} with initial state.
  * <p>
  * Mirrors Python's {@code QuestionerComponent}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public class QuestionerComponent implements ComponentComposable {
+
     private final QuestionerConfig config;
 
-    /**
-     * QuestionerComponent.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public QuestionerComponent(QuestionerConfig config) {
         this.config = config;
     }
 
-    /**
-     * toExecutable.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Executable<?, ?> toExecutable() {
         return new QuestionerExecutable(config).state(new QuestionerState());

@@ -4,10 +4,15 @@
 
 package com.openjiuwen.core.runner;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+
+import java.util.Locale;
+
 /**
  * Message queue type enumeration.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code MessageQueueType} in
+ * {@code openjiuwen/core/runner/runner_config.py}.</p>
  */
 public enum MessageQueueType {
     PULSAR("pulsar"),
@@ -19,13 +24,21 @@ public enum MessageQueueType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
     public String getValue() {
         return value;
+    }
+
+    public static MessageQueueType fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.toLowerCase(Locale.ROOT);
+        for (MessageQueueType type : values()) {
+            if (type.value.equals(normalized)) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("Unknown message queue type: " + value);
     }
 }

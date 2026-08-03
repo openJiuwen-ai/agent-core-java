@@ -23,8 +23,8 @@ class PermissionExampleSupportTest {
 
         assertThat(permissions).containsEntry("enabled", true);
         assertThat(((Map<?, ?>) permissions.get("tools")).get("read_file")).isEqualTo("ask");
-        assertThat(host.resolveWorkspaceDir()).isEqualTo(tempDir.toAbsolutePath().normalize());
-        assertThat(host.permissionYamlPath()).isEqualTo(tempDir.resolve("permissions.yaml"));
+        assertThat(host.getWorkspaceDirResolver().get()).isEqualTo(tempDir.toAbsolutePath().normalize());
+        assertThat(host.getPermissionYamlPath()).isEqualTo(tempDir.resolve("permissions.yaml"));
     }
 
     @Test

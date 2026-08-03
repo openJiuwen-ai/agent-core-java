@@ -6,30 +6,37 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Assistant message from LLM response, with optional tool calls and metadata.
- * <p>
- * Mirrors Python's {@code AssistantMessage} model. Handles conversion between
- * OpenAI nested format and flat {@link ToolCall} format during deserialization.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code AssistantMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessage extends BaseMessage {
-    @JsonProperty("tool_calls")
+
     private List<ToolCall> toolCalls;
 
     @JsonProperty("usage_metadata")
     private UsageMetadata usageMetadata;
 
+    @Builder.Default
     @JsonProperty("finish_reason")
-    private String finishReason;
+    private String finishReason = "null";
 
     @JsonProperty("parser_content")
     private Object parserContent;
@@ -37,226 +44,57 @@ public class AssistantMessage extends BaseMessage {
     @JsonProperty("reasoning_content")
     private String reasoningContent;
 
-    /**
-     * AssistantMessage.
-     * 
-     * @since 0.1.7
-     */
-    public AssistantMessage() {
-    }
+    @JsonProperty("prompt_token_ids")
+    private List<Integer> promptTokenIds;
 
-    /**
-     * AssistantMessage.
-     * 
-     * @param role role
-     * @param content content
-     * @param name name
-     * @param metadata metadata
-     * @param toolCalls toolCalls
-     * @param usageMetadata usageMetadata
-     * @param finishReason finishReason
-     * @param parserContent parserContent
-     * @param reasoningContent reasoningContent
-     * @since 0.1.7
-     */
-    public AssistantMessage(String role, Object content, String name, Map<String, Object> metadata,
-            List<ToolCall> toolCalls, UsageMetadata usageMetadata, String finishReason, Object parserContent,
-            String reasoningContent) {
-        super(role, content, name, metadata);
-        this.toolCalls = toolCalls;
-        this.usageMetadata = usageMetadata;
-        this.finishReason = finishReason;
-        this.parserContent = parserContent;
-        this.reasoningContent = reasoningContent;
-    }
+    @JsonProperty("completion_token_ids")
+    private List<Integer> completionTokenIds;
 
-    /**
-     * Create an assistant message with string content.
-     * 
-     * @param content the message content
-     * @since 0.1.7
-     */
+    @JsonProperty("logprobs")
+    private Object logprobs;
+
     public AssistantMessage(String content) {
         super("assistant", content);
         this.finishReason = "null";
     }
 
-    /**
-     * getRole.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String getRole() {
-        String r = super.getRole();
-        return r != null ? r : "assistant";
+        String value = super.getRole();
+        return value != null ? value : "assistant";
     }
 
-    /**
-     * getToolCalls.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<ToolCall> getToolCalls() {
-        return toolCalls;
-    }
-
-    /**
-     * setToolCalls.
-     * 
-     * @param toolCalls toolCalls
-     * @since 0.1.7
-     */
-    public void setToolCalls(List<ToolCall> toolCalls) {
-        this.toolCalls = toolCalls;
-    }
-
-    /**
-     * getUsageMetadata.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public UsageMetadata getUsageMetadata() {
-        return usageMetadata;
-    }
-
-    /**
-     * setUsageMetadata.
-     * 
-     * @param usageMetadata usageMetadata
-     * @since 0.1.7
-     */
-    public void setUsageMetadata(UsageMetadata usageMetadata) {
-        this.usageMetadata = usageMetadata;
-    }
-
-    /**
-     * getFinishReason.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getFinishReason() {
-        return finishReason;
-    }
-
-    /**
-     * setFinishReason.
-     * 
-     * @param finishReason finishReason
-     * @since 0.1.7
-     */
-    public void setFinishReason(String finishReason) {
-        this.finishReason = finishReason;
-    }
-
-    /**
-     * getParserContent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getParserContent() {
-        return parserContent;
-    }
-
-    /**
-     * setParserContent.
-     * 
-     * @param parserContent parserContent
-     * @since 0.1.7
-     */
-    public void setParserContent(Object parserContent) {
-        this.parserContent = parserContent;
-    }
-
-    /**
-     * getReasoningContent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getReasoningContent() {
-        return reasoningContent;
-    }
-
-    /**
-     * setReasoningContent.
-     * 
-     * @param reasoningContent reasoningContent
-     * @since 0.1.7
-     */
-    public void setReasoningContent(String reasoningContent) {
-        this.reasoningContent = reasoningContent;
-    }
-
-    // ==================== OpenAI Format Conversion ====================
-
-    /**
-     * Convert OpenAI API nested tool_calls format to flat {@link ToolCall} format.
-     * <p>
-     * OpenAI format: {@code {"id":"xxx","type":"function","function":{"name":"...","arguments":"..."}}}
-     * <br>
-     * Flat format: {@code {"id":"xxx","type":"function","name":"...","arguments":"..."}}
-     * 
-     * @param rawToolCalls list of raw tool call maps from API
-     * @return list of converted {@link ToolCall} instances
-     * @since 0.1.7
-     */
     public static List<ToolCall> convertOpenAiToolCalls(List<Map<String, Object>> rawToolCalls) {
-        if (rawToolCalls == null || rawToolCalls.isEmpty()) {
-            return java.util.Collections.emptyList();
-        }
-        List<ToolCall> result = new ArrayList<>();
-        for (Map<String, Object> tc : rawToolCalls) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> function = (Map<String, Object>) tc.get("function");
-            if (function != null) {
-                result.add(
-                        ToolCall.builder().id((String) tc.get("id")).type((String) tc.getOrDefault("type", "function"))
-                                .name((String) function.getOrDefault("name", ""))
-                                .arguments((String) function.getOrDefault("arguments", ""))
-                                .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
-            } else {
-                result.add(ToolCall.builder().id((String) tc.get("id"))
-                        .type((String) tc.getOrDefault("type", "function")).name((String) tc.getOrDefault("name", ""))
-                        .arguments((String) tc.getOrDefault("arguments", ""))
-                        .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
-            }
-        }
-        return result;
+        return normalizeToolCalls(rawToolCalls);
     }
 
-    /**
-     * Convert this message to OpenAI-compatible dict format for API requests.
-     * 
-     * @return a map containing the message in API format
-     * @since 0.1.7
-     */
-    public Map<String, Object> toApiFormat() {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("role", getRole());
-        result.put("content", getContent());
+    @JsonProperty("tool_calls")
+    public void setToolCallsRaw(List<?> rawToolCalls) {
+        this.toolCalls = normalizeToolCalls(rawToolCalls);
+    }
 
+    @Override
+    public Map<String, Object> modelDump() {
+        Map<String, Object> result = super.modelDump();
         if (toolCalls != null && !toolCalls.isEmpty()) {
-            List<Map<String, Object>> toolCallList = new ArrayList<>();
+            List<Map<String, Object>> serializedCalls = new ArrayList<>();
             for (ToolCall call : toolCalls) {
-                Map<String, Object> tcMap = new LinkedHashMap<>();
-                tcMap.put("id", call.getId());
-                tcMap.put("type", call.getType());
-                Map<String, String> fnMap = new LinkedHashMap<>();
-                fnMap.put("name", call.getName());
-                fnMap.put("arguments", call.getArguments());
-                tcMap.put("function", fnMap);
-                toolCallList.add(tcMap);
+                Map<String, Object> callMap = new LinkedHashMap<>();
+                callMap.put("id", call.getId());
+                callMap.put("type", call.getType());
+                Map<String, Object> functionMap = new LinkedHashMap<>();
+                functionMap.put("name", call.getName());
+                functionMap.put("arguments", call.getArguments());
+                callMap.put("function", functionMap);
+                if (call.getIndex() != null) {
+                    callMap.put("index", call.getIndex());
+                }
+                serializedCalls.add(callMap);
             }
-            result.put("tool_calls", toolCallList);
+            result.put("tool_calls", serializedCalls);
         }
         if (usageMetadata != null) {
-            result.put("usage_metadata", usageMetadata);
+            result.put("usage_metadata", usageMetadata.modelDump());
         }
         if (finishReason != null) {
             result.put("finish_reason", finishReason);
@@ -267,181 +105,100 @@ public class AssistantMessage extends BaseMessage {
         if (reasoningContent != null) {
             result.put("reasoning_content", reasoningContent);
         }
+        if (promptTokenIds != null) {
+            result.put("prompt_token_ids", promptTokenIds);
+        }
+        if (completionTokenIds != null) {
+            result.put("completion_token_ids", completionTokenIds);
+        }
+        if (logprobs != null) {
+            result.put("logprobs", logprobs);
+        }
         return result;
     }
 
-    /**
-     * builder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Builder builder() {
-        return new Builder();
+    public Map<String, Object> toApiFormat() {
+        return modelDump();
     }
 
-    /**
-     * Builder.
-     * 
-     * @since 0.1.7
-     */
-    public static class Builder extends BaseMessage.Builder {
-        /**
-         * toolCalls.
-         * 
-         * @since 0.1.7
-         */
-        protected List<ToolCall> toolCalls;
+    public Map<String, Object> model_dump() {
+        return modelDump();
+    }
 
-        /**
-         * usageMetadata.
-         * 
-         * @since 0.1.7
-         */
-        protected UsageMetadata usageMetadata;
-
-        /**
-         * finishReason.
-         * 
-         * @since 0.1.7
-         */
-        protected String finishReason;
-
-        /**
-         * parserContent.
-         * 
-         * @since 0.1.7
-         */
-        protected Object parserContent;
-
-        /**
-         * reasoningContent.
-         * 
-         * @since 0.1.7
-         */
-        protected String reasoningContent;
-
-        /**
-         * role.
-         * 
-         * @param role role
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public Builder role(String role) {
-            super.role(role);
-            return this;
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
         }
-
-        /**
-         * content.
-         * 
-         * @param content content
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public Builder content(Object content) {
-            super.content(content);
-            return this;
+        if (!(other instanceof AssistantMessage that) || !super.equals(other)) {
+            return false;
         }
+        return Objects.equals(toolCalls, that.toolCalls)
+                && Objects.equals(usageMetadata, that.usageMetadata)
+                && Objects.equals(normalizeFinishReason(finishReason), normalizeFinishReason(that.finishReason))
+                && Objects.equals(parserContent, that.parserContent)
+                && Objects.equals(reasoningContent, that.reasoningContent)
+                && Objects.equals(promptTokenIds, that.promptTokenIds)
+                && Objects.equals(completionTokenIds, that.completionTokenIds)
+                && Objects.equals(logprobs, that.logprobs);
+    }
 
-        /**
-         * name.
-         * 
-         * @param name name
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public Builder name(String name) {
-            super.name(name);
-            return this;
-        }
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                super.hashCode(),
+                toolCalls,
+                usageMetadata,
+                normalizeFinishReason(finishReason),
+                parserContent,
+                reasoningContent,
+                promptTokenIds,
+                completionTokenIds,
+                logprobs
+        );
+    }
 
-        /**
-         * metadata.
-         * 
-         * @param metadata metadata
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public Builder metadata(Map<String, Object> metadata) {
-            super.metadata(metadata);
-            return this;
-        }
+    private static String normalizeFinishReason(String value) {
+        return value == null || "null".equals(value) ? null : value;
+    }
 
-        /**
-         * toolCalls.
-         * 
-         * @param toolCalls toolCalls
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder toolCalls(List<ToolCall> toolCalls) {
-            this.toolCalls = toolCalls;
-            return this;
+    @SuppressWarnings("unchecked")
+    private static List<ToolCall> normalizeToolCalls(List<?> rawToolCalls) {
+        if (rawToolCalls == null || rawToolCalls.isEmpty()) {
+            return null;
         }
-
-        /**
-         * usageMetadata.
-         * 
-         * @param usageMetadata usageMetadata
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder usageMetadata(UsageMetadata usageMetadata) {
-            this.usageMetadata = usageMetadata;
-            return this;
+        List<ToolCall> result = new ArrayList<>();
+        for (Object rawToolCall : rawToolCalls) {
+            if (rawToolCall instanceof ToolCall toolCall) {
+                result.add(toolCall);
+                continue;
+            }
+            if (!(rawToolCall instanceof Map<?, ?> rawMap)) {
+                continue;
+            }
+            Map<String, Object> callMap = new LinkedHashMap<>();
+            rawMap.forEach((key, value) -> callMap.put(String.valueOf(key), value));
+            Object functionValue = callMap.get("function");
+            if (functionValue instanceof Map<?, ?> functionMap) {
+                Map<String, Object> normalizedFunction = new LinkedHashMap<>();
+                functionMap.forEach((key, value) -> normalizedFunction.put(String.valueOf(key), value));
+                result.add(ToolCall.builder()
+                        .id((String) callMap.get("id"))
+                        .type((String) callMap.getOrDefault("type", "function"))
+                        .name((String) normalizedFunction.getOrDefault("name", ""))
+                        .arguments((String) normalizedFunction.getOrDefault("arguments", ""))
+                        .index(callMap.get("index") instanceof Number number ? number.intValue() : null)
+                        .build());
+                continue;
+            }
+            result.add(ToolCall.builder()
+                    .id((String) callMap.get("id"))
+                    .type((String) callMap.getOrDefault("type", "function"))
+                    .name((String) callMap.getOrDefault("name", ""))
+                    .arguments((String) callMap.getOrDefault("arguments", ""))
+                    .index(callMap.get("index") instanceof Number number ? number.intValue() : null)
+                    .build());
         }
-
-        /**
-         * finishReason.
-         * 
-         * @param finishReason finishReason
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder finishReason(String finishReason) {
-            this.finishReason = finishReason;
-            return this;
-        }
-
-        /**
-         * parserContent.
-         * 
-         * @param parserContent parserContent
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder parserContent(Object parserContent) {
-            this.parserContent = parserContent;
-            return this;
-        }
-
-        /**
-         * reasoningContent.
-         * 
-         * @param reasoningContent reasoningContent
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder reasoningContent(String reasoningContent) {
-            this.reasoningContent = reasoningContent;
-            return this;
-        }
-
-        /**
-         * build.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public AssistantMessage build() {
-            return new AssistantMessage(role, content, name, metadata, toolCalls, usageMetadata, finishReason,
-                    parserContent, reasoningContent);
-        }
+        return result;
     }
 }

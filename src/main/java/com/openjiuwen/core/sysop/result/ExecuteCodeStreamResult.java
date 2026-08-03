@@ -4,26 +4,14 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
-
 /**
- * Result type for streaming code execution.
- * 
- * @since 0.1.7
+ * Backward-compatible execute-code stream result for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code ExecuteCodeStreamResult} in
+ * {@code openjiuwen/core/sys_operation/result/code_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult}.
  */
-@SuperBuilder
-@NoArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class ExecuteCodeStreamResult extends BaseResult<ExecuteCodeChunkData> {
-    /**
-     * ExecuteCodeStreamResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
-     */
-    public ExecuteCodeStreamResult(int code, String message, ExecuteCodeChunkData data) {
-        super(code, message, data);
-    }
 }

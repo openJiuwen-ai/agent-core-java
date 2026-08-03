@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloaderConfig
+# com.openjiuwen.core.context_engine.processor.offloader.MessageSummaryOffloaderConfig
 
 ## class MessageSummaryOffloaderConfig
 

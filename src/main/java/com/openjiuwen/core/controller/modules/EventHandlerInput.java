@@ -10,44 +10,25 @@ import com.openjiuwen.core.session.AgentSessionApi;
 /**
  * Input data model for event handlers.
  * <p>
- * Contains event and session information that is isPassed to event handlers.
+ * Contains event and session information that is passed to event handlers.
  * <p>
- * Mirrors Python's {@code EventHandlerInput(BaseModel)}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code EventHandlerInput} in
+ * {@code openjiuwen/core/controller/modules/event_handler.py}.
  */
 public class EventHandlerInput {
+
     private final Event event;
     private final AgentSessionApi session;
 
-    /**
-     * EventHandlerInput.
-     * 
-     * @param event event
-     * @param session session
-     * @since 0.1.7
-     */
     public EventHandlerInput(Event event, AgentSessionApi session) {
         this.event = event;
         this.session = session;
     }
 
-    /**
-     * getEvent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Event getEvent() {
         return event;
     }
 
-    /**
-     * getSession.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public AgentSessionApi getSession() {
         return session;
     }

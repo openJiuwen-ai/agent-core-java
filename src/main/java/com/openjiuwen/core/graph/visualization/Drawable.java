@@ -10,326 +10,900 @@ import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.BranchComponent;
+import com.openjiuwen.core.workflow.component.IntentDetectionComponent;
 import com.openjiuwen.core.workflow.component.LoopComponent;
 import com.openjiuwen.core.workflow.component.SubWorkflowComponent;
-import com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Builds a drawable graph representation of a workflow for visualization purposes.
- * <p>
- * Supports adding nodes (including loop, sub-workflow, and branch components),
- * setting start/end/break nodes, adding edges (regular and conditional), and
- * exporting to Mermaid diagram syntax.
- * </p>
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable.Drawable}.
- * </p>
- * 
- * @since 0.1.7
+ * Builds and renders a drawable graph representation of a workflow.
+ *
+ * <p>Mirrors Python's {@code Drawable} in
+ * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
  */
 public class Drawable {
+
     private final DrawableGraph graph;
     private final Set<String> loopNodes;
 
-    /**
-     * Drawable.
-     * 
-     * @since 0.1.7
-     */
     public Drawable() {
-        this.graph = new DrawableGraph();
+        this.graph = new DrawableGraph(
+                new LinkedHashMap<>(),
+                new ArrayList<>(),
+                new ArrayList<>(),
+                new ArrayList<>(),
+                new ArrayList<>()
+        );
         this.loopNodes = new HashSet<>();
     }
 
     /**
-     * Convert a component to a DrawableNode and save it to the graph.
-     * <p>
-     * Handles special component types:
-     * <ul>
-     * <li>{@link LoopComponent} / {@link AdvancedLoopComponent} — creates a subgraph node with the loop's inner
-     * graph</li>
-     * <li>{@link SubWorkflowComponent} — creates a subgraph node with the sub-workflow's graph</li>
-     * <li>{@link BranchComponent} / {@link IntentDetectionComponent} — creates a node and adds conditional edge</li>
-     * <li>Other — creates a plain node</li>
-     * </ul>
-     * 
-     * @param nodeId the node identifier
-     * @param component the component to convert
-     * @since 0.1.7
+     * Converts a workflow component into a drawable node and saves it in this drawable graph.
+     *
+     * <p>Mirrors Python's {@code Drawable.add_node} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param nodeId node identifier
+     * @param component workflow component to render
      */
     public void addNode(String nodeId, ComponentComposable component) {
-        if (component instanceof LoopComponent loopComp) {
-            DrawableGraph subgraph = loopComp.getLoopGroup().getDrawable().getGraph();
-            fillEndNodesIfEmpty(subgraph);
-            graph.getNodes().put(nodeId, new DrawableSubgraphNode(nodeId, subgraph));
-            loopNodes.add(nodeId);
-            addEdge(nodeId, nodeId, false, false, null);
-        } else if (component instanceof AdvancedLoopComponent advLoopComp) {
-            DrawableGraph subgraph = advLoopComp.getBody().getDrawable().getGraph();
-            fillEndNodesIfEmpty(subgraph);
-            graph.getNodes().put(nodeId, new DrawableSubgraphNode(nodeId, subgraph));
-            loopNodes.add(nodeId);
-            addEdge(nodeId, nodeId, false, false, null);
-        } else if (component instanceof SubWorkflowComponent subWorkflowComp) {
-            DrawableGraph subgraph = subWorkflowComp.getSubWorkflowInternal().getDrawable().getGraph();
-            graph.getNodes().put(nodeId, new DrawableSubgraphNode(nodeId, subgraph));
-        } else if (component instanceof BranchComponent branchComp) {
+        if (component instanceof LoopComponent loopComponent) {
+            addLoopSubgraphNode(nodeId, loopComponent.getLoopGroup().getDrawable().getGraph());
+        } else if (component instanceof AdvancedLoopComponent advancedLoopComponent) {
+            addLoopSubgraphNode(nodeId, advancedLoopComponent.getBody().getDrawable().getGraph());
+        } else if (component instanceof SubWorkflowComponent subWorkflowComponent) {
+            graph.getNodes().put(
+                    nodeId,
+                    new DrawableSubgraphNode(
+                            nodeId,
+                            subWorkflowComponent.getSubWorkflowInternal().getDrawable().getGraph()
+                    )
+            );
+        } else if (component instanceof BranchComponent branchComponent) {
             graph.getNodes().put(nodeId, new DrawableNode(nodeId));
-            addEdge(nodeId, null, true, false, branchComp.router());
-        } else if (component instanceof IntentDetectionComponentImpl intentComp) {
+            addEdge(nodeId, null, true, false, branchComponent.router());
+        } else if (component instanceof IntentDetectionComponent intentDetectionComponent) {
             graph.getNodes().put(nodeId, new DrawableNode(nodeId));
-            addEdge(nodeId, null, true, false, intentComp.router());
+            addEdge(nodeId, null, true, false, intentDetectionComponent.router());
         } else {
             graph.getNodes().put(nodeId, new DrawableNode(nodeId));
         }
     }
 
     /**
-     * Adds a plain (non-component) node to the graph.
-     * 
-     * @param nodeId the node identifier
-     * @since 0.1.7
-     */
-    public void addSimpleNode(String nodeId) {
-        graph.getNodes().put(nodeId, new DrawableNode(nodeId));
-    }
-
-    /**
-     * Sets the specified node as a start node.
-     * 
-     * @param nodeId the node identifier
-     * @since 0.1.7
+     * Saves the node whose id is {@code nodeId} to this graph's start nodes.
+     *
+     * <p>Mirrors Python's {@code Drawable.set_start_node} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param nodeId node identifier
      */
     public void setStartNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_START_NODE_INVALID, "node_id", nodeId, "reason",
-                    "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_START_NODE_INVALID,
+                    "node_id", nodeId,
+                    "reason", "node '" + nodeId + "' does not exist in the graph"
+            );
         }
         graph.getStartNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
-     * Sets the specified node as an end node.
-     * 
-     * @param nodeId the node identifier
-     * @since 0.1.7
+     * Saves the node whose id is {@code nodeId} to this graph's end nodes.
+     *
+     * <p>Mirrors Python's {@code Drawable.set_end_node} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param nodeId node identifier
      */
     public void setEndNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_END_NODE_INVALID, "node_id", nodeId, "reason",
-                    "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_END_NODE_INVALID,
+                    "node_id", nodeId,
+                    "reason", "node '" + nodeId + "' does not exist in the graph"
+            );
         }
         graph.getEndNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
-     * Sets the specified node as a break node.
-     * 
-     * @param nodeId the node identifier
-     * @since 0.1.7
+     * Saves the node whose id is {@code nodeId} to this graph's break nodes.
+     *
+     * <p>Mirrors Python's {@code Drawable.set_break_node} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param nodeId node identifier
      */
     public void setBreakNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_BREAK_NODE_INVALID, "node_id", nodeId, "reason",
-                    "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_BREAK_NODE_INVALID,
+                    "node_id", nodeId,
+                    "reason", "node '" + nodeId + "' does not exist in the graph"
+            );
         }
         graph.getBreakNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
-     * Adds an edge to the graph.
-     * <p>
-     * For loop nodes, the edge is always conditional.
-     * For conditional edges with a {@link BranchRouter}, targets are extracted
-     * from the router's drawable branch information.
-     * </p>
-     * 
-     * @param source the source node id
-     * @param target the target node id (may be null for conditional edges)
-     * @param conditional whether this is a conditional (dotted) edge
-     * @param streaming whether this is a streaming (thick) edge
-     * @param data optional edge data (may be a {@link BranchRouter} for conditional edges)
-     * @since 0.1.7
+     * Adds an edge without optional data.
+     *
+     * <p>Mirrors Python's {@code Drawable.add_edge} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param source source node id
+     * @param target target node id
      */
-    public void addEdge(String source, String target, boolean conditional, boolean streaming, Object data) {
-        // Loop nodes always get a conditional self-edge
+    public void addEdge(String source, String target) {
+        addEdge(source, target, false, false);
+    }
+
+    /**
+     * Adds an edge without optional data.
+     *
+     * <p>Mirrors Python's {@code Drawable.add_edge} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param source source node id
+     * @param target target node id
+     * @param conditional whether this is a conditional edge
+     * @param streaming whether this is a streaming edge
+     */
+    public void addEdge(String source, String target, boolean conditional, boolean streaming) {
+        addEdge(source, target, conditional, streaming, (Stringifiable) null);
+    }
+
+    /**
+     * Adds an edge with stringifiable payload data.
+     *
+     * <p>Mirrors Python's {@code Drawable.add_edge} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param source source node id
+     * @param target target node id
+     * @param conditional whether this is a conditional edge
+     * @param streaming whether this is a streaming edge
+     * @param data edge data compatible with Python's {@code Stringifiable} protocol
+     */
+    public void addEdge(
+            String source,
+            String target,
+            boolean conditional,
+            boolean streaming,
+            Stringifiable data
+    ) {
         if (loopNodes.contains(source)) {
             graph.getEdges().add(new DrawableEdge(source, target, null, true, false));
             return;
         }
-
         if (!conditional) {
             graph.getEdges().add(new DrawableEdge(source, target, data, false, streaming));
+        }
+    }
+
+    /**
+     * Adds a conditional edge by expanding branch-router drawable targets and data.
+     *
+     * <p>Mirrors Python's {@code Drawable.add_edge} branch-router path in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param source source node id
+     * @param target ignored for branch-router expansion, matching Python's behavior
+     * @param conditional whether this is a conditional edge
+     * @param streaming whether this is a streaming edge
+     * @param data branch router data
+     */
+    public void addEdge(
+            String source,
+            String target,
+            boolean conditional,
+            boolean streaming,
+            BranchRouter data
+    ) {
+        if (loopNodes.contains(source)) {
+            graph.getEdges().add(new DrawableEdge(source, target, null, true, false));
+            return;
+        }
+        if (!conditional) {
+            graph.getEdges().add(new DrawableEdge(source, target, null, false, streaming));
             return;
         }
 
-        // Handle conditional edges: extract targets from router/function
-        List<String> branchDatas = null;
-        List<String> targets;
-
-        if (data instanceof BranchRouter branchRouter) {
-            DrawableBranchRouter drawableBranch = branchRouter.getDrawableBranchRouter();
-            targets = drawableBranch.getTargets();
-            branchDatas = drawableBranch.getDatas();
-        } else {
-            targets = getTargetsFromCallable(data);
-        }
-
-        for (int i = 0; i < targets.size(); i++) {
-            String t = targets.get(i);
-            Object edgeData = (branchDatas != null) ? branchDatas.get(i) : null;
-            graph.getEdges().add(new DrawableEdge(source, t, edgeData, true, streaming));
+        DrawableBranchRouter drawableBranchRouter = data.getDrawableBranchRouter();
+        List<String> branchTargets = drawableBranchRouter.getTargets();
+        List<String> branchDatas = drawableBranchRouter.getDatas();
+        for (int i = 0; i < branchTargets.size(); i++) {
+            graph.getEdges().add(new DrawableEdge(
+                    source,
+                    branchTargets.get(i),
+                    stringValue(branchDatas.get(i)),
+                    true,
+                    streaming
+            ));
         }
     }
 
     /**
-     * Convenience method: add a simple edge from source to target.
-     * 
-     * @param source the source node id
-     * @param target the target node id
-     * @since 0.1.7
+     * Adds a conditional edge by expanding target names supplied by a Java target provider.
+     *
+     * <p>Mirrors Python's {@code _get_targets(data)} fallback in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param source source node id
+     * @param target ignored for target-provider expansion, matching Python's behavior
+     * @param conditional whether this is a conditional edge
+     * @param streaming whether this is a streaming edge
+     * @param data provider of target names
      */
-    public void addEdge(String source, String target) {
-        addEdge(source, target, false, false, null);
+    public void addEdge(
+            String source,
+            String target,
+            boolean conditional,
+            boolean streaming,
+            TargetProvider data
+    ) {
+        if (loopNodes.contains(source)) {
+            graph.getEdges().add(new DrawableEdge(source, target, null, true, false));
+            return;
+        }
+        if (!conditional) {
+            graph.getEdges().add(new DrawableEdge(source, target, null, false, streaming));
+            return;
+        }
+
+        for (String branchTarget : data.getTargets()) {
+            graph.getEdges().add(new DrawableEdge(source, branchTarget, null, true, streaming));
+        }
     }
 
     /**
-     * Convert the graph to Mermaid flowchart syntax.
-     * 
-     * @param title the diagram title
-     * @param expandSubgraph depth of subgraph expansion (0 or false = no expansion, true = full expansion)
-     * @param enableAnimation whether to enable animation properties on streaming links
-     * @return the Mermaid flowchart syntax string
-     * @since 0.1.7
+     * Converts this drawable graph to Mermaid syntax.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph non-negative expansion depth
+     * @param enableAnimation whether streaming links should include animation properties
+     * @return Mermaid flowchart syntax
      */
     public String toMermaid(String title, int expandSubgraph, boolean enableAnimation) {
+        if (expandSubgraph < 0) {
+            throw ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                    "reason", "'expand_subgraph' type is not bool"
+            );
+        }
         return new MermaidDiagram().toMermaid(graph, title, expandSubgraph, enableAnimation);
     }
 
     /**
-     * Convert the graph to Mermaid flowchart syntax with default settings.
-     * 
-     * @return the Mermaid flowchart syntax string
-     * @since 0.1.7
+     * Converts this drawable graph to Mermaid syntax.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph whether subgraphs should be fully expanded
+     * @param enableAnimation whether streaming links should include animation properties
+     * @return Mermaid flowchart syntax
+     */
+    public String toMermaid(String title, boolean expandSubgraph, boolean enableAnimation) {
+        int depth = expandSubgraph ? MermaidDiagram.EXPAND_ALL : 0;
+        return new MermaidDiagram().toMermaid(graph, title, depth, enableAnimation);
+    }
+
+    /**
+     * Converts this drawable graph to Mermaid syntax with Python defaults.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @return Mermaid flowchart syntax
      */
     public String toMermaid() {
         return toMermaid("", 0, false);
     }
 
     /**
-     * Convert the graph to Mermaid syntax and render it as PNG bytes via the mermaid.ink service.
-     * <p>
-     * Mirrors Python's {@code Drawable.to_mermaid_png()}.
-     * 
-     * @param title the diagram title
-     * @param expandSubgraph depth of subgraph expansion
-     * @return PNG image bytes, or empty array if rendering fails
-     * @since 0.1.7
+     * Converts this drawable graph to Mermaid syntax and renders it as PNG bytes.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid_png} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph non-negative expansion depth
+     * @return PNG bytes
      */
     public byte[] toMermaidPng(String title, int expandSubgraph) {
-        String mermaidSyntax = toMermaid(title, expandSubgraph, false);
-        if (mermaidSyntax == null || mermaidSyntax.isEmpty()) {
-            return new byte[0];
-        }
-        return MermaidRenderer.renderPng(mermaidSyntax);
+        return MermaidRenderer.renderPng(toMermaid(title, expandSubgraph, false));
     }
 
     /**
-     * Convert the graph to Mermaid syntax and render it as SVG bytes via the mermaid.ink service.
-     * <p>
-     * Mirrors Python's {@code Drawable.to_mermaid_svg()}.
-     * 
-     * @param title the diagram title
-     * @param expandSubgraph depth of subgraph expansion
-     * @return SVG image bytes, or empty array if rendering fails
-     * @since 0.1.7
+     * Converts this drawable graph to Mermaid syntax and renders it as PNG bytes.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid_png} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph whether subgraphs should be fully expanded
+     * @return PNG bytes
+     */
+    public byte[] toMermaidPng(String title, boolean expandSubgraph) {
+        return MermaidRenderer.renderPng(toMermaid(title, expandSubgraph, false));
+    }
+
+    /**
+     * Converts this drawable graph to Mermaid syntax and renders it as SVG bytes.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid_svg} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph non-negative expansion depth
+     * @return SVG bytes
      */
     public byte[] toMermaidSvg(String title, int expandSubgraph) {
-        String mermaidSyntax = toMermaid(title, expandSubgraph, true);
-        if (mermaidSyntax == null || mermaidSyntax.isEmpty()) {
-            return new byte[0];
-        }
-        return MermaidRenderer.renderSvg(mermaidSyntax);
+        return MermaidRenderer.renderSvg(toMermaid(title, expandSubgraph, true));
     }
 
     /**
-     * Gets the underlying drawable graph.
-     * 
-     * @return the drawable graph
-     * @since 0.1.7
+     * Converts this drawable graph to Mermaid syntax and renders it as SVG bytes.
+     *
+     * <p>Mirrors Python's {@code Drawable.to_mermaid_svg} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @param title graph title
+     * @param expandSubgraph whether subgraphs should be fully expanded
+     * @return SVG bytes
+     */
+    public byte[] toMermaidSvg(String title, boolean expandSubgraph) {
+        return MermaidRenderer.renderSvg(toMermaid(title, expandSubgraph, true));
+    }
+
+    /**
+     * Gets the backing drawable graph.
+     *
+     * <p>Mirrors Python's {@code Drawable.get_graph} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     *
+     * @return backing drawable graph
      */
     public DrawableGraph getGraph() {
         return graph;
     }
 
-    // ==================== Private helpers ====================
+    private void addLoopSubgraphNode(String nodeId, DrawableGraph subgraph) {
+        fillEndNodesIfEmpty(subgraph);
+        graph.getNodes().put(nodeId, new DrawableSubgraphNode(nodeId, subgraph));
+        loopNodes.add(nodeId);
+        addEdge(nodeId, nodeId);
+    }
 
-    /**
-     * If the subgraph has no end nodes, discover them by finding nodes with zero out-degree.
-     * 
-     * @param subgraph subgraph
-     * @since 0.1.7
-     */
     private void fillEndNodesIfEmpty(DrawableGraph subgraph) {
         if (!subgraph.getEndNodes().isEmpty()) {
             return;
         }
-        // Calculate out-degrees
-        java.util.Map<String, Integer> outDegrees = new java.util.LinkedHashMap<>();
-        for (String nodeId : subgraph.getNodes().keySet()) {
-            outDegrees.put(nodeId, 0);
+        Map<String, Integer> outDegrees = new LinkedHashMap<>();
+        for (String subgraphNodeId : subgraph.getNodes().keySet()) {
+            outDegrees.put(subgraphNodeId, 0);
         }
         for (DrawableEdge edge : subgraph.getEdges()) {
-            outDegrees.merge(edge.getSource(), 1, Integer::sum);
+            outDegrees.putIfAbsent(edge.getSource(), 0);
+            outDegrees.compute(edge.getSource(), (ignored, value) -> value == null ? 1 : value + 1);
         }
-        // Nodes with zero out-degree are end nodes
-        for (java.util.Map.Entry<String, Integer> entry : outDegrees.entrySet()) {
-            if (entry.getValue() == 0 && subgraph.getNodes().containsKey(entry.getKey())) {
+        for (Map.Entry<String, Integer> entry : outDegrees.entrySet()) {
+            if (entry.getValue() == 0) {
                 subgraph.getEndNodes().add(subgraph.getNodes().get(entry.getKey()));
             }
         }
     }
 
-    /**
-     * Attempt to extract target node names from a callable's return type annotation.
-     * <p>
-     * In Python, this uses {@code get_type_hints} to inspect {@code Literal} return types.
-     * In Java, reflection-based extraction of return type literals is not directly available,
-     * so this returns an empty list. Subclasses or callers may override this behavior.
-     * </p>
-     * 
-     * @param data the callable data
-     * @return list of target names extracted from the return type, or empty list
-     * @since 0.1.7
-     */
-    private List<String> getTargetsFromCallable(Object data) {
-        // Java doesn't have Literal type hints like Python.
-        // If data implements a TargetProvider interface, use it
-        if (data instanceof TargetProvider provider) {
-            return provider.getTargets();
-        }
-        return List.of();
+    private static Stringifiable stringValue(String value) {
+        return value == null ? null : new StringValue(value);
     }
 
     /**
-     * Optional interface for callables that can provide their target node names.
-     * <p>
-     * This replaces Python's runtime type-hint inspection of {@code Literal} return types.
-     * </p>
-     * 
-     * @since 0.1.7
+     * Supplies conditional edge targets where Python would inspect a callable return Literal.
+     *
+     * <p>Mirrors Python's {@code _get_targets} callable fallback in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
      */
     public interface TargetProvider {
+
         /**
-         * getTargets.
-         * 
-         * @return the result
-         * @since 0.1.7
+         * Gets possible target node names.
+         *
+         * @return target node names
          */
         List<String> getTargets();
+    }
+
+    /**
+     * Wraps Java strings as edge payloads compatible with Python's Stringifiable protocol.
+     *
+     * <p>Mirrors Python's branch data string payloads in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     */
+    private record StringValue(String value) implements Stringifiable {
+
+        @Override
+        public String toString() {
+            return value;
+        }
+    }
+
+    /**
+     * Generates Mermaid flowchart syntax from drawable graph state.
+     *
+     * <p>Mirrors Python's {@code _MermaidDiagram} in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     */
+    private static final class MermaidDiagram {
+
+        private static final int EXPAND_ALL = -1;
+
+        private final NodeIdGenerator nodeIdGenerator = new NodeIdGenerator();
+        private final LinkIdGenerator linkIdGenerator = new LinkIdGenerator();
+
+        private String toMermaid(
+                DrawableGraph graph,
+                String title,
+                int expandSubgraph,
+                boolean enableAnimation
+        ) {
+            if (title == null) {
+                throw ErrorHelper.buildError(
+                        StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                        "reason", "'title' type is not str"
+                );
+            }
+
+            Map<String, MermaidNode> mermaidNodes = new LinkedHashMap<>();
+            Map<String, SubGraphNode> subgraphMermaidNodes = new LinkedHashMap<>();
+            for (DrawableNode node : graph.getNodes().values()) {
+                if (expandSubgraph != 0 && node instanceof DrawableSubgraphNode subgraphNode) {
+                    subgraphMermaidNodes.put(
+                            node.getId(),
+                            genMermaidNode(nextExpandDepth(expandSubgraph), subgraphNode, enableAnimation)
+                    );
+                } else {
+                    mermaidNodes.put(node.getId(), new MermaidNode(
+                            nodeIdGenerator.next(),
+                            node.getId(),
+                            shapeOf(node, graph)
+                    ));
+                }
+            }
+
+            List<String> links = genMermaidLinks(graph, mermaidNodes, subgraphMermaidNodes, enableAnimation);
+            return buildFlowchartScript(title, mermaidNodes, subgraphMermaidNodes, links);
+        }
+
+        private SubGraphNode genMermaidNode(
+                int expandSubgraph,
+                DrawableSubgraphNode node,
+                boolean enableAnimation
+        ) {
+            DrawableGraph subgraph = node.getSubgraph();
+            Map<String, MermaidNode> mermaidNodes = new LinkedHashMap<>();
+            Map<String, SubGraphNode> subgraphMermaidNodes = new LinkedHashMap<>();
+            for (DrawableNode subNode : subgraph.getNodes().values()) {
+                if (expandSubgraph != 0 && subNode instanceof DrawableSubgraphNode subSubgraphNode) {
+                    subgraphMermaidNodes.put(
+                            subNode.getId(),
+                            genMermaidNode(nextExpandDepth(expandSubgraph), subSubgraphNode, enableAnimation)
+                    );
+                } else {
+                    mermaidNodes.put(subNode.getId(), new MermaidNode(
+                            nodeIdGenerator.next(),
+                            subNode.getId(),
+                            shapeOf(subNode, subgraph)
+                    ));
+                }
+            }
+
+            List<String> links = genMermaidLinks(subgraph, mermaidNodes, subgraphMermaidNodes, enableAnimation);
+            return new SubGraphNode(
+                    new MermaidNode(nodeIdGenerator.next(), node.getId(), "subgraph"),
+                    new ArrayList<>(mermaidNodes.values()),
+                    subgraphMermaidNodes,
+                    links,
+                    resolveNodes(subgraph.getStartNodes(), mermaidNodes, subgraphMermaidNodes),
+                    resolveNodes(subgraph.getEndNodes(), mermaidNodes, subgraphMermaidNodes),
+                    resolveNodes(safeNodes(subgraph.getBreakNodes()), mermaidNodes, subgraphMermaidNodes)
+            );
+        }
+
+        private List<String> genMermaidLinks(
+                DrawableGraph graph,
+                Map<String, MermaidNode> mermaidNodes,
+                Map<String, SubGraphNode> subgraphMermaidNodes,
+                boolean enableAnimation
+        ) {
+            List<String> links = new ArrayList<>();
+            for (DrawableEdge edge : graph.getEdges()) {
+                String shape = edge.isConditional() ? "-.->" : "-->";
+                String linkId = "";
+                Map<String, String> properties = Map.of();
+                if (edge.isStreaming()) {
+                    shape = "==>";
+                    if (enableAnimation) {
+                        linkId = linkIdGenerator.next();
+                        properties = Map.of("animate", "true");
+                    }
+                }
+
+                String message = "";
+                if (edge.isConditional() && edge.getData() != null) {
+                    message = "|\"" + edge.getData().toString() + "\"|";
+                }
+
+                for (String[] pair : resolveSourceTargetPairs(
+                        edge.getSource(),
+                        edge.getTarget(),
+                        mermaidNodes,
+                        subgraphMermaidNodes
+                )) {
+                    links.add(buildLink(pair[0], pair[1], shape, message, linkId, properties));
+                }
+            }
+            for (SubGraphNode node : subgraphMermaidNodes.values()) {
+                links.addAll(node.subgraphLinks());
+            }
+            return links;
+        }
+
+        private List<String[]> resolveSourceTargetPairs(
+                String sourceId,
+                String targetId,
+                Map<String, MermaidNode> mermaidNodes,
+                Map<String, SubGraphNode> subgraphMermaidNodes
+        ) {
+            List<String[]> pairs = new ArrayList<>();
+            boolean sourceIsNode = mermaidNodes.containsKey(sourceId);
+            boolean sourceIsSubgraph = subgraphMermaidNodes.containsKey(sourceId);
+            boolean targetIsNode = targetId != null && mermaidNodes.containsKey(targetId);
+            boolean targetIsSubgraph = targetId != null && subgraphMermaidNodes.containsKey(targetId);
+
+            if (sourceIsNode && targetIsNode) {
+                pairs.add(new String[] {mermaidNodes.get(sourceId).id(), mermaidNodes.get(targetId).id()});
+            } else if (sourceIsNode && targetIsSubgraph) {
+                for (MermaidNode startNode : subgraphMermaidNodes.get(targetId).subgraphStartNodes()) {
+                    pairs.add(new String[] {mermaidNodes.get(sourceId).id(), startNode.id()});
+                }
+            } else if (sourceIsSubgraph && targetIsNode) {
+                SubGraphNode subGraphNode = subgraphMermaidNodes.get(sourceId);
+                for (MermaidNode endNode : subGraphNode.subgraphEndNodes()) {
+                    pairs.add(new String[] {endNode.id(), mermaidNodes.get(targetId).id()});
+                }
+                for (MermaidNode breakNode : subGraphNode.subgraphBreakNodes()) {
+                    pairs.add(new String[] {breakNode.id(), mermaidNodes.get(targetId).id()});
+                }
+            } else if (sourceIsSubgraph && targetIsSubgraph) {
+                SubGraphNode source = subgraphMermaidNodes.get(sourceId);
+                SubGraphNode target = subgraphMermaidNodes.get(targetId);
+                for (MermaidNode sourceEndNode : source.subgraphEndNodes()) {
+                    for (MermaidNode targetStartNode : target.subgraphStartNodes()) {
+                        pairs.add(new String[] {sourceEndNode.id(), targetStartNode.id()});
+                    }
+                }
+            }
+            return pairs;
+        }
+
+        private static List<MermaidNode> resolveNodes(
+                List<DrawableNode> drawableNodes,
+                Map<String, MermaidNode> mermaidNodes,
+                Map<String, SubGraphNode> subgraphMermaidNodes
+        ) {
+            List<MermaidNode> resolved = new ArrayList<>();
+            for (DrawableNode drawableNode : safeNodes(drawableNodes)) {
+                if (mermaidNodes.containsKey(drawableNode.getId())) {
+                    resolved.add(mermaidNodes.get(drawableNode.getId()));
+                } else if (subgraphMermaidNodes.containsKey(drawableNode.getId())) {
+                    resolved.add(subgraphMermaidNodes.get(drawableNode.getId()).node());
+                }
+            }
+            return resolved;
+        }
+
+        private static List<DrawableNode> safeNodes(List<DrawableNode> nodes) {
+            return nodes == null ? List.of() : nodes;
+        }
+
+        private static String shapeOf(DrawableNode node, DrawableGraph graph) {
+            return graph.getStartNodes().contains(node) || graph.getEndNodes().contains(node)
+                    ? "round-edge"
+                    : "normal";
+        }
+
+        private static int nextExpandDepth(int expandSubgraph) {
+            return expandSubgraph == EXPAND_ALL ? EXPAND_ALL : expandSubgraph - 1;
+        }
+
+        private static String buildLink(
+                String sourceId,
+                String targetId,
+                String shape,
+                String message,
+                String linkId,
+                Map<String, String> properties
+        ) {
+            String tag = linkId.isEmpty() ? "" : linkId + "@";
+            StringBuilder builder = new StringBuilder();
+            builder.append(sourceId).append(' ').append(tag).append(shape).append(message).append(' ').append(targetId);
+            if (!properties.isEmpty()) {
+                builder.append('\n')
+                        .append(tag)
+                        .append('{');
+                List<String> propertyValues = new ArrayList<>();
+                for (Map.Entry<String, String> entry : properties.entrySet()) {
+                    propertyValues.add(entry.getKey() + ": " + entry.getValue());
+                }
+                builder.append(String.join(", ", propertyValues)).append('}');
+            }
+            return builder.toString();
+        }
+
+        private static String buildFlowchartScript(
+                String title,
+                Map<String, MermaidNode> mermaidNodes,
+                Map<String, SubGraphNode> subgraphMermaidNodes,
+                List<String> links
+        ) {
+            StringBuilder builder = new StringBuilder();
+            builder.append("---\n")
+                    .append("title: ")
+                    .append(title)
+                    .append("\n---\n")
+                    .append("flowchart TB\n");
+            for (MermaidNode node : mermaidNodes.values()) {
+                builder.append('\t').append(node.toMermaid()).append('\n');
+            }
+            for (SubGraphNode node : subgraphMermaidNodes.values()) {
+                appendSubgraph(builder, node, "\t");
+            }
+            for (String link : links) {
+                for (String line : link.split("\n")) {
+                    builder.append('\t').append(line).append('\n');
+                }
+            }
+            return builder.toString();
+        }
+
+        private static void appendSubgraph(StringBuilder builder, SubGraphNode subGraphNode, String indent) {
+            builder.append(indent)
+                    .append("subgraph ")
+                    .append(subGraphNode.node().id())
+                    .append(" [\"")
+                    .append(escapeText(subGraphNode.node().content()))
+                    .append("\"]\n")
+                    .append(indent)
+                    .append("direction TB\n");
+            for (MermaidNode innerNode : subGraphNode.innerNodes()) {
+                builder.append(indent).append(innerNode.toMermaid()).append('\n');
+            }
+            for (SubGraphNode innerSubgraph : subGraphNode.innerSubgraphs().values()) {
+                appendSubgraph(builder, innerSubgraph, indent);
+            }
+            builder.append(indent).append("end\n");
+        }
+
+        private static String escapeText(String text) {
+            return text.replace("\"", "#quot;");
+        }
+
+        /**
+         * Generates Mermaid node ids.
+         *
+         * <p>Mirrors Python's {@code _MermaidDiagram._NodeIdGenerator} in
+         * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+         */
+        private static final class NodeIdGenerator {
+
+            private final AtomicInteger nextId = new AtomicInteger();
+
+            private String next() {
+                return "node_" + nextId.incrementAndGet();
+            }
+        }
+
+        /**
+         * Generates Mermaid link ids.
+         *
+         * <p>Mirrors Python's {@code _MermaidDiagram._LinkIdGenerator} in
+         * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+         */
+        private static final class LinkIdGenerator {
+
+            private final AtomicInteger nextId = new AtomicInteger();
+
+            private String next() {
+                return "link_" + nextId.incrementAndGet();
+            }
+        }
+
+        /**
+         * Represents a generated Mermaid node.
+         *
+         * <p>Mirrors Python's Mermaid {@code Node} usage in
+         * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+         */
+        private record MermaidNode(String id, String content, String shape) {
+
+            private String toMermaid() {
+                String escaped = "\"" + escapeText(content) + "\"";
+                return "round-edge".equals(shape) ? id + "(" + escaped + ")" : id + "[" + escaped + "]";
+            }
+        }
+
+        /**
+         * Represents a Mermaid subgraph and its resolved boundary nodes.
+         *
+         * <p>Mirrors Python's {@code _MermaidDiagram._SubGraphNode} in
+         * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+         */
+        private record SubGraphNode(
+                MermaidNode node,
+                List<MermaidNode> innerNodes,
+                Map<String, SubGraphNode> innerSubgraphs,
+                List<String> subgraphLinks,
+                List<MermaidNode> subgraphStartNodes,
+                List<MermaidNode> subgraphEndNodes,
+                List<MermaidNode> subgraphBreakNodes
+        ) {
+        }
+    }
+
+    /**
+     * Renders Mermaid syntax to image bytes.
+     *
+     * <p>Mirrors Python's {@code Mermaid(...).img_response/svg_response} calls in
+     * {@code openjiuwen/core/graph/visualization/drawable.py}.</p>
+     */
+    private static final class MermaidRenderer {
+
+        private static final Logger LOGGER = Logger.getLogger(MermaidRenderer.class.getName());
+        private static final String MERMAID_INK_SERVER = "MERMAID_INK_SERVER";
+        private static final String DEFAULT_MERMAID_INK_SERVER = "https://mermaid.ink";
+        private static final Duration TIMEOUT = Duration.ofSeconds(30);
+        private static final Duration RETRY_DELAY = Duration.ofMillis(100);
+        private static final int MAX_ATTEMPTS = 3;
+
+        private MermaidRenderer() {
+        }
+
+        private static byte[] renderPng(String mermaidSyntax) {
+            render(mermaidSyntax, "/svg/", "");
+            return render(mermaidSyntax, "/img/", "?format=png");
+        }
+
+        private static byte[] renderSvg(String mermaidSyntax) {
+            byte[] svg = render(mermaidSyntax, "/svg/", "");
+            render(mermaidSyntax, "/img/", "?format=png");
+            return svg;
+        }
+
+        private static byte[] render(String mermaidSyntax, String pathPrefix, String query) {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
+            String encoded = Base64.getUrlEncoder()
+                    .encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
+            String server = mermaidInkServer();
+            URI uri = URI.create(server + pathPrefix + encoded + query);
+            String lastFailure = "unknown renderer failure";
+            Throwable lastCause = null;
+
+            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                try {
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .timeout(TIMEOUT)
+                            .GET()
+                            .build();
+                    HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                    if (response.statusCode() >= 200 && response.statusCode() < 400) {
+                        return response.body();
+                    }
+                    lastFailure = "Mermaid rendering returned HTTP status " + response.statusCode();
+                    lastCause = null;
+                    LOGGER.log(
+                            Level.WARNING,
+                            "{0} on attempt {1}",
+                            new Object[] {lastFailure, attempt}
+                    );
+                    if (!isRetriable(response.statusCode())) {
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw renderingError(server, "Mermaid rendering was interrupted", e);
+                } catch (Exception e) {
+                    lastFailure = "Failed to call Mermaid rendering service";
+                    lastCause = e;
+                    if (attempt < MAX_ATTEMPTS) {
+                        LOGGER.log(Level.WARNING, "Retry Mermaid rendering after failure on attempt {0}", attempt);
+                    } else {
+                        LOGGER.log(Level.WARNING, "Mermaid rendering failed on final attempt", e);
+                    }
+                }
+                if (attempt < MAX_ATTEMPTS) {
+                    waitBeforeRetry(attempt, server);
+                }
+            }
+            throw renderingError(server, lastFailure, lastCause);
+        }
+
+        private static String mermaidInkServer() {
+            // The Java-only system property intentionally overrides the Python-compatible environment variable.
+            // This permits embedded applications and isolated tests to select a renderer without mutating process env.
+            String configured = System.getProperty(MERMAID_INK_SERVER);
+            if (configured == null || configured.isBlank()) {
+                configured = System.getenv(MERMAID_INK_SERVER);
+            }
+            if (configured == null || configured.isBlank()) {
+                configured = DEFAULT_MERMAID_INK_SERVER;
+            }
+            String normalized = configured.replaceAll("/+$", "");
+            try {
+                URI uri = URI.create(normalized);
+                String scheme = uri.getScheme();
+                boolean supportedScheme = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+                if (!uri.isAbsolute() || !supportedScheme || uri.getHost() == null
+                        || uri.getQuery() != null || uri.getFragment() != null) {
+                    throw new IllegalArgumentException(
+                            "renderer URL must be an absolute HTTP(S) URI without query or fragment"
+                    );
+                }
+            } catch (IllegalArgumentException e) {
+                throw renderingError(normalized, "Invalid MERMAID_INK_SERVER configuration", e);
+            }
+            return normalized;
+        }
+
+        private static boolean isRetriable(int statusCode) {
+            return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+        }
+
+        private static void waitBeforeRetry(int attempt, String server) {
+            try {
+                Thread.sleep(RETRY_DELAY.multipliedBy(attempt).toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw renderingError(server, "Mermaid rendering retry was interrupted", e);
+            }
+        }
+
+        private static RuntimeException renderingError(String server, String reason, Throwable cause) {
+            String detail = reason + ", server=" + server;
+            return ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                    null,
+                    null,
+                    cause,
+                    Map.of("reason", detail)
+            );
+        }
     }
 }

@@ -8,32 +8,28 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manages stream consumers for a graph.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamGraph}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code StreamGraph} in
+ * {@code openjiuwen/core/graph/stream_actor/base.py}.
  */
 public class StreamGraph {
+
     private final Map<String, StreamConsumer> streamNodes = new LinkedHashMap<>();
 
     /**
-     * Register a stream consumer for a node.
-     * 
-     * @param consumer the stream consumer
-     * @param nodeId the node identifier
-     * @since 0.1.7
+     * Adds a stream consumer only when the node id is not already present.
+     *
+     * @param consumer stream consumer
+     * @param nodeId graph node id
      */
     public void addStreamConsumer(StreamConsumer consumer, String nodeId) {
         streamNodes.putIfAbsent(nodeId, consumer);
     }
 
     /**
-     * Get the stream consumer for a node.
-     * 
-     * @param nodeId the node identifier
-     * @return the stream consumer, or null
-     * @since 0.1.7
+     * Looks up a stream consumer by graph node id.
+     *
+     * @param nodeId graph node id
+     * @return registered consumer or {@code null}
      */
     public StreamConsumer getNode(String nodeId) {
         return streamNodes.get(nodeId);

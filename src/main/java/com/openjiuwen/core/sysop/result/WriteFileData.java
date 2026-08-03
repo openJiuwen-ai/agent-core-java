@@ -10,20 +10,21 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Data structure for write file operation.
- * 
- * @since 0.1.7
+ * Backward-compatible write-file payload for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code WriteFileData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.WriteFileData}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class WriteFileData {
+
     private String path;
-
-    /** File content size in bytes. */
     private int size;
-
-    /** File write mode: "text" or "bytes". */
     private String mode;
 }

@@ -4,89 +4,61 @@
 
 package com.openjiuwen.core.workflow.component.resource;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 
-import lombok.Data;
-
-import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Input model for the Memory Write component.
- * <p>
- * Mirrors Python's {@code MemoryWriteInput}.
- * 
- * @since 0.1.7
+ * Input schema for memory write.
+ *
+ * <p>Mirrors Python's {@code MemoryWriteInput} in
+ * {@code openjiuwen/core/workflow/components/resource/memory_write_comp.py}.</p>
  */
-@Data
 public class MemoryWriteInput {
+
+    @JsonProperty("messages")
     private List<BaseMessage> messages = new ArrayList<>();
-    private OffsetDateTime timestamp;
 
-    /**
-     * Convert from a map representation to MemoryWriteInput.
-     * 
-     * @param inputs the input map
-     * @return the MemoryWriteInput instance
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public static MemoryWriteInput fromMap(Map<String, Object> inputs) {
-        MemoryWriteInput input = new MemoryWriteInput();
-        if (inputs == null) {
-            return input;
-        }
+    @JsonProperty("timestamp")
+    private ZonedDateTime timestamp;
 
-        Object msgObj = inputs.get("messages");
-        if (msgObj instanceof List<?> msgList) {
-            List<BaseMessage> messages = parseMessagesList(msgList);
-            input.setMessages(messages);
-        }
+    private Map<String, Object> extraFields = new LinkedHashMap<>();
 
-        Object tsObj = inputs.get("timestamp");
-        if (tsObj instanceof OffsetDateTime) {
-            input.setTimestamp((OffsetDateTime) tsObj);
-        }
-        return input;
+    public MemoryWriteInput() {
     }
 
-    /**
-     * parseMessagesList.
-     * 
-     * @param msgList msgList
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<BaseMessage> parseMessagesList(List<?> msgList) {
-        List<BaseMessage> messages = new ArrayList<>();
-        for (Object item : msgList) {
-            if (item instanceof BaseMessage baseMsg) {
-                messages.add(baseMsg);
-            } else if (item instanceof Map<?, ?> msgMap) {
-                BaseMessage message = parseMessageFromMap(msgMap);
-                messages.add(message);
-            } else {
-                // no-op
-            }
-        }
-        return messages;
+    public MemoryWriteInput(List<BaseMessage> messages, ZonedDateTime timestamp, Map<String, Object> extraFields) {
+        setMessages(messages);
+        this.timestamp = timestamp;
+        setExtraFields(extraFields);
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * parseMessageFromMap.
-     * 
-     * @param msgMap msgMap
-     * @return the result
-     * @since 0.1.7
-     */
-    private static BaseMessage parseMessageFromMap(Map<?, ?> msgMap) {
-        Map<String, Object> typedMap = (Map<String, Object>) msgMap;
-        String role = String.valueOf(typedMap.getOrDefault("role", ""));
-        Object content = typedMap.get("content");
-        String contentStr = content != null ? content.toString() : "";
-        return new BaseMessage(role, contentStr);
+    public List<BaseMessage> getMessages() {
+        return new ArrayList<>(messages);
+    }
+
+    public void setMessages(List<BaseMessage> messages) {
+        this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
+    }
+
+    public ZonedDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(ZonedDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public Map<String, Object> getExtraFields() {
+        return new LinkedHashMap<>(extraFields);
+    }
+
+    public void setExtraFields(Map<String, Object> extraFields) {
+        this.extraFields = extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
     }
 }

@@ -4,242 +4,70 @@
 
 package com.openjiuwen.core.multiagent;
 
-import com.openjiuwen.core.multiagent.runtime.TeamRuntime;
+import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
+import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
-import com.openjiuwen.core.runner.base.AgentProvider;
-import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
 
-import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /**
- * Team-oriented compatibility surface aligned with Python's {@code BaseTeam}.
- * <p>
- * The older Java {@link BaseGroup} remains available for legacy callers.
- * This type adds the Python naming surface plus a local {@link TeamRuntime}
- * for point-to-point and publish/subscribe dispatch.
- * </p>
- * 
- * @since 0.1.7
+ * Camelcase package compatibility facade for multi-agent teams.
+ *
+ * <p>Mirrors Python's {@code BaseTeam} in
+ * {@code openjiuwen/core/multi_agent/team.py}.</p>
  */
-public abstract class BaseTeam extends BaseGroup {
-    private TeamConfig teamConfig;
-    private final TeamRuntime runtime;
+public abstract class BaseTeam extends com.openjiuwen.core.multi_agent.BaseTeam {
 
-    /**
-     * BaseTeam.
-     * 
-     * @param card card
-     * @param config config
-     * @param runtime runtime
-     * @since 0.1.7
-     */
-    protected BaseTeam(TeamCard card, TeamConfig config, TeamRuntime runtime) {
+    public BaseTeam(TeamCard card) {
+        super(card);
+    }
+
+    public BaseTeam(TeamCard card, TeamConfig config) {
         super(card, config);
-        this.teamConfig = config != null ? config : new TeamConfig();
-        this.runtime = runtime != null ? runtime : new TeamRuntime(card.getId());
     }
 
-    /**
-     * BaseTeam.
-     * 
-     * @param card card
-     * @param config config
-     * @since 0.1.7
-     */
-    protected BaseTeam(TeamCard card, TeamConfig config) {
-        this(card, config, null);
+    public BaseTeam(TeamCard card, TeamConfig config, TeamRuntime runtime) {
+        super(card, config, runtime);
     }
 
-    /**
-     * BaseTeam.
-     * 
-     * @param card card
-     * @since 0.1.7
-     */
-    protected BaseTeam(TeamCard card) {
-        this(card, null, null);
-    }
-
-    /**
-     * configure.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public BaseTeam configure(GroupConfig config) {
-        this.teamConfig = config instanceof TeamConfig team ? team : copyConfig(config);
-        super.configure(this.teamConfig);
+    public BaseTeam addAgent(AgentCard agentCard, Supplier<?> provider) {
+        Objects.requireNonNull(provider, "provider must not be null");
+        super.addAgent(agentCard, ignored -> provider.get());
         return this;
     }
 
-    /**
-     * configure.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseTeam configure(TeamConfig config) {
-        this.teamConfig = config != null ? config : new TeamConfig();
-        super.configure(this.teamConfig);
+    @Override
+    public BaseTeam addAgent(AgentCard agentCard, Function<AgentCard, ?> provider) {
+        super.addAgent(agentCard, provider);
         return this;
     }
 
-    /**
-     * addAgent.
-     * 
-     * @param card card
-     * @param provider provider
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseTeam addAgent(AgentCard card, AgentProvider<? extends BaseAgent> provider) {
-        runtime.registerAgent(card, provider);
-        getTeamCard().getAgentCards().removeIf(candidate -> candidate.getId().equals(card.getId()));
-        getTeamCard().getAgentCards().add(card);
-        return this;
-    }
-
-    /**
-     * removeAgent.
-     * 
-     * @param agentId agentId
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public BaseTeam removeAgent(String agentId) {
-        runtime.unregisterAgent(agentId);
-        getTeamCard().getAgentCards().removeIf(candidate -> candidate.getId().equals(agentId));
-        return this;
+    public final CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
+        return invoke(message, session instanceof Session legacySession ? legacySession : null);
     }
 
-    /**
-     * getAgentCount.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public CompletionStage<Object> invoke(Object message) {
+        return invoke(message, (Session) null);
+    }
+
+    public abstract CompletionStage<Object> invoke(Object message, Session session);
+
     @Override
-    public int getAgentCount() {
-        return runtime.getAgentCount();
+    public final Stream<Object> stream(Object message, AgentSessionApi session) {
+        return stream(message, session instanceof Session legacySession ? legacySession : null);
     }
 
-    /**
-     * listAgents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<String> listAgents() {
-        return runtime.listAgents();
+    public Stream<Object> stream(Object message) {
+        return stream(message, (Session) null);
     }
 
-    /**
-     * send.
-     * 
-     * @param message message
-     * @param recipient recipient
-     * @param sender sender
-     * @param sessionId sessionId
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object send(Object message, String recipient, String sender, String sessionId,
-            AgentGroupSessionApi session) {
-        return runtime.send(message, recipient, sender, sessionId, session);
-    }
-
-    /**
-     * publish.
-     * 
-     * @param message message
-     * @param topicId topicId
-     * @param sender sender
-     * @param sessionId sessionId
-     * @param session session
-     * @since 0.1.7
-     */
-    public void publish(Object message, String topicId, String sender, String sessionId, AgentGroupSessionApi session) {
-        runtime.publish(message, topicId, sender, sessionId, session);
-    }
-
-    /**
-     * subscribe.
-     * 
-     * @param agentId agentId
-     * @param topic topic
-     * @since 0.1.7
-     */
-    public void subscribe(String agentId, String topic) {
-        runtime.subscribe(agentId, topic);
-    }
-
-    /**
-     * unsubscribe.
-     * 
-     * @param agentId agentId
-     * @param topic topic
-     * @since 0.1.7
-     */
-    public void unsubscribe(String agentId, String topic) {
-        runtime.unsubscribe(agentId, topic);
-    }
-
-    /**
-     * getRuntime.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TeamRuntime getRuntime() {
-        return runtime;
-    }
-
-    /**
-     * getTeamConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TeamConfig getTeamConfig() {
-        return teamConfig;
-    }
-
-    /**
-     * getTeamCard.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public TeamCard getTeamCard() {
-        if (getCard() instanceof TeamCard teamCard) {
-            return teamCard;
-        }
-        return TeamCard.class.cast(getCard());
-    }
-
-    /**
-     * copyConfig.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static TeamConfig copyConfig(GroupConfig config) {
-        TeamConfig copied = new TeamConfig();
-        if (config == null) {
-            return copied;
-        }
-        copied.setMaxAgents(config.getMaxAgents());
-        copied.setMaxConcurrentMessages(config.getMaxConcurrentMessages());
-        copied.setMessageTimeout(config.getMessageTimeout());
-        return copied;
-    }
+    public abstract Stream<Object> stream(Object message, Session session);
 }

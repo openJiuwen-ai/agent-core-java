@@ -157,7 +157,10 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
      */
     protected String invokeModel(List<?> messages) {
         try {
-            AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+            @SuppressWarnings("unchecked")
+            List<com.openjiuwen.core.foundation.llm.schema.BaseMessage> typedMessages =
+                    (List<com.openjiuwen.core.foundation.llm.schema.BaseMessage>) messages;
+            AssistantMessage response = model.invoke(typedMessages, null, null, null, null, null, null, null, null, null);
             return response != null ? response.getContentAsString() : "";
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);

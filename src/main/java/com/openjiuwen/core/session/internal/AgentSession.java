@@ -10,276 +10,172 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.AgentStateCollection;
-import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.InMemoryCommitState;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
-import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 
-import java.util.List;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Agent session providing full session lifecycle for an agent execution.
- * <p>
- * Manages configuration, state (AgentStateCollection), stream emitter/writer,
- * callback manager, tracer, and checkpointer.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.internal.agent.AgentSession}.
- * 
- * @since 0.1.7
+ * Internal single-agent session.
+ *
+ * <p>Mirrors Python's {@code AgentSession} in
+ * {@code openjiuwen/core/session/internal/agent.py}.</p>
  */
 public class AgentSession extends BaseSession {
+
     private final String sessionId;
-    private final Config configField;
-    private final AgentStateCollection stateField;
-    private final StreamWriterManager streamWriterManagerField;
-    private final CallbackManager callbackManagerField;
-    private final Tracer tracerField;
-    private final Checkpointer checkpointerField;
-    private final TraceAgentSpan agentSpan;
+    private final Config config;
     private final Object card;
+    private final AgentStateCollection state = new AgentStateCollection();
+    private final StreamWriterManager streamWriterManager;
+    private final Tracer tracer = new Tracer();
+    private final Checkpointer checkpointer;
+    private final TraceAgentSpan agentSpan;
+    private final CallbackManager callbackManager = new CallbackManager();
 
-    /**
-     * Create a new AgentSession.
-     * 
-     * @param sessionId the unique session identifier
-     * @param config the session config (nullable)
-     * @param checkpointer an explicit checkpointer, or null to use factory default
-     * @param card the agent card (nullable)
-     * @since 0.1.7
-     */
-    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card) {
-        this(sessionId, config, checkpointer, card, null);
-    }
-
-    /**
-     * Create a new AgentSession with explicit stream modes.
-     * 
-     * @param sessionId the unique session identifier
-     * @param config the session config (nullable)
-     * @param checkpointer an explicit checkpointer, or null to use factory default
-     * @param card the agent card (nullable)
-     * @param streamModes explicit enabled stream modes, null to use defaults
-     * @since 0.1.7
-     */
-    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card,
-            List<StreamMode> streamModes) {
-        this.sessionId = sessionId;
-        this.configField = config;
-        this.stateField = new AgentStateCollection();
-        this.streamWriterManagerField = new StreamWriterManager(new StreamEmitter(), streamModes);
-        this.callbackManagerField = new CallbackManager();
-
-        Tracer tracer = new Tracer();
-        tracer.init(this.streamWriterManagerField, this.callbackManagerField);
-        this.tracerField = tracer;
-
-        this.checkpointerField = checkpointer != null ? checkpointer : CheckpointerFactory.getCheckpointer();
-
-        this.agentSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
-        this.card = card;
-    }
-
-    /**
-     * Convenience constructor without card.
-     * 
-     * @param sessionId sessionId
-     * @param config config
-     * @param checkpointer checkpointer
-     * @since 0.1.7
-     */
-    public AgentSession(String sessionId, Config config, Checkpointer checkpointer) {
-        this(sessionId, config, checkpointer, null);
-    }
-
-    /**
-     * Convenience constructor with defaults.
-     * 
-     * @param sessionId sessionId
-     * @param config config
-     * @since 0.1.7
-     */
-    public AgentSession(String sessionId, Config config) {
-        this(sessionId, config, null, null);
-    }
-
-    /**
-     * Compatibility constructor for translated tests.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     public AgentSession(String sessionId) {
-        this(sessionId, new Config(), null, null);
+        this(sessionId, null, null, null, null);
     }
 
-    /**
-     * config.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public AgentSession(String sessionId, Config config, Object card, StreamWriterManager streamWriterManager) {
+        this(sessionId, config, null, card, streamWriterManager);
+    }
+
+    public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card,
+                        StreamWriterManager streamWriterManager) {
+        this.sessionId = sessionId;
+        this.config = config == null ? new Config() : config;
+        this.card = card;
+        this.streamWriterManager = streamWriterManager == null
+                ? new StreamWriterManager(new StreamEmitter())
+                : streamWriterManager;
+        tracer.init(this.streamWriterManager);
+        this.checkpointer = checkpointer == null ? CheckpointerFactory.getCheckpointer() : checkpointer;
+        this.agentSpan = tracer.getTracerAgentSpanManager().createAgentSpan();
+    }
+
     @Override
     public Config config() {
-        return configField;
+        return config;
     }
 
-    /**
-     * state.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public State state() {
-        return stateField;
+        return state;
     }
 
-    /**
-     * tracer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Object tracer() {
-        return tracerField;
+    public Tracer tracer() {
+        return tracer;
     }
 
-    /**
-     * Get the tracer (typed).
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Tracer tracerTyped() {
-        return tracerField;
-    }
-
-    /**
-     * streamWriterManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public StreamWriterManager streamWriterManager() {
-        return streamWriterManagerField;
+        return streamWriterManager;
     }
 
-    /**
-     * callbackManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public CallbackManager callbackManager() {
-        return callbackManagerField;
-    }
-
-    /**
-     * sessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public String sessionId() {
         return sessionId;
     }
 
-    /**
-     * checkpointer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Object checkpointer() {
-        return checkpointerField;
+    public Checkpointer checkpointer() {
+        return checkpointer;
     }
 
-    /**
-     * Get the checkpointer (typed).
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Checkpointer checkpointerTyped() {
-        return checkpointerField;
+    @Override
+    public CallbackManager callbackManager() {
+        return callbackManager;
     }
 
-    /**
-     * Get the agent span for this session.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public TraceAgentSpan span() {
         return agentSpan;
     }
 
-    /**
-     * createWorkflowSession.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
     public WorkflowSession createWorkflowSession() {
-        Map<String, Object> globalData = (Map<String, Object>) stateField.getGlobal(null);
-        WorkflowCommitState workflowState = InMemoryState.create(null, globalData, null, null, null);
-        return new WorkflowSession(null, this, this.sessionId, workflowState, null);
+        WorkflowCommitState workflowState = new WorkflowCommitState(
+                new InMemoryCommitState(),
+                new InMemoryCommitState(state.getGlobalStateLike()),
+                new InMemoryCommitState(),
+                new InMemoryCommitState(),
+                new HashMap<>(),
+                "",
+                State.DEFAULT_NODE_ID
+        );
+        return new WorkflowSession(null, this, sessionId, workflowState, (Object) null);
     }
 
-    /**
-     * Get the agent ID from config or card.
-     * 
-     * @return agent ID
-     * @since 0.1.7
-     */
     public String agentId() {
-        if (configField != null) {
-            Object agentConfig = configField.getAgentConfig();
-            if (agentConfig instanceof Config.MetadataLike meta && meta.getId() != null) {
-                return meta.getId();
+        Object agentConfig = config.getAgentConfig();
+        if (agentConfig != null) {
+            return stringOrNull(readIdProperty(agentConfig));
+        }
+        return stringOrNull(readIdProperty(card));
+    }
+
+    public Object card() {
+        return card;
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Object readIdProperty(Object target) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof Map<?, ?> map) {
+            return map.get("id");
+        }
+        Object getterValue = invokeZeroArg(target, "getId");
+        if (getterValue != null) {
+            return getterValue;
+        }
+        Object accessorValue = invokeZeroArg(target, "id");
+        if (accessorValue != null) {
+            return accessorValue;
+        }
+        return readField(target, "id");
+    }
+
+    private static Object invokeZeroArg(Object target, String methodName) {
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Method method = type.getDeclaredMethod(methodName);
+                method.setAccessible(true);
+                return method.invoke(target);
+            } catch (NoSuchMethodException ignored) {
+                // Try the next superclass.
+            } catch (ReflectiveOperationException | SecurityException ignored) {
+                return null;
             }
         }
-        // Fallback to card
-        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
-            return baseCard.getId();
+        return null;
+    }
+
+    private static Object readField(Object target, String fieldName) {
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                // Try the next superclass.
+            } catch (ReflectiveOperationException | SecurityException ignored) {
+                return null;
+            }
         }
         return null;
     }
 
-    /**
-     * Get the agent name from the card.
-     * 
-     * @return agent name or null
-     * @since 0.1.7
-     */
-    public String agentName() {
-        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
-            return baseCard.getName();
-        }
-        return null;
-    }
-
-    /**
-     * Get the agent description from the card.
-     * 
-     * @return agent description or null
-     * @since 0.1.7
-     */
-    public String agentDescription() {
-        if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
-            return baseCard.getDescription();
-        }
-        return null;
-    }
 }

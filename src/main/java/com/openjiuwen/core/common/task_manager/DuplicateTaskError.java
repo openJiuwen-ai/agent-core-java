@@ -6,19 +6,26 @@ package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
- * Raised when the same task id is registered twice.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code DuplicateTaskError} in
+ * {@code openjiuwen/core/common/task_manager/exceptions.py}.
  */
 public class DuplicateTaskError extends TaskError {
-    /**
-     * DuplicateTaskError.
-     * 
-     * @param msg msg
-     * @since 0.1.7
-     */
+
+    public static final StatusCode STATUS = StatusCode.COMMON_TASK_CONFIG_ERROR;
+
+    public DuplicateTaskError() {
+        super(STATUS);
+    }
+
     public DuplicateTaskError(String msg) {
-        super(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR, msg);
+        this(msg, null, null, Map.of());
+    }
+
+    public DuplicateTaskError(String msg, Object details, Throwable cause, Map<String, Object> kwargs) {
+        super(STATUS, msg, details, cause, kwargs == null ? Map.of() : new LinkedHashMap<>(kwargs));
     }
 }

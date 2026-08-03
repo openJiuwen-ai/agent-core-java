@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema
+# com.openjiuwen.core.single_agent.legacy.schema.WorkflowSchema
 
 ## 类 WorkflowSchema
 

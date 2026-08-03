@@ -4,9 +4,10 @@
 
 package com.openjiuwen.extensions.context_evolver.summary.task.ace;
 
-import java.time.Instant;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -14,66 +15,39 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 
 /**
- * Playbook data structures for ACE algorithm.
- * <p>
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.playbook}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code Playbook} module in
+ * {@code openjiuwen/extensions/context_evolver/summary/task/ace/playbook.py}.
  */
 public class Playbook {
-    private final Map<String, Bullet> bullets = new LinkedHashMap<>();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, List<String>> sections = new LinkedHashMap<>();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() { };
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
+    private final Map<String, Bullet> bullets = new LinkedHashMap<>();
+    private Map<String, List<String>> sections = new LinkedHashMap<>();
     private int nextId = 0;
 
-    /**
-     * addBullet.
-     * 
-     * @param section section
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
     public Bullet addBullet(String section, String content) {
         return addBullet(section, content, null, null);
     }
 
-    /**
-     * addBullet.
-     * 
-     * @param section section
-     * @param content content
-     * @param bulletId bulletId
-     * @param metadata metadata
-     * @return the result
-     * @since 0.1.7
-     */
     public Bullet addBullet(String section, String content, String bulletId, Map<String, Integer> metadata) {
-        String resolvedSection = normalizeSection(section);
-        String resolvedBulletId = bulletId != null && !bulletId.isBlank() ? bulletId : generateId(resolvedSection);
-        Bullet bullet = new Bullet(resolvedBulletId, resolvedSection, content != null ? content : "");
-        bullet.applyMetadata(metadata);
-        bullets.put(resolvedBulletId, bullet);
-        sections.computeIfAbsent(resolvedSection, ignored -> new ArrayList<>()).add(resolvedBulletId);
+        String resolvedId = bulletId != null && !bulletId.isEmpty() ? bulletId : generateId(section);
+        Map<String, Integer> resolvedMetadata = metadata != null ? metadata : Map.of();
+        Bullet bullet = new Bullet(resolvedId, section, content);
+        bullet.applyMetadata(resolvedMetadata);
+        bullets.put(resolvedId, bullet);
+        sections.computeIfAbsent(bullet.getSection(), ignored -> new ArrayList<>()).add(resolvedId);
         return bullet;
     }
 
-    /**
-     * updateBullet.
-     * 
-     * @param bulletId bulletId
-     * @param content content
-     * @param metadata metadata
-     * @return the result
-     * @since 0.1.7
-     */
     public Bullet updateBullet(String bulletId, String content, Map<String, Integer> metadata) {
         Bullet bullet = bullets.get(bulletId);
         if (bullet == null) {
@@ -85,19 +59,10 @@ public class Playbook {
         if (metadata != null && !metadata.isEmpty()) {
             bullet.applyMetadata(metadata);
         }
-        bullet.touch();
+        bullet.setUpdatedAt(utcNow());
         return bullet;
     }
 
-    /**
-     * tagBullet.
-     * 
-     * @param bulletId bulletId
-     * @param tag tag
-     * @param increment increment
-     * @return the result
-     * @since 0.1.7
-     */
     public Bullet tagBullet(String bulletId, String tag, int increment) {
         Bullet bullet = bullets.get(bulletId);
         if (bullet == null) {
@@ -107,138 +72,154 @@ public class Playbook {
         return bullet;
     }
 
-    /**
-     * removeBullet.
-     * 
-     * @param bulletId bulletId
-     * @since 0.1.7
-     */
     public void removeBullet(String bulletId) {
         Bullet bullet = bullets.remove(bulletId);
         if (bullet == null) {
             return;
         }
-        List<String> sectionBulletIds = sections.get(bullet.getSection());
-        if (sectionBulletIds != null) {
-            sectionBulletIds.removeIf(existingId -> Objects.equals(existingId, bulletId));
-            if (sectionBulletIds.isEmpty()) {
+        List<String> sectionList = sections.get(bullet.getSection());
+        if (sectionList != null) {
+            List<String> filtered = new ArrayList<>();
+            for (String existingId : sectionList) {
+                if (!Objects.equals(existingId, bulletId)) {
+                    filtered.add(existingId);
+                }
+            }
+            if (filtered.isEmpty()) {
                 sections.remove(bullet.getSection());
+            } else {
+                sections.put(bullet.getSection(), filtered);
             }
         }
     }
 
-    /**
-     * getBullet.
-     * 
-     * @param bulletId bulletId
-     * @return the result
-     * @since 0.1.7
-     */
     public Bullet getBullet(String bulletId) {
         return bullets.get(bulletId);
     }
 
-    /**
-     * bullets.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Bullet> bullets() {
         return new ArrayList<>(bullets.values());
     }
 
-    /**
-     * bulletIds.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<String> bulletIds() {
         return new ArrayList<>(bullets.keySet());
     }
 
-    /**
-     * loadBullet.
-     * 
-     * @param bullet bullet
-     * @since 0.1.7
-     */
     public void loadBullet(Bullet bullet) {
-        if (bullet == null) {
-            return;
-        }
         bullets.put(bullet.getId(), bullet);
-        List<String> ids = sections.computeIfAbsent(bullet.getSection(), ignored -> new ArrayList<>());
-        if (!ids.contains(bullet.getId())) {
-            ids.add(bullet.getId());
+        sections.computeIfAbsent(bullet.getSection(), ignored -> new ArrayList<>()).add(bullet.getId());
+    }
+
+    public void setNextId(int nextId) {
+        this.nextId = nextId;
+    }
+
+    public Map<String, Object> toDict() {
+        Map<String, Object> bulletPayload = new LinkedHashMap<>();
+        for (Map.Entry<String, Bullet> entry : bullets.entrySet()) {
+            bulletPayload.put(entry.getKey(), entry.getValue().toDict());
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("bullets", bulletPayload);
+        payload.put("sections", sections);
+        payload.put("next_id", nextId);
+        return payload;
+    }
+
+    public static Playbook fromDict(Map<String, Object> payload) {
+        Playbook instance = new Playbook();
+        Object bulletsPayload = payload.getOrDefault("bullets", Map.of());
+        if (bulletsPayload instanceof Map<?, ?> rawBullets) {
+            for (Map.Entry<?, ?> entry : rawBullets.entrySet()) {
+                if (entry.getValue() instanceof Map<?, ?> rawBulletValue) {
+                    Map<String, Object> bulletMap = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> bulletEntry : rawBulletValue.entrySet()) {
+                        bulletMap.put(String.valueOf(bulletEntry.getKey()), bulletEntry.getValue());
+                    }
+                    instance.bullets.put(String.valueOf(entry.getKey()), Bullet.fromDict(bulletMap));
+                }
+            }
+        }
+        Object sectionsPayload = payload.getOrDefault("sections", Map.of());
+        if (sectionsPayload instanceof Map<?, ?> rawSections) {
+            Map<String, List<String>> rebuilt = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawSections.entrySet()) {
+                List<String> ids = new ArrayList<>();
+                if (entry.getValue() instanceof Iterable<?> iterable) {
+                    for (Object id : iterable) {
+                        ids.add(String.valueOf(id));
+                    }
+                }
+                rebuilt.put(String.valueOf(entry.getKey()), ids);
+            }
+            instance.sections = rebuilt;
+        }
+        instance.nextId = ((Number) payload.getOrDefault("next_id", 0)).intValue();
+        return instance;
+    }
+
+    public String dumps() {
+        try {
+            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(toDict());
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("Failed to serialize playbook.", ex);
         }
     }
 
-    /**
-     * setNextId.
-     * 
-     * @param nextId nextId
-     * @since 0.1.7
-     */
-    public void setNextId(int nextId) {
-        this.nextId = Math.max(0, nextId);
-    }
-
-    /**
-     * asPrompt.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String asPrompt() {
-        List<String> lines = new ArrayList<>();
-        sections.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
-            lines.add("## " + entry.getKey());
-            for (String bulletId : entry.getValue()) {
-                Bullet bullet = bullets.get(bulletId);
-                if (bullet == null) {
-                    continue;
-                }
-                lines.add("- [" + bullet.getId() + "] " + bullet.getContent() + " (helpful=" + bullet.getHelpful()
-                        + ", harmful=" + bullet.getHarmful() + ", neutral=" + bullet.getNeutral() + ")");
+    public static Playbook loads(String data) {
+        try {
+            Object payload = OBJECT_MAPPER.readValue(data, Object.class);
+            if (!(payload instanceof Map<?, ?> rawMap)) {
+                throw new IllegalArgumentException("Playbook serialization must be a JSON object.");
             }
-        });
-        return String.join("\n", lines);
+            Map<String, Object> typedMap = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                typedMap.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return fromDict(typedMap);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("Failed to deserialize playbook.", ex);
+        }
     }
 
-    /**
-     * stats.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void applyDelta(DeltaBatch delta) {
+        for (DeltaOperation operation : delta.getOperations()) {
+            applyOperation(operation);
+        }
+    }
+
+    public String asPrompt() {
+        List<String> parts = new ArrayList<>();
+        sections.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry -> {
+                parts.add("## " + entry.getKey());
+                for (String bulletId : entry.getValue()) {
+                    Bullet bullet = Objects.requireNonNull(bullets.get(bulletId));
+                    String counters = "(helpful=" + bullet.getHelpful()
+                        + ", harmful=" + bullet.getHarmful()
+                        + ", neutral=" + bullet.getNeutral() + ")";
+                    parts.add("- [" + bullet.getId() + "] " + bullet.getContent() + " " + counters);
+                }
+            });
+        return String.join("\n", parts);
+    }
+
     public Map<String, Object> stats() {
         Map<String, Integer> tags = new LinkedHashMap<>();
         tags.put("helpful", bullets.values().stream().mapToInt(Bullet::getHelpful).sum());
         tags.put("harmful", bullets.values().stream().mapToInt(Bullet::getHarmful).sum());
         tags.put("neutral", bullets.values().stream().mapToInt(Bullet::getNeutral).sum());
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("sections", sections.size());
-        result.put("bullets", bullets.size());
-        result.put("tags", tags);
-        return result;
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("sections", sections.size());
+        stats.put("bullets", bullets.size());
+        stats.put("tags", tags);
+        return stats;
     }
 
-    /**
-     * makePlaybookExcerpt.
-     * 
-     * @param bulletIds bulletIds
-     * @return the result
-     * @since 0.1.7
-     */
     public String makePlaybookExcerpt(List<String> bulletIds) {
         List<String> lines = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        if (bulletIds == null) {
-            return "";
-        }
         for (String bulletId : bulletIds) {
             if (!seen.add(bulletId)) {
                 continue;
@@ -251,308 +232,94 @@ public class Playbook {
         return String.join("\n", lines);
     }
 
-    /**
-     * lowScoreComparator.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Comparator<Bullet> lowScoreComparator() {
-        return Comparator.comparingInt((Bullet bullet) -> bullet.getHelpful() - bullet.getHarmful())
-                .thenComparing(Bullet::getUpdatedAt).thenComparing(Bullet::getId);
-    }
-
-    /**
-     * generateId.
-     * 
-     * @param section section
-     * @return the result
-     * @since 0.1.7
-     */
-    private String generateId(String section) {
-        this.nextId += 1;
-        String normalizedSection = normalizeSection(section);
-        String prefix = normalizedSection.split("\\s+")[0].toLowerCase(Locale.ROOT);
-        return prefix + "-" + String.format(Locale.ROOT, "%05d", nextId);
-    }
-
-    /**
-     * normalizeSection.
-     * 
-     * @param section section
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String normalizeSection(String section) {
-        return section != null && !section.isBlank() ? section : "general";
-    }
-
-    /**
-     * Single playbook entry.
-     * 
-     * @since 0.1.7
-     */
-    public static class Bullet {
-        private final String id;
-        private final String section;
-        private String content;
-        private int helpful;
-        private int harmful;
-        private int neutral;
-        private final String createdAt;
-        private String updatedAt;
-
-        /**
-         * Bullet.
-         * 
-         * @param id id
-         * @param section section
-         * @param content content
-         * @since 0.1.7
-         */
-        public Bullet(String id, String section, String content) {
-            this(id, normalizeSection(section), content != null ? content : "", 0, 0, 0, Instant.now().toString(),
-                    Instant.now().toString());
-        }
-
-        /**
-         * Bullet.
-         * 
-         * @param id id
-         * @param section section
-         * @param content content
-         * @param helpful helpful
-         * @param harmful harmful
-         * @param neutral neutral
-         * @param createdAt createdAt
-         * @param updatedAt updatedAt
-         * @since 0.1.7
-         */
-        public Bullet(String id, String section, String content, int helpful, int harmful, int neutral,
-                String createdAt, String updatedAt) {
-            this.id = id;
-            this.section = normalizeSection(section);
-            this.content = content != null ? content : "";
-            this.helpful = helpful;
-            this.harmful = harmful;
-            this.neutral = neutral;
-            this.createdAt = createdAt != null && !createdAt.isBlank() ? createdAt : Instant.now().toString();
-            this.updatedAt = updatedAt != null && !updatedAt.isBlank() ? updatedAt : this.createdAt;
-        }
-
-        /**
-         * applyMetadata.
-         * 
-         * @param metadata metadata
-         * @since 0.1.7
-         */
-        public void applyMetadata(Map<String, Integer> metadata) {
-            if (metadata == null || metadata.isEmpty()) {
-                return;
+    private void applyOperation(DeltaOperation operation) {
+        String opType = operation.getType().toUpperCase(Locale.ROOT);
+        switch (opType) {
+            case "ADD" -> addBullet(
+                operation.getSection(),
+                operation.getContent() != null ? operation.getContent() : "",
+                operation.getBulletId(),
+                operation.getMetadata()
+            );
+            case "UPDATE" -> {
+                if (operation.getBulletId() != null) {
+                    updateBullet(operation.getBulletId(), operation.getContent(), operation.getMetadata());
+                }
             }
-            for (Map.Entry<String, Integer> entry : metadata.entrySet()) {
-                String key = entry.getKey();
-                int value = entry.getValue() != null ? entry.getValue() : 0;
-                switch (key) {
-                    case "helpful" -> helpful = value;
-                    case "harmful" -> harmful = value;
-                    case "neutral" -> neutral = value;
-                    default -> {
-                        // Ignore unsupported metadata to match the Python loader behavior.
+            case "TAG" -> {
+                if (operation.getBulletId() != null) {
+                    for (Map.Entry<String, Integer> entry : operation.getMetadata().entrySet()) {
+                        tagBullet(operation.getBulletId(), entry.getKey(), entry.getValue());
                     }
                 }
             }
-        }
-
-        /**
-         * tag.
-         * 
-         * @param tag tag
-         * @param increment increment
-         * @since 0.1.7
-         */
-        public void tag(String tag, int increment) {
-            switch (tag) {
-                case "helpful" -> helpful += increment;
-                case "harmful" -> harmful += increment;
-                case "neutral" -> neutral += increment;
-                default -> throw new IllegalArgumentException("Unsupported tag: " + tag);
+            case "REMOVE" -> {
+                if (operation.getBulletId() != null) {
+                    removeBullet(operation.getBulletId());
+                }
             }
-            touch();
-        }
-
-        /**
-         * touch.
-         * 
-         * @since 0.1.7
-         */
-        public void touch() {
-            updatedAt = Instant.now().toString();
-        }
-
-        /**
-         * getId.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getId() {
-            return id;
-        }
-
-        /**
-         * getSection.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getSection() {
-            return section;
-        }
-
-        /**
-         * getContent.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getContent() {
-            return content;
-        }
-
-        /**
-         * setContent.
-         * 
-         * @param content content
-         * @since 0.1.7
-         */
-        public void setContent(String content) {
-            this.content = content != null ? content : "";
-        }
-
-        /**
-         * getHelpful.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public int getHelpful() {
-            return helpful;
-        }
-
-        /**
-         * getHarmful.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public int getHarmful() {
-            return harmful;
-        }
-
-        /**
-         * getNeutral.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public int getNeutral() {
-            return neutral;
-        }
-
-        /**
-         * getCreatedAt.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getCreatedAt() {
-            return createdAt;
-        }
-
-        /**
-         * getUpdatedAt.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public String getUpdatedAt() {
-            return updatedAt;
+            default -> {
+                // Python silently ignores unsupported operation types.
+            }
         }
     }
 
-    /**
-     * Delta operation for playbook updates.
-     * 
-     * @since 0.1.7
-     */
-    public static class DeltaOperation {
-        private final String type;
-        private final String section;
-        private final String content;
-        private final String bulletId;
-        private final Map<String, Integer> metadata;
+    private String generateId(String section) {
+        nextId += 1;
+        String sectionPrefix;
+        if (section != null && !section.trim().isEmpty()) {
+            sectionPrefix = WHITESPACE.split(section.trim())[0].toLowerCase(Locale.ROOT);
+        } else {
+            sectionPrefix = "general";
+        }
+        return sectionPrefix + "-" + String.format(Locale.ROOT, "%05d", nextId);
+    }
 
-        /**
-         * DeltaOperation.
-         * 
-         * @param type type
-         * @param section section
-         * @param content content
-         * @param bulletId bulletId
-         * @param metadata metadata
-         * @since 0.1.7
-         */
-        public DeltaOperation(String type, String section, String content, String bulletId,
-                Map<String, Integer> metadata) {
-            this.type = type != null ? type : "ADD";
-            this.section = section != null ? section : "";
+    private static String normalizeSection(String section) {
+        return section != null && !section.trim().isEmpty() ? section : "general";
+    }
+
+    private static String utcNow() {
+        return OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+    }
+
+    public static class DeltaOperation {
+        private String type;
+        private String section;
+        private String content;
+        private String bulletId;
+        private Map<String, Integer> metadata;
+
+        public DeltaOperation(String type, String section, String content, String bulletId, Map<String, Integer> metadata) {
+            this.type = type;
+            this.section = section;
             this.content = content;
             this.bulletId = bulletId;
             this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
         }
 
-        /**
-         * fromJson.
-         * 
-         * @param payload payload
-         * @return the result
-         * @since 0.1.7
-         */
-        @SuppressWarnings("unchecked")
         public static DeltaOperation fromJson(Map<String, Object> payload) {
             Map<String, Integer> metadata = new LinkedHashMap<>();
-            Object metadataValue = payload.get("metadata");
-            if (metadataValue instanceof Map<?, ?> rawMetadata) {
-                for (Map.Entry<?, ?> entry : rawMetadata.entrySet()) {
-                    String key = String.valueOf(entry.getKey());
+            Object rawMetadata = payload.get("metadata");
+            if (rawMetadata instanceof Map<?, ?> metadataMap) {
+                for (Map.Entry<?, ?> entry : metadataMap.entrySet()) {
                     Object value = entry.getValue();
-                    if (value instanceof Number number) {
-                        metadata.put(key, number.intValue());
-                    } else if (value != null) {
-                        try {
-                            metadata.put(key, Integer.parseInt(String.valueOf(value)));
-                        } catch (NumberFormatException ignored) {
-                            // Skip invalid metadata values.
-                        }
-                    } else {
-                        // no-op
+                    if (value != null) {
+                        metadata.put(String.valueOf(entry.getKey()), Integer.parseInt(String.valueOf(value)));
                     }
                 }
             }
-
-            return new DeltaOperation(String.valueOf(payload.getOrDefault("type", "ADD")),
-                    String.valueOf(payload.getOrDefault("section", "")),
-                    payload.get("content") != null ? String.valueOf(payload.get("content")) : null,
-                    payload.get("bullet_id") != null ? String.valueOf(payload.get("bullet_id")) : null, metadata);
+            Object content = payload.get("content");
+            Object bulletId = payload.get("bullet_id");
+            return new DeltaOperation(
+                String.valueOf(payload.get("type")),
+                String.valueOf(payload.getOrDefault("section", "")),
+                content != null ? String.valueOf(content) : null,
+                bulletId != null ? String.valueOf(bulletId) : null,
+                metadata
+            );
         }
 
-        /**
-         * toJson.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public Map<String, Object> toJson() {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("type", type);
@@ -564,113 +331,55 @@ public class Playbook {
                 data.put("bullet_id", bulletId);
             }
             if (!metadata.isEmpty()) {
-                data.put("metadata", new LinkedHashMap<>(metadata));
+                data.put("metadata", metadata);
             }
             return data;
         }
 
-        /**
-         * getType.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public String getType() {
             return type;
         }
 
-        /**
-         * getSection.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public String getSection() {
             return section;
         }
 
-        /**
-         * getContent.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public String getContent() {
             return content;
         }
 
-        /**
-         * getBulletId.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public String getBulletId() {
             return bulletId;
         }
 
-        /**
-         * getMetadata.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public Map<String, Integer> getMetadata() {
             return new LinkedHashMap<>(metadata);
         }
     }
 
-    /**
-     * Bundle of curator reasoning and operations.
-     * 
-     * @since 0.1.7
-     */
     public static class DeltaBatch {
-        private final String reasoning;
-        private final List<DeltaOperation> operations;
+        private String reasoning;
+        private List<DeltaOperation> operations;
 
-        /**
-         * DeltaBatch.
-         * 
-         * @param reasoning reasoning
-         * @param operations operations
-         * @since 0.1.7
-         */
         public DeltaBatch(String reasoning, List<DeltaOperation> operations) {
-            this.reasoning = reasoning != null ? reasoning : "";
+            this.reasoning = reasoning;
             this.operations = operations != null ? new ArrayList<>(operations) : new ArrayList<>();
         }
 
-        /**
-         * fromJson.
-         * 
-         * @param payload payload
-         * @return the result
-         * @since 0.1.7
-         */
         public static DeltaBatch fromJson(Map<String, Object> payload) {
+            Object opsPayload = payload.get("operations");
             List<DeltaOperation> operations = new ArrayList<>();
-            Object operationsValue = payload.get("operations");
-            if (operationsValue instanceof Iterable<?> iterable) {
+            if (opsPayload instanceof Iterable<?> iterable) {
                 for (Object item : iterable) {
                     if (item instanceof Map<?, ?> rawMap) {
-                        Map<String, Object> operationPayload = new LinkedHashMap<>();
-                        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-                            operationPayload.put(String.valueOf(entry.getKey()), entry.getValue());
-                        }
-                        operations.add(DeltaOperation.fromJson(operationPayload));
+                        Map<String, Object> map = OBJECT_MAPPER.convertValue(rawMap, MAP_TYPE);
+                        operations.add(DeltaOperation.fromJson(map));
                     }
                 }
             }
             return new DeltaBatch(String.valueOf(payload.getOrDefault("reasoning", "")), operations);
         }
 
-        /**
-         * toJson.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public Map<String, Object> toJson() {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("reasoning", reasoning);
@@ -682,24 +391,155 @@ public class Playbook {
             return data;
         }
 
-        /**
-         * getReasoning.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public String getReasoning() {
             return reasoning;
         }
 
-        /**
-         * getOperations.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         public List<DeltaOperation> getOperations() {
             return new ArrayList<>(operations);
+        }
+    }
+
+    public static class Bullet {
+        private String id;
+        private String section;
+        private String content;
+        private int helpful;
+        private int harmful;
+        private int neutral;
+        private String createdAt;
+        private String updatedAt;
+
+        public Bullet(String id, String section, String content) {
+            this(id, section, content, 0, 0, 0, utcNow(), utcNow());
+        }
+
+        public Bullet(
+            String id,
+            String section,
+            String content,
+            int helpful,
+            int harmful,
+            int neutral,
+            String createdAt,
+            String updatedAt
+        ) {
+            this.id = id;
+            this.section = normalizeSection(section);
+            this.content = content != null ? content : "";
+            this.helpful = helpful;
+            this.harmful = harmful;
+            this.neutral = neutral;
+            this.createdAt = createdAt != null ? createdAt : utcNow();
+            this.updatedAt = updatedAt != null ? updatedAt : utcNow();
+        }
+
+        public static Bullet fromDict(Map<String, Object> payload) {
+            return new Bullet(
+                String.valueOf(payload.get("id")),
+                String.valueOf(payload.get("section")),
+                String.valueOf(payload.get("content")),
+                ((Number) payload.getOrDefault("helpful", 0)).intValue(),
+                ((Number) payload.getOrDefault("harmful", 0)).intValue(),
+                ((Number) payload.getOrDefault("neutral", 0)).intValue(),
+                payload.get("created_at") != null ? String.valueOf(payload.get("created_at")) : utcNow(),
+                payload.get("updated_at") != null ? String.valueOf(payload.get("updated_at")) : utcNow()
+            );
+        }
+
+        public Map<String, Object> toDict() {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", id);
+            data.put("section", section);
+            data.put("content", content);
+            data.put("helpful", helpful);
+            data.put("harmful", harmful);
+            data.put("neutral", neutral);
+            data.put("created_at", createdAt);
+            data.put("updated_at", updatedAt);
+            return data;
+        }
+
+        public void applyMetadata(Map<String, Integer> metadata) {
+            for (Map.Entry<String, Integer> entry : metadata.entrySet()) {
+                int value = entry.getValue();
+                switch (entry.getKey()) {
+                    case "helpful" -> helpful = value;
+                    case "harmful" -> harmful = value;
+                    case "neutral" -> neutral = value;
+                    default -> {
+                        // Python only uses integer metadata for known counters in this module's flow.
+                    }
+                }
+            }
+        }
+
+        public void tag(String tag, int increment) {
+            switch (tag) {
+                case "helpful" -> helpful += increment;
+                case "harmful" -> harmful += increment;
+                case "neutral" -> neutral += increment;
+                default -> throw new IllegalArgumentException("Unsupported tag: " + tag);
+            }
+            updatedAt = utcNow();
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getSection() {
+            return section;
+        }
+
+        public String getContent() {
+            return content;
+        }
+
+        public void setContent(String content) {
+            this.content = content != null ? content : "";
+        }
+
+        public int getHelpful() {
+            return helpful;
+        }
+
+        public int getHarmful() {
+            return harmful;
+        }
+
+        public int getNeutral() {
+            return neutral;
+        }
+
+        public String getCreatedAt() {
+            return createdAt;
+        }
+
+        public String getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public void setUpdatedAt(String updatedAt) {
+            this.updatedAt = updatedAt;
+        }
+    }
+
+    public static class BulletTag {
+        private String id;
+        private String tag;
+
+        public BulletTag(String id, String tag) {
+            this.id = id;
+            this.tag = tag;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getTag() {
+            return tag;
         }
     }
 }

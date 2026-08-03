@@ -4,205 +4,121 @@
 
 package com.openjiuwen.extensions.context_evolver.summary.task.ace;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.update.ReflectOp}.
+ * Generate ACE reflection from a single trajectory.
  * <p>
- * The Java port does not have an LLM-backed reflector wired into ServiceContext yet, so this
- * operation derives a deterministic reflection payload from the current trajectory and playbook.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ReflectOp} in
+ * {@code openjiuwen/extensions/context_evolver/summary/task/ace/update.py}.
+ * </p>
  */
 public class ReflectOp extends BaseOp {
+
+    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
+
     private final boolean useGroundTruth;
 
-    /**
-     * ReflectOp.
-     * 
-     * @since 0.1.7
-     */
     public ReflectOp() {
         this(false);
     }
 
-    /**
-     * ReflectOp.
-     * 
-     * @param useGroundTruth useGroundTruth
-     * @since 0.1.7
-     */
     public ReflectOp(boolean useGroundTruth) {
+        super(Map.of("use_ground_truth", useGroundTruth));
         this.useGroundTruth = useGroundTruth;
     }
 
-    /**
-     * asyncExecute.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
-        String matts = context.getString("matts", "none");
+    public CompletableFuture<Void> asyncExecute(RuntimeContext context) {
+        String matts = String.valueOf(context.get("matts", "none"));
         if (!"none".equals(matts) && !"sequential".equals(matts)) {
+            LOGGER.info("Skipping ReflectOp for matts mode: %s", matts);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Object llmObject = getLlm();
+        if (!(llmObject instanceof AceAsyncLlm llm)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("LLM not configured in ServiceContext"));
+        }
+
+        Object trajectoriesObject = context.get("trajectories", List.of());
+        if (isEmptyTrajectoryCollection(trajectoriesObject)) {
+            LOGGER.warning("No trajectories to reflect on");
             context.set("reflection", Map.of());
             return CompletableFuture.completedFuture(null);
         }
 
-        List<?> rawTrajectories = context.getList("trajectories");
-        if (rawTrajectories == null || rawTrajectories.isEmpty()) {
-            context.set("reflection", Map.of());
-            return CompletableFuture.completedFuture(null);
+        Playbook playbook = playbook(context.get("playbook", new Playbook()));
+        String trajectory = firstTrajectory(trajectoriesObject);
+        String groundTruth = stringValue(context.get("ground_truth", ""));
+        List<String> feedback = stringList(context.get("feedback", List.of()));
+
+        String userPrompt;
+        if (useGroundTruth && !groundTruth.isEmpty() && !feedback.isEmpty()) {
+            userPrompt = AcePrompts.ACE_REFLECTOR_PROMPT
+                    .replace("{ground_truth}", groundTruth)
+                    .replace("{feedback}", feedback.get(0))
+                    .replace("{playbook}", playbook.asPrompt())
+                    .replace("{trajectory}", trajectory);
+        } else {
+            userPrompt = AcePrompts.ACE_REFLECTOR_NOGT_PROMPT
+                    .replace("{playbook}", playbook.asPrompt())
+                    .replace("{trajectory}", trajectory);
         }
 
-        String query = context.getString("query", "");
-        String trajectory = String.valueOf(rawTrajectories.get(0));
-        Playbook playbook = context.get("playbook") instanceof Playbook existing ? existing : new Playbook();
-
-        List<Map<String, Object>> candidateInsights = buildCandidateInsights(query, trajectory, context);
-        Map<String, Object> reflection = new LinkedHashMap<>();
-        reflection.put("reasoning", "Derived reusable ACE playbook updates from the obse"
-                + "rved trajectory, API calls, and output format cues.");
-        reflection.put("error_identification",
-                candidateInsights.isEmpty()
-                        ? "The trajectory did not expose a stable reusable step."
-                        : "The key reusable steps were not yet represented in the current playbook.");
-        reflection.put("root_cause_analysis", playbook.bullets().isEmpty()
-                ? "The user playbook is empty, so successful steps need to be captured as new bullets."
-                : "The playbook requires either a new bullet or a tag update for repeated successful guidance.");
-        reflection.put("correct_approach", candidateInsights.isEmpty()
-                ? "Capture the smallest reusable strategy from the trajectory and keep it in the ACE playbook."
-                : "Persist the reusable step as an ACE bullet and tag repeated guidance instead of duplicating it.");
-        reflection.put("key_insight",
-                candidateInsights.isEmpty() ? "" : String.valueOf(candidateInsights.get(0).get("content")));
-        reflection.put("candidate_insights", candidateInsights);
-
-        context.set("reflection", reflection);
-        return CompletableFuture.completedFuture(null);
+        LOGGER.debug("Generating reflection from trajectory...");
+        try {
+            return llm.asyncGenerate(userPrompt)
+                    .thenAccept(response -> {
+                        try {
+                            context.set("reflection", AceUtils.safeJsonLoads(response));
+                            LOGGER.info("Generated reflection successfully");
+                        } catch (RuntimeException exception) {
+                            LOGGER.error("Failed to parse reflection: %s", exception);
+                            context.set("reflection", Map.of());
+                        }
+                    });
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
     }
 
-    /**
-     * buildCandidateInsights.
-     * 
-     * @param query query
-     * @param trajectory trajectory
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> buildCandidateInsights(String query, String trajectory, RuntimeContext context) {
-        List<Map<String, Object>> candidateInsights = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        String tag = deriveTag(context);
-
-        List<String> actionLines = AceUtils.extractPrefixedLines(trajectory, "ACTION:");
-        if (!actionLines.isEmpty()) {
-            String action = AceUtils.compactWhitespace(actionLines.get(0));
-            addInsight(candidateInsights, seen, "apis_to_use_for_specific_information",
-                    "Use " + action + " to collect the authoritative task data before composing the final answer.",
-                    tag);
+    static boolean isEmptyTrajectoryCollection(Object value) {
+        if (value instanceof List<?> list) {
+            return list.isEmpty();
         }
-
-        List<String> observationKeys = AceUtils.extractObservationKeys(trajectory);
-        if (!observationKeys.isEmpty()) {
-            addInsight(candidateInsights, seen, "output_format_and_validation",
-                    "Read the returned API fields directly (" + String.join(", ", observationKeys)
-                            + ") and preserve the requested output format in the final answer.",
-                    tag);
-        }
-
-        String fallbackSection = AceUtils.guessSection(query, trajectory);
-        String fallbackInsight = buildFallbackInsight(query, trajectory);
-        if (!fallbackInsight.isBlank()) {
-            addInsight(candidateInsights, seen, fallbackSection, fallbackInsight, tag);
-        }
-
-        return candidateInsights;
+        return value == null || String.valueOf(value).isEmpty();
     }
 
-    /**
-     * addInsight.
-     * 
-     * @param target target
-     * @param seen seen
-     * @param section section
-     * @param content content
-     * @param tag tag
-     * @since 0.1.7
-     */
-    private void addInsight(List<Map<String, Object>> target, Set<String> seen, String section, String content,
-            String tag) {
-        String normalized = AceUtils.normalizeForMatch(content);
-        if (normalized.isBlank() || !seen.add(normalized)) {
-            return;
+    static String firstTrajectory(Object value) {
+        if (value instanceof List<?> list) {
+            if (list.isEmpty()) {
+                throw new IllegalStateException("Expected at least one trajectory");
+            }
+            return String.valueOf(list.get(0));
         }
-        Map<String, Object> insight = new LinkedHashMap<>();
-        insight.put("section", section);
-        insight.put("content", content);
-        insight.put("tag", tag);
-        target.add(insight);
+        return String.valueOf(value);
     }
 
-    /**
-     * buildFallbackInsight.
-     * 
-     * @param query query
-     * @param trajectory trajectory
-     * @return the result
-     * @since 0.1.7
-     */
-    private String buildFallbackInsight(String query, String trajectory) {
-        String compactQuery = AceUtils.compactWhitespace(query);
-        String compactTrajectory = AceUtils.compactWhitespace(trajectory);
-        if (compactTrajectory.isBlank()) {
-            return "";
+    static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
         }
-
-        String summary = compactTrajectory;
-        int assistantIndex = compactTrajectory.lastIndexOf("ASSISTANT:");
-        if (assistantIndex >= 0) {
-            summary = compactTrajectory.substring(assistantIndex + "ASSISTANT:".length()).trim();
-        }
-        if (summary.length() > 180) {
-            summary = summary.substring(0, 180).trim() + "...";
-        }
-
-        if (compactQuery.isBlank()) {
-            return "Capture the successful reusable step from the trajectory: " + summary;
-        }
-        return "For tasks like \"" + compactQuery + "\", preserve the proven successful step from the trajectory"
-                + " and verify it against observed API output: " + summary;
+        return list.stream().map(String::valueOf).toList();
     }
 
-    /**
-     * deriveTag.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
-    private String deriveTag(RuntimeContext context) {
-        Object labelValue = context.get("label");
-        if (labelValue instanceof List<?> labels && !labels.isEmpty() && labels.get(0) instanceof Boolean firstLabel) {
-            return firstLabel ? "helpful" : "harmful";
-        }
+    static String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : "";
+    }
 
-        Object scoreValue = context.get("score");
-        if (scoreValue instanceof List<?> scores && !scores.isEmpty() && scores.get(0) instanceof Number firstScore) {
-            return firstScore.doubleValue() < 0 ? "harmful" : "helpful";
-        }
-
-        return useGroundTruth ? "helpful" : "helpful";
+    static Playbook playbook(Object value) {
+        return value instanceof Playbook playbook ? playbook : new Playbook();
     }
 }

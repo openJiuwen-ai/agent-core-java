@@ -5,82 +5,65 @@
 package com.openjiuwen.core.runner.callback;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
- * Conditional filter based on custom predicate.
- * <p>
- * Executes callback only if a condition is met.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ConditionalFilter} in
+ * {@code openjiuwen/core/runner/callback/filters.py}.
  */
 public class ConditionalFilter extends EventFilter {
-    /**
-     * ConditionPredicate.
-     * 
-     * @since 0.1.7
-     */
-    @FunctionalInterface
-    public interface ConditionPredicate {
-        /**
-         * test.
-         * 
-         * @param event event
-         * @param callback callback
-         * @param args args
-         * @param kwargs kwargs
-         * @return the result
-         * @since 0.1.7
-         */
-        boolean test(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs);
-    }
 
     private final ConditionPredicate condition;
+
     private final FilterAction actionOnFalse;
 
-    /**
-     * ConditionalFilter.
-     * 
-     * @param condition condition
-     * @since 0.1.7
-     */
     public ConditionalFilter(ConditionPredicate condition) {
         this(condition, FilterAction.SKIP, "Conditional");
     }
 
-    /**
-     * ConditionalFilter.
-     * 
-     * @param condition condition
-     * @param actionOnFalse actionOnFalse
-     * @param name name
-     * @since 0.1.7
-     */
+    public ConditionalFilter(ConditionPredicate condition, FilterAction actionOnFalse) {
+        this(condition, actionOnFalse, "Conditional");
+    }
+
     public ConditionalFilter(ConditionPredicate condition, FilterAction actionOnFalse, String name) {
         super(name);
-        this.condition = condition;
-        this.actionOnFalse = actionOnFalse;
+        this.condition = Objects.requireNonNull(condition, "condition");
+        this.actionOnFalse = actionOnFalse != null ? actionOnFalse : FilterAction.SKIP;
+    }
+
+    @Override
+    public FilterResult filter(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        try {
+            if (condition.test(event, callback, safeArgs(args), safeKwargs(kwargs))) {
+                return FilterResult.continueResult();
+            }
+            return FilterResult.builder()
+                    .action(actionOnFalse)
+                    .reason("Condition not satisfied")
+                    .build();
+        } catch (Exception error) {
+            return FilterResult.skipResult("Condition evaluation failed: " + error.getMessage());
+        }
     }
 
     /**
-     * filter.
-     * 
-     * @param event event
-     * @param callback callback
-     * @param args args
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's conditional predicate signature for
+     * {@code openjiuwen/core/runner/callback/filters.py}.
      */
-    @Override
-    public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs) {
-        try {
-            if (condition.test(event, callback, args, kwargs)) {
-                return FilterResult.continueResult();
-            } else {
-                return FilterResult.builder().action(actionOnFalse).reason("Condition not satisfied").build();
-            }
-        } catch (Exception e) {
-            return FilterResult.skipResult("Condition evaluation failed: " + e.getMessage());
-        }
+    @FunctionalInterface
+    public interface ConditionPredicate {
+
+        boolean test(
+                String event,
+                Function<Map<String, Object>, Object> callback,
+                Object[] args,
+                Map<String, Object> kwargs
+        ) throws Exception;
     }
 }

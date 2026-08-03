@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.skills.GitHubTree
+# com.openjiuwen.core.single_agent.skills.GitHubTree
 
 ## 类 GitHubTree
 

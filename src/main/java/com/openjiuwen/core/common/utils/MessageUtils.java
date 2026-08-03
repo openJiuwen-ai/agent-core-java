@@ -4,160 +4,140 @@
 
 package com.openjiuwen.core.common.utils;
 
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.security.UserConfig;
-import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.session.Session;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Message utilities for adding and retrieving messages in the context engine.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.common.utils.message_utils.MessageUtils}.
- * 
- * @since 0.1.7
+ * Message utilities for adding and retrieving chat messages.
+ *
+ * <p>Mirrors Python's {@code MessageUtils} in
+ * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
  */
 public final class MessageUtils {
-    /**
-     * MessageUtils.
-     * 
-     * @since 0.1.7
-     */
+
     private MessageUtils() {
     }
 
-    /**
-     * Check if a user message should be added (deduplication).
-     * 
-     * @param query user input
-     * @param contextEngine context engine
-     * @param session session instance
-     * @return true if the message should be added
-     * @since 0.1.7
-     */
-    public static boolean shouldAddUserMessage(String query, ContextEngine contextEngine, Session session) {
-        ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
-        if (agentContext == null) {
+    public static boolean shouldAddUserMessage(String query, ContextEnginePort contextEngine, SessionPort session) {
+        AgentContextPort agentContext = contextEngine.getContext(session.getSessionId());
+        List<BaseMessage> lastMessages = agentContext.getMessages(1);
+        if (lastMessages.isEmpty()) {
             return true;
         }
+        BaseMessage lastMessage = lastMessages.get(0);
+        return !("user".equals(lastMessage.getRole()) && Objects.equals(lastMessage.getContent(), query));
+    }
 
-        List<BaseMessage> lastMessages = agentContext.getMessages();
-        if (lastMessages == null || lastMessages.isEmpty()) {
-            return true;
+    public static CompletionStage<Void> addUserMessage(Object query, ContextEnginePort contextEngine,
+                                                       SessionPort session) {
+        if (!shouldAddUserMessage(String.valueOf(query), contextEngine, session)) {
+            return CompletableFuture.completedFuture(null);
         }
+        AgentContextPort agentContext = contextEngine.getContext(session.getSessionId());
+        UserMessage userMessage = new UserMessage();
+        userMessage.setRole("user");
+        userMessage.setContent(query);
+        return agentContext.addMessages(userMessage);
+    }
 
-        BaseMessage lastMessage = lastMessages.get(lastMessages.size() - 1);
-        if ("user".equals(lastMessage.getRole()) && query != null && query.equals(lastMessage.getContent())) {
-            Loggers.CONTEXT_ENGINE.info("Skipping duplicate user message");
-            return false;
+    public static CompletionStage<Void> addAiMessage(AssistantMessage aiMessage, ContextEnginePort contextEngine,
+                                                     SessionPort session) {
+        if (aiMessage == null) {
+            return CompletableFuture.completedFuture(null);
         }
+        return contextEngine.getContext(session.getSessionId()).addMessages(aiMessage);
+    }
 
-        return true;
+    public static CompletionStage<Void> addToolMessage(ToolMessage toolMessage, ContextEnginePort contextEngine,
+                                                       SessionPort session) {
+        if (toolMessage == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return contextEngine.getContext(session.getSessionId()).addMessages(toolMessage);
+    }
+
+    public static CompletionStage<Void> addWorkflowMessage(BaseMessage message, String workflowId,
+                                                           ContextEnginePort contextEngine, SessionPort session) {
+        return contextEngine.getContext(workflowId, session.getSessionId()).addMessages(message);
+    }
+
+    public static List<BaseMessage> getChatHistory(ContextEnginePort contextEngine, SessionPort session,
+                                                   AgentConfigView config) {
+        List<BaseMessage> chatHistory = contextEngine.getContext(session.getSessionId()).getMessages();
+        int maxRounds = config.constrain().reservedMaxChatRounds();
+        int windowSize = maxRounds <= 0 ? chatHistory.size() : 2 * maxRounds;
+        int fromIndex = Math.max(0, chatHistory.size() - windowSize);
+        return new ArrayList<>(chatHistory.subList(fromIndex, chatHistory.size()));
     }
 
     /**
-     * Add a user message to the chat history.
-     * 
-     * @param query user input
-     * @param contextEngine context engine
-     * @param session session instance
-     * @since 0.1.7
+     * Narrow context-engine surface consumed by {@link MessageUtils}.
+     *
+     * <p>Mirrors Python's {@code ContextEngine} calls in
+     * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
      */
-    public static void addUserMessage(Object query, ContextEngine contextEngine, Session session) {
-        String queryStr = query != null ? query.toString() : "";
-        if (shouldAddUserMessage(queryStr, contextEngine, session)) {
-            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
-            if (agentContext != null) {
-                UserMessage userMessage = new UserMessage(queryStr);
-                agentContext.addMessages(List.of(userMessage));
-                if (UserConfig.isSensitive()) {
-                    Loggers.CONTEXT_ENGINE.info("Added user message");
-                } else {
-                    Loggers.CONTEXT_ENGINE.info("Added user message: " + queryStr);
-                }
+    public interface ContextEnginePort {
+        AgentContextPort getContext(String sessionId);
+
+        AgentContextPort getContext(String contextId, String sessionId);
+    }
+
+    /**
+     * Narrow context surface consumed by {@link MessageUtils}.
+     *
+     * <p>Mirrors Python context objects used in
+     * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
+     */
+    public interface AgentContextPort {
+        List<BaseMessage> getMessages();
+
+        default List<BaseMessage> getMessages(int size) {
+            List<BaseMessage> messages = getMessages();
+            if (size <= 0 || messages.isEmpty()) {
+                return List.of();
             }
+            int fromIndex = Math.max(0, messages.size() - size);
+            return new ArrayList<>(messages.subList(fromIndex, messages.size()));
         }
+
+        CompletionStage<Void> addMessages(BaseMessage message);
     }
 
     /**
-     * Add an assistant message to the chat history.
-     * 
-     * @param aiMessage assistant message object
-     * @param contextEngine context engine
-     * @param session session instance
-     * @since 0.1.7
+     * Narrow session surface consumed by {@link MessageUtils}.
+     *
+     * <p>Mirrors Python's {@code Session.get_session_id} use in
+     * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
      */
-    public static void addAiMessage(AssistantMessage aiMessage, ContextEngine contextEngine, Session session) {
-        if (aiMessage != null) {
-            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
-            if (agentContext != null) {
-                agentContext.addMessages(List.of(aiMessage));
-            }
-        }
+    public interface SessionPort {
+        String getSessionId();
     }
 
     /**
-     * Add a tool message to the chat history.
-     * 
-     * @param toolMessage tool message object
-     * @param contextEngine context engine
-     * @param session session instance
-     * @since 0.1.7
+     * Narrow agent-config surface consumed by {@link MessageUtils}.
+     *
+     * <p>Mirrors Python's {@code AgentConfig} use in
+     * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
      */
-    public static void addToolMessage(ToolMessage toolMessage, ContextEngine contextEngine, Session session) {
-        if (toolMessage != null) {
-            ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
-            if (agentContext != null) {
-                agentContext.addMessages(List.of(toolMessage));
-            }
-        }
+    public interface AgentConfigView {
+        ConstrainView constrain();
     }
 
     /**
-     * Add a message to a specific workflow's chat history.
-     * 
-     * @param message message object
-     * @param workflowId workflow ID
-     * @param contextEngine context engine
-     * @param session session instance
-     * @since 0.1.7
+     * Narrow constrain surface consumed by {@link MessageUtils}.
+     *
+     * <p>Mirrors Python's {@code config.constrain.reserved_max_chat_rounds} use in
+     * {@code openjiuwen/core/common/utils/message_utils.py}.</p>
      */
-    public static void addWorkflowMessage(BaseMessage message, String workflowId, ContextEngine contextEngine,
-            Session session) {
-        ModelContext workflowContext = contextEngine.getContext(workflowId, session.getSessionId());
-        if (workflowContext != null) {
-            workflowContext.addMessages(List.of(message));
-        }
-    }
-
-    /**
-     * Get chat history, limited by max rounds.
-     * 
-     * @param contextEngine context engine
-     * @param session session instance
-     * @param maxRounds maximum number of dialogue rounds to return
-     * @return chat history message list
-     * @since 0.1.7
-     */
-    public static List<BaseMessage> getChatHistory(ContextEngine contextEngine, Session session, int maxRounds) {
-        ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
-        if (agentContext == null) {
-            return List.of();
-        }
-        List<BaseMessage> chatHistory = agentContext.getMessages();
-        if (chatHistory == null || chatHistory.isEmpty()) {
-            return List.of();
-        }
-        int limit = 2 * maxRounds;
-        if (chatHistory.size() <= limit) {
-            return chatHistory;
-        }
-        return chatHistory.subList(chatHistory.size() - limit, chatHistory.size());
+    public interface ConstrainView {
+        int reservedMaxChatRounds();
     }
 }

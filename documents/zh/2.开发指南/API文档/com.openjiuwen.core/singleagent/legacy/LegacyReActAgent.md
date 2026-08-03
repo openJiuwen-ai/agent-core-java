@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.LegacyReActAgent
+# com.openjiuwen.core.single_agent.legacy.react_agent.LegacyReActAgent
 
 ## 类 LegacyReActAgent
 
@@ -6,7 +6,7 @@
 public class LegacyReActAgent extends BaseAgent
 ```
 
-把旧版 ReAct 配置转换到现代 `com.openjiuwen.core.singleagent.agents.ReActAgent` 的兼容实现。
+把旧版 ReAct 配置转换到现代 `com.openjiuwen.core.single_agent.agents.ReActAgent` 的兼容实现。
 
 ## 构造方法
 

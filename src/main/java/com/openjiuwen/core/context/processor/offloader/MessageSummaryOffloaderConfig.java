@@ -7,98 +7,191 @@ package com.openjiuwen.core.context.processor.offloader;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Configuration for adaptive summary offloading.
- * <p>
- * Mirrors Python's {@code MessageSummaryOffloaderConfig}.
- * 
- * @since 0.1.7
+ * Backward-compatible config DTO for the pre-0.1.14 summary offloader package.
+ *
+ * <p>Mirrors Python's {@code MessageSummaryOffloaderConfig} in
+ * {@code openjiuwen/core/context_engine/processor/offloader/message_summary_offloader.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class MessageSummaryOffloaderConfig {
+public class MessageSummaryOffloaderConfig
+        extends com.openjiuwen.core.context_engine.processor.offloader.MessageSummaryOffloaderConfig {
     private Integer messagesThreshold;
-
-    @Builder.Default
     private int tokensThreshold = 20000;
-
-    @Builder.Default
-    private int largeMessageThreshold = 1000;
-
-    @Builder.Default
-    /**
-     * List.of.
-     * 
-     * @since 0.1.7
-     */
-    private List<String> offloadMessageType = List.of("tool");
-
-    @Builder.Default
-    /**
-     * List.of.
-     * 
-     * @since 0.1.7
-     */
-    private List<String> protectedToolNames = List.of("reload_original_context_messages");
-
     private Integer messagesToKeep;
-
-    @Builder.Default
     private boolean keepLastRound = true;
 
-    private ModelRequestConfig model;
+    public MessageSummaryOffloaderConfig() {
+    }
 
-    private ModelClientConfig modelClient;
+    public MessageSummaryOffloaderConfig(Integer messagesThreshold, int tokensThreshold, int largeMessageThreshold,
+                                         List<String> offloadMessageType, List<String> protectedToolNames,
+                                         Integer messagesToKeep, boolean keepLastRound, ModelRequestConfig model,
+                                         ModelClientConfig modelClient, int summaryMaxTokens,
+                                         boolean enablePreciseStep, int stepSummaryMaxContextMessages,
+                                         int contentMaxCharsForCompression) {
+        setMessagesThreshold(messagesThreshold);
+        setTokensThreshold(tokensThreshold);
+        setLargeMessageThreshold(largeMessageThreshold);
+        setOffloadMessageType(offloadMessageType);
+        setProtectedToolNames(protectedToolNames);
+        setMessagesToKeep(messagesToKeep);
+        setKeepLastRound(keepLastRound);
+        setModel(model);
+        setModelClient(modelClient);
+        setSummaryMaxTokens(summaryMaxTokens);
+        setEnablePreciseStep(enablePreciseStep);
+        setStepSummaryMaxContextMessages(stepSummaryMaxContextMessages);
+        setContentMaxCharsForCompression(contentMaxCharsForCompression);
+    }
 
-    @Builder.Default
-    private int summaryMaxTokens = 900;
+    public static Builder builder() {
+        return new Builder();
+    }
 
-    @Builder.Default
-    private boolean enablePreciseStep = false;
+    public Integer getMessagesThreshold() {
+        return messagesThreshold;
+    }
 
-    @Builder.Default
-    private int stepSummaryMaxContextMessages = 8;
-
-    @Builder.Default
-    private int contentMaxCharsForCompression = 200000;
-
-    /**
-     * validate.
-     * 
-     * @since 0.1.7
-     */
-    public void validate() {
+    public void setMessagesThreshold(Integer messagesThreshold) {
         if (messagesThreshold != null && messagesThreshold <= 0) {
-            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
+            throw new IllegalArgumentException("messagesThreshold must be > 0");
         }
+        this.messagesThreshold = messagesThreshold;
+    }
+
+    public int getTokensThreshold() {
+        return tokensThreshold;
+    }
+
+    public void setTokensThreshold(int tokensThreshold) {
         if (tokensThreshold <= 0) {
-            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+            throw new IllegalArgumentException("tokensThreshold must be > 0");
         }
-        if (largeMessageThreshold <= 0) {
-            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
-        }
+        this.tokensThreshold = tokensThreshold;
+    }
+
+    public Integer getMessagesToKeep() {
+        return messagesToKeep;
+    }
+
+    public void setMessagesToKeep(Integer messagesToKeep) {
         if (messagesToKeep != null && messagesToKeep <= 0) {
-            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+            throw new IllegalArgumentException("messagesToKeep must be > 0");
         }
-        if (summaryMaxTokens <= 0) {
-            throw new IllegalArgumentException("summaryMaxTokens must be > 0, got " + summaryMaxTokens);
+        this.messagesToKeep = messagesToKeep;
+    }
+
+    public boolean isKeepLastRound() {
+        return keepLastRound;
+    }
+
+    public void setKeepLastRound(boolean keepLastRound) {
+        this.keepLastRound = keepLastRound;
+    }
+
+    public void validate() {
+        setMessagesThreshold(messagesThreshold);
+        setTokensThreshold(tokensThreshold);
+        setLargeMessageThreshold(getLargeMessageThreshold());
+        setOffloadMessageType(getOffloadMessageType());
+        setProtectedToolNames(getProtectedToolNames());
+        setMessagesToKeep(messagesToKeep);
+        setSummaryMaxTokens(getSummaryMaxTokens());
+        setStepSummaryMaxContextMessages(getStepSummaryMaxContextMessages());
+        setContentMaxCharsForCompression(getContentMaxCharsForCompression());
+    }
+
+    public static final class Builder {
+        private Integer messagesThreshold;
+        private int tokensThreshold = 20000;
+        private int largeMessageThreshold = 1000;
+        private List<String> offloadMessageType = List.of("tool");
+        private List<String> protectedToolNames = List.of("reload_original_context_messages");
+        private Integer messagesToKeep;
+        private boolean keepLastRound = true;
+        private ModelRequestConfig model;
+        private ModelClientConfig modelClient;
+        private int summaryMaxTokens = 900;
+        private boolean enablePreciseStep;
+        private int stepSummaryMaxContextMessages = 8;
+        private int contentMaxCharsForCompression = 200000;
+
+        private Builder() {
         }
-        if (stepSummaryMaxContextMessages <= 0) {
-            throw new IllegalArgumentException(
-                    "stepSummaryMaxContextMessages must be > 0, got " + stepSummaryMaxContextMessages);
+
+        public Builder messagesThreshold(Integer messagesThreshold) {
+            this.messagesThreshold = messagesThreshold;
+            return this;
         }
-        if (contentMaxCharsForCompression <= 0) {
-            throw new IllegalArgumentException(
-                    "contentMaxCharsForCompression must be > 0, got " + contentMaxCharsForCompression);
+
+        public Builder tokensThreshold(int tokensThreshold) {
+            this.tokensThreshold = tokensThreshold;
+            return this;
+        }
+
+        public Builder largeMessageThreshold(int largeMessageThreshold) {
+            this.largeMessageThreshold = largeMessageThreshold;
+            return this;
+        }
+
+        public Builder offloadMessageType(List<String> offloadMessageType) {
+            this.offloadMessageType = offloadMessageType == null ? null : new ArrayList<>(offloadMessageType);
+            return this;
+        }
+
+        public Builder protectedToolNames(List<String> protectedToolNames) {
+            this.protectedToolNames = protectedToolNames == null ? null : new ArrayList<>(protectedToolNames);
+            return this;
+        }
+
+        public Builder messagesToKeep(Integer messagesToKeep) {
+            this.messagesToKeep = messagesToKeep;
+            return this;
+        }
+
+        public Builder keepLastRound(boolean keepLastRound) {
+            this.keepLastRound = keepLastRound;
+            return this;
+        }
+
+        public Builder model(ModelRequestConfig model) {
+            this.model = model;
+            return this;
+        }
+
+        public Builder modelClient(ModelClientConfig modelClient) {
+            this.modelClient = modelClient;
+            return this;
+        }
+
+        public Builder summaryMaxTokens(int summaryMaxTokens) {
+            this.summaryMaxTokens = summaryMaxTokens;
+            return this;
+        }
+
+        public Builder enablePreciseStep(boolean enablePreciseStep) {
+            this.enablePreciseStep = enablePreciseStep;
+            return this;
+        }
+
+        public Builder stepSummaryMaxContextMessages(int stepSummaryMaxContextMessages) {
+            this.stepSummaryMaxContextMessages = stepSummaryMaxContextMessages;
+            return this;
+        }
+
+        public Builder contentMaxCharsForCompression(int contentMaxCharsForCompression) {
+            this.contentMaxCharsForCompression = contentMaxCharsForCompression;
+            return this;
+        }
+
+        public MessageSummaryOffloaderConfig build() {
+            return new MessageSummaryOffloaderConfig(messagesThreshold, tokensThreshold, largeMessageThreshold,
+                    offloadMessageType, protectedToolNames, messagesToKeep, keepLastRound, model, modelClient,
+                    summaryMaxTokens, enablePreciseStep, stepSummaryMaxContextMessages,
+                    contentMaxCharsForCompression);
         }
     }
 }

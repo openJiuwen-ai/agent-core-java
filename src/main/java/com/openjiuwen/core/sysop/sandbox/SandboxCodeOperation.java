@@ -6,6 +6,7 @@ package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.sysop.BaseCodeOperation;
 import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
@@ -32,9 +33,18 @@ public class SandboxCodeOperation extends BaseCodeOperation {
      * @since 0.1.7
      */
     public SandboxCodeOperation(Object runConfig) {
-        super("code", OperationMode.SANDBOX, "sandbox code operation", runConfig);
-        this.gatewayClient = new SandboxGatewayClient(getSandboxConfig(),
-                SandboxOperationSupport.resolveIsolationKey(getSandboxConfig()));
+        super("code", OperationMode.SANDBOX.toNewMode(), "sandbox code operation", runConfig);
+        SandboxGatewayConfig config = getSandboxConfig();
+        this.gatewayClient = new SandboxGatewayClient(config,
+                SandboxOperationSupport.resolveIsolationKey(config));
+    }
+
+    private SandboxGatewayConfig getSandboxConfig() {
+        Object rc = getRunConfig();
+        if (rc instanceof SandboxGatewayConfig config) {
+            return config;
+        }
+        return SandboxGatewayConfig.builder().build();
     }
 
     /**

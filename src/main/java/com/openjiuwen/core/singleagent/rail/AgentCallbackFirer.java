@@ -5,18 +5,20 @@
 package com.openjiuwen.core.singleagent.rail;
 
 /**
- * Interface for objects that can fire agent callback events.
- * Used to decouple AgentCallbackContext from BaseAgent.
- * 
+ * Interface for firing callback events from within agent code.
+ *
+ * <p>Implemented by {@link com.openjiuwen.core.singleagent.BaseAgent} so that
+ * callback context objects can delegate event firing back to the agent.</p>
+ *
  * @since 0.1.7
  */
 public interface AgentCallbackFirer {
+
     /**
-     * fireCallbackEvent.
-     * 
-     * @param event event
-     * @param ctx ctx
-     * @since 0.1.7
+     * Fire a callback event with the given context.
+     *
+     * @param event the event to fire
+     * @param ctx   the callback context
      */
     void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx);
 }

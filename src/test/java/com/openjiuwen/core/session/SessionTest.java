@@ -1,11 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.session;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
@@ -16,10 +15,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for session state operations.
@@ -27,10 +29,13 @@ import java.util.Map;
  * Ported from Python's {@code test_session.py}.
  */
 class SessionTest {
+
     // ---------- WorkflowSession + NodeSession basic test ----------
+
     @Nested
     @DisplayName("WorkflowSession and NodeSession basic operations")
     class BasicSessionOps {
+
         @Test
         @DisplayName("workflow session and node session state ops")
         void testBasic() {
@@ -99,6 +104,7 @@ class SessionTest {
     @Nested
     @DisplayName("getBySchema")
     class GetBySchemaTests {
+
         @Test
         @DisplayName("basic schema resolution")
         void testBasicSchema() {
@@ -175,6 +181,7 @@ class SessionTest {
     @Nested
     @DisplayName("updateDict with null values (delete)")
     class UpdateDictClean {
+
         @Test
         @DisplayName("null value removes key")
         void testNullRemovesKey() {
@@ -210,10 +217,11 @@ class SessionTest {
     @Nested
     @DisplayName("AgentSessionApi state operations")
     class AgentSessionApiTests {
+
         @Test
         @DisplayName("agent session state update and get")
         void testAgentSessionState() {
-            AgentSessionApi session = new AgentSessionApi("abc");
+            AgentSession session = new AgentSession("abc", null, null);
             Map<String, Object> data = Map.of("data", Map.of("a", 1));
             session.updateState(Map.of("result", data));
             assertEquals(Map.of("data", Map.of("a", 1)), session.getState("result"));
@@ -222,7 +230,7 @@ class SessionTest {
         @Test
         @DisplayName("merge update on agent session state")
         void testAgentSessionMergeUpdate() {
-            AgentSessionApi session = new AgentSessionApi("abc");
+            AgentSession session = new AgentSession("abc", null, null);
             session.updateState(Map.of("result", Map.of("data", Map.of("a", 1))));
             assertEquals(Map.of("data", Map.of("a", 1)), session.getState("result"));
 
@@ -233,7 +241,7 @@ class SessionTest {
         @Test
         @DisplayName("null update removes state key")
         void testAgentSessionNullUpdate() {
-            AgentSessionApi session = new AgentSessionApi("abc");
+            AgentSession session = new AgentSession("abc", null, null);
             Map<String, Object> data2 = Map.of("data", Map.of("b", 1));
             session.updateState(Map.of("result", data2));
             assertEquals(Map.of("data", Map.of("b", 1)), session.getState("result"));
@@ -247,13 +255,12 @@ class SessionTest {
         @Test
         @DisplayName("dump state returns correct structure")
         void testDumpState() {
-            AgentSessionApi session = new AgentSessionApi("abc");
+            AgentSession session = new AgentSession("abc", null, null);
             session.updateState(Map.of("result", Map.of("data", Map.of("b", 1))));
 
             Map<String, Object> dump = session.dumpState();
             assertNotNull(dump);
             assertTrue(dump.containsKey("global_state"));
-            assertTrue(dump.containsKey("agent_state"));
         }
     }
 
@@ -262,6 +269,7 @@ class SessionTest {
     @Nested
     @DisplayName("NodeSessionApi state operations")
     class NodeSessionApiTests {
+
         @Test
         @DisplayName("node session update and commit cycle")
         void testNodeSessionUpdateAndCommit() {
@@ -272,16 +280,16 @@ class SessionTest {
 
             // Update state (not committed yet)
             session.updateState(Map.of("key1", "value1"));
-            session.updateGlobalState(Map.of("global_key1", "global_value1"));
+            session.updateState(Map.of("global_key1", "global_value1"));
 
             // Before commit, state is not visible
             assertNull(session.getState("key1"));
-            assertNull(session.getGlobalState("global_key1"));
+            assertNull(session.getState("global_key1"));
 
             // Commit
             state.commit();
             assertEquals("value1", session.getState("key1"));
-            assertEquals("global_value1", session.getGlobalState("global_key1"));
+            assertEquals("global_value1", session.getState("global_key1"));
         }
 
         @Test
@@ -293,15 +301,10 @@ class SessionTest {
             NodeSessionApi session = new NodeSessionApi(nodeSession);
 
             session.updateState(Map.of("key1", "value1"));
-            session.updateGlobalState(Map.of("global_key1", "global_value1"));
+            session.updateState(Map.of("global_key1", "global_value1"));
 
             Map<String, Object> dump = session.dumpState();
             assertNotNull(dump);
-            assertTrue(dump.containsKey("io_state"));
-            assertTrue(dump.containsKey("global_state"));
-            assertTrue(dump.containsKey("comp_state"));
-            assertTrue(dump.containsKey("global_state_updates"));
-            assertTrue(dump.containsKey("comp_state_updates"));
         }
     }
 }

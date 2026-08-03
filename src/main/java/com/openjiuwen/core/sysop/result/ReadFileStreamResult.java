@@ -5,25 +5,12 @@
 package com.openjiuwen.core.sysop.result;
 
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
-/**
- * Result type for streaming read file operation.
- * 
- * @since 0.1.7
- */
-@SuperBuilder
+/** Result type for streaming read file operation. */
 @NoArgsConstructor
 public class ReadFileStreamResult extends BaseResult<ReadFileChunkData> {
     /**
-     * ReadFileStreamResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public ReadFileStreamResult(int code, String message, ReadFileChunkData data) {
-        super(code, message, data);
-    }
+    public ReadFileStreamResult(int code, String message, ReadFileChunkData data) { setCode(code); setMessage(message); setData(data); }
 }

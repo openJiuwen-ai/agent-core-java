@@ -4,24 +4,19 @@
 
 package com.openjiuwen.core.workflow.component;
 
+
 import java.util.Map;
 
 /**
  * Configuration for the End component.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.EndConfig}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code EndConfig} in
+ * {@code openjiuwen/core/workflow/components/flow/end_comp.py}.
  */
 public class EndConfig {
+
     private final String responseTemplate;
 
-    /**
-     * EndConfig.
-     * 
-     * @param responseTemplate responseTemplate
-     * @since 0.1.7
-     */
     public EndConfig(String responseTemplate) {
         if (responseTemplate == null || responseTemplate.isEmpty()) {
             throw new IllegalArgumentException("responseTemplate must not be null or empty");
@@ -29,25 +24,13 @@ public class EndConfig {
         this.responseTemplate = responseTemplate;
     }
 
-    /**
-     * fromMap.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
     @SuppressWarnings("unchecked")
     public static EndConfig fromMap(Map<String, Object> map) {
-        String template = (String) map.getOrDefault("responseTemplate", map.get("response_template"));
+        String template = (String) map.getOrDefault("responseTemplate",
+                map.get("response_template"));
         return new EndConfig(template);
     }
 
-    /**
-     * getResponseTemplate.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getResponseTemplate() {
         return responseTemplate;
     }

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.retrieval.reranker.Reranker
+# com.openjiuwen.core.foundation.store.base_reranker.Reranker
 
 ## 接口 Reranker
 

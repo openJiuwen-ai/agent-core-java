@@ -1,4 +1,4 @@
-# com.openjiuwen.core.controller.schema.TaskInteractionEvent
+# com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.TaskInteractionEvent
 
 ## class TaskInteractionEvent
 

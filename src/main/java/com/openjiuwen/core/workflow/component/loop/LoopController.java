@@ -5,25 +5,22 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 /**
- * Controller interface for breaking out of loop execution.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopController}.
- * 
- * @since 0.1.7
+ * Controls loop break state.
+ *
+ * <p>Mirrors Python's {@code LoopController} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
 public interface LoopController {
+
     /**
-     * breakLoop.
-     * 
-     * @since 0.1.7
+     * Requests loop termination.
      */
     void breakLoop();
 
     /**
-     * isBroken.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Returns whether the loop is broken.
+     *
+     * @return true when break was requested
      */
     boolean isBroken();
 }

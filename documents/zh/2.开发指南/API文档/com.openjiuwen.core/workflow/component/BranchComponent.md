@@ -1,4 +1,4 @@
-# com.openjiuwen.core.workflow.component.BranchComponent
+# com.openjiuwen.core.graph.BranchComponent
 
 ## 类 BranchComponent
 

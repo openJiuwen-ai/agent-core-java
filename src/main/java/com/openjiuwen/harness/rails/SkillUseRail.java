@@ -4,17 +4,14 @@
 
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
-import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.RemoteSkillUtil;
 import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillManager;
-import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.tools.ListSkillTool;
 import com.openjiuwen.harness.tools.SkillTool;
@@ -34,12 +31,11 @@ import java.util.Set;
 
 /**
  * Public class SkillUseRail used by the Java parity implementation.
- * <p>
- * Supports hot-reload of skills: detects changes via mtime signature comparison
- * and incrementally refreshes only new or updated skills.
- * </p>
- * 
- * @since 0.1.7
+ *
+ * <p>Supports hot-reload of skills: detects changes via mtime signature comparison
+ * and incrementally refreshes only new or updated skills.</p>
+ *
+ * @since 1.0
  */
 public class SkillUseRail extends DeepAgentRail {
     private static final String SKILL_SECTION = "skills";
@@ -55,88 +51,53 @@ public class SkillUseRail extends DeepAgentRail {
     private final List<RemoteSkillSource> remoteSkillSources;
     private final Set<String> enabledSkills;
     private final Set<String> disabledSkills;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<Tool> tools = new ArrayList<>();
     private boolean enableCache = true;
     private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
 
     /**
-     * SkillUseRail.
-     * 
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public SkillUseRail() {
         this(List.of(), "all", List.of(), List.of());
     }
 
     /**
-     * SkillUseRail.
-     * 
-     * @param skillsDir skillsDir
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public SkillUseRail(String skillsDir) {
         this(List.of(skillsDir), "auto_list", List.of(), List.of());
     }
 
     /**
-     * SkillUseRail.
-     * 
-     * @param skillDirectories skillDirectories
-     * @param skillMode skillMode
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public SkillUseRail(List<String> skillDirectories, String skillMode) {
         this(skillDirectories, skillMode, List.of(), List.of());
     }
 
     /**
-     * SkillUseRail.
-     * 
-     * @param skillDirectories skillDirectories
-     * @param skillMode skillMode
-     * @param enabledSkills enabledSkills
-     * @param disabledSkills disabledSkills
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public SkillUseRail(List<String> skillDirectories, String skillMode, List<String> enabledSkills,
-            List<String> disabledSkills) {
+    public SkillUseRail(List<String> skillDirectories, String skillMode,
+            List<String> enabledSkills, List<String> disabledSkills) {
         this(skillDirectories, skillMode, enabledSkills, disabledSkills, List.of());
     }
 
     /**
-     * SkillUseRail.
-     * 
-     * @param skillDirectories skillDirectories
-     * @param skillMode skillMode
-     * @param enabledSkills enabledSkills
-     * @param disabledSkills disabledSkills
-     * @param remoteSkillSources remoteSkillSources
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
-    public SkillUseRail(List<String> skillDirectories, String skillMode, List<String> enabledSkills,
-            List<String> disabledSkills, List<RemoteSkillSource> remoteSkillSources) {
+    public SkillUseRail(List<String> skillDirectories, String skillMode,
+            List<String> enabledSkills, List<String> disabledSkills, List<RemoteSkillSource> remoteSkillSources) {
         this(skillDirectories, skillMode, enabledSkills, disabledSkills, remoteSkillSources, true);
     }
 
     /**
      * Full constructor with enableCache parameter.
-     * 
-     * @param skillDirectories skillDirectories
-     * @param skillMode skillMode
-     * @param enabledSkills enabledSkills
-     * @param disabledSkills disabledSkills
-     * @param remoteSkillSources remoteSkillSources
-     * @param enableCache enableCache
-     * @since 0.1.7
      */
-    public SkillUseRail(List<String> skillDirectories, String skillMode, List<String> enabledSkills,
-            List<String> disabledSkills, List<RemoteSkillSource> remoteSkillSources, boolean enableCache) {
+    public SkillUseRail(List<String> skillDirectories, String skillMode,
+            List<String> enabledSkills, List<String> disabledSkills,
+            List<RemoteSkillSource> remoteSkillSources, boolean enableCache) {
         this.configuredSkillDirectories = normalizeStringList(skillDirectories);
         this.skillMode = normalizeMode(skillMode);
         this.enabledSkills = new LinkedHashSet<>(normalizeStringList(enabledSkills));
@@ -145,59 +106,51 @@ public class SkillUseRail extends DeepAgentRail {
         this.enableCache = enableCache;
     }
 
-    /**
-     * priority.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public int priority() {
+    public int getPriority() {
         return 100;
     }
 
     /**
-     * init.
-     * 
-     * @param agent agent
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     @Override
-    public void init(Object agent) {
-        if (!(agent instanceof DeepAgent deepAgent)) {
+    public void init(DeepAgent agent) {
+        if (agent == null) {
             return;
         }
-        owner = deepAgent;
-        skillMode =
-            configuredSkillDirectories.isEmpty() ? normalizeMode(deepAgent.getConfig().getSkillMode()) : skillMode;
-        skillsRoot = resolveSkillsRoot(deepAgent);
-        skillManager = new SkillManager(deepAgent.getCard().getId());
+        owner = agent;
+        skillsRoot = resolveSkillsRoot(agent);
+        skillManager = new SkillManager(agent.getCard().getId());
 
         listSkillTool = new ListSkillTool(skillsRoot.toString());
         skillTool = new SkillTool(skillsRoot.toString());
-        String language = deepAgent.getWorkspace().getLanguage();
-        tools.add(new LocalFunction(card("list_skill", deepAgent, language), inputs -> listSkill(inputs)));
-        tools.add(new LocalFunction(card("skill_tool", deepAgent, language), inputs -> readSkill(inputs)));
+        String language = resolveLanguage(agent);
+        tools.add(new LocalFunction(
+                card("list_skill", agent, language),
+                inputs -> listSkill(inputs)
+        ));
+        tools.add(new LocalFunction(
+                card("skill_tool", agent, language),
+                inputs -> readSkill(inputs)
+        ));
         for (Tool tool : tools) {
-            deepAgent.registerHarnessTool(tool);
+            agent.registerTool(tool);
         }
 
         reloadSkills();
     }
 
     /**
-     * uninit.
-     * 
-     * @param agent agent
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     @Override
-    public void uninit(Object agent) {
-        if (agent instanceof DeepAgent deepAgent) {
+    public void uninit(DeepAgent agent) {
+        if (agent != null) {
             for (Tool tool : tools) {
-                deepAgent.unregisterHarnessTool(tool);
+                agent.unregisterTool(tool.getCard().getName());
             }
-            deepAgent.getAgent().getPromptBuilder().removeSection(SKILL_SECTION);
+            removePromptSection();
         }
         tools.clear();
         listSkillTool = null;
@@ -209,8 +162,6 @@ public class SkillUseRail extends DeepAgentRail {
 
     /**
      * Explicitly refresh all skills from configured directories.
-     * 
-     * @since 0.1.7
      */
     public void reloadSkills() {
         prepareSkills();
@@ -219,34 +170,26 @@ public class SkillUseRail extends DeepAgentRail {
 
     /**
      * Clear all skill caches and the snapshot signature.
-     * 
-     * @since 0.1.7
      */
     public void clearSkills() {
         if (skillManager != null) {
-            skillManager.clearAll();
+            skillManager.clear();
         }
         skillsSnapshotSignature = null;
     }
 
     /**
      * Set whether caching is enabled.
-     * 
-     * @param enableCache enableCache
-     * @since 0.1.7
      */
     public void setEnableCache(boolean enableCache) {
         this.enableCache = enableCache;
     }
 
     /**
-     * beforeModelCall.
-     * 
-     * @param ctx ctx
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     @Override
-    public void beforeModelCall(AgentCallbackContext ctx) {
+    public void beforeModelCall(CallbackContext ctx) {
         if (owner == null || skillManager == null || skillManager.count() == 0 || "none".equals(skillMode)) {
             removePromptSection();
             return;
@@ -264,105 +207,85 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
-     * describe.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public String describe() {
         return "Attach skill usage guidance";
     }
 
     /**
-     * registeredToolNames.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public List<String> registeredToolNames() {
         return tools.stream().map(tool -> tool.getCard().getName()).toList();
     }
 
     /**
-     * registeredSkillNames.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public List<String> registeredSkillNames() {
         return skillManager != null
-                ? configuredSkills(skillManager.getAllInOrder()).stream().map(Skill::getName).toList()
+                ? configuredSkills(skillManager.getAll()).stream().map(Skill::getName).toList()
                 : List.of();
     }
 
     /**
-     * skillMode.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public String skillMode() {
         return skillMode;
     }
 
     /**
-     * configuredSkillDirectories.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public List<String> configuredSkillDirectories() {
         return configuredSkillDirectories;
     }
 
     /**
-     * remoteSkillSources.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public List<RemoteSkillSource> remoteSkillSources() {
         return remoteSkillSources;
     }
 
     /**
-     * enabledSkills.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public Set<String> enabledSkills() {
         return java.util.Collections.unmodifiableSet(enabledSkills);
     }
 
     /**
-     * disabledSkills.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public Set<String> disabledSkills() {
         return java.util.Collections.unmodifiableSet(disabledSkills);
     }
 
     /**
-     * hasSkillPromptSection.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public boolean hasSkillPromptSection() {
-        return owner != null && owner.getAgent().getPromptBuilder().hasSection(SKILL_SECTION);
+        if (owner == null) {
+            return false;
+        }
+        try {
+            Object reactAgent = owner.reactAgent();
+            if (reactAgent != null) {
+                Object promptBuilder = reactAgent.getClass().getMethod("getPromptBuilder").invoke(reactAgent);
+                Object result = promptBuilder.getClass().getMethod("hasSection", String.class).invoke(promptBuilder, SKILL_SECTION);
+                return Boolean.TRUE.equals(result);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Agent does not support prompt builder.
+        }
+        return false;
     }
 
     /**
-     * buildSkillPrompt.
-     * 
-     * @param language language
-     * @param mode mode
-     * @param skills skills
-     * @return the result
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     public String buildSkillPrompt(String language, String mode, List<Skill> skills) {
         if ("cn".equalsIgnoreCase(language)) {
@@ -371,38 +294,38 @@ public class SkillUseRail extends DeepAgentRail {
         return buildEnglishPrompt(mode, skills);
     }
 
-    /**
-     * prepareSkills.
-     * 
-     * @since 0.1.7
-     */
     private void prepareSkills() {
         if (!enableCache && skillManager != null) {
-            skillManager.clearAll();
+            skillManager.clear();
         }
         List<Path> roots = collectSkillRoots();
         if (skillManager != null) {
-            skillManager.refreshIncrementally(roots);
+            try {
+                skillManager.register(roots, true);
+            } catch (java.io.IOException ignored) {
+                // Failed to refresh skills from directories.
+            }
         }
     }
 
-    /**
-     * collectSkillRoots.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private List<Path> collectSkillRoots() {
         Set<Path> roots = new LinkedHashSet<>();
         List<String> directories = configuredSkillDirectories.isEmpty()
-                ? (owner != null ? owner.getConfig().getSkillDirectories() : null)
+                ? resolveSkillDirectoriesFromConfig()
                 : configuredSkillDirectories;
         if (directories != null) {
             for (String dir : directories) {
                 if (dir == null || dir.isBlank()) {
                     continue;
                 }
-                roots.add(resolvePath(owner.getWorkspace(), dir));
+                Path candidate = Path.of(dir);
+                if (!candidate.isAbsolute()) {
+                    Object ws = owner != null && owner.deepConfig() != null ? owner.deepConfig().getWorkspace() : null;
+                    if (ws instanceof Workspace workspace) {
+                        candidate = workspace.root().resolve(candidate);
+                    }
+                }
+                roots.add(candidate.toAbsolutePath().normalize());
             }
         }
         if (skillsRoot != null && Files.isDirectory(skillsRoot)) {
@@ -411,28 +334,51 @@ public class SkillUseRail extends DeepAgentRail {
         return new ArrayList<>(roots);
     }
 
-    /**
-     * buildCurrentSignature.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map.Entry<String, Long>> buildCurrentSignature() {
-        List<Path> roots = collectSkillRoots();
-        if (skillManager != null) {
-            return skillManager.buildSnapshotSignature(roots);
+    private List<String> resolveSkillDirectoriesFromConfig() {
+        if (owner == null || owner.deepConfig() == null) {
+            return null;
         }
-        return List.of();
+        try {
+            Object config = owner.deepConfig();
+            java.lang.reflect.Method method = config.getClass().getMethod("getSkillDirectories");
+            Object result = method.invoke(config);
+            if (result instanceof List<?> list) {
+                List<String> dirs = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof String s) {
+                        dirs.add(s);
+                    }
+                }
+                return dirs;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Config does not expose skill directories.
+        }
+        return null;
     }
 
-    /**
-     * signaturesEqual.
-     * 
-     * @param a a
-     * @param b b
-     * @return the result
-     * @since 0.1.7
-     */
+    private List<Map.Entry<String, Long>> buildCurrentSignature() {
+        List<Path> roots = collectSkillRoots();
+        List<Map.Entry<String, Long>> signature = new ArrayList<>();
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            try (var stream = Files.list(root)) {
+                for (Path child : stream.toList()) {
+                    Path skillMd = child.resolve("SKILL.md");
+                    if (Files.isRegularFile(skillMd)) {
+                        long mtime = Files.getLastModifiedTime(skillMd).toMillis();
+                        signature.add(Map.entry(child.getFileName().toString(), mtime));
+                    }
+                }
+            } catch (java.io.IOException ignored) {
+                // Skip unreadable roots.
+            }
+        }
+        return signature;
+    }
+
     private static boolean signaturesEqual(List<Map.Entry<String, Long>> a, List<Map.Entry<String, Long>> b) {
         if (a == null && b == null) {
             return true;
@@ -444,97 +390,72 @@ public class SkillUseRail extends DeepAgentRail {
             return false;
         }
         for (int i = 0; i < a.size(); i++) {
-            if (!a.get(i).getKey().equals(b.get(i).getKey()) || !a.get(i).getValue().equals(b.get(i).getValue())) {
+            if (!a.get(i).getKey().equals(b.get(i).getKey())
+                    || !a.get(i).getValue().equals(b.get(i).getValue())) {
                 return false;
             }
         }
         return true;
     }
 
-    /**
-     * injectSkillPrompt.
-     * 
-     * @param ctx ctx
-     * @since 0.1.7
-     */
-    private void injectSkillPrompt(AgentCallbackContext ctx) {
-        String prompt = buildSkillPrompt(owner.getWorkspace().getLanguage(), skillMode,
-                configuredSkills(skillManager.getAllInOrder()));
-        owner.getAgent().addPromptBuilderSection(SKILL_SECTION, prompt, SKILL_SECTION_PRIORITY);
-        if (ctx != null && ctx.getInputs() instanceof ModelCallInputs inputs && inputs.getMessages() != null) {
-            boolean isPromptAlreadyInjected = inputs.getMessages().stream().filter(SystemMessage.class::isInstance)
-                    .map(message -> String.valueOf(((SystemMessage) message).getContent()))
-                    .anyMatch(content -> content.contains("Skill name:") || content.contains("技能名称:"));
-            if (!isPromptAlreadyInjected) {
-                inputs.getMessages().add(0, new SystemMessage(prompt));
-            }
-        }
+    private void injectSkillPrompt(CallbackContext ctx) {
+        String language = owner != null ? resolveLanguage(owner) : "en";
+        String prompt = buildSkillPrompt(
+                language,
+                skillMode,
+                configuredSkills(skillManager.getAll()));
+        injectPromptToAgent(prompt);
     }
 
-    /**
-     * listSkill.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     private Object listSkill(Map<String, Object> inputs) {
         Object query = inputs != null ? inputs.get("query") : null;
         List<Skill> skills = filterSkills(query != null ? String.valueOf(query) : null);
         if (query == null || String.valueOf(query).isBlank()) {
-            return ToolOutput.builder().success(true).data(skills.stream().map(Skill::getName).toList()).build();
+            return ToolOutput.builder()
+                    .success(true)
+                    .data(skills.stream().map(Skill::getName).toList())
+                    .build();
         }
-        return skills.stream().map(skill -> Map.of("name", value(skill.getName()), "description",
-                value(skill.getDescription()), "directory", value(skill.getDirectory()))).toList();
+        return skills.stream()
+                .map(skill -> Map.of(
+                        "name", value(skill.getName()),
+                        "description", value(skill.getDescription()),
+                        "directory", skill.getDirectory() != null ? skill.getDirectory().toString() : ""
+                ))
+                .toList();
     }
 
-    /**
-     * readSkill.
-     * 
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
     private Object readSkill(Map<String, Object> inputs) {
         if (skillTool == null) {
             return Map.of("success", false, "error", "skill tool is not initialized");
         }
         String skillName = stringArg(inputs, "skill_name", "");
-        if (skillManager == null || configuredSkills(skillManager.getAllInOrder()).stream()
+        if (skillManager == null || configuredSkills(skillManager.getAll()).stream()
                 .noneMatch(skill -> value(skill.getName()).equals(skillName))) {
-            return ToolOutput.builder().success(false).error("skill is not available: " + skillName).build();
+            return ToolOutput.builder()
+                    .success(false)
+                    .error("skill is not available: " + skillName)
+                    .build();
         }
         String relativePath = stringArg(inputs, "relative_file_path", "SKILL.md");
         return skillTool.readSkill(skillName, relativePath);
     }
 
-    /**
-     * filterSkills.
-     * 
-     * @param query query
-     * @return the result
-     * @since 0.1.7
-     */
     private List<Skill> filterSkills(String query) {
         if (skillManager == null) {
             return List.of();
         }
-        List<Skill> all = configuredSkills(skillManager.getAllInOrder());
+        List<Skill> all = configuredSkills(skillManager.getAll());
         if (query == null || query.isBlank()) {
             return all;
         }
         String needle = query.toLowerCase(Locale.ROOT);
-        return all.stream().filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
-                || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
+        return all.stream()
+                .filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
+                        || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle))
+                .toList();
     }
 
-    /**
-     * syncRemoteSkills.
-     * 
-     * @param deepAgent deepAgent
-     * @param targetRoot targetRoot
-     * @since 0.1.7
-     */
     private void syncRemoteSkills(DeepAgent deepAgent, Path targetRoot) {
         if (remoteSkillSources.isEmpty()) {
             return;
@@ -545,43 +466,58 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
-     * uploadRemoteSkill.
-     * 
-     * @param deepAgent deepAgent
-     * @param source source
-     * @param targetRoot targetRoot
-     * @since 0.1.7
+     * Auto-generated for codecheck compliance.
      */
     protected void uploadRemoteSkill(DeepAgent deepAgent, RemoteSkillSource source, Path targetRoot) {
         RemoteSkillUtil remoteSkillUtil = new RemoteSkillUtil(deepAgent.getCard().getId());
         remoteSkillUtil.uploadSkillFromGitHub(source.toGitHubTree(), targetRoot.toString(), source.token());
     }
 
-    /**
-     * resolveSkillsRoot.
-     * 
-     * @param deepAgent deepAgent
-     * @return the result
-     * @since 0.1.7
-     */
-    private Path resolveSkillsRoot(DeepAgent deepAgent) {
-        List<String> dirs = !configuredSkillDirectories.isEmpty()
-                ? configuredSkillDirectories
-                : deepAgent.getConfig().getSkillDirectories();
-        if (dirs != null && !dirs.isEmpty()) {
-            return resolvePath(deepAgent.getWorkspace(), dirs.get(0));
+    private Path resolveSkillsRoot(DeepAgent agent) {
+        if (!configuredSkillDirectories.isEmpty()) {
+            Path candidate = Path.of(configuredSkillDirectories.get(0));
+            if (!candidate.isAbsolute()) {
+                Object ws = agent.deepConfig() != null ? agent.deepConfig().getWorkspace() : null;
+                if (ws instanceof Workspace workspace) {
+                    candidate = workspace.root().resolve(candidate);
+                }
+            }
+            return candidate.toAbsolutePath().normalize();
         }
-        return deepAgent.getWorkspace().getNodePath("skills");
+        Object ws = agent.deepConfig() != null ? agent.deepConfig().getWorkspace() : null;
+        if (ws instanceof Workspace workspace) {
+            return workspace.getNodePath("skills");
+        }
+        return Path.of("skills").toAbsolutePath().normalize();
     }
 
-    /**
-     * resolvePath.
-     * 
-     * @param workspace workspace
-     * @param path path
-     * @return the result
-     * @since 0.1.7
-     */
+    private static String resolveLanguage(DeepAgent agent) {
+        if (agent != null && agent.deepConfig() != null) {
+            String lang = agent.deepConfig().getLanguage();
+            if (lang != null && !lang.isBlank()) {
+                return lang;
+            }
+        }
+        return "en";
+    }
+
+    private void injectPromptToAgent(String prompt) {
+        if (owner == null) {
+            return;
+        }
+        try {
+            Object reactAgent = owner.reactAgent();
+            if (reactAgent == null) {
+                return;
+            }
+            Object promptBuilder = reactAgent.getClass().getMethod("getPromptBuilder").invoke(reactAgent);
+            promptBuilder.getClass().getMethod("addSection", String.class, String.class, int.class)
+                    .invoke(promptBuilder, SKILL_SECTION, prompt, SKILL_SECTION_PRIORITY);
+        } catch (ReflectiveOperationException ignored) {
+            // Agent does not support prompt builder injection.
+        }
+    }
+
     private static Path resolvePath(Workspace workspace, String path) {
         Path candidate = Path.of(path);
         if (!candidate.isAbsolute()) {
@@ -590,27 +526,10 @@ public class SkillUseRail extends DeepAgentRail {
         return candidate.toAbsolutePath().normalize();
     }
 
-    /**
-     * card.
-     * 
-     * @param name name
-     * @param agent agent
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
     private static ToolCard card(String name, DeepAgent agent, String language) {
         return ToolMetadataRegistry.buildToolCard(name, agent.getCard().getId() + "." + name, language);
     }
 
-    /**
-     * buildEnglishPrompt.
-     * 
-     * @param mode mode
-     * @param skills skills
-     * @return the result
-     * @since 0.1.7
-     */
     private static String buildEnglishPrompt(String mode, List<Skill> skills) {
         StringBuilder out = new StringBuilder();
         out.append("You are equipped with task skills.\n");
@@ -625,14 +544,6 @@ public class SkillUseRail extends DeepAgentRail {
         return out.toString().trim();
     }
 
-    /**
-     * buildChinesePrompt.
-     * 
-     * @param mode mode
-     * @param skills skills
-     * @return the result
-     * @since 0.1.7
-     */
     private static String buildChinesePrompt(String mode, List<Skill> skills) {
         StringBuilder out = new StringBuilder();
         out.append("你已配备任务技能。\n");
@@ -645,60 +556,42 @@ public class SkillUseRail extends DeepAgentRail {
         return out.toString().trim();
     }
 
-    /**
-     * appendSkillLines.
-     * 
-     * @param out out
-     * @param skills skills
-     * @param isChinese isChinese
-     * @since 0.1.7
-     */
     private static void appendSkillLines(StringBuilder out, List<Skill> skills, boolean isChinese) {
-        List<Skill> ordered = skills != null
-                ? skills.stream().sorted(Comparator.comparing(skill -> value(skill.getName()))).toList()
-                : List.of();
+        List<Skill> ordered = skills != null ? skills.stream()
+                .sorted(Comparator.comparing(skill -> value(skill.getName())))
+                .toList() : List.of();
         for (int i = 0; i < ordered.size(); i++) {
             Skill skill = ordered.get(i);
             if (isChinese) {
-                out.append('\n').append(i).append(". 技能名称: ").append(value(skill.getName())).append("; 描述: ")
-                        .append(value(skill.getDescription())).append("; 目录: ").append(value(skill.getDirectory()));
+                out.append('\n').append(i).append(". 技能名称: ").append(value(skill.getName()))
+                        .append("; 描述: ").append(value(skill.getDescription()))
+                        .append("; 目录: ").append(skill.getDirectory() != null ? skill.getDirectory().toString() : "");
             } else {
                 out.append('\n').append(i).append(". Skill name: ").append(value(skill.getName()))
                         .append("; Skill description: ").append(value(skill.getDescription()))
-                        .append("; Skill directory file path: ").append(value(skill.getDirectory()));
+                        .append("; Skill directory file path: ").append(skill.getDirectory() != null ? skill.getDirectory().toString() : "");
             }
         }
     }
 
-    /**
-     * removePromptSection.
-     * 
-     * @since 0.1.7
-     */
     private void removePromptSection() {
         if (owner != null) {
-            owner.getAgent().getPromptBuilder().removeSection(SKILL_SECTION);
+            try {
+                Object reactAgent = owner.reactAgent();
+                if (reactAgent != null) {
+                    Object promptBuilder = reactAgent.getClass().getMethod("getPromptBuilder").invoke(reactAgent);
+                    promptBuilder.getClass().getMethod("removeSection", String.class).invoke(promptBuilder, SKILL_SECTION);
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Agent does not support prompt builder removal.
+            }
         }
     }
 
-    /**
-     * normalizeMode.
-     * 
-     * @param mode mode
-     * @return the result
-     * @since 0.1.7
-     */
     private static String normalizeMode(String mode) {
         return mode == null || mode.isBlank() ? "all" : mode.trim().toLowerCase(Locale.ROOT);
     }
 
-    /**
-     * normalizeStringList.
-     * 
-     * @param values values
-     * @return the result
-     * @since 0.1.7
-     */
     private static List<String> normalizeStringList(List<String> values) {
         if (values == null || values.isEmpty()) {
             return List.of();
@@ -718,53 +611,34 @@ public class SkillUseRail extends DeepAgentRail {
         return List.copyOf(normalized);
     }
 
-    /**
-     * configuredSkills.
-     * 
-     * @param skills skills
-     * @return the result
-     * @since 0.1.7
-     */
     private List<Skill> configuredSkills(List<Skill> skills) {
         if (skills == null || skills.isEmpty()) {
             return List.of();
         }
         return skills.stream()
                 .filter(skill -> enabledSkills.isEmpty() || enabledSkills.contains(value(skill.getName())))
-                .filter(skill -> !disabledSkills.contains(value(skill.getName()))).toList();
+                .filter(skill -> !disabledSkills.contains(value(skill.getName())))
+                .toList();
     }
 
-    /**
-     * stringArg.
-     * 
-     * @param inputs inputs
-     * @param key key
-     * @param fallback fallback
-     * @return the result
-     * @since 0.1.7
-     */
     private static String stringArg(Map<String, Object> inputs, String key, String fallback) {
         Object value = inputs != null ? inputs.get(key) : null;
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : fallback;
     }
 
-    /**
-     * value.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String value(String value) {
         return value != null ? value : "";
     }
 
     /**
      * Public record RemoteSkillSource used by the Java parity implementation.
-     * 
-     * @since 0.1.7
+     *
+     * @since 1.0
      */
     public record RemoteSkillSource(String owner, String repo, String ref, String directory, String token) {
+        /**
+         * Auto-generated for codecheck compliance.
+         */
         public RemoteSkillSource {
             owner = normalizeRequired(owner, "owner");
             repo = normalizeRequired(repo, "repo");

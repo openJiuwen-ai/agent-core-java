@@ -1,4 +1,4 @@
-# com.openjiuwen.core.graph.store.GraphStore
+# com.openjiuwen.core.foundation.store.graph.GraphStore
 
 ## 类 GraphStore
 

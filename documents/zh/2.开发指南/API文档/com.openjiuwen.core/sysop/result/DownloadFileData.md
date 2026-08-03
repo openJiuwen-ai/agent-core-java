@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.DownloadFileData
+# com.openjiuwen.core.sys_operation.result.DownloadFileData
 
 ## 类 DownloadFileData
 

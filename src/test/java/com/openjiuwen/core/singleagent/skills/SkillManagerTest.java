@@ -1,250 +1,448 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.singleagent.skills;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
+import com.openjiuwen.core.sys_operation.BaseFsOperation;
+import com.openjiuwen.core.sys_operation.OperationMode;
+import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sys_operation.result.DownloadFileResult;
+import com.openjiuwen.core.sys_operation.result.DownloadFileStreamResult;
+import com.openjiuwen.core.sys_operation.result.FileSystemData;
+import com.openjiuwen.core.sys_operation.result.FileSystemItem;
+import com.openjiuwen.core.sys_operation.result.ListDirsResult;
+import com.openjiuwen.core.sys_operation.result.ListFilesResult;
+import com.openjiuwen.core.sys_operation.result.ReadFileData;
+import com.openjiuwen.core.sys_operation.result.ReadFileResult;
+import com.openjiuwen.core.sys_operation.result.ReadFileStreamResult;
+import com.openjiuwen.core.sys_operation.result.SearchFilesResult;
+import com.openjiuwen.core.sys_operation.result.UploadFileResult;
+import com.openjiuwen.core.sys_operation.result.UploadFileStreamResult;
+import com.openjiuwen.core.sys_operation.result.WriteFileResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
+import java.io.FileNotFoundException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Unit tests for {@link SkillManager} and {@link Skill}.
+ * Focused tests for skill manager registration.
+ *
+ * <p>Mirrors Python's {@code SkillManager} in
+ * {@code openjiuwen/core/single_agent/skills/skill_manager.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/system_tests/agent/skill/test_skill_real_system.py}.</p>
+ *
+ * <p>Also mirrors Python's {@code TestSkillCapability} in
+ * {@code tests/unit_tests/agent/skill/test_skill_system_mock.py}.</p>
  */
 class SkillManagerTest {
-    private SkillManager manager;
+    private static final String SYS_OPERATION_ID = "sys-op";
+    private static final String SKILLS_ROOT_OK = "/virtual/skills_ok";
+    private static final String SKILLS_ROOT_BAD = "/virtual/skills_bad";
+    private static final String GOOD_SKILL_DIR = SKILLS_ROOT_OK + "/good_skill";
+    private static final String GOOD_SKILL_MD = GOOD_SKILL_DIR + "/skill.md";
+    private static final String BAD_SKILL_DIR = SKILLS_ROOT_BAD + "/bad_skill";
+    private static final String BAD_SKILL_MD = BAD_SKILL_DIR + "/skill.md";
+    private static final String SINGLE_SKILL_DIR = "/virtual/single_skill";
+    private static final String SINGLE_SKILL_MD = SINGLE_SKILL_DIR + "/skill.md";
+
+    private RecordingFsOperation fs;
 
     @BeforeEach
     void setUp() {
-        manager = new SkillManager("test-sysop");
+        fs = new RecordingFsOperation();
+
+        fs.addDirectory(SKILLS_ROOT_OK);
+        fs.addSubdirectory(SKILLS_ROOT_OK, GOOD_SKILL_DIR);
+        fs.addFile(GOOD_SKILL_DIR, GOOD_SKILL_MD, makeSkillMd("UT mock skill description"));
+
+        fs.addDirectory(SKILLS_ROOT_BAD);
+        fs.addSubdirectory(SKILLS_ROOT_BAD, BAD_SKILL_DIR);
+        fs.addFile(BAD_SKILL_DIR, BAD_SKILL_MD, makeSkillMd(null));
+
+        fs.addDirectory(SINGLE_SKILL_DIR);
+        fs.addFile(SINGLE_SKILL_DIR, SINGLE_SKILL_MD, makeSkillMd("SINGLE desc"));
     }
 
-    // ========== Skill data class ==========
-
     @Test
-    void testSkillBuilder() {
-        Skill skill = Skill.builder().name("codeReview").description("Code review skill")
-                .directory("/skills/code_review").build();
+    void registerScansParentDirectoryForSkillDirectories() throws Exception {
+        SkillManager manager = manager();
 
-        assertThat(skill.getName()).isEqualTo("codeReview");
-        assertThat(skill.getDescription()).isEqualTo("Code review skill");
-        assertThat(skill.getDirectory()).isEqualTo("/skills/code_review");
+        manager.register(Path.of(SKILLS_ROOT_OK));
+
+        assertThat(manager.has("good_skill")).isTrue();
+        Skill skill = manager.get("good_skill");
+        assertThat(skill).isNotNull();
+        assertThat(skill.getDescription()).isEqualTo("UT mock skill description");
+        assertThat(skill.getDirectory().getFileName().toString()).isEqualTo("good_skill");
     }
 
     @Test
-    void testSkillToString() {
-        Skill skill = Skill.builder().name("test").description("desc").directory("/dir").build();
+    void registerSingleSkillMdFileDirectly() throws Exception {
+        SkillManager manager = manager();
 
-        String str = skill.toString();
-        assertThat(str).contains("test");
-        assertThat(str).contains("desc");
-        assertThat(str).contains("/dir");
+        manager.register(Path.of(SINGLE_SKILL_MD));
+
+        assertThat(manager.has("single_skill")).isTrue();
+        assertThat(manager.get("single_skill").getDescription()).isEqualTo("SINGLE desc");
     }
 
-    // ========== SkillManager basic ==========
+    @Test
+    void registerSkillDirectoryDirectly() throws Exception {
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR));
+
+        assertThat(manager.has("single_skill")).isTrue();
+        assertThat(manager.get("single_skill").getDescription()).isEqualTo("SINGLE desc");
+    }
 
     @Test
-    void testInitialState() {
+    void registerCanUseFrontMatterNameWhenRequested() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "MetadataSkill"));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR), false, true);
+
+        assertThat(manager.has("MetadataSkill")).isTrue();
+        assertThat(manager.has("single_skill")).isFalse();
+        assertThat(manager.get("MetadataSkill").getDescription()).isEqualTo("SINGLE desc");
+    }
+
+    @Test
+    void metadataNameModeKeepsOriginalStringValue() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "\" MetadataSkill \""));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR), false, true);
+
+        assertThat(manager.has(" MetadataSkill ")).isTrue();
+        assertThat(manager.has("MetadataSkill")).isFalse();
+    }
+
+    @Test
+    void metadataNameModeRejectsNonStringNameField() {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), """
+                ---
+                name: 123
+                description: SINGLE desc
+                ---
+                body
+                """);
+        SkillManager manager = manager();
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_DIR), false, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name field");
+    }
+
+    @Test
+    void registerStillUsesFolderNameByDefaultWhenFrontMatterNameExists() throws Exception {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), makeSkillMd("SINGLE desc", "MetadataSkill"));
+        SkillManager manager = manager();
+
+        manager.register(Path.of(SINGLE_SKILL_DIR));
+
+        assertThat(manager.has("single_skill")).isTrue();
+        assertThat(manager.has("MetadataSkill")).isFalse();
+    }
+
+    @Test
+    void metadataNameModeRequiresNameField() {
+        SkillManager manager = manager();
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_DIR), false, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name field");
+    }
+
+    @Test
+    void duplicateRegistrationRequiresOverwrite() throws Exception {
+        SkillManager manager = manager();
+        manager.register(Path.of(SINGLE_SKILL_MD));
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_MD), false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Skill already exists: single_skill");
+
+        manager.register(Path.of(SINGLE_SKILL_MD), true);
+
+        assertThat(manager.has("single_skill")).isTrue();
+        assertThat(manager.count()).isEqualTo(1);
+    }
+
+    @Test
+    void registryOperationsMatchPythonSurface() throws Exception {
+        SkillManager manager = manager();
+        manager.register(Path.of(SINGLE_SKILL_MD));
+
+        assertThat(manager.count()).isEqualTo(1);
+        assertThat(Set.copyOf(manager.get_names())).containsExactly("single_skill");
+        assertThat(manager.getAll()).singleElement()
+                .satisfies(skill -> assertThat(skill.asDict(false))
+                        .containsEntry("name", "single_skill")
+                        .containsEntry("description", "SINGLE desc")
+                        .doesNotContainKey("directory"));
+
+        manager.unregister("single_skill");
+        assertThat(manager.has("single_skill")).isFalse();
         assertThat(manager.count()).isZero();
-        assertThat(manager.getAll()).isEmpty();
-        assertThat(manager.getNames()).isEmpty();
-        assertThat(manager.getSysOperationId()).isEqualTo("test-sysop");
-    }
 
-    @Test
-    void testSetSysOperationId() {
-        manager.setSysOperationId("new-id");
-        assertThat(manager.getSysOperationId()).isEqualTo("new-id");
-    }
-
-    @Test
-    void testGetAndHas() {
-        assertThat(manager.has("nonexistent")).isFalse();
-        assertThat(manager.get("nonexistent")).isNull();
-    }
-
-    @Test
-    void testClear() {
-        // Manually add via registration from a temp directory
-        // For now, just test clear on empty
         manager.clear();
         assertThat(manager.count()).isZero();
     }
 
     @Test
-    void testDescription() {
-        manager.setDescription("test description");
-        assertThat(manager.getDescription()).isEqualTo("test description");
-    }
+    void missingDescriptionRaisesPythonEquivalentKeyError() {
+        SkillManager manager = manager();
 
-    // ========== Registration from file system ==========
-
-    @Test
-    void testRegisterFromSkillMd(@TempDir Path tempDir) throws IOException {
-        // Create a skill directory with SKILL.md
-        Path skillDir = tempDir.resolve("myskill");
-        Files.createDirectories(skillDir);
-        Path skillMd = skillDir.resolve("SKILL.md");
-        Files.writeString(skillMd, "---\ndescription: A test skill\n---\n# My Skill");
-
-        // Register from the SKILL.md path
-        manager.register(skillMd.toString());
-
-        assertThat(manager.count()).isEqualTo(1);
-        assertThat(manager.has("myskill")).isTrue();
-        Skill skill = manager.get("myskill");
-        assertThat(skill.getDescription()).isEqualTo("A test skill");
+        assertThatThrownBy(() -> manager.register(Path.of(SKILLS_ROOT_BAD)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("description field");
     }
 
     @Test
-    void testRegisterFromDirectory(@TempDir Path tempDir) throws IOException {
-        // Create subdirectories with SKILL.md files
-        Path skill1Dir = tempDir.resolve("skill1");
-        Files.createDirectories(skill1Dir);
-        Files.writeString(skill1Dir.resolve("SKILL.md"), "---\ndescription: Skill one\n---");
+    void missingYamlFrontMatterRaisesPythonEquivalentKeyError() {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), "no front matter");
+        SkillManager manager = manager();
 
-        Path skill2Dir = tempDir.resolve("skill2");
-        Files.createDirectories(skill2Dir);
-        Files.writeString(skill2Dir.resolve("Skill.md"), "---\ndescription: Skill two\n---");
-
-        manager.register(tempDir.toString());
-
-        assertThat(manager.count()).isEqualTo(2);
-        assertThat(manager.has("skill1")).isTrue();
-        assertThat(manager.has("skill2")).isTrue();
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_MD)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("description field");
     }
 
     @Test
-    void testRegisterDuplicateLoggedAsWarning(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("dupskill");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Dup\n---");
+    void readFileNonZeroRaisesFileNotFound() {
+        fs.failRead.add(fs.normalize(SINGLE_SKILL_MD));
+        SkillManager manager = manager();
 
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.count()).isEqualTo(1);
-
-        // Second register catches exception internally and logs warning
-        // Skill count should remain 1
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.count()).isEqualTo(1);
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_MD)))
+                .isInstanceOf(FileNotFoundException.class)
+                .hasMessageContaining("read_file failed");
     }
 
     @Test
-    void testRegisterNullPath() {
-        manager.register((String) null);
-        assertThat(manager.count()).isZero();
+    void readFileNoneContentRaisesFileNotFound() {
+        fs.content.put(fs.normalize(SINGLE_SKILL_MD), null);
+        SkillManager manager = manager();
+
+        assertThatThrownBy(() -> manager.register(Path.of(SINGLE_SKILL_MD)))
+                .isInstanceOf(FileNotFoundException.class)
+                .hasMessageContaining("read_file is None");
     }
 
-    @Test
-    void testRegisterEmptyPath() {
-        manager.register("");
-        assertThat(manager.count()).isZero();
+    private SkillManager manager() {
+        return new SkillManager(SYS_OPERATION_ID, ignored -> fs);
     }
 
-    // ========== Unregister ==========
-
-    @Test
-    void testUnregister(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("removable");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Remove me\n---");
-
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.has("removable")).isTrue();
-
-        manager.unregister("removable");
-        assertThat(manager.has("removable")).isFalse();
-        assertThat(manager.count()).isZero();
+    private static String makeSkillMd(String description) {
+        return makeSkillMd(description, null);
     }
 
-    @Test
-    void testUnregisterNonExistent() {
-        // Should not throw
-        manager.unregister("does_not_exist");
+    private static String makeSkillMd(String description, String name) {
+        if (description == null) {
+            return """
+                    ---
+                    foo: bar
+                    ---
+                    body
+                    """;
+        }
+        String nameLine = name == null ? "" : "name: " + name + "\n";
+        return "---\n" + nameLine + "description: " + description + "\n---\nbody\n";
     }
 
-    // ========== Block scalar description parsing ==========
+    private static final class RecordingFsOperation extends BaseFsOperation {
+        private final Map<String, List<String>> directories = new LinkedHashMap<>();
+        private final Map<String, List<String>> files = new LinkedHashMap<>();
+        private final Map<String, Object> content = new LinkedHashMap<>();
+        private final List<String> failRead = new ArrayList<>();
 
-    @Test
-    void testRegisterWithLiteralBlockScalar(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("block_literal");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "name: block_literal\n" + "description: |\n"
-                        + "  8-role debate-pattern investment analysis team.\n"
-                        + "  Use when analyzing a security for investment decision.\n"
-                        + "  Do NOT use for single-perspective analysis.\n" + "---\n# Skill");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        Skill skill = manager.get("block_literal");
-        assertThat(skill).isNotNull();
-        assertThat(skill.getDescription()).isEqualTo("8-role debate-pattern investment analysis team.\n"
-                + "Use when analyzing a security for investment decision.\n"
-                + "Do NOT use for single-perspective analysis.");
-    }
+        private RecordingFsOperation() {
+            super("fs", OperationMode.LOCAL, "recording fs", null);
+        }
 
-    @Test
-    void testRegisterWithLiteralBlockScalarStripChomping(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("block_strip");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: |-\n" + "  line one\n" + "  line two\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_strip").getDescription()).isEqualTo("line one\nline two");
-    }
+        private void addDirectory(String path) {
+            String normalized = normalize(path);
+            directories.computeIfAbsent(normalized, ignored -> new ArrayList<>());
+            files.computeIfAbsent(normalized, ignored -> new ArrayList<>());
+        }
 
-    @Test
-    void testRegisterWithFoldedBlockScalar(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("block_folded");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: >\n" + "  folded paragraph\n" + "  continues here\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_folded").getDescription()).isEqualTo("folded paragraph continues here");
-    }
+        private void addSubdirectory(String parent, String subdirectory) {
+            String normalizedParent = normalize(parent);
+            String normalizedSubdirectory = normalize(subdirectory);
+            addDirectory(normalizedParent);
+            addDirectory(normalizedSubdirectory);
+            directories.get(normalizedParent).add(normalizedSubdirectory);
+        }
 
-    @Test
-    void testRegisterWithFoldedBlockScalarStripChomping(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("block_folded_strip");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: >-\n" + "  alpha\n" + "  beta\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_folded_strip").getDescription()).isEqualTo("alpha beta");
-    }
+        private void addFile(String directory, String path, Object fileContent) {
+            String normalizedDirectory = normalize(directory);
+            String normalizedPath = normalize(path);
+            addDirectory(normalizedDirectory);
+            files.get(normalizedDirectory).add(normalizedPath);
+            content.put(normalizedPath, fileContent);
+        }
 
-    @Test
-    void testRegisterWithQuotedInlineDescription(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("quoted");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: \"quoted: with colons and ; semicolons\"\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("quoted").getDescription()).isEqualTo("quoted: with colons and ; semicolons");
-    }
+        private String normalize(String path) {
+            return (path == null ? "" : path).replace('\\', '/');
+        }
 
-    @Test
-    void testRegisterWithInlineDescriptionContainingColons(@TempDir Path tempDir) throws IOException {
-        // Ensures we still handle the original inline case and don't break on
-        // values that themselves contain colons.
-        Path skillDir = tempDir.resolve("inline_colons");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: Use this when path/to:thing matters\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("inline_colons").getDescription()).isEqualTo("Use this when path/to:thing matters");
-    }
+        @Override
+        public CompletableFuture<ReadFileResult> readFile(String path, FileMode mode, Integer head, Integer tail,
+                                                          BaseFsProtocal.LineRange lineRange, String encoding,
+                                                          int chunkSize, Map<String, Object> options) {
+            String normalized = normalize(path);
+            ReadFileResult result = new ReadFileResult();
+            ReadFileData data = new ReadFileData();
+            data.setPath(normalized);
+            data.setMode("text");
+            if (failRead.contains(normalized)) {
+                result.setCode(1);
+                result.setMessage("read_file failed: " + normalized);
+                data.setContent(null);
+            } else {
+                result.setCode(0);
+                result.setMessage("");
+                data.setContent(content.get(normalized));
+            }
+            result.setData(data);
+            return CompletableFuture.completedFuture(result);
+        }
 
-    @Test
-    void testRegisterWithBlockScalarAndBlankLine(@TempDir Path tempDir) throws IOException {
-        Path skillDir = tempDir.resolve("block_with_blank");
-        Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n" + "description: |\n" + "  first paragraph\n" + "\n" + "  second paragraph\n" + "---\n");
-        manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_with_blank").getDescription()).isEqualTo("first paragraph\n\nsecond paragraph");
+        @Override
+        public CompletableFuture<ListFilesResult> listFiles(String path, boolean recursive, Integer maxDepth,
+                                                            SortBy sortBy, boolean sortDescending,
+                                                            List<String> fileTypes, Map<String, Object> options) {
+            String normalized = normalize(path);
+            ListFilesResult result = new ListFilesResult();
+            result.setCode(0);
+            result.setData(fileSystemData(normalized, files.getOrDefault(normalized, List.of()), false));
+            return CompletableFuture.completedFuture(result);
+        }
+
+        @Override
+        public CompletableFuture<ListDirsResult> listDirectories(String path, boolean recursive, Integer maxDepth,
+                                                                 SortBy sortBy, boolean sortDescending,
+                                                                 Map<String, Object> options) {
+            String normalized = normalize(path);
+            ListDirsResult result = new ListDirsResult();
+            if (content.containsKey(normalized)) {
+                result.setCode(1);
+                result.setMessage("not a directory: " + normalized);
+                result.setData(fileSystemData(normalized, List.of(), true));
+            } else {
+                result.setCode(0);
+                result.setMessage("");
+                result.setData(fileSystemData(normalized, directories.getOrDefault(normalized, List.of()), true));
+            }
+            return CompletableFuture.completedFuture(result);
+        }
+
+        private static FileSystemData fileSystemData(String root, List<String> paths, boolean directories) {
+            FileSystemData data = new FileSystemData();
+            List<FileSystemItem> items = new ArrayList<>();
+            for (String path : paths) {
+                FileSystemItem item = new FileSystemItem();
+                item.setName(Path.of(path).getFileName().toString());
+                item.setPath(path);
+                item.setDirectory(directories);
+                item.setType(directories ? "directory" : "file");
+                items.add(item);
+            }
+            data.setRootPath(root);
+            data.setListItems(items);
+            data.setTotalCount(items.size());
+            data.setRecursive(false);
+            return data;
+        }
+
+        @Override
+        public Flow.Publisher<ReadFileStreamResult> readFileStream(String path, FileMode mode, Integer head,
+                                                                   Integer tail,
+                                                                   BaseFsProtocal.LineRange lineRange,
+                                                                   String encoding,
+                                                                   int chunkSize,
+                                                                   Map<String, Object> options) {
+            return unsupportedPublisher();
+        }
+
+        @Override
+        public CompletableFuture<WriteFileResult> writeFile(String path, String content, FileMode mode,
+                                                            boolean prependNewline, boolean appendNewline,
+                                                            boolean append, boolean createIfNotExist,
+                                                            String permissions, String encoding,
+                                                            Map<String, Object> options) {
+            return unsupportedFuture();
+        }
+
+        @Override
+        public CompletableFuture<WriteFileResult> writeFile(String path, byte[] content, FileMode mode,
+                                                            boolean prependNewline, boolean appendNewline,
+                                                            boolean append, boolean createIfNotExist,
+                                                            String permissions, String encoding,
+                                                            Map<String, Object> options) {
+            return unsupportedFuture();
+        }
+
+        @Override
+        public CompletableFuture<UploadFileResult> uploadFile(String localPath, String targetPath, boolean overwrite,
+                                                              boolean createParentDirs, boolean preservePermissions,
+                                                              int chunkSize, Map<String, Object> options) {
+            return unsupportedFuture();
+        }
+
+        @Override
+        public Flow.Publisher<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath,
+                                                                       boolean overwrite, boolean createParentDirs,
+                                                                       boolean preservePermissions, int chunkSize,
+                                                                       Map<String, Object> options) {
+            return unsupportedPublisher();
+        }
+
+        @Override
+        public CompletableFuture<DownloadFileResult> downloadFile(String sourcePath, String localPath,
+                                                                  boolean overwrite, boolean createParentDirs,
+                                                                  boolean preservePermissions, int chunkSize,
+                                                                  Map<String, Object> options) {
+            return unsupportedFuture();
+        }
+
+        @Override
+        public Flow.Publisher<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
+                                                                           boolean overwrite,
+                                                                           boolean createParentDirs,
+                                                                           boolean preservePermissions,
+                                                                           int chunkSize,
+                                                                           Map<String, Object> options) {
+            return unsupportedPublisher();
+        }
+
+        @Override
+        public CompletableFuture<SearchFilesResult> searchFiles(String path, String pattern,
+                                                                List<String> excludePatterns) {
+            return unsupportedFuture();
+        }
+
+        private static <T> CompletableFuture<T> unsupportedFuture() {
+            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+        }
+
+        private static <T> Flow.Publisher<T> unsupportedPublisher() {
+            return subscriber -> subscriber.onError(new UnsupportedOperationException());
+        }
     }
 }

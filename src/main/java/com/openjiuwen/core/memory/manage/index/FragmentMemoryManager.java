@@ -4,487 +4,694 @@
 
 package com.openjiuwen.core.memory.manage.index;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.memory.common.MemoryUtils;
-import com.openjiuwen.core.memory.manage.mem_model.*;
+import com.openjiuwen.core.foundation.store.BaseMemoryIndex;
+import com.openjiuwen.core.foundation.store.MemoryDoc;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.FragmentMemoryUnit;
+import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.core.memory.manage.mem_model.OperationType;
 import com.openjiuwen.core.memory.manage.update.MemUpdateChecker;
 import com.openjiuwen.core.memory.manage.update.MemoryActionItem;
 import com.openjiuwen.core.memory.manage.update.MemoryStatus;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.AbstractMap;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Manages fragment (user profile) memory CRUD with encryption and vector storage.
- * 
- * @since 0.1.7
+ * Fragment-memory manager backed by the unified memory index.
+ *
+ * <p>Mirrors Python's {@code FragmentMemoryManager} in
+ * {@code openjiuwen/core/memory/manage/index/fragment_memory_manager.py}.</p>
  */
 public class FragmentMemoryManager extends BaseMemoryManager {
-    /**
-     * UPDATE_CHECK_OLD_MEMORY_NUM.
-     * 
-     * @since 0.1.7
-     */
+    public static final List<String> FRAGMENT_MEMORY_TYPE = List.of(
+            MemoryType.USER_PROFILE.getValue(),
+            MemoryType.SEMANTIC_MEMORY.getValue(),
+            MemoryType.EPISODIC_MEMORY.getValue()
+    );
+
     public static final int UPDATE_CHECK_OLD_MEMORY_NUM = 5;
+    public static final double UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD = 0.75d;
 
-    /**
-     * UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD.
-     * 
-     * @since 0.1.7
-     */
-    public static final double UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD = 0.75;
-    private static final List<String> FRAGMENT_MEMORY_TYPES = UserMemStore.FRAGMENT_MEMORY_TYPES;
+    private static final DateTimeFormatter DASH_TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH-mm-ss");
+    private static final DateTimeFormatter COLON_TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String SOURCE_ID = "source_id";
+    private static final String FRAGMENT = "fragment";
 
-    private final UserMemStore memStore;
-    private final DataIdManager dataIdGenerator;
+    private final BaseMemoryIndex memoryIndex;
     private final byte[] cryptoKey;
+    private final String memType;
 
-    /**
-     * FragmentMemoryManager.
-     * 
-     * @param memStore memStore
-     * @param dataIdGenerator dataIdGenerator
-     * @param cryptoKey cryptoKey
-     * @since 0.1.7
-     */
-    public FragmentMemoryManager(UserMemStore memStore, DataIdManager dataIdGenerator, byte[] cryptoKey) {
-        this.memStore = memStore;
-        this.dataIdGenerator = dataIdGenerator;
-        this.cryptoKey = cryptoKey;
+    public FragmentMemoryManager(BaseMemoryIndex memoryIndex, byte[] cryptoKey) {
+        this.memoryIndex = memoryIndex;
+        this.cryptoKey = cryptoKey == null ? null : cryptoKey.clone();
+        this.memType = FRAGMENT;
     }
 
-    /**
-     * addMemories.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memories memories
-     * @param llm llm
-     * @param kwargs kwargs
-     * @since 0.1.7
-     */
-    @Override
-    public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories,
-            Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
-        SemanticStore semanticStore = getSemanticStore("add", kwargs);
+    public BaseMemoryIndex getMemoryIndex() {
+        return memoryIndex;
+    }
 
-        @SuppressWarnings("unchecked")
-        List<FragmentMemoryUnit> fragmentMemories = (List<FragmentMemoryUnit>) (List<?>) memories;
+    public byte[] getCryptoKey() {
+        return cryptoKey == null ? null : cryptoKey.clone();
+    }
 
-        // Step 1: Prepare new memories dictionary for checker
-        Map<String, String> newMemContent = new LinkedHashMap<>();
-        Map<String, FragmentMemoryUnit> newMemUnits = new LinkedHashMap<>();
-        for (FragmentMemoryUnit unit : fragmentMemories) {
-            if (unit.getContent() != null) {
-                newMemContent.put(unit.getMemId(), unit.getContent());
-                newMemUnits.put(unit.getMemId(), unit);
-            }
-        }
+    public String getMemType() {
+        return memType;
+    }
 
-        // Step 2: Query existing memories for context
-        Map<String, String> oldMemories = new LinkedHashMap<>();
-        Set<String> oldMemIds = new HashSet<>();
-        for (String newMem : newMemContent.values()) {
-            List<Map<String, Object>> searchResults =
-                search(userId, scopeId, newMem, UPDATE_CHECK_OLD_MEMORY_NUM, kwargs);
-            if (searchResults != null) {
-                for (Map<String, Object> result : searchResults) {
-                    String resultId = String.valueOf(result.getOrDefault("id", ""));
-                    double resultScore =
-                        result.get("score") instanceof Number ? ((Number) result.get("score")).doubleValue() : 0.0;
-                    String resultContent = String.valueOf(result.getOrDefault("mem", ""));
-                    if (!resultId.isEmpty() && resultScore > UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD
-                            && !oldMemIds.contains(resultId)) {
-                        oldMemories.put(resultId, resultContent);
-                        oldMemIds.add(resultId);
-                    }
-                }
-            }
-        }
-
-        // Fallback: if vector search returned no existing memories, load from KV store directly
-        if (oldMemories.isEmpty()) {
-            for (String memType : FRAGMENT_MEMORY_TYPES) {
-                List<Map<String, Object>> allMems = memStore.getAll(userId, scopeId, memType);
-                if (allMems != null) {
-                    for (Map<String, Object> mem : allMems) {
-                        String memId = String.valueOf(mem.getOrDefault("id", ""));
-                        String memContent = String.valueOf(mem.getOrDefault("mem", ""));
-                        if (!memId.isEmpty() && !oldMemIds.contains(memId)) {
-                            oldMemories.put(memId, decryptMemoryIfNeeded(cryptoKey, memContent));
-                            oldMemIds.add(memId);
-                        }
-                    }
-                }
-            }
-        }
-
-        // If no existing memories and only one new memory, skip check
-        if (oldMemories.isEmpty() && fragmentMemories.size() == 1) {
-            addMemoryToStore(userId, scopeId, fragmentMemories.get(0), semanticStore);
+    static void removeUpdateEntriesFromProcessResult(Set<String> deleteMemoryIdSet,
+                                                     Map<String, FragmentMemoryUnit> processResultDict) {
+        if (deleteMemoryIdSet == null || processResultDict == null) {
             return;
         }
-
-        // Step 3: Use MemChecker to analyze for redundancy/conflicts
-        MemUpdateChecker checker = new MemUpdateChecker();
-        List<MemoryActionItem> actionItems = checker.check(newMemContent, oldMemories, llm);
-        MEMORY_LOGGER.info("[{}] Memory check completed, got {} action items", LogEventType.MEMORY_PROCESS,
-                actionItems.size());
-
-        // Step 4: Execute actions
-        for (MemoryActionItem actionItem : actionItems) {
-            if (actionItem.getStatus() == MemoryStatus.ADD) {
-                FragmentMemoryUnit unit = newMemUnits.get(actionItem.getId());
-                if (unit != null) {
-                    addMemoryToStore(userId, scopeId, unit, semanticStore);
-                }
-            } else if (actionItem.getStatus() == MemoryStatus.DELETE) {
-                delete(userId, scopeId, actionItem.getId(), kwargs);
-            } else {
-                // no-op
+        for (String memId : deleteMemoryIdSet) {
+            FragmentMemoryUnit unit = processResultDict.get(memId);
+            if (unit != null && unit.getOperationType() == OperationType.UPDATE) {
+                processResultDict.remove(memId);
             }
         }
     }
 
-    /**
-     * update.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @param newMemory newMemory
-     * @param kwargs kwargs
-     * @since 0.1.7
-     */
-    @Override
-    public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
-        SemanticStore semanticStore = getSemanticStore("update", kwargs);
-        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        String encryptedMemory = encryptMemoryIfNeeded(cryptoKey, newMemory);
-        Map<String, Object> newData = new LinkedHashMap<>();
-        newData.put("mem", encryptedMemory);
-        newData.put("time", time);
-        Map<String, Object> oldMem = memStore.get(userId, scopeId, memId);
-        String memType = oldMem == null ? null : String.valueOf(oldMem.get("mem_type"));
-        memStore.update(userId, scopeId, memId, newData);
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, memType);
-        semanticStore.deleteDocs(List.of(memId), tableName);
-        semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, newMemory)), tableName);
+    static void appendMemUnitListToDict(Map<String, FragmentMemoryUnit> memUnitDict,
+                                        List<FragmentMemoryUnit> memUnitList) {
+        if (memUnitDict == null || memUnitList == null) {
+            return;
+        }
+        for (FragmentMemoryUnit memUnit : memUnitList) {
+            if (memUnit == null) {
+                continue;
+            }
+            if (memUnitDict.containsKey(memUnit.getMemId())) {
+                MEMORY_LOGGER.warning(
+                        "mem duplicate, old will be overwrite",
+                        "event_type", LogEventType.MEMORY_STORE,
+                        "memory_id", memUnit.getMemId()
+                );
+            }
+            memUnitDict.put(memUnit.getMemId(), memUnit);
+        }
     }
 
-    /**
-     * search.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param query query
-     * @param topK topK
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
-            Map<String, Object> kwargs) {
-        SemanticStore semanticStore = getSemanticStore("search", kwargs);
-        String memType =
-            kwargs != null && kwargs.containsKey("mem_type") ? String.valueOf(kwargs.get("mem_type")) : null;
-        List<String> memTypes = memType == null || memType.isBlank() ? FRAGMENT_MEMORY_TYPES : List.of(memType);
-
-        // Step 1: Vector search
-        List<String> memIds = new ArrayList<>();
-        Map<String, Double> scores = new HashMap<>();
-        for (String currentType : memTypes) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, currentType);
-            List<Map.Entry<String, Double>> hitInfo = semanticStore.search(query, tableName, topK);
-            MemoryUtils.HitParseResult parsed = MemoryUtils.parseMemoryHitInfos(hitInfo);
-            memIds.addAll(parsed.ids());
-            scores.putAll(parsed.scores());
+    static ZonedDateTime parseTimestamp(Object timestamp) {
+        if (timestamp instanceof ZonedDateTime zonedDateTime) {
+            return zonedDateTime;
         }
-
-        // Step 2: Load all existing memories from KV store for completeness
-        // (Vector search may miss results with local hash embedding)
-        Set<String> seenIds = new HashSet<>(memIds);
-        List<Map<String, Object>> combinedRes = new ArrayList<>();
-
-        // Add vector search results first
-        List<Map<String, Object>> retrieveRes = memStore.batchGet(userId, scopeId, memIds);
-        if (retrieveRes != null) {
-            for (Map<String, Object> item : retrieveRes) {
-                String id = String.valueOf(item.getOrDefault("id", ""));
-                item.put("score", scores.getOrDefault(id, 0.0));
-                item.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
-                combinedRes.add(item);
+        if (timestamp instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toZonedDateTime();
+        }
+        if (timestamp == null) {
+            return ZonedDateTime.now();
+        }
+        String text = String.valueOf(timestamp);
+        if (text.isEmpty()) {
+            return ZonedDateTime.now();
+        }
+        for (DateTimeFormatter formatter : List.of(DASH_TIMESTAMP_FORMAT, COLON_TIMESTAMP_FORMAT)) {
+            try {
+                return LocalDateTime.parse(text, formatter).atZone(ZoneOffset.UTC);
+            } catch (DateTimeParseException ignored) {
+                // Try the next Python-compatible timestamp format.
             }
         }
+        try {
+            return ZonedDateTime.parse(text);
+        } catch (DateTimeParseException ignored) {
+            // Fall through to OffsetDateTime/LocalDateTime parsing.
+        }
+        try {
+            return OffsetDateTime.parse(text).toZonedDateTime();
+        } catch (DateTimeParseException ignored) {
+            // Fall through to a local ISO timestamp, matching Python fromisoformat for naive values.
+        }
+        try {
+            return LocalDateTime.parse(text).atZone(ZoneId.systemDefault());
+        } catch (DateTimeParseException ignored) {
+            return ZonedDateTime.now();
+        }
+    }
 
-        // Supplement with KV store memories not found by vector search
-        for (String currentType : memTypes) {
-            List<Map<String, Object>> typeMems = memStore.getAll(userId, scopeId, currentType);
-            if (typeMems != null) {
-                for (Map<String, Object> mem : typeMems) {
-                    String id = String.valueOf(mem.getOrDefault("id", ""));
-                    if (!id.isEmpty() && seenIds.add(id)) {
-                        mem.put("score", 0.0);
-                        mem.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(mem.getOrDefault("mem", ""))));
-                        combinedRes.add(mem);
+    static List<Map<String, Object>> processConflictInfo(List<Map<String, Object>> conflictInfo,
+                                                         Map<Integer, String> inputMemoryIdsMap) {
+        List<Map<String, Object>> processConflictInfo = new ArrayList<>();
+        if (conflictInfo == null) {
+            return processConflictInfo;
+        }
+        for (Map<String, Object> conflict : conflictInfo) {
+            int conflictId = Integer.parseInt(String.valueOf(conflict.get("id")));
+            Object conflictMemory = conflict.get("text");
+            Object conflictEvent = conflict.get("event");
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", conflictId == 0 ? "-1" : inputMemoryIdsMap.get(conflictId));
+            item.put("text", conflictMemory);
+            item.put("event", conflictEvent);
+            processConflictInfo.add(item);
+        }
+        return processConflictInfo;
+    }
+
+    MemoryDoc convertToMemoryDoc(FragmentMemoryUnit memUnit) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put(SOURCE_ID, memUnit.getMessageMemId());
+        return new MemoryDoc(
+                memUnit.getMemId(),
+                memUnit.getContent(),
+                memoryTypeValue(memUnit.getMemType()),
+                hasText(memUnit.getTimestamp()) ? parseTimestamp(memUnit.getTimestamp()) : ZonedDateTime.now(),
+                fields
+        );
+    }
+
+    Map<String, Object> docToDict(MemoryDoc doc) {
+        return docToDict(doc, 0.0d);
+    }
+
+    Map<String, Object> docToDict(MemoryDoc doc, double score) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", doc.getId());
+        result.put("mem", doc.getText());
+        result.put("mem_type", doc.getType());
+        result.put("timestamp", doc.getTimestamp());
+        result.put("score", score);
+        result.put(SOURCE_ID, doc.getFields() == null ? null : doc.getFields().get(SOURCE_ID));
+        return result;
+    }
+
+    @Override
+    public CompletionStage<List<BaseMemoryUnit>> addMemories(String userId,
+                                                            String scopeId,
+                                                            Map<String, List<BaseMemoryUnit>> memories,
+                                                            Model llm,
+                                                            Map<String, Object> kwargs) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            Set<String> deleteMemoryIdSet = new LinkedHashSet<>();
+            Map<String, FragmentMemoryUnit> processResultDict = new LinkedHashMap<>();
+            List<FragmentMemoryUnit> addMemoryUnitList = new ArrayList<>();
+
+            Map<String, FragmentMemoryUnit> newMemUnits = getNewMemUnitsAndUpdateMemories(
+                    userId,
+                    scopeId,
+                    memories,
+                    deleteMemoryIdSet,
+                    processResultDict
+            );
+            Map<String, String> newMemContent = new LinkedHashMap<>();
+            for (Map.Entry<String, FragmentMemoryUnit> entry : newMemUnits.entrySet()) {
+                newMemContent.put(entry.getKey(), entry.getValue().getContent());
+            }
+
+            if (newMemUnits.isEmpty()) {
+                deleteAndCleanProcessResults(userId, scopeId, deleteMemoryIdSet, processResultDict);
+                return CompletableFuture.completedFuture(new ArrayList<>(processResultDict.values()));
+            }
+
+            Map<String, String> oldMemories = getRelatedOldMemories(newMemContent, userId, scopeId);
+            if (oldMemories.isEmpty() && newMemContent.size() == 1) {
+                deleteAndCleanProcessResults(userId, scopeId, deleteMemoryIdSet, processResultDict);
+                addMemoryUnitList.addAll(newMemUnits.values());
+                addMemoryDocs(userId, scopeId, addMemoryUnitList);
+                appendMemUnitListToDict(processResultDict, addMemoryUnitList);
+                return CompletableFuture.completedFuture(new ArrayList<>(processResultDict.values()));
+            }
+
+            MemUpdateChecker checker = new MemUpdateChecker();
+            List<MemoryActionItem> actionItems = join(checker.check(newMemContent, oldMemories, llm));
+            MEMORY_LOGGER.info(
+                    "Memory check completed, got {} action items",
+                    actionItems.size(),
+                    "event_type", LogEventType.MEMORY_PROCESS,
+                    "metadata", Map.of("action_count", actionItems.size())
+            );
+
+            for (MemoryActionItem actionItem : actionItems) {
+                if (actionItem.status() == MemoryStatus.ADD) {
+                    FragmentMemoryUnit memUnit = newMemUnits.get(actionItem.id());
+                    if (memUnit != null) {
+                        addMemoryUnitList.add(memUnit);
                     }
+                } else if (actionItem.status() == MemoryStatus.DELETE) {
+                    deleteMemoryIdSet.add(actionItem.id());
+                }
+            }
+
+            deleteAndCleanProcessResults(userId, scopeId, deleteMemoryIdSet, processResultDict);
+            addMemoryDocs(userId, scopeId, addMemoryUnitList);
+            appendMemUnitListToDict(processResultDict, addMemoryUnitList);
+            return CompletableFuture.completedFuture(new ArrayList<>(processResultDict.values()));
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    @Override
+    public CompletionStage<Boolean> update(String userId,
+                                           String scopeId,
+                                           String memId,
+                                           String newMemory,
+                                           Map<String, Object> kwargs) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            MemoryDoc oldDoc = join(memoryIndex.getById(userId, scopeId, memId));
+            if (oldDoc == null) {
+                return CompletableFuture.completedFuture(Boolean.FALSE);
+            }
+            MemoryDoc updatedDoc = new MemoryDoc(
+                    memId,
+                    newMemory,
+                    oldDoc.getType(),
+                    ZonedDateTime.now(),
+                    oldDoc.getFields()
+            );
+            join(memoryIndex.updateMemories(userId, scopeId, List.of(updatedDoc)));
+            return CompletableFuture.completedFuture(Boolean.TRUE);
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    @Override
+    public CompletionStage<List<Map<String, Object>>> search(String userId,
+                                                            String scopeId,
+                                                            String query,
+                                                            int topK,
+                                                            Map<String, Object> kwargs) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            if (topK <= 0) {
+                return CompletableFuture.completedFuture(List.of());
+            }
+            List<String> memTypes = normalizeMemTypes(kwargs == null ? null : kwargs.get("mem_types"));
+            List<BaseMemoryIndex.MemorySearchResult> searchResults = join(memoryIndex.search(
+                    userId,
+                    scopeId,
+                    query,
+                    memTypes == null || memTypes.isEmpty() ? FRAGMENT_MEMORY_TYPE : memTypes,
+                    topK
+            ));
+            List<Map<String, Object>> result = new ArrayList<>();
+            if (searchResults != null) {
+                for (BaseMemoryIndex.MemorySearchResult searchResult : searchResults) {
+                    result.add(docToDict(searchResult.document(), searchResult.score()));
+                }
+            }
+            result.sort(Comparator.comparingDouble((Map<String, Object> item) -> numberValue(item.get("score")))
+                    .reversed());
+            return CompletableFuture.completedFuture(result.size() <= topK ? result : new ArrayList<>(result.subList(0, topK)));
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    @Override
+    public CompletionStage<Map<String, Object>> get(String userId, String scopeId, String memId) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            MemoryDoc memoryDoc = join(memoryIndex.getById(userId, scopeId, memId));
+            return CompletableFuture.completedFuture(memoryDoc == null ? null : docToDict(memoryDoc));
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    @Override
+    public CompletionStage<Boolean> delete(String userId,
+                                           String scopeId,
+                                           String memId,
+                                           Map<String, Object> kwargs) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            MemoryDoc doc = join(memoryIndex.getById(userId, scopeId, memId));
+            if (doc == null) {
+                MEMORY_LOGGER.error(
+                        "Delete memory failed, memory not found",
+                        "event_type", LogEventType.MEMORY_STORE,
+                        "memory_id", List.of(memId),
+                        "user_id", userId,
+                        "scope_id", scopeId
+                );
+                return CompletableFuture.completedFuture(Boolean.FALSE);
+            }
+            join(memoryIndex.deleteMemories(userId, scopeId, List.of(memId)));
+            return CompletableFuture.completedFuture(Boolean.TRUE);
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    @Override
+    public CompletionStage<Boolean> deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
+                memType
+        );
+
+        try {
+            join(memoryIndex.deleteByUserAndScope(userId, scopeId));
+            return CompletableFuture.completedFuture(Boolean.TRUE);
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR, memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listFragmentMemories(String userId,
+                                                                           String scopeId,
+                                                                           int offset,
+                                                                           int batchSize,
+                                                                           MemoryType memType) {
+        validateRequiredParams(
+                userId,
+                scopeId,
+                memoryIndex,
+                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
+                this.memType
+        );
+
+        try {
+            List<String> memTypes;
+            if (memType != null) {
+                if (!FRAGMENT_MEMORY_TYPE.contains(memType.getValue())) {
+                    MEMORY_LOGGER.error(
+                            "{} is not a valid memory type",
+                            memType.getValue(),
+                            "event_type", LogEventType.MEMORY_STORE,
+                            "user_id", userId,
+                            "scope_id", scopeId
+                    );
+                    return CompletableFuture.completedFuture(List.of());
+                }
+                memTypes = List.of(memType.getValue());
+            } else {
+                memTypes = FRAGMENT_MEMORY_TYPE;
+            }
+
+            List<MemoryDoc> allMemories = join(memoryIndex.listMemories(userId, scopeId, offset, batchSize, memTypes));
+            if (allMemories == null || allMemories.isEmpty()) {
+                return CompletableFuture.completedFuture(List.of());
+            }
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (MemoryDoc doc : allMemories) {
+                result.add(docToDict(doc));
+            }
+            result.sort(Comparator
+                    .comparing((Map<String, Object> item) -> Objects.toString(item.get("mem"), ""))
+                    .thenComparing(item -> Objects.toString(item.get("timestamp"), ""))
+                    .reversed());
+            return CompletableFuture.completedFuture(result);
+        } catch (BaseError baseError) {
+            throw baseError;
+        } catch (RuntimeException exception) {
+            wrapException(exception, StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, this.memType);
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletionStage<List<Map<String, Object>>> listFragmentMemories(String userId, String scopeId) {
+        return listFragmentMemories(userId, scopeId, 0, 100, null);
+    }
+
+    Map<String, FragmentMemoryUnit> getNewMemUnitsAndUpdateMemories(
+            String userId,
+            String scopeId,
+            Map<String, List<BaseMemoryUnit>> memories,
+            Set<String> deleteMemoryIdSet,
+            Map<String, FragmentMemoryUnit> processResultDict
+    ) {
+        Map<String, FragmentMemoryUnit> newMemUnits = new LinkedHashMap<>();
+        Map<String, FragmentMemoryUnit> updateMemUnits = new LinkedHashMap<>();
+        if (memories == null) {
+            return newMemUnits;
+        }
+        for (Map.Entry<String, List<BaseMemoryUnit>> entry : memories.entrySet()) {
+            String memoryType = entry.getKey();
+            if (!FRAGMENT_MEMORY_TYPE.contains(memoryType)) {
+                continue;
+            }
+            List<BaseMemoryUnit> memoryList = entry.getValue();
+            if (memoryList == null) {
+                continue;
+            }
+            for (BaseMemoryUnit memUnit : memoryList) {
+                if (!(memUnit instanceof FragmentMemoryUnit fragmentMemoryUnit)) {
+                    MEMORY_LOGGER.warning(
+                            "mem_unit is not a FragmentMemoryUnit",
+                            "event_type", LogEventType.MEMORY_STORE,
+                            "memory_type", memoryType,
+                            "user_id", userId,
+                            "scope_id", scopeId
+                    );
+                    continue;
+                }
+
+                String memContent = fragmentMemoryUnit.getContent();
+                String memId = fragmentMemoryUnit.getMemId();
+                OperationType operationType = fragmentMemoryUnit.getOperationType();
+                if (operationType == OperationType.UPDATE && hasText(memContent)) {
+                    if (updateMemUnits.containsKey(memId)) {
+                        MEMORY_LOGGER.warning(
+                                "update memory duplicate, old will be overwrite",
+                                "event_type", LogEventType.MEMORY_STORE,
+                                "memory_id", memId
+                        );
+                    }
+                    updateMemUnits.put(memId, fragmentMemoryUnit);
+                } else if (operationType == OperationType.DELETE) {
+                    deleteMemoryIdSet.add(memId);
+                    processResultDict.put(memId, fragmentMemoryUnit);
+                } else if (hasText(memContent)) {
+                    newMemUnits.put(memId, fragmentMemoryUnit);
                 }
             }
         }
 
-        if (combinedRes.isEmpty()) {
+        if (!updateMemUnits.isEmpty()) {
+            try {
+                List<MemoryDoc> updateDocs = new ArrayList<>();
+                for (FragmentMemoryUnit memUnit : updateMemUnits.values()) {
+                    updateDocs.add(convertToMemoryDoc(memUnit));
+                }
+                join(memoryIndex.updateMemories(userId, scopeId, updateDocs));
+                processResultDict.putAll(updateMemUnits);
+            } catch (BaseError baseError) {
+                throw baseError;
+            } catch (RuntimeException exception) {
+                wrapException(exception, StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR, memType);
+            }
+        }
+
+        return newMemUnits;
+    }
+
+    Map<String, String> getRelatedOldMemories(Map<String, String> newMemContent, String userId, String scopeId) {
+        Map<String, String> oldMemories = new LinkedHashMap<>();
+        Set<String> oldMemIds = new HashSet<>();
+        if (newMemContent == null) {
+            return oldMemories;
+        }
+        for (String newMemory : newMemContent.values()) {
+            List<Map<String, Object>> searchResults = join(search(
+                    userId,
+                    scopeId,
+                    newMemory,
+                    UPDATE_CHECK_OLD_MEMORY_NUM,
+                    Map.of()
+            ));
+            if (searchResults == null) {
+                continue;
+            }
+            for (Map<String, Object> result : searchResults) {
+                String resultId = Objects.toString(result.get("id"), "");
+                double resultScore = numberValue(result.get("score"));
+                String resultContent = Objects.toString(result.get("mem"), "");
+                if (!resultId.isEmpty()
+                        && resultScore > UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD
+                        && !oldMemIds.contains(resultId)) {
+                    oldMemories.put(resultId, resultContent);
+                    oldMemIds.add(resultId);
+                }
+            }
+        }
+        return oldMemories;
+    }
+
+    CompletionStage<Void> addMemoryToStore(String userId, String scopeId, FragmentMemoryUnit memory) {
+        if (!hasText(userId)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                    "memory_type", memoryTypeValue(memory.getMemType()),
+                    "error_msg", "user_id is required"
+            );
+        }
+        if (!hasText(scopeId)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                    "memory_type", memoryTypeValue(memory.getMemType()),
+                    "error_msg", "scope_id is required"
+            );
+        }
+        if (!hasText(memory.getContent())) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                    "memory_type", memoryTypeValue(memory.getMemType()),
+                    "error_msg", "content is required"
+            );
+        }
+
+        MEMORY_LOGGER.debug(
+                "Add memory",
+                "memory_type", memoryTypeValue(memory.getMemType()),
+                "event_type", LogEventType.MEMORY_STORE,
+                "user_id", userId,
+                "scope_id", scopeId
+        );
+        MemoryDoc memoryDoc = convertToMemoryDoc(memory);
+        return memoryIndex.addMemories(userId, scopeId, List.of(memoryDoc));
+    }
+
+    private void deleteAndCleanProcessResults(String userId,
+                                              String scopeId,
+                                              Set<String> deleteMemoryIdSet,
+                                              Map<String, FragmentMemoryUnit> processResultDict) {
+        if (deleteMemoryIdSet != null && !deleteMemoryIdSet.isEmpty()) {
+            join(memoryIndex.deleteMemories(userId, scopeId, new ArrayList<>(deleteMemoryIdSet)));
+            removeUpdateEntriesFromProcessResult(deleteMemoryIdSet, processResultDict);
+        }
+    }
+
+    private void addMemoryDocs(String userId, String scopeId, List<FragmentMemoryUnit> addMemoryUnitList) {
+        if (addMemoryUnitList == null || addMemoryUnitList.isEmpty()) {
+            return;
+        }
+        List<MemoryDoc> addDocs = new ArrayList<>();
+        for (FragmentMemoryUnit memUnit : addMemoryUnitList) {
+            addDocs.add(convertToMemoryDoc(memUnit));
+        }
+        join(memoryIndex.addMemories(userId, scopeId, addDocs));
+    }
+
+    private static List<String> normalizeMemTypes(Object rawValue) {
+        if (rawValue == null) {
             return null;
         }
-
-        // Sort by score descending and limit to topK
-        combinedRes.sort((a, b) -> Double.compare(scoreOf(b), scoreOf(a)));
-        if (combinedRes.size() > topK) {
-            return new ArrayList<>(combinedRes.subList(0, topK));
-        }
-        return combinedRes;
-    }
-
-    /**
-     * scoreOf.
-     * 
-     * @param item item
-     * @return the result
-     * @since 0.1.7
-     */
-    private static double scoreOf(Map<String, Object> item) {
-        Object score = item.getOrDefault("score", 0.0);
-        return score instanceof Number number ? number.doubleValue() : 0.0;
-    }
-
-    /**
-     * get.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, Object> get(String userId, String scopeId, String memId) {
-        Map<String, Object> result = memStore.get(userId, scopeId, memId);
-        if (result != null && result.containsKey("mem")) {
-            result.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(result.get("mem"))));
+        List<String> result = new ArrayList<>();
+        if (rawValue instanceof MemoryType memoryType) {
+            result.add(memoryType.getValue());
+        } else if (rawValue instanceof String text) {
+            result.add(text);
+        } else if (rawValue instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (item instanceof MemoryType memoryType) {
+                    result.add(memoryType.getValue());
+                } else if (item != null) {
+                    result.add(String.valueOf(item));
+                }
+            }
+        } else {
+            result.add(String.valueOf(rawValue));
         }
         return result;
     }
 
-    /**
-     * delete.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memId memId
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
-        SemanticStore semanticStore = getSemanticStore("delete", kwargs);
-        Map<String, Object> data = memStore.get(userId, scopeId, memId);
-        if (data == null) {
-            MEMORY_LOGGER.error("[{}] Delete fragment failed, mem not found. memId={}", LogEventType.MEMORY_STORE,
-                    memId);
-            return false;
-        }
-        String memType = kwargs != null && kwargs.containsKey("mem_type")
-                ? String.valueOf(kwargs.get("mem_type"))
-                : String.valueOf(data.get("mem_type"));
-        memStore.delete(userId, scopeId, memId);
-        List<String> memTypes = memType == null || memType.isBlank() ? FRAGMENT_MEMORY_TYPES : List.of(memType);
-        for (String currentType : memTypes) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, currentType);
-            semanticStore.deleteDocs(List.of(memId), tableName);
-        }
-        return true;
+    private static String memoryTypeValue(MemoryType memoryType) {
+        return memoryType == null ? MemoryType.UNKNOWN.getValue() : memoryType.getValue();
     }
 
-    /**
-     * deleteByUserId.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
-        SemanticStore semanticStore = getSemanticStore("delete", kwargs);
-        List<Map<String, Object>> data = new ArrayList<>();
-        for (String memType : FRAGMENT_MEMORY_TYPES) {
-            List<Map<String, Object>> typeData = memStore.getAll(userId, scopeId, memType);
-            if (typeData != null) {
-                data.addAll(typeData);
+    private static boolean hasText(String value) {
+        return value != null && !value.isEmpty();
+    }
+
+    private static double numberValue(Object value) {
+        return value instanceof Number number ? number.doubleValue() : 0.0d;
+    }
+
+    private static <T> T join(CompletionStage<T> stage) {
+        try {
+            return stage.toCompletableFuture().join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
+            throw exception;
         }
-        if (data.isEmpty()) {
-            MEMORY_LOGGER.error("[{}] Delete fragment failed, no memories for user. userId={}",
-                    LogEventType.MEMORY_STORE, userId);
-            return false;
-        }
-        List<String> memIds = new ArrayList<>();
-        for (Map<String, Object> item : data) {
-            memIds.add(String.valueOf(item.get("id")));
-        }
-        memStore.batchDelete(userId, scopeId, memIds);
-        for (String memType : FRAGMENT_MEMORY_TYPES) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, memType);
-            semanticStore.deleteTable(tableName);
-        }
-        return true;
-    }
-
-    /**
-     * listFragmentMemories.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memType memType
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> listFragmentMemories(String userId, String scopeId, MemoryType memType) {
-        List<String> memTypes;
-        if (memType == null) {
-            memTypes = FRAGMENT_MEMORY_TYPES;
-        } else if (!FRAGMENT_MEMORY_TYPES.contains(memType.getValue())) {
-            return Collections.emptyList();
-        } else {
-            memTypes = List.of(memType.getValue());
-        }
-        List<Map<String, Object>> filtered = new ArrayList<>();
-        for (String currentType : memTypes) {
-            List<Map<String, Object>> datas = memStore.getAll(userId, scopeId, currentType);
-            if (datas != null) {
-                filtered.addAll(datas);
-            }
-        }
-        if (filtered.isEmpty()) {
-            return Collections.emptyList();
-        }
-        for (Map<String, Object> data : filtered) {
-            data.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(data.getOrDefault("mem", ""))));
-        }
-        filtered.sort((a, b) -> {
-            String memA = String.valueOf(a.getOrDefault("mem", ""));
-            String memB = String.valueOf(b.getOrDefault("mem", ""));
-            int cmp = memB.compareTo(memA);
-            if (cmp != 0) {
-                return cmp;
-            }
-            String tsA = String.valueOf(a.getOrDefault("timestamp", ""));
-            String tsB = String.valueOf(b.getOrDefault("timestamp", ""));
-            return tsB.compareTo(tsA);
-        });
-        return filtered;
-    }
-
-    // ---- Private Helpers ----
-
-    /**
-     * addMemoryToStore.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @param memory memory
-     * @param semanticStore semanticStore
-     * @since 0.1.7
-     */
-    private void addMemoryToStore(String userId, String scopeId, FragmentMemoryUnit memory,
-            SemanticStore semanticStore) {
-        if (userId == null || userId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "add operation must pass user_id");
-        }
-        // Validate userId: reject overly long or control-character IDs
-        if (userId.length() > 256) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "user_id too long, max 256 chars");
-        }
-        if (userId.chars().anyMatch(c -> c < 0x20 && c != '\t')) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "user_id contains invalid control characters");
-        }
-        if (scopeId == null || scopeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "add operation must pass scope_id");
-        }
-        if (memory.getContent() == null || memory.getContent().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "add operation must pass content");
-        }
-        if (memory.getMemType() == null || !FRAGMENT_MEMORY_TYPES.contains(memory.getMemType().getValue())) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    String.valueOf(memory.getMemType()), "error_msg", "add operation must pass fragment memory type");
-        }
-
-        String memId = dataIdGenerator.generateNextId(userId);
-        String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        String encContent = encryptMemoryIfNeeded(cryptoKey, memory.getContent());
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", memId);
-        data.put("user_id", userId);
-        data.put("scope_id", scopeId);
-        data.put("mem", encContent);
-        data.put("source_id", memory.getMessageMemId());
-        data.put("mem_type", memory.getMemType().getValue());
-        data.put("timestamp", time);
-
-        memStore.write(userId, scopeId, memId, data);
-
-        // Add to vector store (use unencrypted content for embedding)
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, memory.getMemType().getValue());
-        boolean vectorSuccess =
-            semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, memory.getContent())), tableName);
-        if (!vectorSuccess) {
-            memStore.delete(userId, scopeId, memId);
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
-                    memory.getMemType().getValue(), "error_msg", "add vector store failed");
-        }
-    }
-
-    /**
-     * getSemanticStore.
-     * 
-     * @param operationType operationType
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    private SemanticStore getSemanticStore(String operationType, Map<String, Object> kwargs) {
-        SemanticStore store = kwargs != null ? (SemanticStore) kwargs.get("semantic_store") : null;
-        if (store == null) {
-            StatusCode code = switch (operationType) {
-                case "update" -> StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR;
-                case "delete" -> StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR;
-                case "search" -> StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR;
-                default -> StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR;
-            };
-            throw ErrorHelper.buildError(code, "memory_type", "fragment_memory", "error_msg",
-                    "semantic_store is required");
-        }
-        return store;
     }
 }

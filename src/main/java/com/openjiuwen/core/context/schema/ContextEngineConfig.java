@@ -4,105 +4,148 @@
 
 package com.openjiuwen.core.context.schema;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Configuration for the ContextEngine.
+ * Backward-compatible alias for the pre-0.1.14 context engine config package.
  * <p>
- * Mirrors Python's {@code ContextEngineConfig} from {@code context_engine/schema/config.py}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ContextEngineConfig} in
+ * {@code openjiuwen/core/context_engine/schema/config.py}.
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ContextEngineConfig {
-    private Integer maxContextMessageNum;
-
-    /**
-     * Default window size (number of messages) when building a context window. {@code null} means no
-     * default limit. Must be > 0 if set.
-     */
-    private Integer defaultWindowMessageNum;
-
-    /**
-     * Default number of dialogue rounds to keep in the context window. {@code null} means no
-     * round-based truncation by default. Must be > 0 if set.
-     */
-    private Integer defaultWindowRoundNum;
-
-    /** Whether to enable KV cache release optimisation for inference-affinity models. */
-    @Builder.Default
-    private boolean enableKvCacheRelease = false;
-
-    /** Whether to enable the reload tool that can re-inject offloaded messages. */
-    @Builder.Default
-    private boolean enableReload = false;
-
-    /** Whether to enable the Python-compatible tiktoken counter flag. */
-    @Builder.Default
-    @JsonProperty("enable_tiktoken_counter")
-    private boolean isTiktokenCounterEnabled = false;
-
-    /** Optional total context window token limit used for compression telemetry. */
-    @JsonProperty("context_window_tokens")
-    private Integer contextWindowTokens;
-
-    /** Optional model name used to resolve context window mappings. */
-    @JsonProperty("model_name")
-    private String modelName;
-
-    /** Optional mapping from model name to total context window tokens. */
-    @JsonProperty("model_context_window_tokens")
-    private Map<String, Integer> modelContextWindowTokens;
-
-    /**
-     * ContextEngineConfigBuilder.
-     * 
-     * @since 0.1.7
-     */
-    public static class ContextEngineConfigBuilder {
-        /**
-         * enableTiktokenCounter.
-         * 
-         * @param value value
-         * @return the result
-         * @since 0.1.7
-         */
-        public ContextEngineConfigBuilder enableTiktokenCounter(boolean value) {
-            return this.isTiktokenCounterEnabled(value);
-        }
+public class ContextEngineConfig extends com.openjiuwen.core.context_engine.schema.ContextEngineConfig {
+    public ContextEngineConfig() {
     }
 
-    /**
-     * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
-     * 
-     * @since 0.1.7
-     */
+    public ContextEngineConfig(Integer maxContextMessageNum, Integer defaultWindowMessageNum,
+                               Integer defaultWindowRoundNum, boolean enableKvCacheRelease, boolean enableReload,
+                               boolean enableTiktokenCounter, Integer contextWindowTokens, String modelName,
+                               Map<String, Integer> modelContextWindowTokens) {
+        this(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum, enableKvCacheRelease, enableReload,
+                enableTiktokenCounter, contextWindowTokens, modelName, modelContextWindowTokens, false, 3.0);
+    }
+
+    public ContextEngineConfig(Integer maxContextMessageNum, Integer defaultWindowMessageNum,
+                               Integer defaultWindowRoundNum, boolean enableKvCacheRelease, boolean enableReload,
+                               boolean enableTiktokenCounter, Integer contextWindowTokens, String modelName,
+                               Map<String, Integer> modelContextWindowTokens,
+                               boolean enableOpenrouterModelContextWindowTokens,
+                               double openrouterRequestTimeout) {
+        setMaxContextMessageNum(maxContextMessageNum);
+        setDefaultWindowMessageNum(defaultWindowMessageNum);
+        setDefaultWindowRoundNum(defaultWindowRoundNum);
+        setEnableKvCacheRelease(enableKvCacheRelease);
+        setEnableReload(enableReload);
+        setEnableTiktokenCounter(enableTiktokenCounter);
+        setContextWindowTokens(contextWindowTokens);
+        setModelName(modelName);
+        setModelContextWindowTokens(modelContextWindowTokens);
+        setEnableOpenrouterModelContextWindowTokens(enableOpenrouterModelContextWindowTokens);
+        setOpenrouterRequestTimeout(openrouterRequestTimeout);
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public boolean isTiktokenCounterEnabled() {
+        return isEnableTiktokenCounter();
+    }
+
+    public void setTiktokenCounterEnabled(boolean tiktokenCounterEnabled) {
+        setEnableTiktokenCounter(tiktokenCounterEnabled);
+    }
+
     public void validate() {
-        if (maxContextMessageNum != null && maxContextMessageNum <= 0) {
-            throw new IllegalArgumentException("Input should be greater than 0 [type=greater_than, input_value="
-                    + maxContextMessageNum + ", input_type=int]");
+        setMaxContextMessageNum(getMaxContextMessageNum());
+        setDefaultWindowMessageNum(getDefaultWindowMessageNum());
+        setDefaultWindowRoundNum(getDefaultWindowRoundNum());
+        setContextWindowTokens(getContextWindowTokens());
+        setOpenrouterRequestTimeout(getOpenrouterRequestTimeout());
+    }
+
+    public static final class Builder {
+        private Integer maxContextMessageNum;
+        private Integer defaultWindowMessageNum;
+        private Integer defaultWindowRoundNum;
+        private boolean enableKvCacheRelease;
+        private boolean enableReload;
+        private boolean enableTiktokenCounter;
+        private Integer contextWindowTokens;
+        private String modelName;
+        private Map<String, Integer> modelContextWindowTokens;
+        private boolean enableOpenrouterModelContextWindowTokens;
+        private double openrouterRequestTimeout = 3.0;
+
+        private Builder() {
         }
-        if (defaultWindowMessageNum != null && defaultWindowMessageNum <= 0) {
-            throw new IllegalArgumentException("Input should be greater than 0 [type=greater_than, input_value="
-                    + defaultWindowMessageNum + ", input_type=int]");
+
+        public Builder maxContextMessageNum(Integer maxContextMessageNum) {
+            this.maxContextMessageNum = maxContextMessageNum;
+            return this;
         }
-        if (defaultWindowRoundNum != null && defaultWindowRoundNum <= 0) {
-            throw new IllegalArgumentException("Input should be greater than 0 [type=greater_than, input_value="
-                    + defaultWindowRoundNum + ", input_type=int]");
+
+        public Builder defaultWindowMessageNum(Integer defaultWindowMessageNum) {
+            this.defaultWindowMessageNum = defaultWindowMessageNum;
+            return this;
         }
-        if (contextWindowTokens != null && contextWindowTokens <= 0) {
-            throw new IllegalArgumentException("Input should be greater than 0 [type=greater_than, input_value="
-                    + contextWindowTokens + ", input_type=int]");
+
+        public Builder defaultWindowRoundNum(Integer defaultWindowRoundNum) {
+            this.defaultWindowRoundNum = defaultWindowRoundNum;
+            return this;
+        }
+
+        public Builder enableKvCacheRelease(boolean enableKvCacheRelease) {
+            this.enableKvCacheRelease = enableKvCacheRelease;
+            return this;
+        }
+
+        public Builder enableReload(boolean enableReload) {
+            this.enableReload = enableReload;
+            return this;
+        }
+
+        public Builder enableTiktokenCounter(boolean enableTiktokenCounter) {
+            this.enableTiktokenCounter = enableTiktokenCounter;
+            return this;
+        }
+
+        public Builder isTiktokenCounterEnabled(boolean tiktokenCounterEnabled) {
+            this.enableTiktokenCounter = tiktokenCounterEnabled;
+            return this;
+        }
+
+        public Builder contextWindowTokens(Integer contextWindowTokens) {
+            this.contextWindowTokens = contextWindowTokens;
+            return this;
+        }
+
+        public Builder modelName(String modelName) {
+            this.modelName = modelName;
+            return this;
+        }
+
+        public Builder modelContextWindowTokens(Map<String, Integer> modelContextWindowTokens) {
+            this.modelContextWindowTokens = modelContextWindowTokens == null
+                    ? null
+                    : new LinkedHashMap<>(modelContextWindowTokens);
+            return this;
+        }
+
+        public Builder enableOpenrouterModelContextWindowTokens(boolean enableOpenrouterModelContextWindowTokens) {
+            this.enableOpenrouterModelContextWindowTokens = enableOpenrouterModelContextWindowTokens;
+            return this;
+        }
+
+        public Builder openrouterRequestTimeout(double openrouterRequestTimeout) {
+            this.openrouterRequestTimeout = openrouterRequestTimeout;
+            return this;
+        }
+
+        public ContextEngineConfig build() {
+            return new ContextEngineConfig(maxContextMessageNum, defaultWindowMessageNum, defaultWindowRoundNum,
+                    enableKvCacheRelease, enableReload, enableTiktokenCounter, contextWindowTokens, modelName,
+                    modelContextWindowTokens, enableOpenrouterModelContextWindowTokens, openrouterRequestTimeout);
         }
     }
 }

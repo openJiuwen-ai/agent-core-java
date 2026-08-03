@@ -11,36 +11,23 @@ import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.utils}.
- * 
- * @since 0.1.7
+ * Legacy prompt template utility facade.
+ *
+ * <p>Mirrors Python's module-level helpers in
+ * {@code openjiuwen/dev_tools/prompt_builder/builder/utils.py}.</p>
  */
 public final class PromptTemplateUtils {
-    /**
-     * PromptTemplateUtils.
-     * 
-     * @since 0.1.7
-     */
+    private static final Map<String, Object> TEMPLATE_MAP = Map.of(
+            "zh-CN", PromptTemplatesZh.class,
+            "en-US", PromptTemplatesEn.class
+    );
+
     private PromptTemplateUtils() {
     }
 
-    /**
-     * Map.of.
-     * 
-     * @since 0.1.7
-     */
-    private static final Map<String, Object> TEMPLATE_MAP =
-        Map.of("zh-CN", PromptTemplatesZh.class, "en-US", PromptTemplatesEn.class);
-
-    /**
-     * selectTemplate.
-     * 
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
     public static Object selectTemplate(String language) {
         if (language == null) {
             return PromptTemplatesZh.class;
@@ -48,87 +35,58 @@ public final class PromptTemplateUtils {
         return TEMPLATE_MAP.getOrDefault(language, PromptTemplatesZh.class);
     }
 
-    /**
-     * getTemplate.
-     * 
-     * @param templateHolder templateHolder
-     * @param fieldName fieldName
-     * @return the result
-     * @since 0.1.7
-     */
     public static PromptTemplate getTemplate(Object templateHolder, String fieldName) {
         try {
-            Class<?> templateClass =
-                templateHolder instanceof Class<?> ? (Class<?>) templateHolder : templateHolder.getClass();
+            Class<?> templateClass = templateHolder instanceof Class<?>
+                    ? (Class<?>) templateHolder
+                    : templateHolder.getClass();
             return (PromptTemplate) templateClass.getField(fieldName).get(null);
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to read template field: " + fieldName, exception);
         }
     }
 
-    /**
-     * getStringPrompt.
-     * 
-     * @param prompt prompt
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
     public static String getStringPrompt(Object prompt) {
-        if (prompt instanceof String) {
-            return (String) prompt;
-        } else if (prompt instanceof PromptTemplate template) {
+        if (prompt instanceof String text) {
+            return text;
+        }
+        if (prompt instanceof PromptTemplate template) {
             Object content = template.getContent();
-            if (content instanceof String s) {
-                return s;
-            } else if (content instanceof List<?> list) {
-                if (!list.isEmpty() && list.get(0) instanceof BaseMessage) {
-                    StringBuilder sb = new StringBuilder();
-                    for (BaseMessage msg : (List<BaseMessage>) list) {
-                        if (sb.length() > 0) {
-                            sb.append("\n");
-                        }
-                        sb.append(msg.getContentAsString());
-                    }
-                    return sb.toString();
-                } else {
-                    StringBuilder sb = new StringBuilder();
-                    for (Object item : list) {
-                        if (item instanceof Map) {
-                            Map<String, Object> mapItem = (Map<String, Object>) item;
-                            for (Object value : mapItem.values()) {
-                                if (sb.length() > 0) {
-                                    sb.append("\n");
-                                }
-                                sb.append(value != null ? value.toString() : "");
-                            }
-                        }
-                    }
-                    return sb.toString();
-                }
+            if (content instanceof String text) {
+                return text;
+            }
+            if (content instanceof List<?> list && list.stream().allMatch(BaseMessage.class::isInstance)) {
+                return list.stream()
+                        .map(BaseMessage.class::cast)
+                        .map(BaseMessage::getContentAsString)
+                        .collect(Collectors.joining("\n"));
+            }
+            if (content instanceof List<?> list) {
+                return list.stream()
+                        .map(PromptTemplateUtils::joinValues)
+                        .collect(Collectors.joining("\n"));
             }
         }
-        throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg",
-                "Prompt type " + toPythonTypeString(prompt) + " is not supported");
+        throw ErrorHelper.buildError(
+                StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
+                "error_msg",
+                "Prompt type " + toPythonTypeString(prompt) + " is not supported"
+        );
     }
 
-    /**
-     * getTemplateMap.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static Map<String, Object> getTemplateMap() {
         return TEMPLATE_MAP;
     }
 
-    /**
-     * toPythonTypeString.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
+    private static String joinValues(Object item) {
+        if (item instanceof Map<?, ?> map) {
+            return map.values().stream()
+                    .map(value -> value == null ? "" : value.toString())
+                    .collect(Collectors.joining("\n"));
+        }
+        return String.valueOf(item);
+    }
+
     private static String toPythonTypeString(Object value) {
         if (value == null) {
             return "<class 'NoneType'>";

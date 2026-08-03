@@ -1,23 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
-
 package com.openjiuwen.core.sysop;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
-
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for SysOperation facade.
  */
 class SysOperationTest {
+
     private SysOperationCard createCard(String id, OperationMode mode) {
         SysOperationCard card = new SysOperationCard();
         card.setId(id);
@@ -39,8 +39,13 @@ class SysOperationTest {
     @DisplayName("SysOperation uses card mode when specified")
     void testExplicitMode() {
         SysOperationCard card = createCard("test", OperationMode.SANDBOX);
-        card.setGatewayConfig(SandboxGatewayConfig.builder().launcherConfig(SandboxLauncherConfig.builder()
-                .launcherType("pre_deploy").baseUrl("http://localhost:8080").sandboxType("local").build()).build());
+        card.setGatewayConfig(SandboxGatewayConfig.builder()
+                .launcherConfig(SandboxLauncherConfig.builder()
+                        .launcherType("pre_deploy")
+                        .gatewayUrl("http://localhost:8080")
+                        .sandboxType("local")
+                        .build())
+                .build());
         SysOperation sysOp = new SysOperation(card);
         assertEquals(OperationMode.SANDBOX, sysOp.getMode());
     }
@@ -59,8 +64,13 @@ class SysOperationTest {
     @DisplayName("SysOperation sandbox mode requires sandbox type")
     void testSandboxModeRequiresSandboxType() {
         SysOperationCard card = createCard("test", OperationMode.SANDBOX);
-        card.setGatewayConfig(SandboxGatewayConfig.builder().launcherConfig(SandboxLauncherConfig.builder()
-                .launcherType("pre_deploy").baseUrl("http://localhost:8080").sandboxType("").build()).build());
+        card.setGatewayConfig(SandboxGatewayConfig.builder()
+                .launcherConfig(SandboxLauncherConfig.builder()
+                        .launcherType("pre_deploy")
+                        .gatewayUrl("http://localhost:8080")
+                        .sandboxType("")
+                        .build())
+                .build());
 
         BaseError error = assertThrows(BaseError.class, () -> new SysOperation(card));
         assertEquals(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, error.getStatus());

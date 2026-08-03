@@ -1,416 +1,600 @@
-// Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.runner;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.multiagent.schema.GroupCard;
-import com.openjiuwen.core.runner.callback.CallbackFramework;
-import com.openjiuwen.core.runner.mq.LocalMessageQueue;
+import com.openjiuwen.agent_teams.agent.AgentConfigurator.DeepAgentSpec;
+import com.openjiuwen.agent_teams.agent.SessionManager;
+import com.openjiuwen.agent_teams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
+import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.ToolDecorator;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.multi_agent.BaseTeam;
+import com.openjiuwen.core.multi_agent.TeamConfig;
+import com.openjiuwen.core.multi_agent.schema.TeamCard;
+import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
-import com.openjiuwen.core.workflow.component.End;
-import com.openjiuwen.core.workflow.component.Start;
-
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
+import java.lang.reflect.Field;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for Runner singleton and RunnerImpl lifecycle/behavior.
- * Expanded from the original Python test_runner.py coverage to verify
- * workflow/agent/group execution paths in Java.
+ * Focused tests for the Runner singleton facade.
+ *
+ * <p>Mirrors Python's {@code TestRunner} in
+ * {@code tests/unit_tests/core/runner/test_runner.py}.</p>
+ *
+ * <p>Mirrors Python's {@code test_team_runner_session} in
+ * {@code tests/unit_tests/multi_agent/team/test_team_runner_session.py}.</p>
  */
-@DisplayName("Runner Tests")
 class RunnerTest {
-    private final List<String> sessionsToRelease = new ArrayList<>();
 
     @AfterEach
-    void tearDown() {
-        for (String sessionId : sessionsToRelease) {
-            CheckpointerFactory.getCheckpointer().release(sessionId);
-        }
-        sessionsToRelease.clear();
+    void resetConfig() {
+        Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+        CheckpointerFactory.releaseDefaultCheckpointer();
+    }
+
+    @Test
+    void singletonResourcesAreStableAndPackageCanResolveRunner() {
+        ResourceMgr resourceMgr = Runner.getResourceMgr();
+        AsyncCallbackFramework callbackFramework = Runner.getCallbackFramework();
+
+        assertNotNull(resourceMgr);
+        assertSame(resourceMgr, Runner.resourceMgr);
+        assertNotNull(Runner.getPubsub());
+        assertSame(callbackFramework, Runner.callbackFramework);
+        assertTrue(RunnerPackage.resolveType("Runner").isPresent());
+    }
+
+    @Test
+    void configSetAndGetUseGlobalRunnerConfig() {
+        RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
+        config.setEnvPrefix("runner-test");
+
+        Runner.setConfig(config);
+
+        assertSame(config, Runner.getConfig());
+        assertEquals("runner-test", Runner.getConfig().getEnvPrefix());
+    }
+
+    @Test
+    void startAndStopDefaultLocalModeReturnSuccess() {
+        Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+
+        assertTrue(Runner.start().toCompletableFuture().join());
+        assertFalse(Runner.getConfig().isDistributedMode());
+        assertNull(Runner.getDistPubsub());
+        assertTrue(Runner.stop().toCompletableFuture().join());
+    }
+
+    @Test
+    void stopCompletesResourceResetBeforeReturningFuture() {
+        WorkflowCard card = new WorkflowCard("runner-reset-workflow", "runner-reset-workflow", "", "1.0", null);
+        DirectWorkflow workflow = new DirectWorkflow(card);
+        Runner.getResourceMgr().addWorkflow(card, () -> workflow, List.of("runner-reset-tag"));
+
         Runner.stop();
-        Runner.setConfig(RunnerConfig.DEFAULT);
+
+        assertNull(Runner.getResourceMgr().getWorkflow("runner-reset-workflow", null).toCompletableFuture().join());
+
+        WorkflowCard nextCard = new WorkflowCard("runner-reset-workflow", "runner-reset-workflow", "", "1.0", null);
+        DirectWorkflow nextWorkflow = new DirectWorkflow(nextCard);
+        Runner.getResourceMgr().addWorkflow(nextCard, () -> nextWorkflow, List.of("runner-reset-tag"));
+
+        List<Object> workflows = Runner.getResourceMgr()
+                .getWorkflowsByTag(List.of("runner-reset-tag"), TagMatchStrategy.ALL, null)
+                .toCompletableFuture()
+                .join();
+        assertEquals(1, workflows.size());
+        assertSame(nextWorkflow, workflows.get(0));
     }
 
     @Test
-    @DisplayName("Runner resourceMgr is not null")
-    void testRunnerResourceMgr() {
-        ResourceMgr mgr = Runner.resourceMgr();
-        assertNotNull(mgr);
+    void stopClosesCheckpointerCreatedFromConfigAndFallsBackToInMemory() {
+        CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-runner-closeable", conf -> created);
+        RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
+        config.setCheckpointerConfig(new CheckpointerConfig("unit-runner-closeable", Map.of()));
+        Runner.setConfig(config);
+
+        assertTrue(Runner.start().toCompletableFuture().join());
+        assertSame(created, CheckpointerFactory.getCheckpointer());
+        assertTrue(Runner.stop().toCompletableFuture().join());
+
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
+        assertTrue(created.closed);
     }
 
     @Test
-    @DisplayName("Runner pubsub is not null")
-    void testRunnerPubsub() {
-        LocalMessageQueue mq = Runner.pubsub();
-        assertNotNull(mq);
+    void startFailureClosesCheckpointerCreatedFromConfigAndFallsBackToInMemory() {
+        CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-runner-start-failure", conf -> created);
+        RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
+        config.setDistributedMode(true);
+        config.setDistributedConfig(DistributedConfig.builder()
+                .messageQueueConfig(MessageQueueConfig.builder().type("missing-mq").build())
+                .build());
+        config.setCheckpointerConfig(new CheckpointerConfig("unit-runner-start-failure", Map.of()));
+        Runner.setConfig(config);
+
+        assertThrows(CompletionException.class, () -> Runner.start().toCompletableFuture().join());
+
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
+        assertTrue(created.closed);
     }
 
     @Test
-    @DisplayName("Runner callbackFramework is not null")
-    void testRunnerCallbackFramework() {
-        CallbackFramework framework = Runner.callbackFramework();
-        assertNotNull(framework);
+    void stopDoesNotCloseDefaultInstalledOutsideRunnerConfig() {
+        CloseTrackingCheckpointer explicit = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-runner-external-default", conf -> explicit);
+        CheckpointerFactory.installDefaultCheckpointer(
+                new CheckpointerConfig("unit-runner-external-default", Map.of()));
+        Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+
+        assertTrue(Runner.start().toCompletableFuture().join());
+        assertTrue(Runner.stop().toCompletableFuture().join());
+
+        assertSame(explicit, CheckpointerFactory.getCheckpointer());
+        assertFalse(explicit.closed);
     }
 
     @Test
-    @DisplayName("Runner start and stop lifecycle")
-    void testStartStop() {
-        boolean started = Runner.start();
-        assertTrue(started);
-        boolean stopped = Runner.stop();
-        assertTrue(stopped);
+    void runWorkflowResolvesRegisteredWorkflowById() {
+        WorkflowCard card = new WorkflowCard("runner-test-workflow", "runner-test-workflow", "", "", null);
+        DirectWorkflow workflow = new DirectWorkflow(card);
+        Runner.getResourceMgr().addWorkflow(card, () -> workflow);
+
+        Object result = Runner.runWorkflow(
+                "runner-test-workflow",
+                Map.of("query", "query workflow"),
+                "workflow-session"
+        ).toCompletableFuture().join();
+
+        assertTrue(result instanceof WorkflowOutput);
+        WorkflowOutput output = (WorkflowOutput) result;
+        assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
+        assertEquals(Map.of("query", "query workflow"), output.getResult());
+        assertNotNull(workflow.lastSession);
+        Runner.getResourceMgr().removeWorkflow("runner-test-workflow");
     }
 
     @Test
-    @DisplayName("Runner get and set config")
-    void testGetSetConfig() {
-        RunnerConfig config = Runner.getConfig();
-        assertNotNull(config);
-        Runner.setConfig(RunnerConfig.DEFAULT);
-        assertEquals(RunnerConfig.DEFAULT, Runner.getConfig());
+    void runToolInvokesDecoratedLocalFunction() throws Exception {
+        ToolCard addCard = ToolCard.builder()
+                .id("add")
+                .name("add")
+                .description("加法")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "a", Map.of("description", "加数", "type", "number"),
+                                "b", Map.of("description", "被加数", "type", "number")),
+                        "required", List.of("a", "b")))
+                .build();
+        LocalFunction addFunction = ToolDecorator.tool(inputs ->
+                        ((Number) inputs.get("a")).intValue() + ((Number) inputs.get("b")).intValue(),
+                ToolDecorator.Options.builder().card(addCard).build());
+
+        Object result = addFunction.invoke(Map.of("a", 1, "b", 2));
+
+        assertEquals(3, result);
     }
 
     @Test
-    @DisplayName("RunnerConfig topic templates apply env prefix")
-    void testRunnerConfigTopicTemplates() {
-        RunnerConfig config =
-            RunnerConfig.builder().envPrefix("prod").distributedConfig(DistributedConfig.builder().build()).build();
+    void runAgentCreatesDefaultSessionAndPostsRun() {
+        RecordingAgent agent = new RecordingAgent();
 
-        assertEquals("prod.openjiuwen.single_agent.{agent_id}.{version}", config.agentTopicTemplate());
-        assertEquals("prod.openjiuwen.reply.runner.{instance_id}", config.replyTopicTemplate());
+        Object result = Runner.runAgent(agent, Map.of("query", "hello")).toCompletableFuture().join();
+
+        assertEquals(Map.of("query", "hello"), result);
+        assertEquals("default_session", agent.lastSession.getSessionId());
+        assertNotNull(agent.lastSession.streamIterator());
     }
 
     @Test
-    @DisplayName("Runner resourceMgr returns same instance")
-    void testResourceMgrSameInstance() {
-        ResourceMgr mgr1 = Runner.resourceMgr();
-        ResourceMgr mgr2 = Runner.resourceMgr();
-        assertSame(mgr1, mgr2);
+    void runAgentTeamStreamingAcceptsSpecAndEmitsRuntimeReadyChunk() {
+        RecordingTeamAgent agent = new RecordingTeamAgent("spec-team", List.of(teamChunk("team.chunk")));
+        RecordingTeamSpec spec = new RecordingTeamSpec("spec-team", agent);
+
+        List<Object> chunks = drain(Runner.runAgentTeamStreaming(
+                spec,
+                Map.of("query", "hello"),
+                false,
+                false,
+                "team-session",
+                null,
+                null,
+                null,
+                null
+        ).toCompletableFuture().join());
+
+        TeamOutputSchema ready = assertInstanceOf(TeamOutputSchema.class, chunks.get(0));
+        Map<?, ?> payload = assertInstanceOf(Map.class, ready.getPayload());
+        assertEquals("team.runtime_ready", payload.get("event_type"));
+        assertEquals("spec-team", payload.get("team_name"));
+        assertEquals("team-session", payload.get("session_id"));
+        assertEquals("create", payload.get("activation_kind"));
+        assertEquals("team.chunk", ((OutputSchema) chunks.get(1)).getPayload());
+        assertEquals(Map.of("query", "hello"), agent.lastInputs);
+        SessionManager.AgentTeamSessionView session =
+                assertInstanceOf(SessionManager.AgentTeamSessionView.class, agent.lastSession);
+        assertEquals("team-session", session.getSessionId());
+        assertEquals(1, agent.streamCalls);
     }
 
     @Test
-    @DisplayName("RunnerImpl constructor with config")
-    void testRunnerImplConstructor() {
-        RunnerImpl runner = new RunnerImpl("test-runner", RunnerConfig.DEFAULT);
-        assertNotNull(runner.getResourceMgr());
-        assertNotNull(runner.getPubsub());
-        assertNotNull(runner.getCallbackFramework());
+    void runAgentTeamReturnsLastTeamChunk() {
+        RecordingTeamAgent agent = new RecordingTeamAgent(
+                "invoke-team",
+                List.of(teamChunk("first"), teamChunk("last"))
+        );
+
+        Object result = Runner.runAgentTeam(
+                new RecordingTeamSpec("invoke-team", agent),
+                Map.of("query", "invoke"),
+                false,
+                false,
+                "invoke-session",
+                null,
+                null
+        ).toCompletableFuture().join();
+
+        OutputSchema output = assertInstanceOf(OutputSchema.class, result);
+        assertEquals("last", output.getPayload());
     }
 
     @Test
-    @DisplayName("RunnerImpl default constructor")
-    void testRunnerImplDefaultConstructor() {
-        RunnerImpl runner = new RunnerImpl();
-        assertNotNull(runner.getResourceMgr());
+    void runAgentTeamMemberPathExecutesSpawnedTeamAgent() {
+        RecordingTeamAgent agent = new RecordingTeamAgent(
+                "member-team",
+                List.of(teamChunk("member-result"))
+        );
+
+        Object result = Runner.runAgentTeam(
+                agent,
+                Map.of("query", "member"),
+                false,
+                true,
+                "member-session",
+                null,
+                null
+        ).toCompletableFuture().join();
+
+        OutputSchema output = assertInstanceOf(OutputSchema.class, result);
+        assertEquals("member-result", output.getPayload());
+        assertEquals(1, agent.streamCalls);
     }
 
     @Test
-    @DisplayName("RunnerImpl runWorkflow creates workflow session when session is null")
-    void testRunWorkflowAutoCreatesSession() {
-        RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
-        Workflow workflow = createEchoWorkflow("workflow-auto");
+    void runAgentTeamBaseTrueAcceptsBaseTeamInstance() {
+        RecordingBaseTeam team = new RecordingBaseTeam();
 
-        WorkflowOutput result =
-            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), null, null, null);
+        Object result = Runner.runAgentTeam(
+                team,
+                Map.of("payload", "base"),
+                true,
+                false,
+                "base-session",
+                null,
+                null
+        ).toCompletableFuture().join();
 
-        assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
-        assertEquals("hello", getWorkflowResultField(result, "query"));
-        assertNotNull(getWorkflowResultField(result, "session_id"));
+        assertEquals("base:base-session:{payload=base}", result);
+        assertEquals(1, team.invokeCalls);
     }
 
     @Test
-    @DisplayName("RunnerImpl runWorkflow accepts string session id")
-    void testRunWorkflowWithStringSessionId() {
-        RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
-        Workflow workflow = createEchoWorkflow("workflow-string-session");
+    void runAgentTeamRecoversTeamAndChildState() {
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
+        CheckpointerFactory.register("unit-runner-team-state", conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig("unit-runner-team-state", Map.of()));
+        String teamId = "team_runner_session_team";
+        String sessionId = "team_runner_session_state";
+        try {
+            StatefulTeam team = new StatefulTeam(teamId);
 
-        WorkflowOutput result =
-            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), "workflow-session", null, null);
+            Map<?, ?> result1 = assertInstanceOf(Map.class, Runner.runAgentTeam(
+                    team,
+                    Map.of("payload", "first"),
+                    true,
+                    false,
+                    sessionId,
+                    null,
+                    null
+            ).toCompletableFuture().join());
+            Map<?, ?> result2 = assertInstanceOf(Map.class, Runner.runAgentTeam(
+                    team,
+                    Map.of("payload", "second"),
+                    true,
+                    false,
+                    sessionId,
+                    null,
+                    null
+            ).toCompletableFuture().join());
 
-        assertEquals("workflow-session", getWorkflowResultField(result, "session_id"));
+            assertEquals(1, result1.get("team_count"));
+            assertEquals(1, result1.get("worker_count"));
+            assertEquals(2, result2.get("team_count"));
+            assertEquals(2, result2.get("worker_count"));
+        } finally {
+            checkpointer.release(sessionId);
+            CheckpointerFactory.releaseDefaultCheckpointer();
+        }
     }
 
     @Test
-    @DisplayName("RunnerImpl runWorkflow reuses agent session as workflow parent")
-    void testRunWorkflowWithAgentSession() {
-        RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
-        Workflow workflow = createEchoWorkflow("workflow-agent-session");
-        AgentSessionApi agentSession = AgentSessionApi.create("agent-session", null, null);
-        agentSession.updateState(Map.of("seed", 41));
+    void teamSessionForwardsChildStreamOutputWithSourceTags() {
+        AgentTeamSession teamSession = AgentTeamSession.createAgentTeamSession(
+                "stream_team_session",
+                null,
+                "stream_team"
+        );
+        teamSession.preRun(Map.of("inputs", Map.of("query", "hello")));
 
-        WorkflowOutput result =
-            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), agentSession, null, null);
+        AgentSession childSession = teamSession.createAgentSession(
+                new AgentCard("worker_a", "worker", "worker"),
+                "worker_a"
+        );
+        childSession.preRun(Map.of("inputs", Map.of("payload", "child")));
+        childSession.writeStream(Map.of("kind", "agent"));
+        childSession.postRun();
 
-        assertEquals("agent-session", getWorkflowResultField(result, "session_id"));
-        assertEquals(41, getWorkflowResultField(result, "seed"));
+        teamSession.writeStream(Map.of("kind", "team"));
+        teamSession.postRun();
+
+        List<Object> chunks = drain(teamSession.streamIterator());
+
+        assertTrue(chunks.stream().map(RunnerTest::payloadMap).anyMatch(payload ->
+                "worker_a".equals(payload.get("source_agent_id"))
+                        && "stream_team".equals(payload.get("source_team_id"))));
+        assertTrue(chunks.stream().map(RunnerTest::payloadMap).anyMatch(payload ->
+                "team".equals(payload.get("kind"))
+                        && "stream_team".equals(payload.get("source_team_id"))));
     }
 
-    @Test
-    @DisplayName("RunnerImpl runWorkflow loads resource managed workflow by id")
-    void testRunWorkflowById() {
-        RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
-        Workflow workflow = createEchoWorkflow("workflow-by-id");
-        runner.getResourceMgr().addWorkflow(workflow.getCard(), () -> workflow, null);
+    /**
+     * Mirrors Python's direct workflow object accepted by {@code Runner.run_workflow} in
+     * {@code openjiuwen/core/runner/runner.py}.
+     */
+    private static final class DirectWorkflow extends Workflow {
+        private Object lastSession;
 
-        WorkflowOutput result =
-            (WorkflowOutput) runner.runWorkflow(workflow.getCard().getId(), Map.of("query", "by-id"), null, null, null);
+        private DirectWorkflow(WorkflowCard card) {
+            super(card);
+        }
 
-        assertEquals("by-id", getWorkflowResultField(result, "query"));
+        @Override
+        public WorkflowOutput invoke(Object inputs, Object session, ModelContext context) {
+            lastSession = session;
+            return new WorkflowOutput(inputs, WorkflowExecutionState.COMPLETED);
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runWorkflowStreaming propagates session id")
-    void testRunWorkflowStreamingWithStringSession() {
-        RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
-        Workflow workflow = createStreamingWorkflow("workflow-stream");
+    /**
+     * Mirrors Python's {@code BaseAgent} object branch in
+     * {@code openjiuwen/core/runner/runner.py}.
+     */
+    private static final class RecordingAgent extends BaseAgent {
+        private AgentSessionApi lastSession;
 
-        Iterator<?> iterator =
-            runner.runWorkflowStreaming(workflow, Map.of("query", "stream"), "stream-session", null, null, null);
-        List<?> chunks = collect(iterator);
+        private RecordingAgent() {
+            super(new AgentCard("runner-test-agent", "runner-test-agent", ""));
+        }
 
-        assertEquals(1, chunks.size());
-        OutputSchema chunk = assertInstanceOf(OutputSchema.class, chunks.get(0));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) chunk.getPayload();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> output = (Map<String, Object>) payload.get("output");
-        assertEquals("stream-session", output.get("session_id"));
+        @Override
+        public BaseAgent configure(Object config) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+            lastSession = session;
+            return java.util.concurrent.CompletableFuture.completedFuture(inputs);
+        }
+
+        @Override
+        public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+            lastSession = session;
+            return List.of(inputs).iterator();
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgent uses conversation id and persists agent state")
-    void testRunAgentUsesConversationIdAndPersistsState() {
-        RunnerImpl runner = new RunnerImpl("agent-runner", RunnerConfig.DEFAULT);
-        TypedSessionAgent agent = new TypedSessionAgent();
-        String sessionId = "agent-conversation";
-        trackSession(sessionId);
+    private static final class CloseTrackingCheckpointer extends Checkpointer implements AutoCloseable {
+        private boolean closed;
 
-        Map<String, Object> first =
-            castMap(runner.runAgent(agent, Map.of("conversation_id", sessionId, "query", "hello"), null, null, null));
-        Map<String, Object> second = castMap(
-                runner.runAgent(agent, Map.of("conversation_id", sessionId, "query", "hello again"), null, null, null));
-
-        assertEquals(sessionId, first.get("session_id"));
-        assertEquals(1, first.get("count"));
-        assertEquals(2, second.get("count"));
+        @Override
+        public void close() {
+            closed = true;
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgent falls back to explicit session id")
-    void testRunAgentUsesExplicitSessionId() {
-        RunnerImpl runner = new RunnerImpl("agent-runner", RunnerConfig.DEFAULT);
-        TypedSessionAgent agent = new TypedSessionAgent();
-        String sessionId = "explicit-agent-session";
-        trackSession(sessionId);
+    /**
+     * Mirrors Python's TeamAgentSpec build hook used by
+     * {@code openjiuwen/core/runner/team_runner.py}.
+     */
+    private static final class RecordingTeamSpec extends TeamAgentSpec {
+        private final RecordingTeamAgent agent;
 
-        Map<String, Object> result = castMap(runner.runAgent(agent, Map.of("query", "hello"), sessionId, null, null));
+        private RecordingTeamSpec(String teamName, RecordingTeamAgent agent) {
+            this.agent = agent;
+            setTeamName(teamName);
+            setAgents(Map.of("leader", new DeepAgentSpec()));
+        }
 
-        assertEquals(sessionId, result.get("session_id"));
-        assertEquals(1, result.get("count"));
+        @Override
+        public TeamAgent build() {
+            return agent;
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgent falls back to default session id")
-    void testRunAgentUsesDefaultSessionId() {
-        RunnerImpl runner = new RunnerImpl("agent-runner", RunnerConfig.DEFAULT);
-        TypedSessionAgent agent = new TypedSessionAgent();
-        trackSession("default_session");
+    /**
+     * Mirrors Python's {@code TeamAgent} methods consumed by Runner team execution in
+     * {@code openjiuwen/core/runner/team_runner.py}.
+     */
+    private static final class RecordingTeamAgent extends TeamAgent {
+        private final List<Object> chunks;
+        private Object lastInputs;
+        private Object lastSession;
+        private int streamCalls;
 
-        Map<String, Object> first = castMap(runner.runAgent(agent, Map.of("query", "hello"), null, null, null));
-        Map<String, Object> second = castMap(runner.runAgent(agent, Map.of("query", "hello again"), null, null, null));
+        private RecordingTeamAgent(String teamName, List<Object> chunks) {
+            super(new com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard(
+                    teamName + "-leader",
+                    "leader",
+                    "leader"
+            ));
+            this.chunks = new ArrayList<>(chunks);
+        }
 
-        assertEquals("default_session", first.get("session_id"));
-        assertEquals(1, first.get("count"));
-        assertEquals(2, second.get("count"));
+        @Override
+        public CompletionStage<List<Object>> stream(Object inputs, Object session, Object streamModes) {
+            this.lastInputs = inputs;
+            this.lastSession = session;
+            this.streamCalls += 1;
+            return CompletableFuture.completedFuture(new ArrayList<>(chunks));
+        }
+
+        @Override
+        public CompletionStage<Void> stopCoordination() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> pauseCoordination() {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgentStreaming persists state after iterator is exhausted")
-    void testRunAgentStreamingPersistsStateAfterConsumption() {
-        RunnerImpl runner = new RunnerImpl("agent-runner", RunnerConfig.DEFAULT);
-        TypedSessionAgent agent = new TypedSessionAgent();
-        String sessionId = "stream-agent-session";
-        trackSession(sessionId);
+    /**
+     * Mirrors Python's {@code BaseTeam} branch behind Runner.run_agent_team(base=True) in
+     * {@code openjiuwen/core/runner/team_runner.py}.
+     */
+    private static final class RecordingBaseTeam extends BaseTeam {
+        private int invokeCalls;
 
-        List<Object> firstChunks =
-            collect(runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null, null, null));
-        List<Object> secondChunks =
-            collect(runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null, null, null));
+        private RecordingBaseTeam() {
+            super(new TeamCard("base-team", "base-team", ""), new TeamConfig());
+        }
 
-        assertEquals(List.of(Map.of("session_id", sessionId, "count", 1)), firstChunks);
-        assertEquals(List.of(Map.of("session_id", sessionId, "count", 2)), secondChunks);
+        @Override
+        public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
+            invokeCalls += 1;
+            return CompletableFuture.completedFuture("base:" + session.getSessionId() + ":" + message);
+        }
+
+        @Override
+        public Stream<Object> stream(Object message, AgentSessionApi session) {
+            return Stream.of("stream:" + session.getSessionId() + ":" + message);
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgent loads resource managed agent by id")
-    void testRunAgentById() {
-        RunnerImpl runner = new RunnerImpl("agent-runner", RunnerConfig.DEFAULT);
-        TypedSessionAgent agent = new TypedSessionAgent();
-        String agentId = "managed-agent";
-        String sessionId = "managed-agent-session";
-        trackSession(sessionId);
-        runner.getResourceMgr().addAgent(AgentCard.builder().id(agentId).name(agentId).build(), () -> agent, null);
+    /**
+     * Mirrors Python's counting BaseTeam/worker pair in
+     * {@code tests/unit_tests/multi_agent/team/test_team_runner_session.py}.
+     */
+    private static final class StatefulTeam extends BaseTeam {
+        private final AgentCard workerCard;
 
-        Map<String, Object> result =
-            castMap(runner.runAgent(agentId, Map.of("conversation_id", sessionId), null, null, null));
+        private StatefulTeam(String teamId) {
+            super(new TeamCard(teamId, teamId, "test team"), new TeamConfig());
+            this.workerCard = new AgentCard(teamId + "_worker", "worker", "worker");
+        }
 
-        assertEquals(sessionId, result.get("session_id"));
+        @Override
+        public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
+            int teamCount = intState(session.getState("team_count")) + 1;
+            session.updateState(Map.of("team_count", teamCount));
+
+            AgentTeamSession teamSession = unwrapTeamSession(session);
+            AgentSession workerSession = teamSession.createAgentSession(workerCard, workerCard.getId());
+            workerSession.preRun(Map.of("inputs", message));
+            int workerCount = intState(workerSession.getState("worker_count")) + 1;
+            workerSession.updateState(Map.of("worker_count", workerCount));
+            workerSession.writeStream(Map.of("kind", "agent", "count", workerCount));
+            workerSession.postRun();
+
+            return CompletableFuture.completedFuture(Map.of(
+                    "team_count", teamCount,
+                    "worker_count", workerCount
+            ));
+        }
+
+        @Override
+        public Stream<Object> stream(Object message, AgentSessionApi session) {
+            return Stream.of(invoke(message, session).toCompletableFuture().join());
+        }
     }
 
-    @Test
-    @DisplayName("RunnerImpl runAgentGroup supports typed invoke and stream methods")
-    void testRunAgentGroupUsesCompatibleReflection() {
-        RunnerImpl runner = new RunnerImpl("group-runner", RunnerConfig.DEFAULT);
-        TypedGroup group = new TypedGroup();
-        String groupId = "managed-group";
-        runner.getResourceMgr().addAgentGroup(GroupCard.builder().id(groupId).name(groupId).build(), () -> group, null);
-
-        Map<String, Object> invokeResult =
-            castMap(runner.runAgentGroup(groupId, Map.of("value", "hello"), "group-session", null, null));
-        List<Object> streamResult = collect(
-                runner.runAgentGroupStreaming(groupId, Map.of("value", "hello"), "group-session", null, null, null));
-
-        assertEquals(Map.of("group_value", "hello", "session_id", "group-session"), invokeResult);
-        assertEquals(List.of(Map.of("group_value", "hello", "session_id", "group-session"),
-                Map.of("group_value", "hello-next", "session_id", "group-session")), streamResult);
+    private static OutputSchema teamChunk(String payload) {
+        return new OutputSchema("message", 0, payload);
     }
 
-    @Test
-    @DisplayName("generateWorkflowKey matches Python helper semantics")
-    void testGenerateWorkflowKey() {
-        assertEquals("workflow_1", RunnerImpl.generateWorkflowKey("workflow", "1"));
-        assertEquals("workflow_", RunnerImpl.generateWorkflowKey("workflow", null));
-    }
-
-    private void trackSession(String sessionId) {
-        sessionsToRelease.add(sessionId);
-    }
-
-    private Object getWorkflowResultField(WorkflowOutput output, String key) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) output.getResult();
-        return result.get(key);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> castMap(Object value) {
-        return (Map<String, Object>) value;
-    }
-
-    private <T> List<T> collect(Iterator<T> iterator) {
-        List<T> values = new ArrayList<>();
-        iterator.forEachRemaining(values::add);
+    private static List<Object> drain(Iterator<Object> iterator) {
+        List<Object> values = new ArrayList<>();
+        while (iterator.hasNext()) {
+            values.add(iterator.next());
+        }
         return values;
     }
 
-    private Workflow createEchoWorkflow(String workflowId) {
-        Workflow workflow = new Workflow(WorkflowCard.builder().id(workflowId).name(workflowId).version("1").build());
-        workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
-        workflow.addWorkflowComp("echo", new SessionEchoNode(), Map.of("query", "${start.query}"), null);
-        workflow.setEndComp("end", new IdentityNode(),
-                Map.of("query", "${echo.query}", "session_id", "${echo.session_id}", "seed", "${echo.seed}"), null);
-        workflow.addConnection("start", "echo");
-        workflow.addConnection("echo", "end");
-        return workflow;
+    private static int intState(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
     }
 
-    private Workflow createStreamingWorkflow(String workflowId) {
-        Workflow workflow = new Workflow(WorkflowCard.builder().id(workflowId).name(workflowId).version("1").build());
-        workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
-        workflow.addWorkflowComp("producer", new SessionStreamNode(), null, Map.of("query", "${start.query}"), null,
-                null, null, List.of(com.openjiuwen.core.workflow.component.ComponentAbility.STREAM));
-        workflow.setEndComp("end", new End(), null, null, Map.of("session_id", "${producer.session_id}"), null,
-                "streaming");
-        workflow.addConnection("start", "producer");
-        workflow.addStreamConnection("producer", "end");
-        return workflow;
-    }
-
-    private static class SessionEchoNode extends WorkflowComponent {
-        @Override
-        @SuppressWarnings("unchecked")
-        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-            Map<String, Object> inputMap = (Map<String, Object>) inputs;
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("query", inputMap.get("query"));
-            result.put("session_id", session.getSessionId());
-            Object seed = session.getGlobalState("seed");
-            if (seed != null) {
-                result.put("seed", seed);
-            }
-            return result;
+    private static AgentTeamSession unwrapTeamSession(AgentSessionApi session) {
+        if (session instanceof AgentTeamSession teamSession) {
+            return teamSession;
+        }
+        try {
+            Field field = session.getClass().getDeclaredField("session");
+            field.setAccessible(true);
+            return (AgentTeamSession) field.get(session);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
         }
     }
 
-    private static class SessionStreamNode extends WorkflowComponent {
-        @Override
-        @SuppressWarnings("unchecked")
-        public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
-            Map<String, Object> inputMap = (Map<String, Object>) inputs;
-            return List.<Object>of(Map.of("session_id", session.getSessionId(), "query", inputMap.get("query")))
-                    .iterator();
-        }
-    }
-
-    private static class IdentityNode extends WorkflowComponent {
-        @Override
-        public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
-            return inputs;
-        }
-    }
-
-    private static class TypedSessionAgent {
-        @SuppressWarnings("unchecked")
-        public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
-            Map<String, Object> state = session.dumpState();
-            Map<String, Object> agentState = (Map<String, Object>) state.get("agent_state");
-            int count = ((Number) agentState.getOrDefault("count", 0)).intValue() + 1;
-            session.getInner().state().update(Map.of("count", count));
-            return Map.of("session_id", session.getSessionId(), "count", count);
-        }
-
-        @SuppressWarnings("unchecked")
-        public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session) {
-            Map<String, Object> state = session.dumpState();
-            Map<String, Object> agentState = (Map<String, Object>) state.get("agent_state");
-            int count = ((Number) agentState.getOrDefault("count", 0)).intValue() + 1;
-            session.getInner().state().update(Map.of("count", count));
-            return List.<Object>of(Map.of("session_id", session.getSessionId(), "count", count)).iterator();
-        }
-    }
-
-    private static class TypedGroup {
-        public Map<String, Object> invoke(Map<String, Object> inputs, String sessionId) {
-            return Map.of("group_value", inputs.get("value"), "session_id", sessionId);
-        }
-
-        public Iterator<Object> stream(Map<String, Object> inputs, String sessionId) {
-            return List.<Object>of(Map.of("group_value", inputs.get("value"), "session_id", sessionId),
-                    Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionId)).iterator();
-        }
+    private static Map<?, ?> payloadMap(Object chunk) {
+        OutputSchema output = assertInstanceOf(OutputSchema.class, chunk);
+        return assertInstanceOf(Map.class, output.getPayload());
     }
 }

@@ -6,37 +6,47 @@ package com.openjiuwen.core.multiagent.teams.handoff;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Predicate;
 
 /**
- * Public class HandoffConfig used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Camelcase package compatibility facade for handoff configuration.
+ *
+ * <p>Mirrors Python's {@code HandoffConfig} in
+ * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_config.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class HandoffConfig {
-    private AgentCard startAgent;
+public class HandoffConfig extends com.openjiuwen.core.multi_agent.teams.handoff.HandoffConfig {
 
-    @Builder.Default
-    private int maxHandoffs = 10;
+    public static Builder builder() {
+        return new Builder();
+    }
 
-    @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private List<HandoffRoute> routes = new ArrayList<>();
+    public static class Builder {
+        private AgentCard startAgent;
+        private int maxHandoffs = 10;
+        private List<HandoffRoute> routes = new ArrayList<>();
 
-    private Predicate<HandoffOrchestrator> terminationCondition;
+        public Builder startAgent(AgentCard startAgent) {
+            this.startAgent = startAgent;
+            return this;
+        }
+
+        public Builder maxHandoffs(int maxHandoffs) {
+            this.maxHandoffs = maxHandoffs;
+            return this;
+        }
+
+        public Builder routes(List<HandoffRoute> routes) {
+            this.routes = routes == null ? new ArrayList<>() : new ArrayList<>(routes);
+            return this;
+        }
+
+        public HandoffConfig build() {
+            HandoffConfig config = new HandoffConfig();
+            config.setStartAgent(startAgent);
+            config.setMaxHandoffs(maxHandoffs);
+            config.setRoutes(routes.stream().map(HandoffRoute::toUnderscore).toList());
+            return config;
+        }
+    }
 }

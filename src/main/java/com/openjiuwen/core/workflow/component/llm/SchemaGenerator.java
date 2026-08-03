@@ -13,24 +13,18 @@ import java.util.Map;
  * Generates JSON schema from output configuration.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.SchemaGenerator}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public final class SchemaGenerator {
-    /**
-     * SchemaGenerator.
-     * 
-     * @since 0.1.7
-     */
+
     private SchemaGenerator() {
     }
 
     /**
-     * generateJsonSchema.
-     * 
-     * @param outputsConfig outputsConfig
-     * @return the result
-     * @since 0.1.7
+     * Generate a JSON schema from output configuration.
+     *
+     * @param outputsConfig field name to field config mapping
+     * @return generated JSON schema
      */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> generateJsonSchema(Map<String, Object> outputsConfig) {

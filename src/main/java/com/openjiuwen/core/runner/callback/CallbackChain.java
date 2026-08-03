@@ -7,105 +7,91 @@ package com.openjiuwen.core.runner.callback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Manages sequential execution of callbacks with rollback support.
- * <p>
- * Provides ordered execution, error handling, and rollback capabilities
- * for groups of related callbacks.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code CallbackChain} in
+ * {@code openjiuwen/core/runner/callback/chain.py}.
  */
 public class CallbackChain {
-    private static final Logger logger = LoggerFactory.getLogger(CallbackChain.class);
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CallbackChain.class);
 
     private final String name;
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<CallbackInfo> callbacks = new ArrayList<>();
 
-    /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<Function<Map<String, Object>, Object>, Consumer<ChainContext>> rollbackHandlers = new HashMap<>();
+    private final Map<Function<Map<String, Object>, Object>, Function<ChainContext, Object>> rollbackHandlers =
+            Collections.synchronizedMap(new IdentityHashMap<>());
 
-    /**
-     * HashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<Function<Map<String, Object>, Object>, Function<ExceptionContext, Object>> errorHandlers =
-        new HashMap<>();
+    private final Map<Function<Map<String, Object>, Object>, BiFunction<Exception, ChainContext, Object>> errorHandlers =
+            Collections.synchronizedMap(new IdentityHashMap<>());
 
-    /**
-     * Context isPassed to error handlers: the exception + the chain context.
-     * 
-     * @since 0.1.7
-     */
-    public record ExceptionContext(Exception exception, ChainContext chainContext) {
+    public CallbackChain() {
+        this("");
     }
 
-    /**
-     * CallbackChain.
-     * 
-     * @param name name
-     * @since 0.1.7
-     */
     public CallbackChain(String name) {
         this.name = name != null ? name : "";
     }
 
-    /**
-     * getName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getName() {
         return name;
     }
 
-    /**
-     * getCallbacks.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<CallbackInfo> getCallbacks() {
         return callbacks;
     }
 
-    /**
-     * Add callback to the chain.
-     * 
-     * @param callbackInfo Callback metadata and configuration
-     * @param rollbackHandler Optional function to call on rollback
-     * @param errorHandler Optional function to call on error
-     * @since 0.1.7
-     */
-    public void add(CallbackInfo callbackInfo, Consumer<ChainContext> rollbackHandler,
-            Function<ExceptionContext, Object> errorHandler) {
+    public Map<Function<Map<String, Object>, Object>, Function<ChainContext, Object>> getRollbackHandlers() {
+        return rollbackHandlers;
+    }
+
+    public Map<Function<Map<String, Object>, Object>, BiFunction<Exception, ChainContext, Object>> getErrorHandlers() {
+        return errorHandlers;
+    }
+
+    public boolean hasRollbackHandler(Function<Map<String, Object>, Object> callback) {
+        return rollbackHandlers.containsKey(callback);
+    }
+
+    public boolean hasErrorHandler(Function<Map<String, Object>, Object> callback) {
+        return errorHandlers.containsKey(callback);
+    }
+
+    public void add(CallbackInfo callbackInfo) {
+        add(callbackInfo, null, null);
+    }
+
+    public void add(CallbackInfo callbackInfo, Function<ChainContext, Object> rollbackHandler) {
+        add(callbackInfo, rollbackHandler, null);
+    }
+
+    public void add(
+            CallbackInfo callbackInfo,
+            Function<ChainContext, Object> rollbackHandler,
+            BiFunction<Exception, ChainContext, Object> errorHandler
+    ) {
+        Objects.requireNonNull(callbackInfo, "callbackInfo");
         callbacks.add(callbackInfo);
-        callbacks.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
+        callbacks.sort((left, right) -> Integer.compare(right.getPriority(), left.getPriority()));
 
         if (rollbackHandler != null) {
             rollbackHandlers.put(callbackInfo.getCallback(), rollbackHandler);
@@ -115,217 +101,293 @@ public class CallbackChain {
         }
     }
 
-    /**
-     * Remove callback from the chain.
-     * 
-     * @param callback Callback function to remove
-     * @since 0.1.7
-     */
     public void remove(Function<Map<String, Object>, Object> callback) {
-        callbacks.removeIf(ci -> ci.getCallback() == callback);
+        callbacks.removeIf(info -> info.getCallback() == callback);
         rollbackHandlers.remove(callback);
         errorHandlers.remove(callback);
     }
 
-    /**
-     * Execute the callback chain.
-     * <p>
-     * Executes callbacks in priority order, passing results between them.
-     * Supports retry logic, error handling, and rollback on failure.
-     * 
-     * @param context Chain execution context
-     * @return ChainResult with execution outcome
-     * @since 0.1.7
-     */
-    public ChainResult execute(ChainContext context) {
+    public CompletableFuture<ChainResult> execute(ChainContext context) {
+        return CompletableFuture.supplyAsync(() -> executeInternal(context));
+    }
+
+    private ChainResult executeInternal(ChainContext context) {
         List<Function<Map<String, Object>, Object>> executedCallbacks = new ArrayList<>();
 
-        for (int i = 0; i < callbacks.size(); i++) {
-            CallbackInfo callbackInfo = callbacks.get(i);
+        for (int index = 0; index < callbacks.size(); index++) {
+            CallbackInfo callbackInfo = callbacks.get(index);
             if (!callbackInfo.isEnabled()) {
                 continue;
             }
 
-            context.setCurrentIndex(i);
+            context.setCurrentIndex(index);
             Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
 
-            // Retry loop
+            boolean recoveredByErrorHandler = false;
+            boolean completedNormally = false;
+
             for (int attempt = 0; attempt <= callbackInfo.getMaxRetries(); attempt++) {
                 try {
-                    // Prepare arguments - chain previous result
-                    Map<String, Object> kwargs = new HashMap<>(context.getInitialKwargs());
-                    kwargs.put("_chain_context", context);
+                    Map<String, Object> kwargs = buildInvocationKwargs(context);
+                    Object resolvedResult = invokeCallback(callback, kwargs, callbackInfo.getTimeout());
 
-                    if (!context.getResults().isEmpty()) {
-                        kwargs.put("_last_result", context.getLastResult());
+                    ProcessOutcome outcome = processResult(resolvedResult, callbackInfo, executedCallbacks, context);
+                    if (outcome.retryCurrent()) {
+                        continue;
                     }
-                    kwargs.put("_args", context.getInitialArgs());
-
-                    // Execute with timeout if specified
-                    Object result;
-                    if (callbackInfo.getTimeout() != null && callbackInfo.getTimeout() > 0) {
-                        result = executeWithTimeout(callback, kwargs, callbackInfo.getTimeout());
-                    } else {
-                        result = callback.apply(kwargs);
-                    }
-
-                    // Process result
-                    if (result instanceof ChainResult chainResult) {
-                        if (chainResult.getAction() == ChainAction.BREAK) {
-                            context.getResults().add(chainResult.getResult());
-                            mergeResultToContext(context, chainResult.getResult());
-                            return ChainResult.builder().action(ChainAction.BREAK).result(chainResult.getResult())
-                                    .context(context).build();
-                        } else if (chainResult.getAction() == ChainAction.RETRY) {
-                            continue;
-                        } else if (chainResult.getAction() == ChainAction.ROLLBACK) {
-                            rollback(executedCallbacks, context);
-                            return ChainResult.builder().action(ChainAction.ROLLBACK).context(context)
-                                    .error(chainResult.getError()).build();
-                        } else {
-                            context.getResults().add(chainResult.getResult());
-                            mergeResultToContext(context, chainResult.getResult());
-                        }
-                    } else {
-                        context.getResults().add(result);
-                        mergeResultToContext(context, result);
+                    if (outcome.terminalResult() != null) {
+                        return outcome.terminalResult();
                     }
 
                     executedCallbacks.add(callback);
-
-                    // Handle once-only callbacks
-                    if (callbackInfo.isOnce()) {
-                        callbackInfo.setEnabled(false);
-                    }
-
-                    break; // Success, exit retry loop
-                } catch (TimeoutException e) {
-                    logger.error("Callback {} timed out", callbackInfo.getCallbackDisplayName());
+                    completedNormally = true;
+                    break;
+                } catch (TimeoutException timeoutError) {
+                    LOGGER.error("Callback {} timed out", describeCallback(callback));
                     if (attempt < callbackInfo.getMaxRetries()) {
                         sleepRetryDelay(callbackInfo.getRetryDelay());
                         continue;
-                    } else {
-                        rollback(executedCallbacks, context);
-                        return ChainResult.builder().action(ChainAction.ROLLBACK).context(context)
-                                .error(new TimeoutException("Callback timeout")).build();
                     }
-                } catch (Exception e) {
-                    // Try error handler
+                    rollback(executedCallbacks, context);
+                    return ChainResult.builder()
+                            .action(ChainAction.ROLLBACK)
+                            .context(context)
+                            .error(new TimeoutException("Callback timeout"))
+                            .build();
+                } catch (Exception error) {
+                    Exception normalizedError = normalizeException(error);
+
                     if (errorHandlers.containsKey(callback)) {
                         try {
-                            Object errorResult = errorHandlers.get(callback).apply(new ExceptionContext(e, context));
-                            if (errorResult != null) {
-                                context.getResults().add(errorResult);
+                            Object errorResult = errorHandlers.get(callback).apply(normalizedError, context);
+                            Object resolvedErrorResult = awaitResult(errorResult, null);
+                            if (isTruthy(resolvedErrorResult)) {
+                                context.getResults().add(resolvedErrorResult);
                                 executedCallbacks.add(callback);
+                                recoveredByErrorHandler = true;
                                 break;
                             }
                         } catch (Exception handlerError) {
-                            logger.error("Error handler failed: {}", handlerError.getMessage());
+                            LOGGER.error("Error handler failed", handlerError);
                         }
                     }
 
-                    // Retry if attempts remaining
                     if (attempt < callbackInfo.getMaxRetries()) {
-                        logger.info("Retrying {} (attempt {})", callbackInfo.getCallbackDisplayName(), attempt + 1);
+                        LOGGER.info("Retrying {} (attempt {})", describeCallback(callback), attempt + 1);
                         sleepRetryDelay(callbackInfo.getRetryDelay());
                         continue;
                     }
 
-                    // Rollback on final failure
                     rollback(executedCallbacks, context);
-                    return ChainResult.builder().action(ChainAction.ROLLBACK).context(context).error(e).build();
+                    return ChainResult.builder()
+                            .action(ChainAction.ROLLBACK)
+                            .context(context)
+                            .error(normalizedError)
+                            .build();
                 }
+            }
+
+            if (completedNormally && callbackInfo.isOnce()) {
+                callbackInfo.setEnabled(false);
+            }
+
+            if (recoveredByErrorHandler) {
+                continue;
             }
         }
 
         context.setCompleted(true);
-        return ChainResult.builder().action(ChainAction.CONTINUE).result(context.getLastResult()).context(context)
+        return ChainResult.builder()
+                .action(ChainAction.CONTINUE)
+                .result(context.getLastResult())
+                .context(context)
                 .build();
     }
 
-    /**
-     * Execute rollback handlers for executed callbacks in reverse order.
-     * 
-     * @param executedCallbacks executedCallbacks
-     * @param context context
-     * @since 0.1.7
-     */
+    private Map<String, Object> buildInvocationKwargs(ChainContext context) {
+        Map<String, Object> kwargs = new LinkedHashMap<>(context.getInitialKwargs());
+        kwargs.put("_chain_context", context);
+        kwargs.put("_initial_args", Arrays.copyOf(context.getInitialArgs(), context.getInitialArgs().length));
+
+        Object[] invocationArgs = context.getInitialArgs();
+        if (!context.getResults().isEmpty()) {
+            invocationArgs = prependLastResult(context.getLastResult(), context.getInitialArgs());
+            kwargs.put("_last_result", context.getLastResult());
+        }
+        kwargs.put("_args", invocationArgs);
+        return kwargs;
+    }
+
+    private static Object[] prependLastResult(Object lastResult, Object[] initialArgs) {
+        Object[] combined = new Object[initialArgs.length + 1];
+        combined[0] = lastResult;
+        System.arraycopy(initialArgs, 0, combined, 1, initialArgs.length);
+        return combined;
+    }
+
+    private ProcessOutcome processResult(
+            Object resolvedResult,
+            CallbackInfo callbackInfo,
+            List<Function<Map<String, Object>, Object>> executedCallbacks,
+            ChainContext context
+    ) {
+        if (!(resolvedResult instanceof ChainResult chainResult)) {
+            context.getResults().add(resolvedResult);
+            return new ProcessOutcome(false, null);
+        }
+
+        if (chainResult.getAction() == ChainAction.BREAK) {
+            context.getResults().add(chainResult.getResult());
+            return new ProcessOutcome(false, ChainResult.builder()
+                    .action(ChainAction.BREAK)
+                    .result(chainResult.getResult())
+                    .context(context)
+                    .build());
+        }
+        if (chainResult.getAction() == ChainAction.RETRY) {
+            return new ProcessOutcome(true, null);
+        }
+        if (chainResult.getAction() == ChainAction.ROLLBACK) {
+            Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
+            rollback(executedCallbacks, context);
+            return new ProcessOutcome(false, ChainResult.builder()
+                    .action(ChainAction.ROLLBACK)
+                    .context(context)
+                    .error(chainResult.getError())
+                .build());
+        }
+
+        context.getResults().add(chainResult.getResult());
+        return new ProcessOutcome(false, null);
+    }
+
     private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks, ChainContext context) {
         context.setRolledBack(true);
 
-        for (int i = executedCallbacks.size() - 1; i >= 0; i--) {
-            Function<Map<String, Object>, Object> cb = executedCallbacks.get(i);
-            Consumer<ChainContext> rollbackHandler = rollbackHandlers.get(cb);
-            if (rollbackHandler != null) {
-                try {
-                    rollbackHandler.accept(context);
-                } catch (Exception e) {
-                    logger.error("Rollback failed for callback: {}", e.getMessage());
-                }
+        for (int index = executedCallbacks.size() - 1; index >= 0; index--) {
+            Function<Map<String, Object>, Object> callback = executedCallbacks.get(index);
+            Function<ChainContext, Object> rollbackHandler = rollbackHandlers.get(callback);
+            if (rollbackHandler == null) {
+                continue;
+            }
+
+            try {
+                awaitResult(rollbackHandler.apply(context), null);
+            } catch (Exception rollbackError) {
+                LOGGER.error("Rollback failed for {}", describeCallback(callback), rollbackError);
             }
         }
     }
 
-    /**
-     * executeWithTimeout.
-     * 
-     * @param callback callback
-     * @param kwargs kwargs
-     * @param timeoutSeconds timeoutSeconds
-     * @return the result
-     * @throws TimeoutException TimeoutException
-     * @since 0.1.7
-     */
-    private Object executeWithTimeout(Function<Map<String, Object>, Object> callback, Map<String, Object> kwargs,
-            double timeoutSeconds) throws TimeoutException {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+    private static Object awaitResult(Object value, Double timeoutSeconds) throws Exception {
+        CompletableFuture<Object> future = toCompletableFuture(value);
         try {
-            Callable<Object> task = () -> callback.apply(kwargs);
-            Future<Object> future = executor.submit(task);
-            return future.get((long) (timeoutSeconds * 1000), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            throw e;
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof RuntimeException re) {
-                throw re;
+            if (timeoutSeconds != null && timeoutSeconds > 0) {
+                return future.get((long) (timeoutSeconds * 1000L), TimeUnit.MILLISECONDS);
             }
-            throw new RuntimeException(e.getCause());
-        } catch (InterruptedException e) {
+            return future.get();
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Callback execution interrupted", e);
+            throw new RuntimeException("Callback execution interrupted", interrupted);
+        } catch (ExecutionException executionError) {
+            throw normalizeException(executionError);
+        } catch (CompletionException completionError) {
+            throw normalizeException(completionError);
+        }
+    }
+
+    private static Object invokeCallback(
+            Function<Map<String, Object>, Object> callback,
+            Map<String, Object> kwargs,
+            Double timeoutSeconds
+    ) throws Exception {
+        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+            return awaitResult(callback.apply(kwargs), null);
+        }
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        java.util.concurrent.Future<Object> future = executor.submit(() -> awaitResult(callback.apply(kwargs), null));
+        try {
+            return future.get((long) (timeoutSeconds * 1000L), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeoutError) {
+            future.cancel(true);
+            throw timeoutError;
         } finally {
             executor.shutdownNow();
         }
     }
 
-    /**
-     * sleepRetryDelay.
-     * 
-     * @param delaySeconds delaySeconds
-     * @since 0.1.7
-     */
-    private static void sleepRetryDelay(double delaySeconds) {
-        if (delaySeconds > 0) {
-            try {
-                Thread.sleep((long) (delaySeconds * 1000));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+    private static CompletableFuture<Object> toCompletableFuture(Object value) {
+        if (!(value instanceof CompletionStage<?> stage)) {
+            return CompletableFuture.completedFuture(value);
+        }
+
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        stage.whenComplete((resolvedValue, error) -> {
+            if (error != null) {
+                future.completeExceptionally(error);
+                return;
             }
+            future.complete(resolvedValue);
+        });
+        return future;
+    }
+
+    private static Exception normalizeException(Throwable throwable) {
+        Throwable current = throwable;
+        while ((current instanceof ExecutionException || current instanceof CompletionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+
+        if (current instanceof Exception exception) {
+            return exception;
+        }
+        return new RuntimeException(current);
+    }
+
+    private static void sleepRetryDelay(double retryDelaySeconds) {
+        if (retryDelaySeconds <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep((long) (retryDelaySeconds * 1000L));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * mergeResultToContext.
-     * 
-     * @param context context
-     * @param result result
-     * @since 0.1.7
-     */
-    private static void mergeResultToContext(ChainContext context, Object result) {
-        if (result instanceof Map) {
-            Map<String, Object> resultMap = (Map<String, Object>) result;
-            context.getInitialKwargs().putAll(resultMap);
+    private static boolean isTruthy(Object value) {
+        if (value == null) {
+            return false;
         }
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (value instanceof Number numberValue) {
+            return numberValue.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence charSequence) {
+            return charSequence.length() > 0;
+        }
+        if (value instanceof Map<?, ?> mapValue) {
+            return !mapValue.isEmpty();
+        }
+        if (value instanceof Iterable<?> iterableValue) {
+            return iterableValue.iterator().hasNext();
+        }
+        if (value instanceof Optional<?> optionalValue) {
+            return optionalValue.isPresent();
+        }
+        if (value.getClass().isArray()) {
+            return Array.getLength(value) > 0;
+        }
+        return true;
+    }
+
+    private static String describeCallback(Function<Map<String, Object>, Object> callback) {
+        return callback == null ? "<null-callback>" : callback.toString();
+    }
+
+    private record ProcessOutcome(boolean retryCurrent, ChainResult terminalResult) {
     }
 }

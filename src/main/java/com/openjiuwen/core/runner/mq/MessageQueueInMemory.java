@@ -4,86 +4,63 @@
 
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.runner.resourcemanager.ThreadSafeDict;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
+import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 /**
  * In-memory message queue with topic-based routing.
- * Mirrors Python's {@code MessageQueueInMemory} in {@code message_queue_inmemory.py}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code MessageQueueInMemory} in
+ * {@code openjiuwen/core/runner/message_queue_inmemory.py}.</p>
  */
 public class MessageQueueInMemory extends MessageQueueBase {
-    private static final Logger logger = LoggerFactory.getLogger(MessageQueueInMemory.class);
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MessageQueueInMemory.class);
+    private static final int DEFAULT_QUEUE_MAX_SIZE = 10_000;
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120_000);
 
     private final int queueMaxSize;
-    private final long timeoutMs;
-    private volatile boolean running;
+    private final Duration timeout;
+    private final ThreadSafeDict<String, SubscriptionInMemory> subscribers = new ThreadSafeDict<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, SubscriptionInMemory> subscribers = new ConcurrentHashMap<>();
+    private volatile boolean running;
     private BlockingQueue<TopicMessage> queue;
     private ExecutorService consumerExecutor;
 
-    /**
-     * MessageQueueInMemory.
-     * 
-     * @param queueMaxSize queueMaxSize
-     * @param timeoutMs timeoutMs
-     * @since 0.1.7
-     */
-    public MessageQueueInMemory(int queueMaxSize, long timeoutMs) {
-        this.queueMaxSize = queueMaxSize;
-        this.timeoutMs = timeoutMs;
-        this.queue = new LinkedBlockingQueue<>(queueMaxSize);
-        this.running = false;
-    }
-
-    /**
-     * MessageQueueInMemory.
-     * 
-     * @since 0.1.7
-     */
     public MessageQueueInMemory() {
-        this(10000, 120_000L);
+        this(DEFAULT_QUEUE_MAX_SIZE, DEFAULT_TIMEOUT);
     }
 
-    /**
-     * start.
-     * 
-     * @since 0.1.7
-     */
+    public MessageQueueInMemory(int queueMaxSize, double timeoutSeconds) {
+        this(queueMaxSize, durationFromSeconds(timeoutSeconds));
+    }
+
+    public MessageQueueInMemory(int queueMaxSize, Duration timeout) {
+        this.queueMaxSize = queueMaxSize;
+        this.timeout = timeout == null ? DEFAULT_TIMEOUT : timeout;
+        this.queue = newQueue(queueMaxSize);
+    }
+
     @Override
     public void start() {
         if (!running) {
             running = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(r -> {
-                Thread thread = new Thread(r, "mq-inmemory-0");
-                thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception in " + t.getName(), e));
+            consumerExecutor = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable);
+                thread.setName("message-queue-inmemory-" + thread.getId());
                 return thread;
             });
             consumerExecutor.submit(this::consumeMessages);
         }
     }
 
-    /**
-     * stop.
-     * 
-     * @since 0.1.7
-     */
     @Override
     public void stop() {
         if (running) {
@@ -92,48 +69,28 @@ public class MessageQueueInMemory extends MessageQueueBase {
                 consumerExecutor.shutdownNow();
                 consumerExecutor = null;
             }
-            queue = new LinkedBlockingQueue<>(queueMaxSize);
+            queue = newQueue(queueMaxSize);
         }
     }
 
-    /**
-     * subscribe.
-     * 
-     * @param topic topic
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public SubscriptionBase subscribe(String topic) {
+    public SubscriptionInMemory subscribe(String topic) {
         if (subscribers.containsKey(topic)) {
             throw new IllegalArgumentException("Topic '" + topic + "' is already subscribed.");
         }
-        SubscriptionInMemory subscription = new SubscriptionInMemory(queueMaxSize, timeoutMs);
+        SubscriptionInMemory subscription = new SubscriptionInMemory(queueMaxSize, timeout);
         subscribers.put(topic, subscription);
         return subscription;
     }
 
-    /**
-     * unsubscribe.
-     * 
-     * @param topic topic
-     * @since 0.1.7
-     */
     @Override
     public void unsubscribe(String topic) {
-        SubscriptionInMemory sub = subscribers.remove(topic);
-        if (sub != null) {
-            sub.deactivate();
+        SubscriptionInMemory subscription = subscribers.pop(topic, null);
+        if (subscription != null) {
+            subscription.deactivate();
         }
     }
 
-    /**
-     * produceMessage.
-     * 
-     * @param topic topic
-     * @param message message
-     * @since 0.1.7
-     */
     @Override
     public void produceMessage(String topic, QueueMessage message) {
         try {
@@ -143,38 +100,39 @@ public class MessageQueueInMemory extends MessageQueueBase {
         }
     }
 
-    /**
-     * consumeMessages.
-     * 
-     * @since 0.1.7
-     */
+    public boolean isRunning() {
+        return running;
+    }
+
     private void consumeMessages() {
         while (running) {
             try {
-                TopicMessage tm = queue.poll(1, TimeUnit.SECONDS);
-                if (tm == null) {
-                    continue;
-                }
-                SubscriptionInMemory sub = subscribers.get(tm.topic());
-                if (sub != null && sub.isActive()) {
-                    sub.pushMessage(tm.message());
-                } else {
-                    logger.warn("No active subscriber for topic: {}", tm.topic());
+                TopicMessage topicMessage = queue.take();
+                SubscriptionInMemory subscription = subscribers.get(topicMessage.topic());
+                if (subscription != null && subscription.isActive()) {
+                    subscription.pushMessage(topicMessage.message());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
+            } catch (RuntimeException e) {
+                LOGGER.warn("Failed to route in-memory message", e);
             }
         }
     }
 
-    /**
-     * TopicMessage.
-     * 
-     * @param topic topic
-     * @param message message
-     * @since 0.1.7
-     */
+    private static BlockingQueue<TopicMessage> newQueue(int queueMaxSize) {
+        if (queueMaxSize <= 0) {
+            return new LinkedBlockingQueue<>();
+        }
+        return new LinkedBlockingQueue<>(queueMaxSize);
+    }
+
+    private static Duration durationFromSeconds(double timeoutSeconds) {
+        long timeoutMillis = Math.max(0L, Math.round(timeoutSeconds * 1000.0d));
+        return Duration.ofMillis(timeoutMillis);
+    }
+
     private record TopicMessage(String topic, QueueMessage message) {
     }
 }

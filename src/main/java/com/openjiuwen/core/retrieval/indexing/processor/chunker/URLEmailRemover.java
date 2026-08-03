@@ -4,89 +4,67 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import java.util.regex.Pattern;
+
 /**
- * Removes URLs and email addresses from text.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code URLEmailRemover} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
  */
 public class URLEmailRemover implements TextPreprocessor {
-    private final boolean isRemoveUrls;
-    private final boolean isRemoveEmails;
+
+    private static final Pattern URL_PATTERN = Pattern.compile("https?://\\S+|www\\.\\S+");
+    private static final Pattern COM_PATTERN =
+            Pattern.compile("(?:https?://|www\\.)?\\S+?\\.(?:com|net|org|cn)(?:[/?#]\\S*)?\\b");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("\\b[\\w.-]+@[\\w.-]+\\.\\w+\\b");
+
+    private final boolean removeUrls;
+    private final boolean removeEmails;
     private final String replacement;
 
-    /**
-     * URLEmailRemover.
-     * 
-     * @since 0.1.7
-     */
     public URLEmailRemover() {
         this(true, true, "");
     }
 
-    /**
-     * URLEmailRemover.
-     * 
-     * @param isRemoveUrls isRemoveUrls
-     * @param isRemoveEmails isRemoveEmails
-     * @param replacement replacement
-     * @since 0.1.7
-     */
-    public URLEmailRemover(boolean isRemoveUrls, boolean isRemoveEmails, String replacement) {
-        this.isRemoveUrls = isRemoveUrls;
-        this.isRemoveEmails = isRemoveEmails;
-        this.replacement = replacement != null ? replacement : "";
+    public URLEmailRemover(String replacement) {
+        this(true, true, replacement);
     }
 
-    /**
-     * process.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public String process(String text) {
-        if (text == null) {
-            return null;
-        }
-        String result = text;
-        if (isRemoveUrls) {
-            result = result.replaceAll("https?://\\S+|www\\.\\S+", replacement).replaceAll(
-                    "(?<![\\w.%+-]@)(?:https?://|www\\.)?\\b\\S+?\\.(?:com|net|org|cn)(?:[/?#]\\S*)?\\b", replacement);
-        }
-        if (isRemoveEmails) {
-            result = result.replaceAll("\\b[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b", replacement);
-        }
-        return result;
+    public URLEmailRemover(boolean removeUrls) {
+        this(removeUrls, true, "");
     }
 
-    /**
-     * isRemoveUrls.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public URLEmailRemover(boolean removeUrls, boolean removeEmails, String replacement) {
+        this.removeUrls = removeUrls;
+        this.removeEmails = removeEmails;
+        this.replacement = replacement == null ? "" : replacement;
+    }
+
     public boolean isRemoveUrls() {
-        return isRemoveUrls;
+        return removeUrls;
     }
 
-    /**
-     * isRemoveEmails.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isRemoveEmails() {
-        return isRemoveEmails;
+        return removeEmails;
     }
 
-    /**
-     * getReplacement.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getReplacement() {
         return replacement;
+    }
+
+    @Override
+    public String process(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+
+        String processed = text;
+        if (removeUrls) {
+            processed = URL_PATTERN.matcher(processed).replaceAll(replacement);
+            processed = COM_PATTERN.matcher(processed).replaceAll(replacement);
+        }
+        if (removeEmails) {
+            processed = EMAIL_PATTERN.matcher(processed).replaceAll(replacement);
+        }
+        return processed;
     }
 }

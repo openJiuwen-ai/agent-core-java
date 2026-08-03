@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.processor.compressor.DialogueCompressor
+# com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressor
 
 ## class DialogueCompressor
 

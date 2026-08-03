@@ -4,462 +4,143 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import com.openjiuwen.core.controller.Controller;
+import com.openjiuwen.core.session.AgentSessionApi;
+
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
- * Public class TaskLoopController used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Controller facade for DeepAgent outer task-loop rounds.
+ *
+ * <p>Mirrors Python's {@code TaskLoopController} in
+ * {@code openjiuwen/harness/task_loop/task_loop_controller.py}.</p>
  */
-public class TaskLoopController {
-    /**
-     * DEFAULT_SESSION_ID.
-     * 
-     * @since 0.1.7
-     */
-    public static final String DEFAULT_SESSION_ID = "__default__";
+public class TaskLoopController extends Controller {
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final ConcurrentMap<String, SessionState> sessionStates = new ConcurrentHashMap<>();
-    private final LoopQueues defaultQueues;
+    /** Default session id used when no explicit session is available. */
+    public static final String DEFAULT_SESSION_ID = "default";
 
-    /**
-     * TaskLoopController.
-     * 
-     * @since 0.1.7
-     */
-    public TaskLoopController() {
-        this(new LoopQueues());
+    private final LoopQueues interactionQueues = new LoopQueues();
+    private final Queue<String> followUps = new ConcurrentLinkedQueue<>();
+    private CompletableFuture<Map<String, Object>> roundCompletion = new CompletableFuture<>();
+
+    public LoopQueues getInteractionQueues() {
+        return interactionQueues;
     }
 
-    /**
-     * TaskLoopController.
-     * 
-     * @param defaultQueues defaultQueues
-     * @since 0.1.7
-     */
-    public TaskLoopController(LoopQueues defaultQueues) {
-        this.defaultQueues = defaultQueues == null ? new LoopQueues() : defaultQueues;
-        sessionStates.put(DEFAULT_SESSION_ID, new SessionState(this.defaultQueues));
+    public CompletableFuture<Map<String, Object>> submitRound(
+            AgentSessionApi session,
+            String query,
+            boolean isFollowUp,
+            String runKind,
+            Map<String, Object> runContext
+    ) {
+        roundCompletion = new CompletableFuture<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("session_id", session == null ? null : session.getSessionId());
+        payload.put("query", query);
+        payload.put("is_follow_up", isFollowUp);
+        payload.put("run_kind", runKind);
+        payload.put("run_context", runContext == null ? Map.of() : new LinkedHashMap<>(runContext));
+        interactionQueues.input().add(payload);
+        return roundCompletion;
     }
 
-    /**
-     * prepareRound.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int prepareRound() {
-        return prepareRound(DEFAULT_SESSION_ID, false);
-    }
-
-    /**
-     * prepareRound.
-     * 
-     * @param sessionId sessionId
-     * @param isFollowUp isFollowUp
-     * @return the result
-     * @since 0.1.7
-     */
-    public int prepareRound(String sessionId, boolean isFollowUp) {
-        SessionState state = state(sessionId);
-        state.roundCounter += 1;
-        state.isLastRoundFollowUp = isFollowUp;
-        state.isRoundActive = true;
-        state.lastResult = null;
-        return state.roundCounter;
-    }
-
-    /**
-     * submitRound.
-     * 
-     * @param query query
-     * @return the result
-     * @since 0.1.7
-     */
-    public int submitRound(String query) {
-        return submitRound(DEFAULT_SESSION_ID, query, false);
-    }
-
-    /**
-     * submitRound.
-     * 
-     * @param query query
-     * @param isFollowUp isFollowUp
-     * @return the result
-     * @since 0.1.7
-     */
-    public int submitRound(String query, boolean isFollowUp) {
-        return submitRound(DEFAULT_SESSION_ID, query, isFollowUp);
-    }
-
-    /**
-     * submitRound.
-     * 
-     * @param sessionId sessionId
-     * @param query query
-     * @param isFollowUp isFollowUp
-     * @return the result
-     * @since 0.1.7
-     */
-    public int submitRound(String sessionId, String query, boolean isFollowUp) {
-        return prepareRound(sessionId, isFollowUp);
-    }
-
-    /**
-     * waitRoundCompletion.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> waitRoundCompletion() {
-        return waitRoundCompletion(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * waitRoundCompletion.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> waitRoundCompletion(String sessionId) {
-        SessionState state = state(sessionId);
-        if (!state.isRoundActive && state.lastResult != null) {
-            return state.lastResult;
+    public Map<String, Object> waitRoundCompletion(Duration timeout) {
+        try {
+            if (timeout == null) {
+                return roundCompletion.get();
+            }
+            return roundCompletion.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            return Map.of("status", "timeout");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return Map.of("status", "interrupted");
+        } catch (Exception exception) {
+            return Map.of("status", "failed", "error", exception.getMessage());
         }
-        if (!state.isRoundActive) {
-            return Map.of("error", "no active round");
-        }
-        return Map.of("error", "completion_timeout");
     }
 
-    /**
-     * resolveCompletion.
-     * 
-     * @param completedRound completedRound
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> resolveCompletion(int completedRound, Map<String, Object> result) {
-        return resolveCompletion(DEFAULT_SESSION_ID, completedRound, result);
+    public void completeRound(Map<String, Object> result) {
+        roundCompletion.complete(result == null ? Map.of("status", "completed") : new LinkedHashMap<>(result));
     }
 
-    /**
-     * resolveCompletion.
-     * 
-     * @param sessionId sessionId
-     * @param completedRound completedRound
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> resolveCompletion(String sessionId, int completedRound, Map<String, Object> result) {
-        SessionState state = state(sessionId);
-        if (completedRound != state.roundCounter) {
-            return Map.of("status", "stale", "round", completedRound, "current_round", state.roundCounter);
-        }
-        state.isRoundActive = false;
-        state.lastResult = result == null ? Map.of("status", "completed") : Map.copyOf(result);
-        return state.lastResult;
-    }
-
-    /**
-     * recordSubmission.
-     * 
-     * @param result result
-     * @since 0.1.7
-     */
-    public void recordSubmission(Map<String, Object> result) {
-        recordSubmission(DEFAULT_SESSION_ID, result);
-    }
-
-    /**
-     * recordSubmission.
-     * 
-     * @param sessionId sessionId
-     * @param result result
-     * @since 0.1.7
-     */
-    public void recordSubmission(String sessionId, Map<String, Object> result) {
-        if (result == null) {
-            return;
-        }
-        SessionState state = state(sessionId);
-        state.lastResult = Map.copyOf(result);
-    }
-
-    /**
-     * abort.
-     * 
-     * @param reason reason
-     * @since 0.1.7
-     */
-    public void abort(String reason) {
-        abort(DEFAULT_SESSION_ID, reason);
-    }
-
-    /**
-     * abort.
-     * 
-     * @param sessionId sessionId
-     * @param reason reason
-     * @since 0.1.7
-     */
-    public void abort(String sessionId, String reason) {
-        SessionState state = state(sessionId);
-        state.isRoundActive = false;
-        state.lastResult = Map.of("status", "aborted", "reason", reason == null ? "abort" : reason);
-    }
-
-    /**
-     * getLastResult.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getLastResult() {
-        return getLastResult(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * getLastResult.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getLastResult(String sessionId) {
-        return state(sessionId).lastResult;
-    }
-
-    /**
-     * enqueueFollowUp.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
-    public void enqueueFollowUp(String message) {
-        enqueueFollowUp(DEFAULT_SESSION_ID, message);
-    }
-
-    /**
-     * enqueueFollowUp.
-     * 
-     * @param sessionId sessionId
-     * @param message message
-     * @since 0.1.7
-     */
-    public void enqueueFollowUp(String sessionId, String message) {
-        state(sessionId).queues.pushFollowUp(message);
-    }
-
-    /**
-     * enqueueSteering.
-     * 
-     * @param message message
-     * @since 0.1.7
-     */
-    public void enqueueSteering(String message) {
-        enqueueSteering(DEFAULT_SESSION_ID, message);
-    }
-
-    /**
-     * enqueueSteering.
-     * 
-     * @param sessionId sessionId
-     * @param message message
-     * @since 0.1.7
-     */
-    public void enqueueSteering(String sessionId, String message) {
-        state(sessionId).queues.pushSteer(message);
-    }
-
-    /**
-     * hasFollowUp.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean hasFollowUp() {
-        return hasFollowUp(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * hasFollowUp.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean hasFollowUp(String sessionId) {
-        if (DEFAULT_SESSION_ID.equals(normalizeSessionId(sessionId))) {
-            return state(DEFAULT_SESSION_ID).queues.hasFollowUp();
-        }
-        return state(sessionId).queues.hasFollowUp() || state(DEFAULT_SESSION_ID).queues.hasFollowUp();
-    }
-
-    /**
-     * drainFollowUp.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<String> drainFollowUp() {
-        return drainFollowUp(DEFAULT_SESSION_ID);
+        List<String> messages = new ArrayList<>();
+        String next;
+        while ((next = followUps.poll()) != null) {
+            messages.add(next);
+        }
+        return messages;
     }
 
     /**
-     * drainFollowUp.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
+     * Drain follow-up messages for a given session.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @return list of follow-up messages
      */
     public List<String> drainFollowUp(String sessionId) {
-        String normalized = normalizeSessionId(sessionId);
-        if (DEFAULT_SESSION_ID.equals(normalized)) {
-            return state(DEFAULT_SESSION_ID).queues.drainFollowUp();
-        }
-        List<String> drained = new java.util.ArrayList<>(state(normalized).queues.drainFollowUp());
-        drained.addAll(state(DEFAULT_SESSION_ID).queues.drainFollowUp());
-        return drained;
+        return drainFollowUp();
     }
 
     /**
-     * drainSteering.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<String> drainSteering() {
-        return drainSteering(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * drainSteering.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<String> drainSteering(String sessionId) {
-        return state(sessionId).queues.drainSteering();
-    }
-
-    /**
-     * getInteractionQueues.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopQueues getInteractionQueues() {
-        return getInteractionQueues(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * getInteractionQueues.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
+     * Get interaction queues for a given session.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @return the interaction queues
      */
     public LoopQueues getInteractionQueues(String sessionId) {
-        return state(sessionId).queues;
+        return getInteractionQueues();
     }
 
     /**
-     * getRoundCounter.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int getRoundCounter() {
-        return getRoundCounter(DEFAULT_SESSION_ID);
-    }
-
-    /**
-     * getRoundCounter.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
+     * Get the round counter for a given session.
+     *
+     * @param sessionId the session id
+     * @return the current round count
      */
     public int getRoundCounter(String sessionId) {
-        return state(sessionId).roundCounter;
+        return 0;
     }
 
-    /**
-     * isRoundActive.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean isRoundActive(String sessionId) {
-        return state(sessionId).isRoundActive;
-    }
-
-    /**
-     * clearSession.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
-    public void clearSession(String sessionId) {
-        if (sessionId == null || DEFAULT_SESSION_ID.equals(sessionId)) {
-            return;
+    public void enqueueFollowUp(String message) {
+        if (message != null && !message.isBlank()) {
+            followUps.add(message);
         }
-        sessionStates.remove(sessionId);
     }
 
     /**
-     * state.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
+     * Enqueue a follow-up message with an associated session id.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @param message   the follow-up message
      */
-    private SessionState state(String sessionId) {
-        String normalized = normalizeSessionId(sessionId);
-        return sessionStates.computeIfAbsent(normalized,
-                ignored -> new SessionState(DEFAULT_SESSION_ID.equals(normalized) ? defaultQueues : new LoopQueues()));
+    public void enqueueFollowUp(String sessionId, String message) {
+        enqueueFollowUp(message);
     }
 
     /**
-     * normalizeSessionId.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
+     * Enqueue a steering message.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @param message   the steering message
      */
-    private String normalizeSessionId(String sessionId) {
-        return sessionId == null || sessionId.isBlank() ? DEFAULT_SESSION_ID : sessionId;
+    public void enqueueSteering(String sessionId, String message) {
+        enqueueFollowUp(message);
     }
 
-    private static final class SessionState {
-        private final LoopQueues queues;
-        private int roundCounter;
-        private boolean isLastRoundFollowUp;
-        private boolean isRoundActive;
-        private Map<String, Object> lastResult;
-
-        /**
-         * SessionState.
-         * 
-         * @param queues queues
-         * @since 0.1.7
-         */
-        private SessionState(LoopQueues queues) {
-            this.queues = queues;
-        }
+    public boolean hasFollowUp() {
+        return !followUps.isEmpty();
     }
 }

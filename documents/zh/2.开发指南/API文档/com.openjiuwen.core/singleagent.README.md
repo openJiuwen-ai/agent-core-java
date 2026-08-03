@@ -1,6 +1,6 @@
 # singleagent
 
-`com.openjiuwen.core.singleagent` 提供单智能体运行时的基础抽象、能力管理、回调编排，以及面向 `Controller` 与 ReAct 的入口类型。
+`com.openjiuwen.core.single_agent` 提供单智能体运行时的基础抽象、能力管理、回调编排，以及面向 `Controller` 与 ReAct 的入口类型。
 
 ## 模块
 

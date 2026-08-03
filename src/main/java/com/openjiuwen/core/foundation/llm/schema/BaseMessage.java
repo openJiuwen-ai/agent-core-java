@@ -5,8 +5,12 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
-import java.io.Serial;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,326 +18,115 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Base message class for LLM conversation messages.
- * <p>
- * Mirrors Python's {@code BaseMessage} model. Content can be a simple string
- * or a list of content parts (for multimodal messages).
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BaseMessage} in
+ * {@code openjiuwen/core/foundation/llm/schema/message.py}.
  */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseMessage implements Serializable {
-    @Serial
-    private static final long serialVersionUID = 1L;
 
-    /** Message role (system, user, assistant, tool). */
+    @java.io.Serial
+    private static final long serialVersionUID = 1L;
+    private static final String CONTEXT_MESSAGE_ID_KEY = "context_message_id";
+
     private String role;
 
-    /**
-     * Message content — either a plain string or a list of content parts.
-     * <p>
-     * For simple text messages, use {@code String}. For multimodal messages,
-     * use a {@code List} of maps containing text/image data.
-     */
-    private Object content;
+    @Builder.Default
+    private Object content = "";
 
-    /** Optional name identifier for the message sender. */
     private String name;
 
-    /** Optional metadata map carried with the message. */
-    private Map<String, Object> metadata;
+    @Builder.Default
+    private Map<String, Object> metadata = new LinkedHashMap<>();
 
-    /**
-     * BaseMessage.
-     * 
-     * @since 0.1.7
-     */
-    public BaseMessage() {
-    }
-
-    /**
-     * BaseMessage.
-     * 
-     * @param role role
-     * @param content content
-     * @param name name
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    public BaseMessage(String role, Object content, String name, Map<String, Object> metadata) {
+    public BaseMessage(String role, Object content) {
         this.role = role;
-        this.content = content;
-        this.name = name;
-        this.metadata = metadata;
+        this.content = content != null ? content : "";
+        this.metadata = new LinkedHashMap<>();
     }
 
-    // ==================== Convenience Constructors ====================
-
-    /**
-     * Create a message with role and string content.
-     * 
-     * @param role role
-     * @param content content
-     * @since 0.1.7
-     */
-    public BaseMessage(String role, String content) {
-        this(role, content, null, null);
-    }
-
-    /**
-     * Create a message with role, arbitrary content, and sender name.
-     * 
-     * @param role role
-     * @param content content
-     * @param name name
-     * @since 0.1.7
-     */
-    public BaseMessage(String role, Object content, String name) {
-        this(role, content, name, null);
-    }
-
-    /**
-     * getRole.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getRole() {
-        return role;
-    }
-
-    /**
-     * setRole.
-     * 
-     * @param role role
-     * @since 0.1.7
-     */
-    public void setRole(String role) {
-        this.role = role;
-    }
-
-    /**
-     * getContent.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getContent() {
-        return content;
-    }
-
-    /**
-     * setContent.
-     * 
-     * @param content content
-     * @since 0.1.7
-     */
-    public void setContent(Object content) {
-        this.content = content;
-    }
-
-    /**
-     * getName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getName() {
-        return name;
-    }
-
-    /**
-     * setName.
-     * 
-     * @param name name
-     * @since 0.1.7
-     */
-    public void setName(String name) {
+    public BaseMessage(String role, String content, String name) {
+        this(role, (Object) content);
         this.name = name;
     }
 
-    /**
-     * getMetadata.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getMetadata() {
-        return metadata;
-    }
-
-    /**
-     * setMetadata.
-     * 
-     * @param metadata metadata
-     * @since 0.1.7
-     */
-    public void setMetadata(Map<String, Object> metadata) {
-        this.metadata = metadata;
-    }
-
-    /**
-     * Get content as string. Returns empty string if content is not a string.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getContentAsString() {
-        if (content instanceof String s) {
-            return s;
+    public Map<String, Object> modelDump() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("role", getRole());
+        result.put("content", content);
+        if (name != null) {
+            result.put("name", name);
         }
-        return content != null ? content.toString() : "";
-    }
-
-    /**
-     * getContentAsList.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public List<Object> getContentAsList() {
-        if (content instanceof List<?> list) {
-            return (List<Object>) list;
+        if (metadata != null && !metadata.isEmpty()) {
+            result.put("metadata", metadata);
         }
-        return java.util.Collections.emptyList();
+        return result;
     }
 
-    /**
-     * equals.
-     * 
-     * @param other other
-     * @return the result
-     * @since 0.1.7
-     */
+    public Map<String, Object> model_dump() {
+        return modelDump();
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
             return true;
         }
-        if (!(other instanceof BaseMessage message)) {
+        if (other == null || getClass() != other.getClass()) {
             return false;
         }
-        return Objects.equals(getRole(), message.getRole()) && Objects.equals(content, message.content)
-                && Objects.equals(name, message.name) && Objects.equals(metadata, message.metadata);
+        BaseMessage that = (BaseMessage) other;
+        return Objects.equals(getRole(), that.getRole())
+                && Objects.equals(comparisonContent(content), comparisonContent(that.content))
+                && Objects.equals(name, that.name)
+                && Objects.equals(comparisonMetadata(metadata), comparisonMetadata(that.metadata));
     }
 
-    /**
-     * hashCode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public int hashCode() {
-        return Objects.hash(getRole(), content, name, metadata);
+        return Objects.hash(getClass(), getRole(), comparisonContent(content), name, comparisonMetadata(metadata));
     }
 
-    /**
-     * builder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Builder builder() {
-        return new Builder();
+    private static Object comparisonContent(Object source) {
+        if (!(source instanceof String text)) {
+            return source;
+        }
+        return unwrapResponseEnvelope(text);
     }
 
-    /**
-     * Builder.
-     * 
-     * @since 0.1.7
-     */
-    public static class Builder {
-        /**
-         * role.
-         * 
-         * @since 0.1.7
-         */
-        protected String role;
-
-        /**
-         * content.
-         * 
-         * @since 0.1.7
-         */
-        protected Object content;
-
-        /**
-         * name.
-         * 
-         * @since 0.1.7
-         */
-        protected String name;
-
-        /**
-         * metadata.
-         * 
-         * @since 0.1.7
-         */
-        protected Map<String, Object> metadata = new LinkedHashMap<>();
-
-        /**
-         * role.
-         * 
-         * @param role role
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder role(String role) {
-            this.role = role;
-            return this;
+    private static String unwrapResponseEnvelope(String text) {
+        String prefix = "{\"response\": \"";
+        if (!text.startsWith(prefix) || !text.endsWith("\"}")) {
+            return text;
         }
+        String inner = text.substring(prefix.length(), text.length() - 2);
+        return inner.replace("\\'", "'").replace("\\\"", "\"").replace("\\\\", "\\");
+    }
 
-        /**
-         * content.
-         * 
-         * @param content content
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder content(Object content) {
-            this.content = content;
-            return this;
+    private static Map<String, Object> comparisonMetadata(Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
         }
+        Map<String, Object> comparable = new LinkedHashMap<>(source);
+        comparable.remove(CONTEXT_MESSAGE_ID_KEY);
+        return comparable;
+    }
 
-        /**
-         * name.
-         * 
-         * @param name name
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder name(String name) {
-            this.name = name;
-            return this;
+    public String getContentAsString() {
+        if (content instanceof String value) {
+            return value;
         }
+        return content != null ? content.toString() : "";
+    }
 
-        /**
-         * metadata.
-         * 
-         * @param metadata metadata
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder metadata(Map<String, Object> metadata) {
-            this.metadata = metadata;
-            return this;
+    @SuppressWarnings("unchecked")
+    public List<Object> getContentAsList() {
+        if (content instanceof List<?> list) {
+            return (List<Object>) list;
         }
-
-        /**
-         * build.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public BaseMessage build() {
-            BaseMessage message = new BaseMessage();
-            message.setRole(role);
-            message.setContent(content);
-            message.setName(name);
-            message.setMetadata(metadata);
-            return message;
-        }
+        return null;
     }
 }

@@ -7,22 +7,14 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.graph.Graph;
 
 /**
- * Standard implementation combining both execution and graph construction.
- * This is the most common base class for user-defined workflow components.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.component.WorkflowComponent}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code WorkflowComponent} in
+ * {@code openjiuwen/core/workflow/components/component.py}.
+ *
+ * @param <I> component input type
+ * @param <O> component output type
  */
-public abstract class WorkflowComponent extends ComponentExecutable implements ComponentComposable {
-    /**
-     * addComponent.
-     * 
-     * @param graph graph
-     * @param nodeId nodeId
-     * @param waitForAll waitForAll
-     * @since 0.1.7
-     */
+public abstract class WorkflowComponent<I, O> extends ComponentExecutable<I, O> implements ComponentComposable {
+
     @Override
     public void addComponent(Graph graph, String nodeId, boolean waitForAll) {
         graph.addNode(nodeId, this, waitForAll);

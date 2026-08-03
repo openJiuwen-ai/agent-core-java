@@ -4,8 +4,9 @@
 
 package com.openjiuwen.core.runner.spawn;
 
-import com.openjiuwen.agentteams.agent.TeamAgent;
+import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.RunnerConfig;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -144,7 +145,12 @@ public final class ChildProcess {
         }
         Object session = agentConfig.getSessionId();
         if (agentConfig.getRunnerConfig() != null) {
-            Runner.setConfig(agentConfig.getRunnerConfig());
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Runner.setConfig(mapper.convertValue(agentConfig.getRunnerConfig(), RunnerConfig.class));
+            } catch (IllegalArgumentException ignored) {
+                // If conversion fails, skip runner config
+            }
         }
         if (agentConfig.getAgentKind() == SpawnAgentKind.CLASS_AGENT) {
             if (!(agentConfig instanceof ClassAgentSpawnConfig classConfig)) {
@@ -155,9 +161,10 @@ public final class ChildProcess {
             return Runner.runAgent(agent, inputs, session, null);
         }
         if (agentConfig.getAgentKind() == SpawnAgentKind.TEAM_AGENT) {
-            TeamAgent agent = TeamAgent.fromSpawnPayload(agentConfig.getPayload());
+            TeamAgent agent = TeamAgent.fromSpawnPayload(agentConfig.getPayload())
+                    .toCompletableFuture().join();
             Object query = inputs.getOrDefault("query", inputs.getOrDefault("data", ""));
-            return agent.dispatchTask(String.valueOf(query));
+            return Runner.runAgent(agent, inputs, session, null);
         }
         throw new IllegalArgumentException("Unsupported spawned agent kind: " + agentConfig.getAgentKind());
     }
@@ -180,7 +187,12 @@ public final class ChildProcess {
         }
         Object session = agentConfig.getSessionId();
         if (agentConfig.getRunnerConfig() != null) {
-            Runner.setConfig(agentConfig.getRunnerConfig());
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Runner.setConfig(mapper.convertValue(agentConfig.getRunnerConfig(), RunnerConfig.class));
+            } catch (IllegalArgumentException ignored) {
+                // If conversion fails, skip runner config
+            }
         }
         if (agentConfig.getAgentKind() == SpawnAgentKind.CLASS_AGENT) {
             if (!(agentConfig instanceof ClassAgentSpawnConfig classConfig)) {
@@ -199,8 +211,9 @@ public final class ChildProcess {
             return chunks;
         }
         if (agentConfig.getAgentKind() == SpawnAgentKind.TEAM_AGENT) {
-            TeamAgent agent = TeamAgent.fromSpawnPayload(agentConfig.getPayload());
-            Iterator<Object> iterator = Runner.runAgentGroupStreaming(agent, inputs, session, null, null);
+            TeamAgent agent = TeamAgent.fromSpawnPayload(agentConfig.getPayload())
+                    .toCompletableFuture().join();
+            Iterator<Object> iterator = Runner.runAgentStreaming(agent, inputs, session, null, null);
             List<Object> chunks = new ArrayList<>();
             while (iterator.hasNext()) {
                 Object chunk = iterator.next();

@@ -11,92 +11,43 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code OutputParamConfig} Pydantic model with aliases:
  * {@code type}, {@code description}, {@code required}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public class OutputParamConfig {
+
     private String paramType = "";
     private String paramDescription = "";
     private boolean paramRequired = false;
 
-    /**
-     * OutputParamConfig.
-     * 
-     * @since 0.1.7
-     */
     public OutputParamConfig() {
     }
 
-    /**
-     * OutputParamConfig.
-     * 
-     * @param paramType paramType
-     * @param paramDescription paramDescription
-     * @param paramRequired paramRequired
-     * @since 0.1.7
-     */
     public OutputParamConfig(String paramType, String paramDescription, boolean paramRequired) {
         this.paramType = paramType != null ? paramType : "";
         this.paramDescription = paramDescription != null ? paramDescription : "";
         this.paramRequired = paramRequired;
     }
 
-    /**
-     * getParamType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getParamType() {
         return paramType;
     }
 
-    /**
-     * setParamType.
-     * 
-     * @param paramType paramType
-     * @since 0.1.7
-     */
     public void setParamType(String paramType) {
         this.paramType = paramType != null ? paramType : "";
     }
 
-    /**
-     * getParamDescription.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getParamDescription() {
         return paramDescription;
     }
 
-    /**
-     * setParamDescription.
-     * 
-     * @param paramDescription paramDescription
-     * @since 0.1.7
-     */
     public void setParamDescription(String paramDescription) {
         this.paramDescription = paramDescription != null ? paramDescription : "";
     }
 
-    /**
-     * isParamRequired.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isParamRequired() {
         return paramRequired;
     }
 
-    /**
-     * setParamRequired.
-     * 
-     * @param paramRequired paramRequired
-     * @since 0.1.7
-     */
     public void setParamRequired(boolean paramRequired) {
         this.paramRequired = paramRequired;
     }
@@ -104,10 +55,6 @@ public class OutputParamConfig {
     /**
      * Validate and create from a map (uses aliased keys: "type", "description", "required").
      * Mirrors Python's {@code OutputParamConfig.model_validate(dict)}.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
      */
     public static OutputParamConfig fromMap(Map<String, Object> map) {
         if (map == null) {

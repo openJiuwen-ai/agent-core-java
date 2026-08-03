@@ -6,90 +6,38 @@ package com.openjiuwen.core.common.exception;
 
 import com.openjiuwen.core.common.schema.BaseCard;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Tool execution error — may carry a {@link BaseCard} reference.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ToolError} in
+ * {@code openjiuwen/core/common/exception/errors.py}.
  */
 public class ToolError extends ExecutionError {
     private final BaseCard card;
 
-    /**
-     * Creates a ToolError with full details including card reference.
-     * 
-     * @param status the status code
-     * @param msg optional custom message
-     * @param details optional additional details
-     * @param cause optional root cause
-     * @param card the tool card that caused the error
-     * @param params template parameters for message rendering
-     * @since 0.1.7
-     */
-    public ToolError(StatusCode status, String msg, Object details, Throwable cause, BaseCard card,
-            Map<String, Object> params) {
-        super(status, msg, mergeCardDetails(details, card), cause, params);
-        this.card = card != null ? card.copy() : null;
+    public ToolError(StatusCode status, String msg, Object details, Throwable cause, BaseCard card, Map<String, Object> params) {
+        super(status, msg, card != null ? null : details, cause, params);
+        this.card = copyCard(card);
     }
 
-    /**
-     * Creates a ToolError with status and parameters.
-     * 
-     * @param status the status code
-     * @param params template parameters for message rendering
-     * @since 0.1.7
-     */
     public ToolError(StatusCode status, Map<String, Object> params) {
         super(status, params);
         this.card = null;
     }
 
-    /**
-     * Creates a ToolError with status only.
-     * 
-     * @param status the status code
-     * @since 0.1.7
-     */
     public ToolError(StatusCode status) {
         super(status);
         this.card = null;
     }
 
-    /**
-     * Gets the tool card that caused this error.
-     * 
-     * @return the tool card, or null if not available
-     * @since 0.1.7
-     */
     public BaseCard getCard() {
         return card;
     }
 
-    /**
-     * mergeCardDetails.
-     * 
-     * @param details details
-     * @param card card
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object mergeCardDetails(Object details, BaseCard card) {
+    private static BaseCard copyCard(BaseCard card) {
         if (card == null) {
-            return details;
+            return null;
         }
-        if (details instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = new HashMap<>((Map<String, Object>) details);
-            map.put("card", card);
-            return map;
-        }
-        Map<String, Object> map = new HashMap<>();
-        map.put("card", card);
-        if (details != null) {
-            map.put("original_details", details);
-        }
-        return map;
+        return new BaseCard(card.getId(), card.getName(), card.getDescription());
     }
 }

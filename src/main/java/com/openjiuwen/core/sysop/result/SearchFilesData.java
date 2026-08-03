@@ -4,34 +4,30 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 /**
- * Data structure for search files.
- * 
- * @since 0.1.7
+ * Backward-compatible search-files data payload for moved sys-operation results.
+ *
+ * <p>Mirrors Python's {@code SearchFilesData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.SearchFilesData}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class SearchFilesData {
+
     private int totalMatches;
-
-    /** List of matching files. */
     private List<FileSystemItem> matchingFiles;
-
-    /** Original base path used for the search. */
     private String searchPath;
-
-    /** Original search pattern used. */
     private String searchPattern;
-
-    /** Original exclude patterns used. */
     private List<String> excludePatterns;
 }

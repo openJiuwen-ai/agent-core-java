@@ -4,22 +4,19 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
-import com.openjiuwen.core.multiagent.TeamConfig;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
-
 /**
- * Public class HandoffTeamConfig used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Camelcase package compatibility facade for handoff team configuration.
+ *
+ * <p>Mirrors Python's {@code HandoffTeamConfig} in
+ * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_config.py}.</p>
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
-public class HandoffTeamConfig extends TeamConfig {
-    private HandoffConfig handoff = new HandoffConfig();
+public class HandoffTeamConfig extends com.openjiuwen.core.multi_agent.teams.handoff.HandoffTeamConfig {
+
+    public HandoffTeamConfig() {
+        super();
+    }
+
+    public HandoffTeamConfig(HandoffConfig handoff) {
+        super(handoff);
+    }
 }

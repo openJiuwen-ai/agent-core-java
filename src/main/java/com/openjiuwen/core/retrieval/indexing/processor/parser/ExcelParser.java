@@ -1,22 +1,22 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
-import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
-
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -27,42 +27,54 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Parser for xlsx/csv/tsv tabular files that emits row and column documents.
- * 
- * @since 0.1.7
+ * Parser for Excel, CSV, and TSV tabular files that emits row and column documents.
+ *
+ * <p>Mirrors Python's {@code ExcelParser} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/parser/excel_parser.py}.</p>
  */
 public class ExcelParser extends Parser {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExcelParser.class);
     private static final DataFormatter DATA_FORMATTER = new DataFormatter();
 
     /**
-     * cellStr.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code _cell_str} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/excel_parser.py}.
      */
     public static String cellStr(Object value) {
         return value == null ? "" : value.toString().trim();
     }
 
     /**
-     * rowsToDocuments.
-     * 
-     * @param rows rows
-     * @param sheetName sheetName
-     * @param baseId baseId
-     * @param sheetIndex sheetIndex
-     * @param isHeaderIncluded isHeaderIncluded
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code _rows_to_documents} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/excel_parser.py}.
      */
-    public static List<Document> rowsToDocuments(List<? extends List<?>> rows, String sheetName, String baseId,
-            int sheetIndex, boolean isHeaderIncluded) {
-        List<Document> docs = new ArrayList<>();
+    public static List<Document> rowsToDocuments(
+            List<? extends List<?>> rows,
+            String sheetName,
+            String baseId,
+            int sheetIndex
+    ) {
+        return rowsToDocuments(rows, sheetName, baseId, sheetIndex, true);
+    }
+
+    /**
+     * Mirrors Python's {@code _rows_to_documents} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/excel_parser.py}.
+     */
+    public static List<Document> rowsToDocuments(
+            List<? extends List<?>> rows,
+            String sheetName,
+            String baseId,
+            int sheetIndex,
+            boolean includeHeader
+    ) {
+        List<Document> documents = new ArrayList<>();
         if (rows == null || rows.isEmpty()) {
-            return docs;
+            return documents;
         }
 
         List<String> headers = new ArrayList<>();
@@ -74,15 +86,14 @@ public class ExcelParser extends Parser {
         int rowIndex = 2;
         for (List<?> row : dataRows) {
             List<String> parts = new ArrayList<>();
-            for (int colIndex = 0; colIndex < Math.min(headers.size(), row.size()); colIndex++) {
-                String header = headers.get(colIndex);
-                String value = cellStr(row.get(colIndex));
-                if (isHeaderIncluded && !header.isBlank()) {
+            int columnLimit = Math.min(headers.size(), row.size());
+            for (int columnIndex = 0; columnIndex < columnLimit; columnIndex++) {
+                String header = headers.get(columnIndex);
+                String value = cellStr(row.get(columnIndex));
+                if (includeHeader && !header.isBlank()) {
                     parts.add(header + ": " + value);
-                } else if (!isHeaderIncluded && !value.isBlank()) {
+                } else if (!includeHeader && !value.isBlank()) {
                     parts.add(value);
-                } else {
-                    // no-op
                 }
             }
             if (!parts.isEmpty()) {
@@ -90,28 +101,31 @@ public class ExcelParser extends Parser {
                 metadata.put("sheet_name", sheetName);
                 metadata.put("row_index", rowIndex);
                 metadata.put("source_type", "row");
-                docs.add(
-                        new Document(baseId + "_s" + sheetIndex + "_r" + rowIndex, String.join(", ", parts), metadata));
+                documents.add(new Document(
+                        baseId + "_s" + sheetIndex + "_r" + rowIndex,
+                        String.join(", ", parts),
+                        metadata
+                ));
             }
             rowIndex++;
         }
 
-        for (int colIndex = 0; colIndex < headers.size(); colIndex++) {
-            String columnName = headers.get(colIndex);
+        for (int columnIndex = 0; columnIndex < headers.size(); columnIndex++) {
+            String columnName = headers.get(columnIndex);
             if (columnName.isBlank()) {
-                columnName = "Column " + (colIndex + 1);
+                columnName = "Column " + (columnIndex + 1);
             }
             List<String> values = new ArrayList<>();
             for (List<?> row : dataRows) {
-                if (colIndex < row.size()) {
-                    String value = cellStr(row.get(colIndex));
+                if (columnIndex < row.size()) {
+                    String value = cellStr(row.get(columnIndex));
                     if (!value.isBlank()) {
                         values.add(value);
                     }
                 }
             }
             String text;
-            if (isHeaderIncluded) {
+            if (includeHeader) {
                 text = values.isEmpty()
                         ? "Column name: " + columnName + ". Values: (empty)"
                         : "Column name: " + columnName + ". Values: " + String.join(", ", values);
@@ -122,130 +136,108 @@ public class ExcelParser extends Parser {
             metadata.put("sheet_name", sheetName);
             metadata.put("column_name", columnName);
             metadata.put("source_type", "column");
-            docs.add(new Document(baseId + "_s" + sheetIndex + "_c" + colIndex, text, metadata));
+            documents.add(new Document(baseId + "_s" + sheetIndex + "_c" + columnIndex, text, metadata));
         }
-        return docs;
+        return documents;
     }
 
-    /**
-     * parse.
-     * 
-     * @param doc doc
-     * @param docId docId
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
+    public CompletableFuture<List<Document>> parseAsync(
+            String doc,
+            String docId,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
         Path path = Path.of(doc);
         if (!Files.exists(path)) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND,
-                    "File " + doc + " does not exist");
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_INDEXING_FILE_NOT_FOUND,
+                    "error_msg",
+                    "File " + doc + " does not exist"
+            );
         }
-        boolean isHeaderIncluded =
-            optionAsBoolean(options, "include_header", optionAsBoolean(options, "includeHeader", true));
+
+        Map<String, Object> safeOptions = options == null ? Map.of() : options;
+        boolean includeHeader = optionAsBoolean(
+                safeOptions,
+                "include_header",
+                optionAsBoolean(safeOptions, "includeHeader", true)
+        );
         String baseId = docId == null || docId.isBlank() ? doc : docId;
-        String ext = extensionOf(doc);
-        try {
-            if (".csv".equals(ext) || ".tsv".equals(ext)) {
-                char delimiter = ".tsv".equals(ext) ? '\t' : ',';
-                List<List<String>> rows = loadDelimitedRows(path, delimiter);
-                String sheetName = path.getFileName() == null ? "default" : path.getFileName().toString();
-                return rowsToDocuments(rows, sheetName, baseId, 0, isHeaderIncluded);
-            }
-            try (InputStream inputStream = Files.newInputStream(path);
-                    Workbook workbook = WorkbookFactory.create(inputStream)) {
-                List<Document> documents = new ArrayList<>();
-                int sheetIndex = 0;
-                for (Sheet sheet : workbook) {
-                    documents.addAll(rowsToDocuments(readSheetRows(sheet), sheet.getSheetName(), baseId, sheetIndex,
-                            isHeaderIncluded));
-                    sheetIndex++;
-                }
-                return documents;
-            }
-        } catch (IOException ex) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_FORMAT_NOT_SUPPORT,
-                    "Parse failed for " + doc + ": " + ex.getMessage());
-        }
+        String extension = extensionOf(doc);
+        return CompletableFuture.supplyAsync(() -> parseExistingFile(path, doc, baseId, extension, includeHeader));
     }
 
-    /**
-     * parseContent.
-     * 
-     * @param doc doc
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        return null;
-    }
-
-    /**
-     * supports.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean supports(String doc) {
-        String ext = extensionOf(doc);
-        return ".xlsx".equals(ext) || ".csv".equals(ext) || ".tsv".equals(ext);
+        String extension = extensionOf(doc);
+        return ".xlsx".equals(extension) || ".csv".equals(extension) || ".tsv".equals(extension);
     }
 
-    /**
-     * optionAsBoolean.
-     * 
-     * @param options options
-     * @param key key
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean optionAsBoolean(Map<String, Object> options, String key, boolean defaultValue) {
-        if (options == null || !options.containsKey(key)) {
-            return defaultValue;
+    private static List<Document> parseExistingFile(
+            Path path,
+            String doc,
+            String baseId,
+            String extension,
+            boolean includeHeader
+    ) {
+        try {
+            List<Document> documents;
+            if (".csv".equals(extension) || ".tsv".equals(extension)) {
+                char delimiter = ".tsv".equals(extension) ? '\t' : ',';
+                List<List<String>> rows = loadDelimitedRows(path, delimiter);
+                String sheetName = path.getFileName() == null ? "default" : path.getFileName().toString();
+                documents = rowsToDocuments(rows, sheetName, baseId, 0, includeHeader);
+            } else {
+                documents = loadWorkbookDocuments(path, baseId, includeHeader);
+            }
+            LOGGER.info("Parsed {}: {} documents (rows + columns)", doc, documents.size());
+            return documents;
+        } catch (Exception exception) {
+            String fileType = ".xlsx".equals(extension) ? "Excel" : extension.toUpperCase(Locale.ROOT).replace(".", "");
+            LOGGER.warn("Failed to parse {} {}: {}", fileType, doc, exception.getMessage(), exception);
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_INDEXING_FORMAT_NOT_SUPPORT,
+                    "error_msg",
+                    ("Excel".equals(fileType) ? "Excel parse failed" : "Parse failed") + " for " + doc + ": "
+                            + exception.getMessage()
+            );
         }
-        Object value = options.get(key);
-        return !(value instanceof Boolean booleanValue) || booleanValue;
     }
 
-    /**
-     * extensionOf.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String extensionOf(String doc) {
-        if (doc == null || doc.isBlank()) {
-            return "";
+    private static List<Document> loadWorkbookDocuments(Path path, String baseId, boolean includeHeader) throws IOException {
+        try (InputStream inputStream = Files.newInputStream(path);
+             Workbook workbook = WorkbookFactory.create(inputStream)) {
+            List<Document> documents = new ArrayList<>();
+            int sheetIndex = 0;
+            for (Sheet sheet : workbook) {
+                documents.addAll(rowsToDocuments(readSheetRows(sheet), sheet.getSheetName(), baseId, sheetIndex,
+                        includeHeader));
+                sheetIndex++;
+            }
+            return documents;
         }
-        String lower = doc.toLowerCase(Locale.ROOT);
-        int idx = lower.lastIndexOf('.');
-        return idx >= 0 ? lower.substring(idx) : "";
     }
 
-    /**
-     * readSheetRows.
-     * 
-     * @param sheet sheet
-     * @return the result
-     * @since 0.1.7
-     */
     private static List<List<String>> readSheetRows(Sheet sheet) {
+        int firstRow = sheet.getFirstRowNum();
+        int lastRow = sheet.getLastRowNum();
+        int maxColumns = 0;
+        for (int rowIndex = firstRow; rowIndex <= lastRow; rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row != null) {
+                maxColumns = Math.max(maxColumns, row.getLastCellNum());
+            }
+        }
         List<List<String>> rows = new ArrayList<>();
-        for (Row row : sheet) {
-            int lastCell = Math.max(row.getLastCellNum(), 0);
+        if (maxColumns <= 0) {
+            return rows;
+        }
+        for (int rowIndex = firstRow; rowIndex <= lastRow; rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
             List<String> values = new ArrayList<>();
-            for (int colIndex = 0; colIndex < lastCell; colIndex++) {
-                Cell cell = row.getCell(colIndex, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+            for (int columnIndex = 0; columnIndex < maxColumns; columnIndex++) {
+                Cell cell = row == null ? null : row.getCell(columnIndex, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
                 values.add(cell == null ? "" : DATA_FORMATTER.formatCellValue(cell).trim());
             }
             rows.add(values);
@@ -253,55 +245,69 @@ public class ExcelParser extends Parser {
         return rows;
     }
 
-    /**
-     * loadDelimitedRows.
-     * 
-     * @param path path
-     * @param delimiter delimiter
-     * @return the result
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
     private static List<List<String>> loadDelimitedRows(Path path, char delimiter) throws IOException {
+        String content = Files.readString(path, StandardCharsets.UTF_8);
+        if (!content.isEmpty() && content.charAt(0) == '\uFEFF') {
+            content = content.substring(1);
+        }
+        return parseDelimitedContent(content, delimiter);
+    }
+
+    private static List<List<String>> parseDelimitedContent(String content, char delimiter) {
         List<List<String>> rows = new ArrayList<>();
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                rows.add(parseDelimitedLine(line, delimiter));
+        List<String> row = new ArrayList<>();
+        StringBuilder cell = new StringBuilder();
+        boolean quoted = false;
+        boolean hasData = false;
+        for (int index = 0; index < content.length(); index++) {
+            char current = content.charAt(index);
+            hasData = true;
+            if (current == '"') {
+                if (quoted && index + 1 < content.length() && content.charAt(index + 1) == '"') {
+                    cell.append('"');
+                    index++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (current == delimiter && !quoted) {
+                row.add(cell.toString());
+                cell.setLength(0);
+            } else if ((current == '\n' || current == '\r') && !quoted) {
+                row.add(cell.toString());
+                cell.setLength(0);
+                rows.add(row);
+                row = new ArrayList<>();
+                if (current == '\r' && index + 1 < content.length() && content.charAt(index + 1) == '\n') {
+                    index++;
+                }
+            } else {
+                cell.append(current);
             }
+        }
+        if (hasData && (cell.length() > 0 || !row.isEmpty())) {
+            row.add(cell.toString());
+            rows.add(row);
         }
         return rows;
     }
 
-    /**
-     * parseDelimitedLine.
-     * 
-     * @param line line
-     * @param delimiter delimiter
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<String> parseDelimitedLine(String line, char delimiter) {
-        List<String> cells = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean quoted = false;
-        for (int i = 0; i < line.length(); i++) {
-            char ch = line.charAt(i);
-            if (ch == '"') {
-                if (quoted && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                    current.append('"');
-                    i++;
-                } else {
-                    quoted = !quoted;
-                }
-            } else if (ch == delimiter && !quoted) {
-                cells.add(current.toString().trim());
-                current.setLength(0);
-            } else {
-                current.append(ch);
-            }
+    private static boolean optionAsBoolean(Map<String, Object> options, String key, boolean defaultValue) {
+        if (options == null || !options.containsKey(key)) {
+            return defaultValue;
         }
-        cells.add(current.toString().trim());
-        return cells;
+        Object value = options.get(key);
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        return true;
+    }
+
+    private static String extensionOf(String doc) {
+        if (doc == null || doc.isBlank()) {
+            return "";
+        }
+        String fileName = Path.of(doc).getFileName().toString().toLowerCase(Locale.ROOT);
+        int index = fileName.lastIndexOf('.');
+        return index >= 0 ? fileName.substring(index) : "";
     }
 }

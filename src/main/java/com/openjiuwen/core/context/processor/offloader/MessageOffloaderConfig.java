@@ -4,95 +4,103 @@
 
 package com.openjiuwen.core.context.processor.offloader;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Configuration for the {@link MessageOffloader} ContextProcessor.
- * <p>
- * The offloader keeps conversation history within safe memory/token limits
- * by trimming or offloading messages once thresholds are exceeded.
- * <p>
- * Mirrors Python's {@code MessageOffloaderConfig}.
- * 
- * @since 0.1.7
+ * Backward-compatible config DTO for the pre-0.1.14 offloader package.
+ *
+ * <p>Mirrors Python's {@code MessageOffloaderConfig} in
+ * {@code openjiuwen/core/context_engine/processor/offloader/message_offloader.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class MessageOffloaderConfig {
-    private Integer messagesThreshold;
+public class MessageOffloaderConfig
+        extends com.openjiuwen.core.context_engine.processor.offloader.MessageOffloaderConfig {
+    public MessageOffloaderConfig() {
+    }
 
-    /**
-     * Maximum accumulated token count before offloading is triggered.
-     */
-    @Builder.Default
-    private int tokensThreshold = 20000;
+    public MessageOffloaderConfig(Integer messagesThreshold, int tokensThreshold, int largeMessageThreshold,
+                                  List<String> offloadMessageType, List<String> protectedToolNames,
+                                  int trimSize, Integer messagesToKeep, boolean keepLastRound) {
+        setMessagesThreshold(messagesThreshold);
+        setTokensThreshold(tokensThreshold);
+        setLargeMessageThreshold(largeMessageThreshold);
+        setOffloadMessageType(offloadMessageType);
+        setProtectedToolNames(protectedToolNames);
+        setTrimSize(trimSize);
+        setMessagesToKeep(messagesToKeep);
+        setKeepLastRound(keepLastRound);
+    }
 
-    /**
-     * Messages whose token count exceeds this value are considered 'large'.
-     */
-    @Builder.Default
-    private int largeMessageThreshold = 1000;
+    public static Builder builder() {
+        return new Builder();
+    }
 
-    /**
-     * Roles eligible for offloading (e.g., "user", "assistant", "tool").
-     * 
-     * @since 0.1.7
-     */
-    @Builder.Default
-    private List<String> offloadMessageType = List.of("tool");
-
-    /**
-     * Tool messages produced by these tools are never offloaded.
-     * 
-     * @since 0.1.7
-     */
-    @Builder.Default
-    private List<String> protectedToolNames = List.of("reload_original_context_messages");
-
-    /**
-     * Number of tokens to retain when a message is offloaded.
-     */
-    @Builder.Default
-    private int trimSize = 100;
-
-    /**
-     * Number of most-recent messages to retain regardless of thresholds.
-     */
-    private Integer messagesToKeep;
-
-    /**
-     * If true, the most recent user-assistant round is always preserved.
-     */
-    @Builder.Default
-    private boolean keepLastRound = true;
-
-    /**
-     * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
-     * 
-     * @since 0.1.7
-     */
     public void validate() {
-        if (messagesThreshold != null && messagesThreshold <= 0) {
-            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
+        setMessagesThreshold(getMessagesThreshold());
+        setTokensThreshold(getTokensThreshold());
+        setLargeMessageThreshold(getLargeMessageThreshold());
+        setOffloadMessageType(getOffloadMessageType());
+        setProtectedToolNames(getProtectedToolNames());
+        setTrimSize(getTrimSize());
+        setMessagesToKeep(getMessagesToKeep());
+    }
+
+    public static final class Builder {
+        private Integer messagesThreshold;
+        private int tokensThreshold = 20000;
+        private int largeMessageThreshold = 1000;
+        private List<String> offloadMessageType = List.of("tool");
+        private List<String> protectedToolNames = List.of("reload_original_context_messages");
+        private int trimSize = 100;
+        private Integer messagesToKeep;
+        private boolean keepLastRound = true;
+
+        private Builder() {
         }
-        if (tokensThreshold <= 0) {
-            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+
+        public Builder messagesThreshold(Integer messagesThreshold) {
+            this.messagesThreshold = messagesThreshold;
+            return this;
         }
-        if (largeMessageThreshold <= 0) {
-            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
+
+        public Builder tokensThreshold(int tokensThreshold) {
+            this.tokensThreshold = tokensThreshold;
+            return this;
         }
-        if (trimSize <= 0) {
-            throw new IllegalArgumentException("trimSize must be > 0, got " + trimSize);
+
+        public Builder largeMessageThreshold(int largeMessageThreshold) {
+            this.largeMessageThreshold = largeMessageThreshold;
+            return this;
         }
-        if (messagesToKeep != null && messagesToKeep <= 0) {
-            throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
+
+        public Builder offloadMessageType(List<String> offloadMessageType) {
+            this.offloadMessageType = offloadMessageType == null ? null : new ArrayList<>(offloadMessageType);
+            return this;
+        }
+
+        public Builder protectedToolNames(List<String> protectedToolNames) {
+            this.protectedToolNames = protectedToolNames == null ? null : new ArrayList<>(protectedToolNames);
+            return this;
+        }
+
+        public Builder trimSize(int trimSize) {
+            this.trimSize = trimSize;
+            return this;
+        }
+
+        public Builder messagesToKeep(Integer messagesToKeep) {
+            this.messagesToKeep = messagesToKeep;
+            return this;
+        }
+
+        public Builder keepLastRound(boolean keepLastRound) {
+            this.keepLastRound = keepLastRound;
+            return this;
+        }
+
+        public MessageOffloaderConfig build() {
+            return new MessageOffloaderConfig(messagesThreshold, tokensThreshold, largeMessageThreshold,
+                    offloadMessageType, protectedToolNames, trimSize, messagesToKeep, keepLastRound);
         }
     }
 }

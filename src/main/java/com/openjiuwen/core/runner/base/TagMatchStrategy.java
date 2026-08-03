@@ -4,16 +4,17 @@
 
 package com.openjiuwen.core.runner.base;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Strategy for matching multiple tags when querying or filtering resources.
- * <p>
- * Mirrors Python's {@code TagMatchStrategy}.
- * 
- * @since 0.1.7
+ * Compatibility facade for the 0.1.12 runner-base tag matching enum.
+ *
+ * <p>Mirrors Python's {@code TagMatchStrategy} in
+ * {@code openjiuwen/core/runner/resources_manager/base.py}.</p>
  */
 public enum TagMatchStrategy {
     ALL("all"),
-    /** Resource must contain ANY of the specified tags. */
     ANY("any");
 
     private final String value;
@@ -22,13 +23,26 @@ public enum TagMatchStrategy {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
+    public String value() {
+        return value;
+    }
+
     public String getValue() {
         return value;
+    }
+
+    public com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy toResourceManagerStrategy() {
+        return com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy.fromValue(value);
+    }
+
+    @JsonCreator
+    public static TagMatchStrategy fromValue(String value) {
+        for (TagMatchStrategy strategy : values()) {
+            if (strategy.value.equals(value)) {
+                return strategy;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported tag match strategy: " + value);
     }
 }

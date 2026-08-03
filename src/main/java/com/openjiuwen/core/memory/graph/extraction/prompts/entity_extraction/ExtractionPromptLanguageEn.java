@@ -53,7 +53,7 @@ public final class ExtractionPromptLanguageEn {
         EntityDef.registerDescription(LANGUAGE_CODE,
                 ": Default entity type, pick this if no other option is suitable.");
         RelationDef.registerDescription(LANGUAGE_CODE, ": Default relation type.");
-        MultilingualBaseModel.registerDescriptions(LANGUAGE_CODE, Map.ofEntries(
+        MultilingualBaseModel.registerMultilingualDescription(LANGUAGE_CODE, Map.ofEntries(
                 Map.entry("{{[ent_def_name]}}", "Name of extracted entity"),
                 Map.entry("{{[ent_def_type]}}",
                         "Type ID of extracted entity, needs to be from the list of provided entity types"),

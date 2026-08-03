@@ -4,58 +4,21 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Abstract storage for saving/recovering session state.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.checkpointer.base.Storage}.
- * 
- * @since 0.1.7
+ * Storage contract used by translated checkpointers.
+ *
+ * <p>Mirrors Python's {@code Storage} in
+ * {@code openjiuwen/core/session/checkpointer/base.py}.</p>
  */
-public abstract class Storage {
-    /**
-     * save.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
-    public abstract void save(BaseSession session);
+public interface Storage {
 
-    /**
-     * Recover the session state.
-     * 
-     * @param session the session to recover into
-     * @param inputs optional interactive input for resumed execution
-     * @since 0.1.7
-     */
-    public abstract void recover(BaseSession session, InteractiveInput inputs);
+    CompletableFuture<Void> save(Object session);
 
-    /**
-     * Recover session state without interactive input.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
-    public void recover(BaseSession session) {
-        recover(session, null);
-    }
+    CompletableFuture<Void> recover(Object session, Object inputs);
 
-    /**
-     * Clear stored state for the given ID.
-     * 
-     * @param id the session/workflow/agent ID
-     * @since 0.1.7
-     */
-    public abstract void clear(String id);
+    CompletableFuture<Void> clear(String sessionId);
 
-    /**
-     * Check if state exists for the given session.
-     * 
-     * @param session the session
-     * @return true if state isExists
-     * @since 0.1.7
-     */
-    public abstract boolean isExists(BaseSession session);
+    CompletableFuture<Boolean> exists(Object session);
 }

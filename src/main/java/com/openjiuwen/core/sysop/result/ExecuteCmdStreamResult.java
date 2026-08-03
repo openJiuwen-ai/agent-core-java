@@ -5,14 +5,12 @@
 package com.openjiuwen.core.sysop.result;
 
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 /**
  * Result type for streaming shell command execution.
  * 
  * @since 0.1.7
  */
-@SuperBuilder
 @NoArgsConstructor
 public class ExecuteCmdStreamResult extends BaseResult<ExecuteCmdChunkData> {
     /**
@@ -24,6 +22,6 @@ public class ExecuteCmdStreamResult extends BaseResult<ExecuteCmdChunkData> {
      * @since 0.1.7
      */
     public ExecuteCmdStreamResult(int code, String message, ExecuteCmdChunkData data) {
-        super(code, message, data);
+        setCode(code); setMessage(message); setData(data);
     }
 }

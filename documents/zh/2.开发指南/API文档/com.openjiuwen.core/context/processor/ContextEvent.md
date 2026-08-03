@@ -1,4 +1,4 @@
-# com.openjiuwen.core.context.processor.ContextEvent
+# com.openjiuwen.core.common.logging.events.ContextEvent
 
 ## class ContextEvent
 

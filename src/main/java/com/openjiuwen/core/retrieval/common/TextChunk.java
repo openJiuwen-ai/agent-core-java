@@ -1,151 +1,134 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.common;
 
-import lombok.Getter;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Text chunk model.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TextChunk} in
+ * {@code openjiuwen/core/retrieval/common/document.py}.
  */
-@Getter
-@Setter
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TextChunk {
+
+    @JsonProperty("id_")
     private String id;
     private String text;
+    @JsonProperty("doc_id")
     private String docId;
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
-    private List<Float> embedding;
+    private List<Double> embedding;
 
-    /**
-     * TextChunk.
-     * 
-     * @since 0.1.7
-     */
     public TextChunk() {
+        throw Document.validation("missing_required_fields", "TextChunk requires id_, text, and doc_id", Map.of());
     }
 
-    /**
-     * TextChunk.
-     * 
-     * @param id id
-     * @param text text
-     * @param docId docId
-     * @since 0.1.7
-     */
     public TextChunk(String id, String text, String docId) {
         this(id, text, docId, null, null);
     }
 
-    /**
-     * TextChunk.
-     * 
-     * @param id id
-     * @param text text
-     * @param docId docId
-     * @param metadata metadata
-     * @param embedding embedding
-     * @since 0.1.7
-     */
-    public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<Float> embedding) {
-        setId(id);
-        setText(text);
-        setDocId(docId);
-        setMetadata(metadata);
-        setEmbedding(embedding);
+    public TextChunk(String id, String text, String docId, Map<String, Object> metadata) {
+        this(id, text, docId, metadata, null);
     }
 
-    /**
-     * fromDocument.
-     * 
-     * @param document document
-     * @param chunkText chunkText
-     * @return the result
-     * @since 0.1.7
-     */
-    public static TextChunk fromDocument(Document document, String chunkText) {
-        return fromDocument(document, chunkText, null);
+    public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<? extends Number> embedding) {
+        if (id == null || text == null || docId == null) {
+            throw Document.validation("missing_required_fields", "TextChunk requires id_, text, and doc_id", Map.of());
+        }
+        this.id = id;
+        this.text = text;
+        this.docId = docId;
+        this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+        this.embedding = toDoubleList(embedding);
     }
 
-    /**
-     * fromDocument.
-     * 
-     * @param document document
-     * @param chunkText chunkText
-     * @param id id
-     * @return the result
-     * @since 0.1.7
-     */
-    public static TextChunk fromDocument(Document document, String chunkText, String id) {
-        return new TextChunk(id == null || id.isBlank() ? UUID.randomUUID().toString() : id, chunkText,
-                document.getId(), document.getMetadata(), null);
+    public static TextChunk fromDocument(Document doc, String chunkText) {
+        return fromDocument(doc, chunkText, "");
     }
 
-    /**
-     * setId.
-     * 
-     * @param id id
-     * @since 0.1.7
-     */
-    public void setId(String id) {
-        RetrievalValidation.requireNonBlank(id, "TextChunk.id");
+    public static TextChunk fromDocument(Document doc, String chunkText, String id) {
+        return new TextChunk(
+                id == null || id.isBlank() ? UUID.randomUUID().toString() : id,
+                chunkText,
+                doc.getId_(),
+                doc.getMetadata(),
+                null
+        );
+    }
+
+    public String getId_() {
+        return id;
+    }
+
+    public void setId_(String id) {
         this.id = id;
     }
 
-    /**
-     * setText.
-     * 
-     * @param text text
-     * @since 0.1.7
-     */
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getText() {
+        return text;
+    }
+
     public void setText(String text) {
-        RetrievalValidation.requireNonNull(text, "TextChunk.text");
         this.text = text;
     }
 
-    /**
-     * setDocId.
-     * 
-     * @param docId docId
-     * @since 0.1.7
-     */
+    public String getDocId() {
+        return docId;
+    }
+
+    public String getDoc_id() {
+        return docId;
+    }
+
     public void setDocId(String docId) {
-        RetrievalValidation.requireNonBlank(docId, "TextChunk.docId");
         this.docId = docId;
     }
 
-    /**
-     * setMetadata.
-     * 
-     * @param metadata metadata
-     * @since 0.1.7
-     */
+    public void setDoc_id(String docId) {
+        this.docId = docId;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return new LinkedHashMap<>(metadata);
+    }
+
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
 
-    /**
-     * setEmbedding.
-     * 
-     * @param embedding embedding
-     * @since 0.1.7
-     */
-    public void setEmbedding(List<Float> embedding) {
-        this.embedding = embedding == null ? null : List.copyOf(embedding);
+    public List<Double> getEmbedding() {
+        return embedding == null ? null : new ArrayList<>(embedding);
+    }
+
+    public void setEmbedding(List<? extends Number> embedding) {
+        this.embedding = toDoubleList(embedding);
+    }
+
+    private static List<Double> toDoubleList(List<? extends Number> embedding) {
+        if (embedding == null) {
+            return null;
+        }
+        List<Double> values = new ArrayList<>(embedding.size());
+        for (Number value : embedding) {
+            values.add(value == null ? null : value.doubleValue());
+        }
+        return values;
     }
 }

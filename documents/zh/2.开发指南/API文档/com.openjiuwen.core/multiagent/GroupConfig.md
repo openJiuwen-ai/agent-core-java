@@ -1,4 +1,4 @@
-# com.openjiuwen.core.multiagent.GroupConfig
+# com.openjiuwen.core.multi_agent.GroupConfig
 
 ## class GroupConfig
 

@@ -4,10 +4,14 @@
 
 package com.openjiuwen.core.memory.manage.update;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Result of memory check operation.
- * 
- * @since 0.1.7
+ * Result of a memory check operation.
+ *
+ * <p>Mirrors Python's {@code CheckResult} in
+ * {@code openjiuwen/core/memory/manage/update/mem_update_checker.py}.</p>
  */
 public enum CheckResult {
     REDUNDANT("redundant"),
@@ -20,29 +24,18 @@ public enum CheckResult {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonValue
     public String getValue() {
         return value;
     }
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonCreator
     public static CheckResult fromValue(String value) {
-        for (CheckResult cr : values()) {
-            if (cr.value.equalsIgnoreCase(value)) {
-                return cr;
+        for (CheckResult result : values()) {
+            if (result.value.equals(value)) {
+                return result;
             }
         }
-        return NONE;
+        throw new IllegalArgumentException("Unknown check result: " + value);
     }
 }

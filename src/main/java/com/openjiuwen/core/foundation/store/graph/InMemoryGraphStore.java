@@ -4,414 +4,279 @@
 
 package com.openjiuwen.core.foundation.store.graph;
 
-import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
-import com.openjiuwen.spi.store.query.ComparisonExpr;
-import com.openjiuwen.spi.store.query.LogicalExpr;
-import com.openjiuwen.spi.store.query.NullExpr;
-import com.openjiuwen.spi.store.query.QueryExpr;
-import com.openjiuwen.spi.store.query.RangeExpr;
+import com.openjiuwen.core.foundation.store.Embedding;
+import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
+import com.openjiuwen.core.foundation.store.query.QueryExpr;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
 /**
- * In-memory implementation of the foundation {@link GraphStore} contract.
- * <p>
- * Provides a simple in-memory backend for graph storage that can be used for testing and
- * lightweight local development. Registered with {@link GraphStoreFactory} under the name {@code
- * "in_memory"}.
- * 
- * @since 0.1.7
+ * Local deterministic graph store backend used when Python-compatible tests request
+ * {@code backend="in_memory"}.
+ *
+ * <p>Mirrors Python's graph-store backend protocol in
+ * {@code openjiuwen/core/foundation/store/graph/base_graph_store.py}.</p>
  */
-public class InMemoryGraphStore implements GraphStore {
-    private static final int EMBED_QUEUE_CAPACITY = 1024;
+public final class InMemoryGraphStore implements GraphStore {
+
+    public static final String ENTITY_COLLECTION = "entity";
+    public static final String RELATION_COLLECTION = "relation";
+    public static final String EPISODE_COLLECTION = "episode";
+    private static final String ALL_COLLECTIONS = "all";
+    private static final Map<String, String> COLLECTION_ALIASES = Map.of(
+            "entities", ENTITY_COLLECTION,
+            "relations", RELATION_COLLECTION,
+            "episodes", EPISODE_COLLECTION
+    );
 
     private final GraphConfig config;
-    private final ExecutorService embedExecutor;
+    private final Map<String, Map<String, Map<String, Object>>> collections = new ConcurrentHashMap<>();
     private Embedding embedder;
 
-    /**
-     * Collection name -> list of data records.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, List<Map<String, Object>>> collections = new ConcurrentHashMap<>();
-
-    /**
-     * InMemoryGraphStore.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
-    private InMemoryGraphStore(GraphConfig config) {
+    public InMemoryGraphStore(GraphConfig config) {
         this.config = config;
-        int workerThreads = Math.max(1, config.getWorkerThreads());
-        this.embedExecutor = new ThreadPoolExecutor(workerThreads, workerThreads, 0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(EMBED_QUEUE_CAPACITY), new ThreadPoolExecutor.CallerRunsPolicy());
+        this.embedder = config.getEmbeddingModel();
+        collections.put(ENTITY_COLLECTION, new ConcurrentHashMap<>());
+        collections.put(RELATION_COLLECTION, new ConcurrentHashMap<>());
+        collections.put(EPISODE_COLLECTION, new ConcurrentHashMap<>());
     }
 
-    /**
-     * Creates an in-memory graph store from the provided graph configuration.
-     * 
-     * @param config graph store configuration
-     * @return graph store instance backed by local memory
-     * @since 0.1.7
-     */
-    public static GraphStore fromConfig(GraphConfig config) {
+    public static InMemoryGraphStore fromConfig(GraphConfig config) {
+        return fromConfig(config, Map.of());
+    }
+
+    public static InMemoryGraphStore fromConfig(GraphConfig config, Map<String, Object> kwargs) {
         return new InMemoryGraphStore(config);
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public GraphConfig getConfig() {
         return config;
     }
 
-    /**
-     * getEmbedExecutor.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public ExecutorService getEmbedExecutor() {
-        return embedExecutor;
+    public Optional<Semaphore> getSemophore() {
+        return Optional.empty();
     }
 
-    /**
-     * getEmbedder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Embedding getEmbedder() {
-        return embedder;
+    public Optional<Embedding> getEmbedder() {
+        return Optional.ofNullable(embedder);
     }
 
-    /**
-     * refresh.
-     * 
-     * @since 0.1.7
-     */
     @Override
-    public void refresh() {
-        // No-op for in-memory store
-    }
-
-    /**
-     * addData.
-     * 
-     * @param collection collection
-     * @param data data
-     * @param isFlush isFlush
-     * @param isUpsert isUpsert
-     * @since 0.1.7
-     */
-    @Override
-    public void addData(String collection, Iterable<Map<String, Object>> data, boolean isFlush, boolean isUpsert) {
-        List<Map<String, Object>> coll =
-            collections.computeIfAbsent(collection, k -> Collections.synchronizedList(new ArrayList<>()));
-        for (Map<String, Object> record : data) {
-            if (isUpsert) {
-                Object id = record.containsKey("id") ? record.get("id") : record.get("uuid");
-                if (id != null) {
-                    coll.removeIf(existing -> id
-                            .equals(existing.containsKey("id") ? existing.get("id") : existing.get("uuid")));
-                }
-            }
-            coll.add(new HashMap<>(record));
-        }
-    }
-
-    /**
-     * addEntity.
-     * 
-     * @param entities entities
-     * @param isFlush isFlush
-     * @param isUpsert isUpsert
-     * @param shouldSkipEmbed shouldSkipEmbed
-     * @since 0.1.7
-     */
-    @Override
-    public void addEntity(Iterable<?> entities, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
-        List<Map<String, Object>> records = new ArrayList<>();
-        for (Object entity : entities) {
-            if (entity instanceof BaseGraphObject graphObject) {
-                records.add(graphObject.toMap());
-                continue;
-            }
-            if (entity instanceof Map<?, ?> map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> typed = (Map<String, Object>) map;
-                records.add(typed);
-            }
-        }
-        addData(GraphConstants.ENTITY_COLLECTION, records, isFlush, isUpsert);
-    }
-
-    /**
-     * addRelation.
-     * 
-     * @param relations relations
-     * @param isFlush isFlush
-     * @param isUpsert isUpsert
-     * @param shouldSkipEmbed shouldSkipEmbed
-     * @since 0.1.7
-     */
-    @Override
-    public void addRelation(Iterable<?> relations, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
-        List<Map<String, Object>> records = new ArrayList<>();
-        for (Object relation : relations) {
-            if (relation instanceof BaseGraphObject graphObject) {
-                records.add(graphObject.toMap());
-                continue;
-            }
-            if (relation instanceof Map<?, ?> map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> typed = (Map<String, Object>) map;
-                records.add(typed);
-            }
-        }
-        addData(GraphConstants.RELATION_COLLECTION, records, isFlush, isUpsert);
-    }
-
-    /**
-     * addEpisode.
-     * 
-     * @param episodes episodes
-     * @param isFlush isFlush
-     * @param isUpsert isUpsert
-     * @param shouldSkipEmbed shouldSkipEmbed
-     * @since 0.1.7
-     */
-    @Override
-    public void addEpisode(Iterable<?> episodes, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
-        List<Map<String, Object>> records = new ArrayList<>();
-        for (Object episode : episodes) {
-            if (episode instanceof BaseGraphObject graphObject) {
-                records.add(graphObject.toMap());
-                continue;
-            }
-            if (episode instanceof Map<?, ?> map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> typed = (Map<String, Object>) map;
-                records.add(typed);
-            }
-        }
-        addData(GraphConstants.EPISODE_COLLECTION, records, isFlush, isUpsert);
-    }
-
-    /**
-     * isEmpty.
-     * 
-     * @param collection collection
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean isEmpty(String collection) {
-        List<Map<String, Object>> coll = collections.get(collection);
-        return coll == null || coll.isEmpty();
-    }
-
-    /**
-     * query.
-     * 
-     * @param collection collection
-     * @param ids ids
-     * @param expr expr
-     * @param shouldSilenceErrors shouldSilenceErrors
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<Map<String, Object>> query(String collection, List<Object> ids, QueryExpr expr,
-            boolean shouldSilenceErrors) {
-        List<Map<String, Object>> coll = collections.get(collection);
-        if (coll == null) {
-            return Collections.emptyList();
-        }
-        if (ids != null && !ids.isEmpty()) {
-            return coll.stream().filter(r -> ids.contains(r.get("id")) || ids.contains(r.get("uuid")))
-                    .filter(r -> matches(r, expr)).map(HashMap::new).collect(Collectors.toList());
-        }
-        return coll.stream().filter(r -> matches(r, expr)).map(HashMap::new).collect(Collectors.toList());
-    }
-
-    /**
-     * delete.
-     * 
-     * @param collection collection
-     * @param ids ids
-     * @param expr expr
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, Object> delete(String collection, List<Object> ids, QueryExpr expr) {
-        List<Map<String, Object>> coll = collections.get(collection);
-        if (coll == null) {
-            return Map.of("deleted", 0);
-        }
-        int before = coll.size();
-        if (ids != null && !ids.isEmpty()) {
-            coll.removeIf(r -> ids.contains(r.get("id")) || ids.contains(r.get("uuid")));
-            return Map.of("deleted", before - coll.size());
-        }
-        if (expr != null) {
-            coll.removeIf(r -> matches(r, expr));
-            return Map.of("deleted", before - coll.size());
-        }
-        return Map.of("deleted", before - coll.size());
-    }
-
-    /**
-     * search.
-     * 
-     * @param queryText queryText
-     * @param k k
-     * @param collection collection
-     * @param rankerConfig rankerConfig
-     * @param bfsDepth bfsDepth
-     * @param bfsK bfsK
-     * @param filterExpr filterExpr
-     * @param outputFields outputFields
-     * @param queryEmbedding queryEmbedding
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, List<Map<String, Object>>> search(String queryText, int k, String collection,
-            Object rankerConfig, int bfsDepth, int bfsK, QueryExpr filterExpr, List<String> outputFields,
-            List<Float> queryEmbedding, Map<String, Object> kwargs) {
-        // Simple implementation: return first k records from the collection
-        Map<String, List<Map<String, Object>>> result = new HashMap<>();
-        List<String> targetCollections;
-        if ("all".equals(collection)) {
-            targetCollections = List.of(GraphConstants.ENTITY_COLLECTION, GraphConstants.RELATION_COLLECTION,
-                    GraphConstants.EPISODE_COLLECTION);
-        } else {
-            targetCollections = List.of(collection);
-        }
-        for (String cname : targetCollections) {
-            List<Map<String, Object>> coll = collections.getOrDefault(cname, Collections.emptyList());
-            List<Map<String, Object>> limited = coll.stream().filter(record -> matches(record, filterExpr)).limit(k)
-                    .map(HashMap::new).collect(Collectors.toList());
-            result.put(cname, limited);
-        }
-        return result;
-    }
-
-    /**
-     * attachEmbedder.
-     * 
-     * @param embedder embedder
-     * @since 0.1.7
-     */
-    @Override
-    public void attachEmbedder(Embedding embedder) {
-        if (embedder == null) {
-            throw new IllegalArgumentException("Embedder must not be null");
-        }
-        this.embedder = embedder;
-    }
-
-    /**
-     * matches.
-     * 
-     * @param record record
-     * @param expression expression
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean matches(Map<String, Object> record, QueryExpr expression) {
-        if (expression == null) {
-            return true;
-        }
-        if (expression instanceof ComparisonExpr comparison) {
-            Object actual = record.get(comparison.getField());
-            Object expected = comparison.getValue();
-            return switch (comparison.getOperator()) {
-                case "==" -> java.util.Objects.equals(actual, expected);
-                case "!=" -> !java.util.Objects.equals(actual, expected);
-                case ">" -> compare(actual, expected) > 0;
-                case "<" -> compare(actual, expected) < 0;
-                case ">=" -> compare(actual, expected) >= 0;
-                case "<=" -> compare(actual, expected) <= 0;
-                default -> false;
-            };
-        }
-        if (expression instanceof RangeExpr range) {
-            Object actual = record.get(range.getField());
-            if ("in".equals(range.getOperator()) && range.getValue() instanceof java.util.Collection<?> values) {
-                return values.contains(actual);
-            }
-            if (("like".equals(range.getOperator()) || "wildcard".equals(range.getOperator()))
-                    && range.getValue() != null) {
-                String pattern = String.valueOf(range.getValue()).replace("*", ".*");
-                return actual != null && String.valueOf(actual).matches(pattern);
-            }
-            return false;
-        }
-        if (expression instanceof LogicalExpr logical) {
-            boolean isLeftMatched = matches(record, logical.getLeft());
-            return switch (logical.getOperator()) {
-                case "and" -> isLeftMatched && matches(record, logical.getRight());
-                case "or" -> isLeftMatched || matches(record, logical.getRight());
-                case "xor" -> isLeftMatched ^ matches(record, logical.getRight());
-                case "not" -> !isLeftMatched;
-                default -> false;
-            };
-        }
-        if (expression instanceof NullExpr nullExpr) {
-            boolean isValueNull = record.get(nullExpr.getField()) == null;
-            return nullExpr.isNull() == isValueNull;
-        }
+    public boolean isReturnSimilarityScore() {
         return true;
     }
 
-    /**
-     * compare.
-     * 
-     * @param left left
-     * @param right right
-     * @return the result
-     * @since 0.1.7
-     */
-    private static int compare(Object left, Object right) {
-        if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
-            return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue());
-        }
-        if (left == null || right == null) {
-            return left == right ? 0 : (left == null ? -1 : 1);
-        }
-        return String.valueOf(left).compareTo(String.valueOf(right));
+    @Override
+    public void rebuild() {
+        collections.values().forEach(Map::clear);
     }
 
-    /**
-     * close.
-     * 
-     * @since 0.1.7
-     */
+    @Override
+    public CompletableFuture<Void> refresh(boolean skipCompact, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Void> addData(String collection,
+                                           Iterable<Map<String, Object>> data,
+                                           boolean flush,
+                                           boolean upsert,
+                                           Map<String, Object> kwargs) {
+        Map<String, Map<String, Object>> target = collection(collection);
+        for (Map<String, Object> row : data) {
+            Map<String, Object> copy = new LinkedHashMap<>(row);
+            String uuid = String.valueOf(copy.getOrDefault("uuid", GraphStoreUtils.getUuid()));
+            copy.put("uuid", uuid);
+            target.put(uuid, copy);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Void> addEntity(Iterable<?> entities, boolean flush, boolean upsert, boolean noEmbed) {
+        return addObjects(ENTITY_COLLECTION, entities);
+    }
+
+    @Override
+    public CompletableFuture<Void> addRelation(Iterable<?> relations, boolean flush, boolean upsert, boolean noEmbed) {
+        return addObjects(RELATION_COLLECTION, relations);
+    }
+
+    @Override
+    public CompletableFuture<Void> addEpisode(Iterable<?> episodes, boolean flush, boolean upsert, boolean noEmbed) {
+        return addObjects(EPISODE_COLLECTION, episodes);
+    }
+
+    @Override
+    public boolean isEmpty(String collection) {
+        if (ALL_COLLECTIONS.equals(collection)) {
+            return collection(ENTITY_COLLECTION).isEmpty()
+                    && collection(RELATION_COLLECTION).isEmpty()
+                    && collection(EPISODE_COLLECTION).isEmpty();
+        }
+        return collection(collection).isEmpty();
+    }
+
+    @Override
+    public CompletableFuture<List<Map<String, Object>>> query(String collection,
+                                                              List<?> ids,
+                                                              QueryExpr expr,
+                                                              boolean silenceErrors,
+                                                              Map<String, Object> kwargs) {
+        Map<String, Map<String, Object>> source = collection(collection);
+        if (ids == null) {
+            List<Map<String, Object>> rows = source.values().stream()
+                    .map(row -> new LinkedHashMap<String, Object>(row))
+                    .collect(Collectors.toList());
+            return CompletableFuture.completedFuture(rows);
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object id : ids) {
+            Map<String, Object> row = source.get(String.valueOf(id));
+            if (row != null) {
+                rows.add(new LinkedHashMap<>(row));
+            }
+        }
+        return CompletableFuture.completedFuture(rows);
+    }
+
+    @Override
+    public CompletableFuture<Map<String, Object>> delete(String collection,
+                                                         List<?> ids,
+                                                         QueryExpr expr,
+                                                         Map<String, Object> kwargs) {
+        Map<String, Map<String, Object>> target = collection(collection);
+        if (ids == null) {
+            target.clear();
+        } else {
+            ids.forEach(id -> target.remove(String.valueOf(id)));
+        }
+        return CompletableFuture.completedFuture(Map.of());
+    }
+
+    @Override
+    public CompletableFuture<Map<String, List<Map<String, Object>>>> search(String query,
+                                                                            int k,
+                                                                            String collection,
+                                                                            BaseRankConfig rankerConfig,
+                                                                            Reranker reranker,
+                                                                            int bfsDepth,
+                                                                            int bfsK,
+                                                                            QueryExpr filterExpr,
+                                                                            List<String> outputFields,
+                                                                            List<Double> queryEmbedding,
+                                                                            Map<String, Object> kwargs) {
+        int limit = Math.max(0, k);
+        if (ALL_COLLECTIONS.equals(collection)) {
+            Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
+            result.put("entities", searchRows(ENTITY_COLLECTION, limit));
+            result.put("relations", searchRows(RELATION_COLLECTION, limit));
+            result.put("episodes", searchRows(EPISODE_COLLECTION, limit));
+            return CompletableFuture.completedFuture(result);
+        }
+        String normalizedCollection = normalizeCollection(collection);
+        String outputKey = collection;
+        return CompletableFuture.completedFuture(Map.of(outputKey, searchRows(normalizedCollection, limit)));
+    }
+
+    @Override
+    public void attachEmbedder(Embedding embedder) {
+        this.embedder = embedder;
+    }
+
     @Override
     public void close() {
-        embedExecutor.shutdown();
-        collections.clear();
+        collections.values().forEach(Map::clear);
+    }
+
+    private CompletableFuture<Void> addObjects(String collection, Iterable<?> objects) {
+        Map<String, Map<String, Object>> target = collection(collection);
+        for (Object object : objects) {
+            Map<String, Object> row = graphObjectToMap(object);
+            target.put(String.valueOf(row.get("uuid")), row);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private Map<String, Map<String, Object>> collection(String collection) {
+        return collections.computeIfAbsent(normalizeCollection(collection), ignored -> new ConcurrentHashMap<>());
+    }
+
+    private List<Map<String, Object>> searchRows(String collection, int limit) {
+        return collection(collection).values().stream()
+                .limit(limit)
+                .map(row -> {
+                    Map<String, Object> copy = new LinkedHashMap<>(row);
+                    copy.putIfAbsent("distance", 1.0d);
+                    return copy;
+                })
+                .toList();
+    }
+
+    private static String normalizeCollection(String collection) {
+        return COLLECTION_ALIASES.getOrDefault(collection, collection);
+    }
+
+    private static Map<String, Object> graphObjectToMap(Object object) {
+        if (object instanceof Entity entity) {
+            Map<String, Object> row = baseMap(entity);
+            row.put("name", entity.getName());
+            row.put("relations", entity.serializeRelations());
+            row.put("episodes", entity.serializeEpisodes());
+            row.put("attributes", entity.getAttributes());
+            return row;
+        }
+        if (object instanceof Relation relation) {
+            Map<String, Object> row = baseMap(relation);
+            row.put("name", relation.getName());
+            row.put("lhs", relation.serializeLhs());
+            row.put("rhs", relation.serializeRhs());
+            row.put("valid_since", relation.getValidSince());
+            row.put("valid_until", relation.getValidUntil());
+            row.put("offset_since", relation.getOffsetSince());
+            row.put("offset_until", relation.getOffsetUntil());
+            return row;
+        }
+        if (object instanceof Episode episode) {
+            Map<String, Object> row = baseMap(episode);
+            row.put("entities", episode.serializeEntities());
+            row.put("valid_since", episode.getValidSince());
+            return row;
+        }
+        if (object instanceof Map<?, ?> map) {
+            Map<String, Object> row = stringObjectMap(map);
+            row.putIfAbsent("uuid", GraphStoreUtils.getUuid());
+            return row;
+        }
+        throw new IllegalArgumentException("Unsupported graph object: " + object);
+    }
+
+    private static Map<String, Object> baseMap(BaseGraphObject object) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("uuid", object.getUuid());
+        row.put("created_at", object.getCreatedAt());
+        row.put("user_id", object.getUserId());
+        row.put("obj_type", object.getObjType());
+        row.put("language", object.getLanguage());
+        row.put("content", object.getContent());
+        row.put("metadata", object.getMetadata());
+        return row;
+    }
+
+    private static Map<String, Object> stringObjectMap(Map<?, ?> map) {
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        map.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+        return normalized;
     }
 }

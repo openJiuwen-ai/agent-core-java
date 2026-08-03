@@ -6,11 +6,21 @@ package com.openjiuwen.core.memory.lite;
 
 /**
  * Write operation mode.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code WriteMode} in {@code openjiuwen/core/memory/lite/conflict_types.py}.</p>
  */
 public enum WriteMode {
-    CREATE,
-    APPEND,
-    SKIP
+    CREATE("create"),
+    APPEND("append"),
+    SKIP("skip");
+
+    private final String value;
+
+    WriteMode(String value) {
+        this.value = value;
+    }
+
+    public String value() {
+        return value;
+    }
 }

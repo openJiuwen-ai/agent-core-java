@@ -9,43 +9,13 @@ import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqRequestMessa
 import java.util.concurrent.Future;
 
 /**
- * Associates a distributed request message with its in-flight execution task.
- * 
- * @since 0.1.7
+ * Running MQ request task.
+ *
+ * <p>Mirrors Python's {@code MessageTask} in
+ * {@code openjiuwen/core/runner/drunner/server_adapter/mq_server_adapter.py}.</p>
+ *
+ * @param message original request message
+ * @param task running Java task handle
  */
-public class MessageTask {
-    private final DmqRequestMessage message;
-    private final Future<?> task;
-
-    /**
-     * MessageTask.
-     * 
-     * @param message message
-     * @param task task
-     * @since 0.1.7
-     */
-    public MessageTask(DmqRequestMessage message, Future<?> task) {
-        this.message = message;
-        this.task = task;
-    }
-
-    /**
-     * getMessage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public DmqRequestMessage getMessage() {
-        return message;
-    }
-
-    /**
-     * getTask.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Future<?> getTask() {
-        return task;
-    }
+public record MessageTask(DmqRequestMessage message, Future<?> task) {
 }

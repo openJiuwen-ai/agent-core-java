@@ -4,96 +4,102 @@
 
 package com.openjiuwen.core.common.clients;
 
-import com.openai.client.OpenAIClient;
-import com.openai.client.OpenAIClientAsync;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
-import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.common.clients.http.HttpSessionManager;
 
-import java.time.Duration;
+import java.util.List;
 
 /**
- * Static entrypoints mirroring Python's openjiuwen.core.common.clients exports.
- * 
- * @since 0.1.7
+ * Package export facade for common clients.
+ *
+ * <p>Mirrors Python's {@code __all__} exports in
+ * {@code openjiuwen/core/common/clients/__init__.py}.</p>
+ *
+ * <p>Mirrors Python's HTTP session exports from
+ * {@code openjiuwen/core/common/clients/http_client.py}.</p>
+ *
+ * <p>Mirrors Python's HTTPX connector exports from
+ * {@code openjiuwen/core/common/clients/llm_client.py}.</p>
  */
 public final class Clients {
-    /**
-     * Clients.
-     * 
-     * @since 0.1.7
-     */
+
+    private static final List<String> EXPORTED_NAMES = List.of(
+            "get_client_registry",
+            "BaseClient",
+            "get_connector_pool_manager",
+            "ConnectorPool",
+            "ConnectorPoolConfig",
+            "HttpXConnectorPoolConfig",
+            "SessionConfig",
+            "get_http_session_manager"
+    );
+
+    private static final List<String> TYPED_EXPORT_NAMES = List.of(
+            "get_client_registry",
+            "BaseClient",
+            "get_connector_pool_manager",
+            "ConnectorPool",
+            "ConnectorPoolConfig",
+            "HttpXConnectorPoolConfig",
+            "SessionConfig",
+            "get_http_session_manager"
+    );
+
+    private static final List<String> FUTURE_TYPED_EXPORT_NAMES = List.of();
+
     private Clients() {
     }
 
-    /**
-     * getClientRegistry.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static ClientRegistry getClientRegistry() {
-        return ClientRegistry.getInstance();
+    public static List<String> exportedNames() {
+        return EXPORTED_NAMES;
     }
 
-    /**
-     * getConnectorPoolManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static ConnectorPoolManager getConnectorPoolManager() {
-        return ConnectorPoolManager.getInstance();
+    public static List<String> typedExportNames() {
+        return TYPED_EXPORT_NAMES;
     }
 
-    /**
-     * getHttpSessionManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static HttpSessionManager getHttpSessionManager() {
-        return HttpSessionManager.getInstance();
+    public static List<String> futureTypedExportNames() {
+        return FUTURE_TYPED_EXPORT_NAMES;
     }
 
-    /**
-     * createHttpxClient.
-     * 
-     * @param config config
-     * @return HttpClient
-     * @since 0.1.7
-     */
-    public static java.net.http.HttpClient createHttpxClient(HttpXConnectorPoolConfig config) {
-        Object conn = getConnectorPoolManager().getConnectorPool("httpx", config).conn();
-        if (!(conn instanceof java.net.http.HttpClient httpClient)) {
-            throw new IllegalStateException("httpx connector pool did not return HttpClient");
+    public static boolean isExported(String name) {
+        return EXPORTED_NAMES.contains(name);
+    }
+
+    public static void requireExported(String name) {
+        if (!isExported(name)) {
+            throw new IllegalArgumentException("Name is not exported by openjiuwen.core.common.clients: " + name);
         }
-        return httpClient;
     }
 
-    /**
-     * createAsyncOpenAiClient.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    public static OpenAIClientAsync createAsyncOpenAiClient(ModelClientConfig config) {
-        return OpenAIOkHttpClientAsync.builder().apiKey(config.getApiKey()).baseUrl(config.getApiBase())
-                .timeout(Duration.ofSeconds(Math.max(1L, Math.round(config.getTimeout()))))
-                .maxRetries(config.getMaxRetries()).build();
+    public static ClientRegistry getClientRegistry() {
+        return ClientRegistry.getClientRegistry();
     }
 
-    /**
-     * createOpenAiClient.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    public static OpenAIClient createOpenAiClient(ModelClientConfig config) {
-        return OpenAIOkHttpClient.builder().apiKey(config.getApiKey()).baseUrl(config.getApiBase())
-                .timeout(Duration.ofSeconds(Math.max(1L, Math.round(config.getTimeout()))))
-                .maxRetries(config.getMaxRetries()).build();
+    public static Class<BaseClient> baseClientClass() {
+        return BaseClient.class;
+    }
+
+    public static ConnectorPoolManager getConnectorPoolManager() {
+        return ConnectorPoolManager.getConnectorPoolManager();
+    }
+
+    public static Class<ConnectorPool> connectorPoolClass() {
+        return ConnectorPool.class;
+    }
+
+    public static Class<ConnectorPoolConfig> connectorPoolConfigClass() {
+        return ConnectorPoolConfig.class;
+    }
+
+    public static Class<HttpXConnectorPoolConfig> httpXConnectorPoolConfigClass() {
+        return HttpXConnectorPoolConfig.class;
+    }
+
+    public static Class<SessionConfig> sessionConfigClass() {
+        return SessionConfig.class;
+    }
+
+    public static HttpSessionManager getHttpSessionManager() {
+        return HttpSessionManager.getHttpSessionManager();
     }
 }

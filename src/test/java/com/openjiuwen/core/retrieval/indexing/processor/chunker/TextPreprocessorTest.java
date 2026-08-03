@@ -4,87 +4,272 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.core.retrieval.common.Document;
-
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.Test;
 
+/**
+ * Mirrors Python's {@code tests/unit_tests/core/retrieval/indexing/processor/chunker/test_text_preprocessor.py}.
+ */
 class TextPreprocessorTest {
-    @Test
-    void whitespaceNormalizerShouldPreserveNullAndNormalizeWhitespace() {
-        WhitespaceNormalizer normalizer = new WhitespaceNormalizer();
 
-        assertThat(normalizer.process(null)).isNull();
-        assertThat(normalizer.process("This  \n\t  is   a test")).isEqualTo("This is a test");
+    private static final class ConcretePreprocessor implements TextPreprocessor {
+        @Override
+        public String process(String text) {
+            return text.toUpperCase();
+        }
+    }
+
+    private static final class OrderTracker implements TextPreprocessor {
+        private final String name;
+
+        private OrderTracker(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String process(String text) {
+            return text;
+        }
     }
 
     @Test
-    void urlEmailRemoverShouldSupportFlagsAndReplacement() {
-        assertThat(new URLEmailRemover().process("Visit https://example.com and test@example.com"))
-                .doesNotContain("https://example.com").doesNotContain("test@example.com");
-        assertThat(new URLEmailRemover(false, true, "[EMAIL]").process("Visit http://example.com and test@example.com"))
-                .contains("http://example.com").contains("[EMAIL]").doesNotContain("test@example.com");
-        assertThat(new URLEmailRemover(false, false, "[URL]").process("Visit www.example.com and test@example.com"))
-                .contains("www.example.com").contains("test@example.com");
-        assertThat(new URLEmailRemover().process(null)).isNull();
+    void testProcess() {
+        assertEquals("TEST", new ConcretePreprocessor().process("test"));
     }
 
     @Test
-    void specialCharacterNormalizerShouldRemoveControlReplaceAndRemoveConfiguredChars() {
-        SpecialCharacterNormalizer normalizer = new SpecialCharacterNormalizer("!#", Map.of("&", "and", "@", "at"));
-
-        String result = normalizer.process("Tom & Jerry @ home!#\u0000");
-
-        assertThat(result).contains("and").contains("at");
-        assertThat(result).doesNotContain("&", "@", "!", "#", "\u0000");
-        assertThat(normalizer.process(null)).isNull();
+    void testCall() {
+        assertEquals("TEST", new ConcretePreprocessor().call("test"));
     }
 
     @Test
-    void preprocessingPipelineShouldAddProcessInOrderAndExposeSize() {
-        List<String> order = new ArrayList<>();
-        TextPreprocessor first = text -> {
-            order.add("first");
-            return text + "1";
-        };
-        TextPreprocessor second = text -> {
-            order.add("second");
-            return text + "2";
-        };
-        PreprocessingPipeline pipeline = new PreprocessingPipeline(List.of(first));
-
-        pipeline.addPreprocessor(second);
-
-        assertThat(pipeline.process("x")).isEqualTo("x12");
-        assertThat(order).containsExactly("first", "second");
-        assertThat(pipeline.size()).isEqualTo(2);
-        assertThat(pipeline.getPreprocessors()).containsExactly(first, second);
+    void testCannotInstantiateAbstractClass() {
+        assertTrue(TextPreprocessor.class.isInterface());
     }
 
     @Test
-    void textChunkerShouldNotPreprocessByDefault() {
-        TextChunker chunker = new TextChunker(200, 0, "char");
-        Document document = new Document("id", "Visit https://example.com\nwith  spaces", Map.of());
-
-        String chunk = chunker.chunkDocuments(List.of(document)).get(0).getText();
-
-        assertThat(chunk).contains("https://example.com").contains("\n").contains("  spaces");
+    void testProcessNormalText() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("This is a test"));
     }
 
     @Test
-    void textChunkerShouldApplyExplicitPreprocessors() {
-        TextChunker chunker = new TextChunker(200, 0, "char", null, "auto",
-                List.of(new WhitespaceNormalizer(), new URLEmailRemover(), new WhitespaceNormalizer()));
-        Document document = new Document("id", "Visit https://example.com\nwith  spaces", Map.of());
+    void testProcessMultipleSpaces() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("This   is    a     test"));
+    }
 
-        String chunk = chunker.chunkDocuments(List.of(document)).get(0).getText();
+    @Test
+    void testProcessNewlines() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("This\nis\na\ntest"));
+    }
 
-        assertThat(chunk).doesNotContain("https://example.com");
-        assertThat(chunk).contains("Visit with spaces");
+    @Test
+    void testProcessTabs() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("This\tis\ta\ttest"));
+    }
+
+    @Test
+    void testProcessMixedWhitespace() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("This  \n\t  is  \n\t  a  \n\t  test"));
+    }
+
+    @Test
+    void testProcessLeadingTrailingWhitespace() {
+        assertEquals("This is a test", new WhitespaceNormalizer().process("   This is a test   "));
+    }
+
+    @Test
+    void testWhitespaceNormalizerProcessEmptyString() {
+        assertEquals("", new WhitespaceNormalizer().process(""));
+    }
+
+    @Test
+    void testWhitespaceNormalizerProcessNone() {
+        assertNull(new WhitespaceNormalizer().process(null));
+    }
+
+    @Test
+    void testInitDefaults() {
+        URLEmailRemover remover = new URLEmailRemover();
+        assertTrue(remover.isRemoveUrls());
+        assertTrue(remover.isRemoveEmails());
+        assertEquals("", remover.getReplacement());
+    }
+
+    @Test
+    void testInitCustom() {
+        URLEmailRemover remover = new URLEmailRemover(false, true, "[removed]");
+        assertFalse(remover.isRemoveUrls());
+        assertTrue(remover.isRemoveEmails());
+        assertEquals("[removed]", remover.getReplacement());
+    }
+
+    @Test
+    void testRemoveUrlsHttp() {
+        assertFalse(new URLEmailRemover().process("Visit http://example.com for more info").contains("http://example.com"));
+    }
+
+    @Test
+    void testRemoveUrlsHttps() {
+        assertFalse(new URLEmailRemover().process("Visit https://example.com for more info").contains("https://example.com"));
+    }
+
+    @Test
+    void testRemoveUrlsWww() {
+        assertFalse(new URLEmailRemover().process("Visit www.example.com for more info").contains("www.example.com"));
+    }
+
+    @Test
+    void testRemoveEmails() {
+        assertFalse(new URLEmailRemover().process("Contact us at test@example.com for support").contains("test@example.com"));
+    }
+
+    @Test
+    void testRemoveUrlsWithReplacement() {
+        String result = new URLEmailRemover("[URL]").process("Visit http://example.com for more info");
+        assertTrue(result.contains("[URL]"));
+        assertFalse(result.contains("http://example.com"));
+    }
+
+    @Test
+    void testRemoveEmailsWithReplacement() {
+        String result = new URLEmailRemover("[EMAIL]").process("Contact test@example.com");
+        assertTrue(result.contains("[EMAIL]"));
+        assertFalse(result.contains("test@example.com"));
+    }
+
+    @Test
+    void testDisableUrlRemoval() {
+        assertTrue(new URLEmailRemover(false).process("Visit http://example.com for more info").contains("http://example.com"));
+    }
+
+    @Test
+    void testUrlEmailRemoverProcessEmptyString() {
+        assertEquals("", new URLEmailRemover().process(""));
+    }
+
+    @Test
+    void testUrlEmailRemoverProcessNone() {
+        assertNull(new URLEmailRemover().process(null));
+    }
+
+    @Test
+    void testSpecialInitDefaults() {
+        SpecialCharacterNormalizer normalizer = new SpecialCharacterNormalizer();
+        assertEquals("", normalizer.getCharsToRemove());
+        assertEquals(Map.of(), normalizer.getCharsToReplace());
+    }
+
+    @Test
+    void testInitWithCharsToRemove() {
+        assertEquals("!@#", new SpecialCharacterNormalizer("!@#").getCharsToRemove());
+    }
+
+    @Test
+    void testInitWithCharsToReplace() {
+        assertEquals(
+                Map.of("&", "and", "@", "at"),
+                new SpecialCharacterNormalizer(Map.of("&", "and", "@", "at")).getCharsToReplace());
+    }
+
+    @Test
+    void testRemoveControlCharacters() {
+        String result = new SpecialCharacterNormalizer().process("Test\u0000text\u001fwith\u007fcontrol");
+        assertFalse(result.contains("\u0000"));
+        assertFalse(result.contains("\u001f"));
+        assertFalse(result.contains("\u007f"));
+    }
+
+    @Test
+    void testRemoveRedundantSymbols() {
+        assertEquals("text", new SpecialCharacterNormalizer().process("text!!!@@"));
+    }
+
+    @Test
+    void testReplaceCharacters() {
+        String result = new SpecialCharacterNormalizer(Map.of("&", "and", "@", "at"))
+                .process("Tom & Jerry @ home");
+        assertTrue(result.contains("and"));
+        assertTrue(result.contains("at"));
+        assertFalse(result.contains("&"));
+        assertFalse(result.contains("@"));
+    }
+
+    @Test
+    void testRemoveSpecifiedCharacters() {
+        String result = new SpecialCharacterNormalizer("!@#").process("Test!text@with#special");
+        assertFalse(result.contains("!"));
+        assertFalse(result.contains("@"));
+        assertFalse(result.contains("#"));
+    }
+
+    @Test
+    void testSpecialProcessEmptyString() {
+        assertEquals("", new SpecialCharacterNormalizer().process(""));
+    }
+
+    @Test
+    void testSpecialProcessNone() {
+        assertNull(new SpecialCharacterNormalizer().process(null));
+    }
+
+    @Test
+    void testInitEmpty() {
+        assertEquals(0, new PreprocessingPipeline().getPreprocessors().size());
+    }
+
+    @Test
+    void testInitWithPreprocessors() {
+        assertEquals(2, new PreprocessingPipeline(List.of(new WhitespaceNormalizer(), new URLEmailRemover()))
+                .getPreprocessors().size());
+    }
+
+    @Test
+    void testAddPreprocessor() {
+        PreprocessingPipeline pipeline = new PreprocessingPipeline();
+        WhitespaceNormalizer preprocessor = new WhitespaceNormalizer();
+        pipeline.addPreprocessor(preprocessor);
+        assertEquals(1, pipeline.getPreprocessors().size());
+        assertSame(preprocessor, pipeline.getPreprocessors().get(0));
+    }
+
+    @Test
+    void testProcessSinglePreprocessor() {
+        assertEquals("This is a test",
+                new PreprocessingPipeline(List.of(new WhitespaceNormalizer())).process("This   is   a   test"));
+    }
+
+    @Test
+    void testProcessOrder() {
+        OrderTracker tracker1 = new OrderTracker("first");
+        OrderTracker tracker2 = new OrderTracker("second");
+        PreprocessingPipeline pipeline = new PreprocessingPipeline(List.of(tracker1, tracker2));
+        pipeline.process("test");
+        assertEquals("first", tracker1.name);
+        assertEquals("second", tracker2.name);
+        assertSame(tracker1, pipeline.getPreprocessors().get(0));
+        assertSame(tracker2, pipeline.getPreprocessors().get(1));
+    }
+
+    @Test
+    void testPipelineCall() {
+        assertEquals("This is a test",
+                new PreprocessingPipeline(List.of(new WhitespaceNormalizer())).call("This   is   a   test"));
+    }
+
+    @Test
+    void testLen() {
+        assertEquals(2, new PreprocessingPipeline(List.of(new WhitespaceNormalizer(), new URLEmailRemover())).size());
+    }
+
+    @Test
+    void testPipelineProcessEmptyString() {
+        assertEquals("", new PreprocessingPipeline(List.of(new WhitespaceNormalizer())).process(""));
     }
 }

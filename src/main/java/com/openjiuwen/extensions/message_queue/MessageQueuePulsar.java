@@ -4,470 +4,429 @@
 
 package com.openjiuwen.extensions.message_queue;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.PulsarConfig;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageSerializer;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqMessage;
-import com.openjiuwen.core.runner.mq.AsyncMessageHandler;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.mq.QueueMessage;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.pulsar.client.api.Consumer;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.Producer;
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.client.api.SubscriptionType;
-
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeoutException;
 
 /**
- * Pulsar-backed message queue extension for distributed runner traffic.
- * 
- * @since 0.1.7
+ * Pulsar message queue wrapper.
+ *
+ * <p>Mirrors Python's {@code MessageQueuePulsar} in
+ * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.</p>
  */
 public class MessageQueuePulsar extends MessageQueueBase {
-    static final String DEFAULT_SUBSCRIPTION_NAME = "default";
+    public static final int MAX_PRODUCERS = 10_000;
+    public static final String DEFAULT_SUBSCRIPTION_NAME = "default";
 
-    private final PulsarConfig config;
-    private final PulsarRuntime runtime;
+    private static final Logger LOGGER = LoggerFactory.getLogger(MessageQueuePulsar.class);
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, PulsarSubscription> subscriptions = new ConcurrentHashMap<>();
+    private final String url;
+    private final int maxWorkers;
+    private final int maxProducers;
+    private final PulsarClientFactory clientFactory;
+    private final Object producerLock = new Object();
+    private final LinkedHashMap<String, PulsarProducer> producers = new LinkedHashMap<>(16, 0.75f, true);
+    private final Map<String, PulsarSubscription> subscriptions = new LinkedHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, PulsarProducer> producers = new ConcurrentHashMap<>();
+    private PulsarClient client;
+    private ExecutorService executor;
+    private volatile boolean running;
 
-    /**
-     * AtomicBoolean.
-     * 
-     * @since 0.1.7
-     */
-    private final AtomicBoolean running = new AtomicBoolean(false);
-
-    /**
-     * MessageQueuePulsar.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
-    public MessageQueuePulsar(PulsarConfig config) {
-        this(config, new LivePulsarRuntime(config));
+    public MessageQueuePulsar(PulsarConfig pulsarConfig) {
+        this(pulsarConfig, new ReflectivePulsarClientFactory(), MAX_PRODUCERS);
     }
 
-    MessageQueuePulsar(PulsarConfig config, PulsarRuntime runtime) {
-        this.config = config != null ? config : PulsarConfig.builder().url("").build();
-        this.runtime = Objects.requireNonNull(runtime);
+    MessageQueuePulsar(PulsarConfig pulsarConfig, PulsarClientFactory clientFactory, int maxProducers) {
+        PulsarConfig config = pulsarConfig == null ? new PulsarConfig() : pulsarConfig;
+        this.url = config.getUrl();
+        this.maxWorkers = config.getMaxWorkers() > 0 ? config.getMaxWorkers() : 8;
+        this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
+        this.maxProducers = maxProducers > 0 ? maxProducers : MAX_PRODUCERS;
     }
 
-    /**
-     * start.
-     * 
-     * @since 0.1.7
-     */
     @Override
     public void start() {
-        if (running.compareAndSet(false, true)) {
-            runtime.start();
+        if (running) {
+            return;
+        }
+        try {
+            client = clientFactory.create(url);
+            executor = Executors.newFixedThreadPool(maxWorkers);
+            running = true;
+            LOGGER.info("[MessageQueuePulsar] started with url={}", url);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to start pulsar message queue", exception);
         }
     }
 
-    /**
-     * stop.
-     * 
-     * @since 0.1.7
-     */
     @Override
     public void stop() {
-        if (running.compareAndSet(true, false)) {
-            subscriptions.values().forEach(PulsarSubscription::deactivate);
-            subscriptions.clear();
-            producers.values().forEach(PulsarProducer::close);
+        if (!running) {
+            return;
+        }
+        running = false;
+        LOGGER.info("[MessageQueuePulsar] closing {} subscriptions", subscriptions.size());
+        for (String topic : new ArrayList<>(subscriptions.keySet())) {
+            unsubscribe(topic);
+        }
+
+        LOGGER.info("[MessageQueuePulsar] closing {} producers", producers.size());
+        synchronized (producerLock) {
+            producers.values().forEach(this::closeQuietly);
             producers.clear();
-            runtime.close();
+        }
+
+        closeQuietly(client);
+        client = null;
+        if (executor != null) {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            executor = null;
+        }
+        LOGGER.info("[MessageQueuePulsar] stopped");
+    }
+
+    @Override
+    public PulsarSubscription subscribe(String topic) {
+        try {
+            validateRunning();
+            PulsarSubscription existing = subscriptions.get(topic);
+            if (existing != null) {
+                return existing;
+            }
+            PulsarConsumer consumer = client.subscribe(topic, DEFAULT_SUBSCRIPTION_NAME, PulsarConsumerType.KEY_SHARED);
+            PulsarSubscription subscription = new PulsarSubscription(topic, consumer, executor);
+            subscriptions.put(topic, subscription);
+            LOGGER.info("[MessageQueuePulsar] Create new subscription, topic={}", topic);
+            return subscription;
+        } catch (Exception exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MESSAGE_QUEUE_TOPIC_SUBSCRIPTION_ERROR,
+                    null,
+                    null,
+                    exception,
+                    Map.of("topic", topic, "reason", exception));
         }
     }
 
-    /**
-     * subscribe.
-     * 
-     * @param topic topic
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public SubscriptionBase subscribe(String topic) {
-        ensureStarted();
-        return subscriptions.computeIfAbsent(topic, key -> new PulsarSubscription(topic, runtime.newConsumer(topic)));
-    }
-
-    /**
-     * unsubscribe.
-     * 
-     * @param topic topic
-     * @since 0.1.7
-     */
     @Override
     public void unsubscribe(String topic) {
         PulsarSubscription subscription = subscriptions.remove(topic);
         if (subscription != null) {
             subscription.deactivate();
+            LOGGER.info("[MessageQueuePulsar] unsubscribed {}", topic);
         }
     }
 
-    /**
-     * produceMessage.
-     * 
-     * @param topic topic
-     * @param message message
-     * @since 0.1.7
-     */
     @Override
     public void produceMessage(String topic, QueueMessage message) {
-        ensureStarted();
-        if (!(message instanceof DmqMessage dmqMessage)) {
-            throw new IllegalArgumentException("MessageQueuePulsar only supports DmqMessage payloads");
+        try {
+            validateRunning();
+            if (!(message instanceof DmqMessage dmqMessage)) {
+                throw new IllegalArgumentException("pulsar message queue requires DmqMessage");
+            }
+            PulsarProducer producer = getOrCreateProducer(topic);
+            byte[] content = MessageSerializer.serializeMessage(dmqMessage);
+            LOGGER.info("[MessageQueuePulsar] Sending message to topic={}, message_id={}", topic, message.getMessageId());
+            executor.submit(() -> {
+                producer.send(content, message.getMessageId());
+                return null;
+            }).get();
+            LOGGER.info("[MessageQueuePulsar] Message sent successfully: topic={}, message_id={}",
+                    topic, message.getMessageId());
+        } catch (Exception exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MESSAGE_QUEUE_TOPIC_MESSAGE_PRODUCTION_ERROR,
+                    null,
+                    null,
+                    exception,
+                    Map.of("topic", topic, "message", String.valueOf(message), "reason", exception));
+        }
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    int producerCount() {
+        synchronized (producerLock) {
+            return producers.size();
+        }
+    }
+
+    private PulsarProducer getOrCreateProducer(String topic) throws Exception {
+        synchronized (producerLock) {
+            PulsarProducer existing = producers.get(topic);
+            if (existing != null) {
+                return existing;
+            }
+            if (producers.size() >= maxProducers) {
+                Iterator<Map.Entry<String, PulsarProducer>> iterator = producers.entrySet().iterator();
+                if (iterator.hasNext()) {
+                    Map.Entry<String, PulsarProducer> eldest = iterator.next();
+                    iterator.remove();
+                    closeQuietly(eldest.getValue());
+                    LOGGER.debug("[MessageQueuePulsar] LRU producer evicted: {}", eldest.getKey());
+                }
+            }
+            LOGGER.info("[MessageQueuePulsar] Creating new producer for topic={}", topic);
+            PulsarProducer created = executor.submit(() -> client.createProducer(topic)).get();
+            producers.put(topic, created);
+            return created;
+        }
+    }
+
+    private void validateRunning() {
+        if (!running) {
+            throw new IllegalStateException("pulsar message queue is not running");
+        }
+    }
+
+    private void closeQuietly(AutoCloseable closeable) {
+        if (closeable == null) {
+            return;
         }
         try {
-            byte[] payload = MessageSerializer.serializeMessage(dmqMessage);
-            PulsarProducer producer = producers.computeIfAbsent(topic, key -> runtime.newProducer(topic));
-            producer.send(message.getMessageId(), payload);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to produce Pulsar message", e);
+            closeable.close();
+        } catch (Exception exception) {
+            LOGGER.warn("[MessageQueuePulsar] close failed: {}", exception.getMessage(), exception);
         }
     }
 
     /**
-     * ensureStarted.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code pulsar.ConsumerType.KeyShared} in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
      */
-    private void ensureStarted() {
-        if (!running.get()) {
-            start();
-        }
-    }
-
-    interface PulsarRuntime {
-        /**
-         * start.
-         * 
-         * @since 0.1.7
-         */
-        void start();
-
-        /**
-         * newProducer.
-         * 
-         * @param topic topic
-         * @return the result
-         * @since 0.1.7
-         */
-        PulsarProducer newProducer(String topic);
-
-        /**
-         * newConsumer.
-         * 
-         * @param topic topic
-         * @return the result
-         * @since 0.1.7
-         */
-        PulsarConsumer newConsumer(String topic);
-
-        /**
-         * close.
-         * 
-         * @since 0.1.7
-         */
-        void close();
-    }
-
-    interface PulsarProducer {
-        /**
-         * send.
-         * 
-         * @param key key
-         * @param payload payload
-         * @throws Exception Exception
-         * @since 0.1.7
-         */
-        void send(String key, byte[] payload) throws Exception;
-
-        /**
-         * close.
-         * 
-         * @since 0.1.7
-         */
-        void close();
-    }
-
-    interface PulsarConsumer {
-        /**
-         * receive.
-         * 
-         * @param timeoutMillis timeoutMillis
-         * @return the result
-         * @throws Exception Exception
-         * @since 0.1.7
-         */
-        ReceivedMessage receive(long timeoutMillis) throws Exception;
-
-        /**
-         * acknowledge.
-         * 
-         * @param message message
-         * @throws Exception Exception
-         * @since 0.1.7
-         */
-        void acknowledge(ReceivedMessage message) throws Exception;
-
-        /**
-         * close.
-         * 
-         * @since 0.1.7
-         */
-        void close();
+    public enum PulsarConsumerType {
+        KEY_SHARED
     }
 
     /**
-     * ReceivedMessage.
-     * 
-     * @param payload payload
-     * @param handle handle
-     * @since 0.1.7
+     * Mirrors Python's {@code pulsar.Client} construction boundary in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
      */
-    record ReceivedMessage(byte[] payload, Object handle) {
+    public interface PulsarClientFactory {
+        PulsarClient create(String url) throws Exception;
     }
 
-    static final class PulsarSubscription extends SubscriptionBase {
-        private final String topic;
-        private final PulsarConsumer consumer;
+    /**
+     * Mirrors Python's {@code pulsar.Client} methods used by
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
+     */
+    public interface PulsarClient extends AutoCloseable {
+        PulsarConsumer subscribe(String topic, String subscriptionName, PulsarConsumerType consumerType)
+                throws Exception;
 
-        /**
-         * ThreadPoolExecutor.
-         * 
-         * @param LinkedBlockingQueue<>( LinkedBlockingQueue<>(
-         * @since 0.1.7
-         */
-        private final ExecutorService executor =
-            new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+        PulsarProducer createProducer(String topic) throws Exception;
+    }
 
-        /**
-         * AtomicBoolean.
-         * 
-         * @since 0.1.7
-         */
-        private final AtomicBoolean active = new AtomicBoolean(false);
-        private AsyncMessageHandler<Object, Object> handler;
+    /**
+     * Mirrors Python's {@code pulsar.Consumer} methods used by
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
+     */
+    public interface PulsarConsumer extends AutoCloseable {
+        PulsarMessage receive(long timeoutMillis) throws Exception;
 
-        PulsarSubscription(String topic, PulsarConsumer consumer) {
-            this.topic = topic;
-            this.consumer = consumer;
-        }
+        void acknowledge(PulsarMessage message) throws Exception;
+    }
 
-        /**
-         * setMessageHandler.
-         * 
-         * @param handler handler
-         * @since 0.1.7
-         */
+    /**
+     * Mirrors Python's {@code pulsar.Producer} methods used by
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
+     */
+    public interface PulsarProducer extends AutoCloseable {
+        void send(byte[] content, String partitionKey) throws Exception;
+    }
+
+    /**
+     * Mirrors Python's received Pulsar message wrapper in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.
+     */
+    public interface PulsarMessage {
+        byte[] data();
+    }
+
+    /**
+     * Reflection adapter for a runtime-provided Pulsar Java client.
+     *
+     * <p>Mirrors Python's direct {@code pulsar.Client(...)} dependency in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py} without requiring a compile-time Pulsar
+     * dependency in this project.</p>
+     */
+    private static final class ReflectivePulsarClientFactory implements PulsarClientFactory {
         @Override
-        public void setMessageHandler(AsyncMessageHandler<Object, Object> handler) {
-            this.handler = handler;
-        }
-
-        /**
-         * activate.
-         * 
-         * @since 0.1.7
-         */
-        @Override
-        public void activate() {
-            if (active.compareAndSet(false, true)) {
-                executor.submit(this::consumeLoop);
-            }
-        }
-
-        /**
-         * deactivate.
-         * 
-         * @since 0.1.7
-         */
-        @Override
-        public void deactivate() {
-            if (active.compareAndSet(true, false)) {
-                executor.shutdownNow();
-                consumer.close();
-            }
-        }
-
-        /**
-         * isActive.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public boolean isActive() {
-            return active.get();
-        }
-
-        /**
-         * consumeLoop.
-         * 
-         * @since 0.1.7
-         */
-        private void consumeLoop() {
-            while (active.get()) {
-                try {
-                    ReceivedMessage received = consumer.receive(1000);
-                    if (received == null) {
-                        continue;
-                    }
-                    Object decoded = MessageSerializer.deserializeMessage(received.payload());
-                    if (handler != null) {
-                        CompletableFuture<Object> future = handler.handle(decoded);
-                        future.join();
-                    }
-                    consumer.acknowledge(received);
-                } catch (Exception e) {
-                    if (active.get()) {
-                        throw new IllegalStateException("Failed to consume Pulsar message for topic " + topic, e);
-                    }
-                }
-            }
+        public PulsarClient create(String url) throws Exception {
+            Class<?> clientType = Class.forName("org.apache.pulsar.client.api.PulsarClient");
+            Object builder = clientType.getMethod("builder").invoke(null);
+            Object configured = builder.getClass().getMethod("serviceUrl", String.class).invoke(builder, url);
+            Object client = configured.getClass().getMethod("build").invoke(configured);
+            return new ReflectivePulsarClient(client);
         }
     }
 
-    static final class LivePulsarRuntime implements PulsarRuntime {
-        private final PulsarConfig config;
-        private PulsarClient client;
+    /**
+     * Reflection wrapper for runtime Pulsar client objects.
+     *
+     * <p>Mirrors Python's {@code pulsar.Client} in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.</p>
+     */
+    private static final class ReflectivePulsarClient implements PulsarClient {
+        private final Object delegate;
 
-        LivePulsarRuntime(PulsarConfig config) {
-            this.config = config != null ? config : PulsarConfig.builder().url("").build();
+        private ReflectivePulsarClient(Object delegate) {
+            this.delegate = delegate;
         }
 
-        /**
-         * start.
-         * 
-         * @since 0.1.7
-         */
         @Override
-        public void start() {
-            if (client != null) {
-                return;
-            }
+        public PulsarConsumer subscribe(String topic, String subscriptionName, PulsarConsumerType consumerType)
+                throws Exception {
+            Object builder = delegate.getClass().getMethod("newConsumer").invoke(delegate);
+            Object withTopic = builder.getClass().getMethod("topic", String.class).invoke(builder, topic);
+            Object withSubscription = withTopic.getClass()
+                    .getMethod("subscriptionName", String.class)
+                    .invoke(withTopic, subscriptionName);
+            Class<?> subscriptionType = Class.forName("org.apache.pulsar.client.api.SubscriptionType");
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            Object keyShared = Enum.valueOf((Class<Enum>) subscriptionType.asSubclass(Enum.class), "Key_Shared");
+            Object withType = withSubscription.getClass()
+                    .getMethod("subscriptionType", subscriptionType)
+                    .invoke(withSubscription, keyShared);
+            Object consumer = withType.getClass().getMethod("subscribe").invoke(withType);
+            return new ReflectivePulsarConsumer(consumer);
+        }
+
+        @Override
+        public PulsarProducer createProducer(String topic) throws Exception {
+            Object builder = delegate.getClass().getMethod("newProducer").invoke(delegate);
+            Object withTopic = builder.getClass().getMethod("topic", String.class).invoke(builder, topic);
+            Object producer = withTopic.getClass().getMethod("create").invoke(withTopic);
+            return new ReflectivePulsarProducer(producer);
+        }
+
+        @Override
+        public void close() throws Exception {
+            delegate.getClass().getMethod("close").invoke(delegate);
+        }
+    }
+
+    /**
+     * Reflection wrapper for runtime Pulsar consumer objects.
+     *
+     * <p>Mirrors Python's {@code pulsar.Consumer} in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.</p>
+     */
+    private static final class ReflectivePulsarConsumer implements PulsarConsumer {
+        private final Object delegate;
+
+        private ReflectivePulsarConsumer(Object delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public PulsarMessage receive(long timeoutMillis) throws Exception {
             try {
-                client = PulsarClient.builder().serviceUrl(config.getUrl()).build();
-            } catch (PulsarClientException e) {
-                throw new IllegalStateException("Failed to start Pulsar client", e);
-            }
-        }
-
-        /**
-         * newProducer.
-         * 
-         * @param topic topic
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public PulsarProducer newProducer(String topic) {
-            try {
-                Producer<byte[]> producer = client.newProducer().topic(topic).create();
-                return new PulsarProducer() {
-                    @Override
-                    public void send(String key, byte[] payload) throws Exception {
-                        producer.newMessage().key(key != null ? key : "").value(payload).send();
-                    }
-
-                    @Override
-                    public void close() {
-                        try {
-                            producer.close();
-                        } catch (PulsarClientException e) {
-                            throw new IllegalStateException(e);
-                        }
-                    }
-                };
-            } catch (PulsarClientException e) {
-                throw new IllegalStateException("Failed to create Pulsar producer", e);
-            }
-        }
-
-        /**
-         * newConsumer.
-         * 
-         * @param topic topic
-         * @return the result
-         * @since 0.1.7
-         */
-        @Override
-        public PulsarConsumer newConsumer(String topic) {
-            try {
-                Consumer<byte[]> consumer =
-                    client.newConsumer().topic(topic).subscriptionName(DEFAULT_SUBSCRIPTION_NAME)
-                            .subscriptionType(SubscriptionType.Key_Shared).subscribe();
-                return new PulsarConsumer() {
-                    @Override
-                    public ReceivedMessage receive(long timeoutMillis) throws Exception {
-                        Message<byte[]> message =
-                            consumer.receive((int) timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
-                        return message != null ? new ReceivedMessage(message.getValue(), message) : null;
-                    }
-
-                    @Override
-                    public void acknowledge(ReceivedMessage message) throws Exception {
-                        @SuppressWarnings("unchecked")
-                        Message<byte[]> typed = (Message<byte[]>) message.handle();
-                        consumer.acknowledge(typed);
-                    }
-
-                    @Override
-                    public void close() {
-                        try {
-                            consumer.close();
-                        } catch (PulsarClientException e) {
-                            throw new IllegalStateException(e);
-                        }
-                    }
-                };
-            } catch (PulsarClientException e) {
-                throw new IllegalStateException("Failed to create Pulsar consumer", e);
-            }
-        }
-
-        /**
-         * close.
-         * 
-         * @since 0.1.7
-         */
-        @Override
-        public void close() {
-            if (client != null) {
-                try {
-                    client.close();
-                } catch (PulsarClientException e) {
-                    throw new IllegalStateException("Failed to close Pulsar client", e);
-                } finally {
-                    client = null;
+                Object message = delegate.getClass()
+                        .getMethod("receive", int.class, TimeUnit.class)
+                        .invoke(delegate, Math.toIntExact(timeoutMillis), TimeUnit.MILLISECONDS);
+                return new ReflectivePulsarMessage(message);
+            } catch (InvocationTargetException invocation) {
+                Throwable cause = invocation.getCause();
+                if (cause != null && cause.getClass().getSimpleName().contains("Timeout")) {
+                    throw new TimeoutException(cause.getMessage());
                 }
+                if (cause instanceof Exception exception) {
+                    throw exception;
+                }
+                throw invocation;
+            }
+        }
+
+        @Override
+        public void acknowledge(PulsarMessage message) throws Exception {
+            Object rawMessage = message instanceof ReflectivePulsarMessage reflective ? reflective.delegate : message;
+            delegate.getClass().getMethod("acknowledge", rawMessage.getClass()).invoke(delegate, rawMessage);
+        }
+
+        @Override
+        public void close() throws Exception {
+            delegate.getClass().getMethod("close").invoke(delegate);
+        }
+    }
+
+    /**
+     * Reflection wrapper for runtime Pulsar producer objects.
+     *
+     * <p>Mirrors Python's {@code pulsar.Producer} in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.</p>
+     */
+    private static final class ReflectivePulsarProducer implements PulsarProducer {
+        private final Object delegate;
+
+        private ReflectivePulsarProducer(Object delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void send(byte[] content, String partitionKey) throws Exception {
+            try {
+                Object messageBuilder = delegate.getClass().getMethod("newMessage").invoke(delegate);
+                Object withKey = messageBuilder.getClass().getMethod("key", String.class).invoke(messageBuilder,
+                        partitionKey);
+                Object withValue = withKey.getClass().getMethod("value", byte[].class).invoke(withKey, content);
+                withValue.getClass().getMethod("send").invoke(withValue);
+            } catch (NoSuchMethodException missingTypedMessageBuilder) {
+                delegate.getClass().getMethod("send", byte[].class).invoke(delegate, content);
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            delegate.getClass().getMethod("close").invoke(delegate);
+        }
+    }
+
+    /**
+     * Reflection wrapper for runtime Pulsar message objects.
+     *
+     * <p>Mirrors Python's {@code msg.data()} in
+     * {@code openjiuwen/extensions/message_queue/message_queue_pulsar.py}.</p>
+     */
+    private static final class ReflectivePulsarMessage implements PulsarMessage {
+        private final Object delegate;
+
+        private ReflectivePulsarMessage(Object delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public byte[] data() {
+            try {
+                return (byte[]) delegate.getClass().getMethod("getData").invoke(delegate);
+            } catch (Exception exception) {
+                throw new IllegalStateException("failed to read pulsar message data", exception);
             }
         }
     }

@@ -6,19 +6,26 @@ package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
- * Raised when a task cannot be found.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskNotFoundError} in
+ * {@code openjiuwen/core/common/task_manager/exceptions.py}.
  */
 public class TaskNotFoundError extends TaskError {
-    /**
-     * TaskNotFoundError.
-     * 
-     * @param msg msg
-     * @since 0.1.7
-     */
+
+    public static final StatusCode STATUS = StatusCode.COMMON_TASK_NOT_FOUND;
+
+    public TaskNotFoundError() {
+        super(STATUS);
+    }
+
     public TaskNotFoundError(String msg) {
-        super(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR, msg);
+        this(msg, null, null, Map.of());
+    }
+
+    public TaskNotFoundError(String msg, Object details, Throwable cause, Map<String, Object> kwargs) {
+        super(STATUS, msg, details, cause, kwargs == null ? Map.of() : new LinkedHashMap<>(kwargs));
     }
 }

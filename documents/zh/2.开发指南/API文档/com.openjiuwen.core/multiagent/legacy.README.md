@@ -1,6 +1,6 @@
 # legacy
 
-`com.openjiuwen.core.multiagent.legacy` 收纳旧版 `AgentGroup` / `ControllerGroup` 模式的兼容入口，用于承接历史导入路径和 Controller 驱动的组内路由逻辑。
+`com.openjiuwen.core.multi_agent.legacy` 收纳旧版 `AgentGroup` / `ControllerGroup` 模式的兼容入口，用于承接历史导入路径和 Controller 驱动的组内路由逻辑。
 
 ## Modules
 

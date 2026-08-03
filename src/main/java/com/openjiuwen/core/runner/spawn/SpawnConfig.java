@@ -4,27 +4,48 @@
 
 package com.openjiuwen.core.runner.spawn;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 /**
- * Public class SpawnConfig used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Configuration for spawned process management.
+ *
+ * <p>Mirrors Python's {@code SpawnConfig} in
+ * {@code openjiuwen/core/runner/spawn/process_manager.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class SpawnConfig {
-    @Builder.Default
-    private double healthCheckInterval = 5.0;
 
-    @Builder.Default
-    private double shutdownTimeout = 10.0;
+    private double healthCheckInterval = 5.0D;
+    private double shutdownTimeout = 10.0D;
+    private double healthCheckTimeout = 3.0D;
 
-    @Builder.Default
-    private double healthCheckTimeout = 3.0;
+    public SpawnConfig() {
+    }
+
+    public SpawnConfig(double healthCheckInterval, double shutdownTimeout, double healthCheckTimeout) {
+        this.healthCheckInterval = healthCheckInterval;
+        this.shutdownTimeout = shutdownTimeout;
+        this.healthCheckTimeout = healthCheckTimeout;
+    }
+
+    public double getHealthCheckInterval() {
+        return healthCheckInterval;
+    }
+
+    public void setHealthCheckInterval(double healthCheckInterval) {
+        this.healthCheckInterval = healthCheckInterval;
+    }
+
+    public double getShutdownTimeout() {
+        return shutdownTimeout;
+    }
+
+    public void setShutdownTimeout(double shutdownTimeout) {
+        this.shutdownTimeout = shutdownTimeout;
+    }
+
+    public double getHealthCheckTimeout() {
+        return healthCheckTimeout;
+    }
+
+    public void setHealthCheckTimeout(double healthCheckTimeout) {
+        this.healthCheckTimeout = healthCheckTimeout;
+    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
@@ -7,83 +7,88 @@ package com.openjiuwen.core.retrieval.indexing.processor.parser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.retrieval.common.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * JSON file parser that returns formatted JSON text when possible.
- * 
- * @since 0.1.7
+ * Local file parser for JSON format.
+ *
+ * <p>Mirrors Python's {@code JSONParser} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/parser/json_parser.py}.</p>
  */
 public class JsonParser extends Parser {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(JsonParser.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
-     * parse.
-     * 
-     * @param doc doc
-     * @param docId docId
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code JSONParser._parse} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/json_parser.py}.
      */
     @Override
-    public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
+    protected CompletableFuture<String> parseContent(
+            String filePath,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String rawContent = readUtf8IgnoringErrors(Path.of(filePath));
+                return formatJsonOrOriginal(rawContent, filePath);
+            } catch (Exception exception) {
+                LOGGER.error("Failed to parse JSON {}: {}", filePath, exception.getMessage());
+                return null;
+            }
+        });
+    }
+
+    @Override
+    public boolean supports(String doc) {
+        if (doc == null || doc.isBlank()) {
+            return false;
+        }
+        String fileName = Path.of(doc).getFileName().toString().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".json");
+    }
+
+    private static String formatJsonOrOriginal(String rawContent, String filePath) {
         try {
-            String content = Files.readString(Path.of(doc), StandardCharsets.UTF_8);
-            return List.of(new Document(docId, formatJson(content), Map.of()));
-        } catch (IOException ex) {
-            return List.of();
+            Object jsonData = OBJECT_MAPPER.readValue(rawContent, Object.class);
+            if (jsonData instanceof Map<?, ?> map && map.isEmpty()) {
+                return "{}";
+            }
+            if (jsonData instanceof Collection<?> collection && collection.isEmpty()) {
+                return "[]";
+            }
+            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(jsonData);
+        } catch (JsonProcessingException exception) {
+            LOGGER.error("JSON format error: {}", filePath);
+            return rawContent;
         }
     }
 
-    /**
-     * parseContent.
-     * 
-     * @param doc doc
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        return null;
-    }
-
-    /**
-     * supports.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public boolean supports(String doc) {
-        return doc != null && doc.toLowerCase(Locale.ROOT).endsWith(".json");
-    }
-
-    /**
-     * formatJson.
-     * 
-     * @param rawJson rawJson
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatJson(String rawJson) {
+    private static String readUtf8IgnoringErrors(Path path) throws IOException {
+        byte[] bytes = Files.readAllBytes(path);
         try {
-            Object value = MAPPER.readValue(rawJson, Object.class);
-            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value);
-        } catch (JsonProcessingException ex) {
-            return rawJson;
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.IGNORE)
+                    .onUnmappableCharacter(CodingErrorAction.IGNORE)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 }

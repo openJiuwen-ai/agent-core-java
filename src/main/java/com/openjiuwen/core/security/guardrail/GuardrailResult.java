@@ -4,59 +4,56 @@
 
 package com.openjiuwen.core.security.guardrail;
 
-import lombok.Builder;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Value;
 
 import java.util.Map;
 
 /**
- * Final result returned by a guardrail.
- * 
- * @since 0.1.7
+ * Result of guardrail detection.
+ * <p>
+ * Mirrors Python's {@code GuardrailResult} in
+ * {@code openjiuwen/core/security/guardrail/models.py}.
  */
 @Value
-@Builder
 public class GuardrailResult {
+
+    @JsonProperty("is_safe")
     boolean isSafe;
+
+    @JsonProperty("risk_level")
     RiskLevel riskLevel;
+
+    @JsonProperty("risk_type")
     String riskType;
+
+    @JsonProperty("details")
     Map<String, Object> details;
+
+    @JsonProperty("modified_data")
     Map<String, Object> modifiedData;
 
-    /**
-     * pass.
-     * 
-     * @param details details
-     * @return the result
-     * @since 0.1.7
-     */
-    public static GuardrailResult pass(Map<String, Object> details) {
-        return GuardrailResult.builder().isSafe(true).riskLevel(RiskLevel.SAFE).details(details).build();
+    public static GuardrailResult pass_() {
+        return pass_(null);
     }
 
-    /**
-     * pass.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static GuardrailResult pass() {
-        return pass(null);
+    public static GuardrailResult pass_(Map<String, Object> details) {
+        return new GuardrailResult(true, RiskLevel.SAFE, null, details, null);
     }
 
-    /**
-     * block.
-     * 
-     * @param riskLevel riskLevel
-     * @param riskType riskType
-     * @param details details
-     * @param modifiedData modifiedData
-     * @return the result
-     * @since 0.1.7
-     */
-    public static GuardrailResult block(RiskLevel riskLevel, String riskType, Map<String, Object> details,
+    public static GuardrailResult block(RiskLevel riskLevel, String riskType) {
+        return block(riskLevel, riskType, null, null);
+    }
+
+    public static GuardrailResult block(RiskLevel riskLevel, String riskType, Map<String, Object> details) {
+        return block(riskLevel, riskType, details, null);
+    }
+
+    public static GuardrailResult block(
+            RiskLevel riskLevel,
+            String riskType,
+            Map<String, Object> details,
             Map<String, Object> modifiedData) {
-        return GuardrailResult.builder().isSafe(false).riskLevel(riskLevel).riskType(riskType).details(details)
-                .modifiedData(modifiedData).build();
+        return new GuardrailResult(false, riskLevel, riskType, details, modifiedData);
     }
 }

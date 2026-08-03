@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.local.StreamEventType
+# com.openjiuwen.core.sys_operation.local.StreamEventType
 
 ## 枚举 StreamEventType
 

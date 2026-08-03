@@ -4,67 +4,32 @@
 
 package com.openjiuwen.core.retrieval.common;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Base callback for indexing and embedding progress.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BaseCallback} in
+ * {@code openjiuwen/core/retrieval/common/callbacks.py}.
  */
 public class BaseCallback {
-    private final AtomicInteger callCounter = new AtomicInteger();
-    private final int total;
 
-    /**
-     * BaseCallback.
-     * 
-     * @since 0.1.7
-     */
-    public BaseCallback() {
-        this.total = 0;
+    protected final AtomicInteger callCounter = new AtomicInteger();
+    protected final ReentrantLock threadLock = new ReentrantLock();
+
+    public BaseCallback(Iterable<?> seq) {
     }
 
-    /**
-     * BaseCallback.
-     * 
-     * @param sequence sequence
-     * @since 0.1.7
-     */
-    public BaseCallback(Collection<?> sequence) {
-        this.total = sequence == null ? 0 : sequence.size();
+    public void call(int startIdx, int endIdx, List<String> batch) {
+        threadLock.lock();
+        try {
+            callCounter.incrementAndGet();
+        } finally {
+            threadLock.unlock();
+        }
     }
 
-    /**
-     * onBatch.
-     * 
-     * @param startIdx startIdx
-     * @param endIdx endIdx
-     * @param batch batch
-     * @since 0.1.7
-     */
-    public void onBatch(int startIdx, int endIdx, List<String> batch) {
-        callCounter.incrementAndGet();
-    }
-
-    /**
-     * getCallCounter.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int getCallCounter() {
         return callCounter.get();
-    }
-
-    /**
-     * getTotal.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int getTotal() {
-        return total;
     }
 }

@@ -7,17 +7,14 @@ package com.openjiuwen.core.workflow.component.llm;
 /**
  * Questioner USER_INTERACT state.
  * <p>
+ * Mirrors Python's {@code QuestionerInteractState} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  * Mirrors Python's {@code QuestionerInteractState} – a subclass of {@code QuestionerState}
  * fixed to {@link ExecutionStatus#USER_INTERACT}. Can only transition to END.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 public class QuestionerInteractState extends QuestionerState {
-    /**
-     * QuestionerInteractState.
-     * 
-     * @since 0.1.7
-     */
+
     public QuestionerInteractState() {
         super();
         setStatus(ExecutionStatus.USER_INTERACT);
@@ -25,10 +22,6 @@ public class QuestionerInteractState extends QuestionerState {
 
     /**
      * Create from an existing {@link QuestionerState}.
-     * 
-     * @param state state
-     * @return the result
-     * @since 0.1.7
      */
     public static QuestionerInteractState fromState(QuestionerState state) {
         QuestionerInteractState s = new QuestionerInteractState();
@@ -40,13 +33,6 @@ public class QuestionerInteractState extends QuestionerState {
         return s;
     }
 
-    /**
-     * handleEvent.
-     * 
-     * @param event event
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public QuestionerState handleEvent(QuestionerEvent event) {
         if (event == QuestionerEvent.END_EVENT) {

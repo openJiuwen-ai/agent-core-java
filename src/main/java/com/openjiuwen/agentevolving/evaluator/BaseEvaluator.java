@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.evaluator;
@@ -21,95 +21,77 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Abstract evaluator for converting (case, prediction) to EvaluatedCase.
- * <p>
- * Implement evaluate() for single case, use batchEvaluate() for parallel execution.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.BaseEvaluator}.
- * 
- * @since 0.1.7
+ * Abstract evaluator for converting a case and prediction into an evaluated case.
+ *
+ * <p>Mirrors Python's {@code BaseEvaluator} in
+ * {@code openjiuwen/agent_evolving/evaluator/evaluator.py}.</p>
  */
 public abstract class BaseEvaluator {
-    /**
-     * evaluate.
-     * 
-     * @param caseData caseData
-     * @param predict predict
-     * @return the result
-     * @since 0.1.7
-     */
-    public abstract EvaluatedCase evaluate(Case caseData, Map<String, Object> predict);
 
-    /**
-     * Evaluate multiple cases in parallel.
-     * 
-     * @param cases List of Cases
-     * @param predicts List of model predictions
-     * @param numParallel Number of parallel workers
-     * @return List of EvaluatedCases
-     * @since 0.1.7
-     */
-    public List<EvaluatedCase> batchEvaluate(List<Case> cases, List<Map<String, Object>> predicts, int numParallel) {
-        List<Case> safeCases = cases != null ? cases : List.of();
-        List<Map<String, Object>> safePredicts = predicts != null ? predicts : List.of();
-        if (safeCases.size() != safePredicts.size()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_EVALUATOR_EXECUTION_ERROR, "error_msg",
-                    "length of cases: " + safeCases.size() + " does not equal with length of predicts: "
-                            + safePredicts.size());
-        }
-        TuneUtils.validateDigitalParameter(numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM,
-                TuneConstant.MAX_PARALLEL_NUM);
-        int workers = Math.min(numParallel, safeCases.size());
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
-        try {
-            List<Future<EvaluatedCase>> futures = new ArrayList<>(safeCases.size());
-            for (int i = 0; i < safeCases.size(); i++) {
-                final int index = i;
-                futures.add(executor.submit(() -> evaluate(safeCases.get(index), safePredicts.get(index))));
-            }
-            List<EvaluatedCase> results = new ArrayList<>(safeCases.size());
-            for (Future<EvaluatedCase> future : futures) {
-                try {
-                    results.add(future.get());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Evaluator batch execution interrupted", e);
-                } catch (ExecutionException e) {
-                    Throwable cause = e.getCause() != null ? e.getCause() : e;
-                    if (cause instanceof RuntimeException runtimeException) {
-                        throw runtimeException;
-                    }
-                    throw new RuntimeException("Evaluator batch execution failed", cause);
-                }
-            }
-            return results;
-        } finally {
-            executor.shutdownNow();
-        }
-    }
+    public abstract EvaluatedCase evaluate(Case caseValue, Map<String, Object> predict);
 
-    /**
-     * Evaluate multiple cases with default single-threaded execution.
-     * 
-     * @param cases List of Cases
-     * @param predicts List of model predictions
-     * @return List of evaluated cases
-     * @since 0.1.7
-     */
     public List<EvaluatedCase> batchEvaluate(List<Case> cases, List<Map<String, Object>> predicts) {
-        return batchEvaluate(cases, predicts, TuneConstant.DEFAULT_PARALLEL_NUM);
+        return batchEvaluate(cases, predicts, 1);
     }
 
-    /**
-     * Evaluate multiple cases from a case loader.
-     * 
-     * @param cases CaseLoader instance
-     * @param predicts List of model predictions
-     * @param numParallel Number of parallel workers
-     * @return List of evaluated cases
-     * @since 0.1.7
-     */
+    public List<EvaluatedCase> batchEvaluate(CaseLoader cases, List<Map<String, Object>> predicts) {
+        return batchEvaluate(cases, predicts, 1);
+    }
+
     public List<EvaluatedCase> batchEvaluate(CaseLoader cases, List<Map<String, Object>> predicts, int numParallel) {
-        return batchEvaluate(cases != null ? cases.getCases() : List.of(), predicts, numParallel);
+        return batchEvaluate(cases.getCases(), predicts, numParallel);
+    }
+
+    public List<EvaluatedCase> batchEvaluate(List<Case> cases, List<Map<String, Object>> predicts, int numParallel) {
+        if (cases.size() != predicts.size()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_EVALUATOR_EXECUTION_ERROR,
+                    "error_msg",
+                    "length of cases: " + cases.size()
+                            + " dose not equal with length of predicts: " + predicts.size() + " "
+            );
+        }
+
+        TuneUtils.validateDigitalParameter(
+                numParallel,
+                "num_parallel",
+                TuneConstant.MIN_PARALLEL_NUM,
+                TuneConstant.MAX_PARALLEL_NUM
+        );
+        int numWorkers = Math.min(numParallel, cases.size());
+        ExecutorService executor = Executors.newFixedThreadPool(numWorkers);
+        try {
+            List<Future<EvaluatedCase>> futures = new ArrayList<>(cases.size());
+            for (int index = 0; index < cases.size(); index++) {
+                Case caseValue = cases.get(index);
+                Map<String, Object> predict = predicts.get(index);
+                futures.add(executor.submit(() -> evaluate(caseValue, predict)));
+            }
+            List<EvaluatedCase> evaluatedCases = new ArrayList<>(futures.size());
+            for (Future<EvaluatedCase> future : futures) {
+                evaluatedCases.add(getFutureResult(future));
+            }
+            return evaluatedCases;
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    private static EvaluatedCase getFutureResult(Future<EvaluatedCase> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("batch evaluation interrupted", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 }

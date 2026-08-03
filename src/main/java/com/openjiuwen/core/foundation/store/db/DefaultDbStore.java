@@ -4,8 +4,9 @@
 
 package com.openjiuwen.core.foundation.store.db;
 
-import com.openjiuwen.spi.store.BaseDbStore;
+import com.openjiuwen.core.foundation.store.BaseDbStore;
 
+import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -13,47 +14,42 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Logger;
 
-import javax.sql.DataSource;
-
 /**
- * Lightweight JDBC-backed default DB store.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code DefaultDbStore} in
+ * {@code openjiuwen/core/foundation/store/db/default_db_store.py}.
+ *
+ * @param <E> concrete asynchronous engine handle type
  */
-public class DefaultDbStore extends BaseDbStore<DataSource> {
-    private final DataSource dataSource;
+public class DefaultDbStore<E> extends BaseDbStore<E> {
 
-    /**
-     * DefaultDbStore.
-     * 
-     * @param jdbcUrl jdbcUrl
-     * @since 0.1.7
-     */
+    private final Object asyncConn;
+
     public DefaultDbStore(String jdbcUrl) {
         this(jdbcUrl, null, null);
     }
 
-    /**
-     * DefaultDbStore.
-     * 
-     * @param jdbcUrl jdbcUrl
-     * @param username username
-     * @param password password
-     * @since 0.1.7
-     */
+    @SuppressWarnings("unchecked")
     public DefaultDbStore(String jdbcUrl, String username, String password) {
-        this.dataSource = new SimpleDriverManagerDataSource(jdbcUrl, username, password);
+        this((E) new SimpleDriverManagerDataSource(jdbcUrl, username, password));
     }
 
-    /**
-     * getEngine.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
+    public DefaultDbStore(E asyncConn) {
+        this.asyncConn = asyncConn;
+    }
+
+    @SuppressWarnings("unchecked")
+    public E getAsyncConn() {
+        return (E) asyncConn;
+    }
+
     public DataSource getEngine() {
-        return dataSource;
+        return (DataSource) asyncConn;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public E getAsyncEngine() {
+        return (E) asyncConn;
     }
 
     private static final class SimpleDriverManagerDataSource implements DataSource {
@@ -63,122 +59,59 @@ public class DefaultDbStore extends BaseDbStore<DataSource> {
         private volatile PrintWriter logWriter;
         private volatile int loginTimeout;
 
-        /**
-         * SimpleDriverManagerDataSource.
-         * 
-         * @param jdbcUrl jdbcUrl
-         * @param username username
-         * @param password password
-         * @since 0.1.7
-         */
         private SimpleDriverManagerDataSource(String jdbcUrl, String username, String password) {
             this.jdbcUrl = jdbcUrl;
             this.username = username;
             this.password = password;
         }
 
-        /**
-         * getConnection.
-         * 
-         * @return the result
-         * @throws SQLException SQLException
-         * @since 0.1.7
-         */
         @Override
         public Connection getConnection() throws SQLException {
+            if (username == null && password == null) {
+                return DriverManager.getConnection(jdbcUrl);
+            }
             return DriverManager.getConnection(jdbcUrl, username, password);
         }
 
-        /**
-         * getConnection.
-         * 
-         * @param username username
-         * @param password password
-         * @return the result
-         * @throws SQLException SQLException
-         * @since 0.1.7
-         */
         @Override
         public Connection getConnection(String username, String password) throws SQLException {
             return DriverManager.getConnection(jdbcUrl, username, password);
         }
 
-        /**
-         * unwrap.
-         * 
-         * @param iface iface
-         * @return the result
-         * @throws SQLException SQLException
-         * @since 0.1.7
-         */
         @Override
         public <T> T unwrap(Class<T> iface) throws SQLException {
+            if (iface.isInstance(this)) {
+                return iface.cast(this);
+            }
             throw new SQLFeatureNotSupportedException();
         }
 
-        /**
-         * isWrapperFor.
-         * 
-         * @param iface iface
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public boolean isWrapperFor(Class<?> iface) {
-            return false;
+            return iface.isInstance(this);
         }
 
-        /**
-         * getLogWriter.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public PrintWriter getLogWriter() {
             return logWriter;
         }
 
-        /**
-         * setLogWriter.
-         * 
-         * @param out out
-         * @since 0.1.7
-         */
         @Override
         public void setLogWriter(PrintWriter out) {
             this.logWriter = out;
         }
 
-        /**
-         * setLoginTimeout.
-         * 
-         * @param seconds seconds
-         * @since 0.1.7
-         */
         @Override
         public void setLoginTimeout(int seconds) {
             this.loginTimeout = seconds;
             DriverManager.setLoginTimeout(seconds);
         }
 
-        /**
-         * getLoginTimeout.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public int getLoginTimeout() {
             return loginTimeout;
         }
 
-        /**
-         * getParentLogger.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Logger getParentLogger() {
             return Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);

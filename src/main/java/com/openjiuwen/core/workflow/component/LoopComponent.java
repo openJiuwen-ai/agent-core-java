@@ -8,23 +8,17 @@ import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.HasDrawable;
 
 /**
- * Interface for loop components that contain a repeatable subgraph.
- * <p>
- * Stub interface for the graph visualization module. Will be fully implemented
- * when the workflow module is converted from Python.
- * </p>
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.LoopComponent}.
- * </p>
- * 
- * @since 0.1.7
+ * Loop component view exposing the loop group used for visualization.
+ *
+ * <p>Mirrors Python's {@code LoopComponent} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
 public interface LoopComponent extends ComponentComposable {
+
     /**
-     * getLoopGroup.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Gets Python's {@code loop_group} property.
+     *
+     * @return drawable-owning loop group
      */
     HasDrawable getLoopGroup();
 }

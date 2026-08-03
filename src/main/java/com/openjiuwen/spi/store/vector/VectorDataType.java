@@ -6,10 +6,9 @@ package com.openjiuwen.spi.store.vector;
 
 /**
  * Supported data types for vector store fields.
- * <p>
- * Mirrors Python's {@code VectorDataType} enum.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code VectorDataType} in
+ * {@code openjiuwen/core/foundation/store/base_vector_store.py}.</p>
  */
 public enum VectorDataType {
     VARCHAR,
@@ -22,5 +21,13 @@ public enum VectorDataType {
     DOUBLE,
     BOOL,
     JSON,
-    ARRAY
+    ARRAY;
+
+    static VectorDataType fromCore(com.openjiuwen.core.foundation.store.VectorDataType value) {
+        return value == null ? null : VectorDataType.valueOf(value.name());
+    }
+
+    com.openjiuwen.core.foundation.store.VectorDataType toCore() {
+        return com.openjiuwen.core.foundation.store.VectorDataType.valueOf(name());
+    }
 }

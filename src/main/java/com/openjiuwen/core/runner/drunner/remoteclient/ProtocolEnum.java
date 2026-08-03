@@ -6,8 +6,9 @@ package com.openjiuwen.core.runner.drunner.remoteclient;
 
 /**
  * Supported remote transport protocols.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code ProtocolEnum} in
+ * {@code openjiuwen/core/runner/drunner/remote_client/remote_client_config.py}.</p>
  */
 public enum ProtocolEnum {
     MQ,

@@ -4,33 +4,97 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.context_engine.ModelContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Input data for BEFORE/AFTER_MODEL_CALL events.
- * 
- * @since 0.1.7
+ * Input data for before/after model call events.
+ *
+ * <p>Mirrors Python's {@code ModelCallInputs} in
+ * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelCallInputs implements EventInputs {
-    @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Object> messages = new ArrayList<>();
-    private List<ToolInfo> tools;
+    private List<Object> tools;
+
+    @JsonIgnore
+    private final Map<String, String> requestHeaders = new LinkedHashMap<>();
+
+    @JsonProperty("model_context")
+    private ModelContext modelContext;
+
     private Object response;
+
+    public List<Object> getMessages() {
+        return messages;
+    }
+
+    public void setMessages(List<Object> messages) {
+        this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
+    }
+
+    public List<Object> getTools() {
+        return tools;
+    }
+
+    public void setTools(List<Object> tools) {
+        this.tools = tools == null ? null : new ArrayList<>(tools);
+    }
+
+    public ModelContext getModelContext() {
+        return modelContext;
+    }
+
+    public void setModelContext(ModelContext modelContext) {
+        this.modelContext = modelContext;
+    }
+
+    public Object getResponse() {
+        return response;
+    }
+
+    public void setResponse(Object response) {
+        this.response = response;
+    }
+
+    @JsonIgnore
+    public Map<String, String> getRequestHeaders() {
+        return new LinkedHashMap<>(requestHeaders);
+    }
+
+    public void setRequestHeaders(Map<String, String> headers) {
+        requestHeaders.clear();
+        mergeRequestHeaders(headers);
+    }
+
+    public void mergeRequestHeaders(Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) {
+            return;
+        }
+        headers.forEach((name, value) -> {
+            requestHeaders.keySet().removeIf(existingName -> sameHeaderName(existingName, name));
+            requestHeaders.put(name, value);
+        });
+    }
+
+    public Map<String, String> consumeRequestHeaders() {
+        Map<String, String> headers = new LinkedHashMap<>(requestHeaders);
+        requestHeaders.clear();
+        return headers;
+    }
+
+    private static boolean sameHeaderName(String first, String second) {
+        if (first == null) {
+            return second == null;
+        }
+        return second != null && first.equalsIgnoreCase(second);
+    }
 }

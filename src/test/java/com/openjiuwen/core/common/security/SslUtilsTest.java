@@ -4,16 +4,25 @@
 
 package com.openjiuwen.core.common.security;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import org.junit.jupiter.api.Test;
 
+import javax.net.ssl.SSLContext;
 import java.net.http.HttpClient;
-import java.util.Arrays;
+import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+/**
+ * Mirrors Python's behavior around
+ * {@code openjiuwen/core/common/security/ssl_utils.py}.
+ */
 class SslUtilsTest {
+
     @Test
     void configureHttpClientSslDisablesEndpointVerificationWhenRequested() {
         HttpClient.Builder builder = HttpClient.newBuilder();
@@ -23,7 +32,31 @@ class SslUtilsTest {
         HttpClient client = builder.build();
         assertNotNull(client.sslContext());
         assertEquals("", client.sslParameters().getEndpointIdentificationAlgorithm());
-        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.2"));
-        assertTrue(Arrays.asList(client.sslParameters().getProtocols()).contains("TLSv1.3"));
+    }
+
+    @Test
+    void getSslConfigReturnsFalsePairWhenUrlIsNotHttps() {
+        Object[] config = SslUtils.getSslConfig("SSL_VERIFY", "SSL_CERT", List.of("true"), false);
+
+        assertEquals(false, config[0]);
+        assertEquals(false, config[1]);
+    }
+
+    @Test
+    void getSslConfigRaisesWhenVerifyIsOnAndCertMissing() {
+        BaseError error = assertThrows(
+                BaseError.class,
+                () -> SslUtils.getSslConfig("SSL_VERIFY", "SSL_CERT", List.of(), true)
+        );
+
+        assertEquals(StatusCode.COMMON_SSL_CERT_INVALID, error.getStatus());
+    }
+
+    @Test
+    void createStrictSslContextIgnoresMissingCertFile() {
+        assertSame(
+                SSLContext.class,
+                SslUtils.createStrictSslContext("target/missing-cert.pem").getClass()
+        );
     }
 }

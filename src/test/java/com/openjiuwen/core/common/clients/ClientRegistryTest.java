@@ -1,78 +1,142 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.common.clients;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.openai.client.OpenAIClient;
-
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Mirrors Python's {@code tests/unit_tests/core/common/clients/test_client_registry.py}.
+ */
 class ClientRegistryTest {
-    @AfterEach
-    void tearDown() {
-        ClientRegistry.getInstance().resetForTests();
+
+    @Test
+    void registerClientFactory() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.registerClient("test_client", "test", kwargs -> Map.of());
+
+        assertTrue(registry.listClients().contains("test_test_client"));
     }
 
     @Test
-    void shouldRegisterAndResolveFactory() throws Exception {
-        ClientRegistry registry = ClientRegistry.getInstance();
-        registry.registerClient("sample", "test", kwargs -> Map.of("ok", true, "kwargs", kwargs));
+    void registerClassAndInstantiate() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.registerClass(TestDatabaseClient.class);
 
-        Object created = registry.getClient("sample", "test", Map.of("value", 1));
-        assertThat(created).isEqualTo(Map.of("ok", true, "kwargs", Map.of("value", 1)));
-        assertThat(registry.listClients()).contains("test_sample");
+        assertTrue(registry.listClients().contains("database_mysql"));
+        Object instance = registry.getClient("database_mysql", Map.of("host", "localhost"));
+        TestDatabaseClient client = assertInstanceOf(TestDatabaseClient.class, instance);
+        assertEquals("localhost", client.getConfig().get("host"));
     }
 
     @Test
-    void shouldRegisterClientClassByStaticMetadata() throws Exception {
-        ClientRegistry registry = ClientRegistry.getInstance();
-        registry.registerClass(TestClient.class);
+    void getClientByNameAndType() {
+        ClientRegistry registry = new ClientRegistry();
+        Object sentinel = new Object();
+        registry.registerClient("redis", "cache", kwargs -> sentinel);
 
-        Object created = registry.getClient("mysql", "database", Map.of("host", "localhost"));
-        assertThat(created).isInstanceOf(TestClient.class);
-        assertThat(((TestClient) created).receivedConfig).containsEntry("host", "localhost");
+        assertEquals(sentinel, registry.getClient("redis", "cache"));
+
+        registry.unregister("redis", "cache");
     }
 
     @Test
-    void builtinsShouldBeAvailable() throws Exception {
-        ClientRegistry registry = ClientRegistry.getInstance();
+    void getClientWithoutClientType() {
+        ClientRegistry registry = new ClientRegistry();
+        Object sentinel = new Object();
+        registry.registerClient("default_client", null, kwargs -> sentinel);
 
-        Object openAi = registry.getClient("openai", "common", Map.of("config",
-                Map.of("client_provider", "openai", "api_key", "test-key", "api_base", "https://example.invalid/v1")));
-
-        assertThat(registry.listClients()).contains("common_http", "common_httpx", "common_openai",
-                "common_async_openai");
-        assertThat(openAi).isInstanceOf(OpenAIClient.class);
+        assertEquals(sentinel, registry.getClient("default_client", (String) null));
+        registry.unregister("default_client", null);
     }
 
     @Test
-    void facadeShouldExposeSingletonsAndFactories() {
-        assertThat(Clients.getClientRegistry()).isSameAs(ClientRegistry.getInstance());
-        assertThat(Clients.getConnectorPoolManager()).isSameAs(ConnectorPoolManager.getInstance());
-        assertThat(Clients.getHttpSessionManager()).isSameAs(HttpSessionManager.getInstance());
-        assertThat(Clients.createOpenAiClient(com.openjiuwen.core.foundation.llm.schema.ModelClientConfig.builder()
-                .clientProvider("openai").apiKey("test").apiBase("https://example.invalid/v1").build()))
-                .isInstanceOf(OpenAIClient.class);
+    void getClientRejectsEmptyName() {
+        ClientRegistry registry = new ClientRegistry();
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> registry.getClient(""));
+        assertTrue(error.getMessage().contains("cannot be empty"));
     }
 
     @Test
-    void shouldRejectUnknownClient() {
-        assertThatThrownBy(() -> ClientRegistry.getInstance().getClient("missing", "common"))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unknown client type");
+    void getClientRejectsUnknownName() {
+        ClientRegistry registry = new ClientRegistry();
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> registry.getClient("unknown"));
+        assertTrue(error.getMessage().contains("Unknown client type"));
     }
 
-    public static final class TestClient extends BaseClient {
-        public static final String __client_name__ = "mysql";
-        public static final String __client_type__ = "database";
+    @Test
+    void getClientSurfacesCreationFailure() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.registerClient("failing", "test", kwargs -> {
+            throw new Exception("Creation failed");
+        });
 
-        private final Map<String, Object> receivedConfig;
+        RuntimeException error = assertThrows(
+                RuntimeException.class,
+                () -> registry.getClient("failing", "test"));
+        assertTrue(error.getMessage().contains("Failed to create client"));
+    }
 
-        public TestClient(Map<String, Object> config) {
-            this.receivedConfig = config;
+    @Test
+    void unregisterRemovesClient() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.registerClient("redis", "cache", kwargs -> Map.of());
+
+        registry.unregister("redis", "cache");
+
+        assertTrue(registry.listClients().stream().noneMatch("cache_redis"::equals));
+    }
+
+    @Test
+    void unregisterRejectsUnknownClient() {
+        ClientRegistry registry = new ClientRegistry();
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> registry.unregister("nonexistent"));
+        assertTrue(error.getMessage().contains("not registered"));
+    }
+
+    @Test
+    void listClientsReturnsRegisteredEntries() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.registerClient("client1", "type1", kwargs -> Map.of());
+        registry.registerClient("client2", "type2", kwargs -> Map.of());
+
+        List<String> clients = registry.listClients();
+        assertTrue(clients.contains("type1_client1"));
+        assertTrue(clients.contains("type2_client2"));
+    }
+
+    @Test
+    void baseClientCarriesConfigMetadataAndNoopLifecycle() {
+        BaseClient client = new BaseClient(Map.of("key", "value"));
+
+        assertEquals("value", client.getConfig().get("key"));
+        assertNotNull(client.getMetadata());
+        assertEquals(client, client.enter());
+        assertTrue(client.close().join());
+    }
+
+    private static final class TestDatabaseClient extends BaseClient {
+        private static final String __client_name__ = "mysql";
+        private static final String __client_type__ = "database";
+
+        private TestDatabaseClient(Map<String, Object> kwargs) {
+            super(kwargs);
         }
     }
 }

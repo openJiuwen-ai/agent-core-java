@@ -5,10 +5,12 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Public row model matching the memory user_message table.
- * 
- * @since 0.1.7
+ * Memory SQL row for persisted user messages.
+ *
+ * <p>Mirrors Python's {@code UserMessage} in
+ * {@code openjiuwen/core/memory/manage/mem_model/db_model.py}.</p>
  */
-public record UserMessage(String messageId, String userId, String scopeId, String content, String sessionId,
-        String role, String timestamp) {
+public class UserMessage extends MessageMixin {
+
+    public static final String TABLE_NAME = "user_message";
 }

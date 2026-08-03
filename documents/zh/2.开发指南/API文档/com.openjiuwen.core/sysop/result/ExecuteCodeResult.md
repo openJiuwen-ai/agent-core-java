@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.result.ExecuteCodeResult
+# com.openjiuwen.core.sys_operation.result.ExecuteCodeResult
 
 ## 类 ExecuteCodeResult
 

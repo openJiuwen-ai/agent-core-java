@@ -6,7 +6,7 @@
 
 | 页面 | Java 对应主线 | 主要依据 | 说明 |
 | --- | --- | --- | --- |
-| [概述](概述.md) | 多智能体整体模型与阅读顺序 | `com.openjiuwen.core.multiagent`、`examples/groups` | 先建立 Java 侧术语与推荐路径。 |
+| [概述](概述.md) | 多智能体整体模型与阅读顺序 | `com.openjiuwen.core.multi_agent`、`examples/groups` | 先建立 Java 侧术语与推荐路径。 |
 | [BaseGroup与组封装](BaseTeam.md) | `BaseGroup`、`GroupCard`、`GroupConfig` | `BaseGroup`、`GroupConfig`、`schema` 子包 | 聚焦 Java 的 `BaseGroup` 主线。 |
 | [组运行时职责与通信协作](TeamRuntime与CommunicableAgent.md) | 运行时职责分配与通信协作 | `MultiAgentSessions`、`AgentGroupSessionApi`、resource manager、legacy controller group | 说明 group、session、controller 和 resource manager 的职责边界。 |
 | [AgentAsTool](AgentAsTool.md) | 把 Agent 当作 Tool 使用 | `AbilityManager`、`Runner.resourceMgr()`、`ReActAgent` | 面向使用者的接入教程，说明怎样把子 Agent 暴露成宿主 Agent 的可调用能力。 |

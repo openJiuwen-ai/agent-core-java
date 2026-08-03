@@ -35,7 +35,7 @@
 ## 关键行为
 
 - `KnowledgeBaseConfig`、`IndexConfig`、`VectorStoreConfig`、`RetrievalConfig` 等配置对象会在构造或 setter 中执行参数校验。
-- `Document`、`TextChunk`、`SearchResult`、`RetrievalResult` 等模型会对文本、标识符与 `metadata` 做非空或复制保护。
+- `Document`、`TextChunk`、`SearchResult`、`RetrievalResult` 等模型的校验、默认值和复制策略各不相同；调用构造器、getter 或 setter 前应以对应类型页面列出的实际 Java 行为为准。
 - `MultimodalDocument` 会把文件内容转换为模型可消费的结构化内容，并对 `kind`、`data`、`filePath` 与 `dataId` 做校验。
 - `RRFRankConfig` 与 `WeightedRankConfig` 会把 Java 配置对象转换为底层 ranker 需要的参数列表。
 

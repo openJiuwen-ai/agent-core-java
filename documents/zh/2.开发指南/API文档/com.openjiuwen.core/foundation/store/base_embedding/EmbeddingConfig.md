@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig
+# com.openjiuwen.core.foundation.store.EmbeddingConfig
 
 ## class EmbeddingConfig
 

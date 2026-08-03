@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
@@ -11,17 +11,16 @@ import java.util.List;
 
 /**
  * Abstract base class for text splitters.
- * Corresponds to Python {@code text_splitter.py::TextSplitter}.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code TextSplitter} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_splitter.py}.
+ * </p>
  */
 public abstract class TextSplitter {
-    /**
-     * split.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
+
     public abstract List<TextChunk> split(Document doc);
+
+    public List<TextChunk> split(TextChunk chunk) {
+        return split(new Document(chunk.getDocId(), chunk.getText(), chunk.getMetadata()));
+    }
 }

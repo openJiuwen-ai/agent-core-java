@@ -1,14 +1,16 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
-import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,203 +19,196 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
 /**
- * Generic web page parser.
- * 
- * @since 0.1.7
+ * Parser for generic web page URLs.
+ *
+ * <p>Mirrors Python's {@code WebPageParser} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.</p>
  */
-public class WebPageParser extends Parser {
-    private static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://.+", Pattern.CASE_INSENSITIVE);
+public class WebPageParser extends HTMLFileParser {
 
-    /**
-     * TITLE_META_PATTERN.
-     * 
-     * @since 0.1.7
-     */
-    protected static final Pattern TITLE_META_PATTERN =
-        Pattern.compile("<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    public static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://\\S+", Pattern.CASE_INSENSITIVE);
+    public static final Pattern WECHAT_MP_URL_PATTERN = Pattern.compile(
+            "^https?://(?:mp\\.weixin\\.qq\\.com|.*?\\.weixin\\.qq\\.com)/s\\b.*",
+            Pattern.CASE_INSENSITIVE
+    );
 
-    /**
-     * TITLE_PATTERN.
-     * 
-     * @since 0.1.7
-     */
-    protected static final Pattern TITLE_PATTERN =
-        Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebPageParser.class);
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern ARTICLE_PATTERN =
-        Pattern.compile("<article[^>]*>(.*?)</article>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private final double timeout;
+    private final String userAgent;
+    private final HttpClient httpClient;
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern BODY_PATTERN =
-        Pattern.compile("<body[^>]*>(.*?)</body>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern SCRIPT_STYLE_PATTERN =
-        Pattern.compile("<(script|style)[^>]*>.*?</\\1>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]+>");
-
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
-
-    /**
-     * httpClient.
-     * 
-     * @since 0.1.7
-     */
-    protected final HttpClient httpClient;
-
-    /**
-     * WebPageParser.
-     * 
-     * @since 0.1.7
-     */
     public WebPageParser() {
-        this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build());
+        this(DEFAULT_TIMEOUT, DEFAULT_USER_AGENT);
     }
 
-    /**
-     * WebPageParser.
-     * 
-     * @param httpClient httpClient
-     * @since 0.1.7
-     */
-    public WebPageParser(HttpClient httpClient) {
+    public WebPageParser(double timeout, String userAgent) {
+        this(timeout, userAgent, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(Math.max(1L, Math.round(timeout))))
+                .build());
+    }
+
+    protected WebPageParser(double timeout, String userAgent, HttpClient httpClient) {
+        this.timeout = timeout;
+        this.userAgent = userAgent == null || userAgent.isBlank() ? DEFAULT_USER_AGENT : userAgent;
         this.httpClient = httpClient;
     }
 
     /**
-     * parse.
-     * 
-     * @param doc doc
-     * @param docId docId
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's module-level {@code _is_wechat_article_url} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.
      */
-    @Override
-    public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
-        if (WeChatArticleParser.isWechatArticleUrl(doc)) {
-            throw RetrievalExceptions.validation("Use WeChatArticleParser for WeChat URLs");
+    public static boolean isWechatArticleUrl(String url) {
+        return url != null && WECHAT_MP_URL_PATTERN.matcher(url.strip()).find();
+    }
+
+    /**
+     * Mirrors Python's module-level {@code parse_web_page_url} alias in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.
+     */
+    public static CompletableFuture<List<Document>> parseWebPageUrl(String url) {
+        return parseWebPageUrl(url, "");
+    }
+
+    /**
+     * Mirrors Python's module-level {@code parse_web_page_url} alias in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.
+     */
+    public static CompletableFuture<List<Document>> parseWebPageUrl(String url, String docId) {
+        return new WebPageParser().parseUrl(url, docId);
+    }
+
+    /**
+     * Mirrors Python's {@code WebPageParser._validate_url} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.
+     */
+    public static void validateUrl(String url) {
+        String safeUrl = url == null ? "" : url.strip();
+        if (safeUrl.isBlank() || !HTTP_URL_PATTERN.matcher(safeUrl).find()) {
+            throw fetchError("Not a valid HTTP URL: '" + safeUrl + "'");
         }
-        String html = fetchHtml(doc);
-        String title = extractFirst(html, TITLE_META_PATTERN, extractFirst(html, TITLE_PATTERN, ""));
-        String text = extractReadableText(html, ARTICLE_PATTERN);
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("source_url", doc);
-        metadata.put("title", title);
-        metadata.put("source_type", "web_page");
-        return List.of(new Document(docId, text, metadata));
+        if (isWechatArticleUrl(safeUrl)) {
+            throw fetchError("Use WeChatArticleParser for WeChat URLs");
+        }
     }
 
-    /**
-     * parseContent.
-     * 
-     * @param doc doc
-     * @param llmClient llmClient
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        return null;
+    public CompletableFuture<List<Document>> parseAsync(
+            String doc,
+            String docId,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        Map<String, Object> safeOptions = options == null ? Map.of() : options;
+        double effectiveTimeout = optionAsDouble(safeOptions, "timeout", timeout);
+        String effectiveUserAgent = optionAsString(safeOptions, "user_agent",
+                optionAsString(safeOptions, "userAgent", userAgent));
+        return parseUrl(doc, docId == null || docId.isBlank() ? doc : docId, effectiveTimeout, effectiveUserAgent);
     }
 
-    /**
-     * supports.
-     * 
-     * @param doc doc
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean supports(String doc) {
-        return doc != null && HTTP_URL_PATTERN.matcher(doc.trim()).matches()
-                && !WeChatArticleParser.isWechatArticleUrl(doc);
+        if (doc == null || !HTTP_URL_PATTERN.matcher(doc.strip()).find()) {
+            return false;
+        }
+        return !isWechatArticleUrl(doc);
+    }
+
+    public CompletableFuture<List<Document>> parseUrl(String url, String docId) {
+        return parseUrl(url, docId, timeout, userAgent);
+    }
+
+    public CompletableFuture<List<Document>> parseUrl(String url, String docId, double requestTimeout, String requestUserAgent) {
+        validateUrl(url);
+        String effectiveId = docId == null || docId.isBlank() ? url : docId;
+        return downloadHtml(url, requestTimeout, requestUserAgent)
+                .thenCompose(html -> HTMLFileParser.parseHtml(html, effectiveId, url))
+                .thenApply(documents -> {
+                    for (Document document : documents) {
+                        Map<String, Object> metadata = document.getMetadata() == null
+                                ? new LinkedHashMap<>()
+                                : new LinkedHashMap<>(document.getMetadata());
+                        metadata.put("source_url", url);
+                        document.setMetadata(metadata);
+                        LOGGER.info("Parsed web page: url={} title={}", url,
+                                metadata.getOrDefault("title", "(鏃犳爣棰?"));
+                    }
+                    return documents;
+                });
     }
 
     /**
-     * fetchHtml.
-     * 
-     * @param url url
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code WebPageParser._download_html} in
+     * {@code openjiuwen/core/retrieval/indexing/processor/parser/web_page_parser.py}.
      */
-    protected String fetchHtml(String url) {
+    protected CompletableFuture<String> downloadHtml(String url, double requestTimeout, String requestUserAgent) {
+        HttpRequest request;
         try {
-            HttpResponse<String> response =
-                httpClient.send(HttpRequest.newBuilder(URI.create(url)).GET().timeout(Duration.ofSeconds(30)).build(),
-                        HttpResponse.BodyHandlers.ofString());
-            return response.body();
-        } catch (IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            throw RetrievalExceptions.validation("Failed to fetch URL: " + url);
+            request = HttpRequest.newBuilder(URI.create(url))
+                    .GET()
+                    .timeout(Duration.ofSeconds(Math.max(1L, Math.round(requestTimeout))))
+                    .header("User-Agent", requestUserAgent == null || requestUserAgent.isBlank()
+                            ? DEFAULT_USER_AGENT
+                            : requestUserAgent)
+                    .build();
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(fetchError("Web page fetch failed for " + url + ": "
+                    + exception.getMessage(), exception));
+        }
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    int status = response.statusCode();
+                    if (status >= 400) {
+                        throw fetchError("Web page request failed: " + status + " for " + url);
+                    }
+                    return response.body();
+                })
+                .exceptionally(error -> {
+                    if (error.getCause() instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    throw fetchError("Web page fetch failed for " + url + ": " + error.getMessage(), error);
+                });
+    }
+
+    private static double optionAsDouble(Map<String, Object> options, String key, double defaultValue) {
+        if (options == null || !options.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = options.get(key);
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
         }
     }
 
-    /**
-     * extractReadableText.
-     * 
-     * @param html html
-     * @param preferredPattern preferredPattern
-     * @return the result
-     * @since 0.1.7
-     */
-    protected static String extractReadableText(String html, Pattern preferredPattern) {
-        String body = extractFirst(html, preferredPattern, extractFirst(html, BODY_PATTERN, html));
-        body = SCRIPT_STYLE_PATTERN.matcher(body).replaceAll(" ");
-        body = TAG_PATTERN.matcher(body).replaceAll(" ");
-        return WHITESPACE_PATTERN.matcher(body).replaceAll(" ").trim();
+    private static String optionAsString(Map<String, Object> options, String key, String defaultValue) {
+        if (options == null || !options.containsKey(key) || options.get(key) == null) {
+            return defaultValue;
+        }
+        return String.valueOf(options.get(key));
     }
 
-    /**
-     * extractFirst.
-     * 
-     * @param html html
-     * @param pattern pattern
-     * @param fallback fallback
-     * @return the result
-     * @since 0.1.7
-     */
-    protected static String extractFirst(String html, Pattern pattern, String fallback) {
-        if (html == null) {
-            return fallback;
-        }
-        Matcher matcher = pattern.matcher(html);
-        if (!matcher.find()) {
-            return fallback;
-        }
-        return WHITESPACE_PATTERN.matcher(matcher.group(1)).replaceAll(" ").trim();
+    private static RuntimeException fetchError(String message) {
+        return fetchError(message, null);
+    }
+
+    private static RuntimeException fetchError(String message, Throwable cause) {
+        return ErrorHelper.buildError(
+                StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR,
+                message,
+                null,
+                cause,
+                Map.of("error_msg", message)
+        );
     }
 }

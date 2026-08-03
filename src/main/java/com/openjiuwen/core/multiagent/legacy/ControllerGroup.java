@@ -4,205 +4,137 @@
 
 package com.openjiuwen.core.multiagent.legacy;
 
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
+import com.openjiuwen.core.session.AgentSessionApi;
 
-import java.util.Iterator;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Agent Group with Controller (legacy pattern).
- * <p>
- * Design features (similar to ControllerAgent):
- * <ul>
- * <li>Inherits LegacyBaseGroup, reuses agent management capabilities</li>
- * <li>Holds GroupController, fully delegates message routing logic</li>
- * <li>Automatically configures GroupController (via setupFromGroup)</li>
- * <li>invoke/stream fully delegated to groupController</li>
- * </ul>
- * <p>
- * Mirrors Python's {@code ControllerGroup} in {@code multi_agent/legacy/agent_group.py}.
- * 
- * @deprecated Use {@link com.openjiuwen.core.multiagent.BaseGroup} with the new Card + Config pattern.
- * @since 0.1.7
+ * Legacy controller group facade backed by direct agent invocation.
+ *
+ * <p>Mirrors Python's legacy controller group in
+ * {@code openjiuwen/core/multi_agent/legacy/group.py}.</p>
  */
-@Deprecated
-public class ControllerGroup extends LegacyBaseGroup {
-    private final BaseGroupController groupController;
+public class ControllerGroup {
+    private final AgentGroupConfig config;
+    private final DefaultGroupController groupController;
+    private final Map<String, Object> agents = new LinkedHashMap<>();
 
-    /**
-     * Initialize ControllerGroup.
-     * 
-     * @param config AgentGroup configuration object
-     * @param groupController GroupController instance (will be auto-configured)
-     * @since 0.1.7
-     */
-    public ControllerGroup(AgentGroupConfig config, BaseGroupController groupController) {
-        super(config);
-        this.groupController = groupController;
-
-        // Auto-configure groupController
-        if (this.groupController != null) {
-            setupGroupController();
-        }
+    public ControllerGroup(AgentGroupConfig config, DefaultGroupController groupController) {
+        this.config = config == null ? new AgentGroupConfig("") : config;
+        this.groupController = groupController == null ? new DefaultGroupController() : groupController;
     }
 
-    /**
-     * ControllerGroup.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
-    public ControllerGroup(AgentGroupConfig config) {
-        this(config, null);
+    public void addAgent(String agentId, Object agent) {
+        if (agents.size() >= config.getMaxAgents() && !agents.containsKey(agentId)) {
+            throw new IllegalStateException("Agent count exceeds maxAgents (" + config.getMaxAgents() + ")");
+        }
+        agents.put(agentId, agent);
     }
 
-    /**
-     * setupGroupController.
-     * 
-     * @since 0.1.7
-     */
-    private void setupGroupController() {
-        groupController.setupFromGroup(this);
+    public String getGroupId() {
+        return config.getGroupId();
     }
 
-    /**
-     * Convert dict/map to GroupEvent if needed (backward compatibility).
-     * 
-     * @param message message
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    private GroupEvent convertMessage(Object message) {
-        if (message instanceof GroupEvent ge) {
-            return ge;
-        }
-        if (message instanceof Map<?, ?> map) {
-            return GroupEvent.fromMap((Map<String, Object>) map);
-        }
-        if (message instanceof String s) {
-            return GroupEvent.createUserEvent(s, "default_session");
-        }
-        throw new IllegalArgumentException(
-                "Unsupported message type: " + message.getClass().getName() + ". Must be GroupEvent, Map, or String.");
+    public AgentGroupConfig getConfig() {
+        return config;
     }
 
-    /**
-     * invoke.
-     * 
-     * @param message message
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object invoke(Object message, AgentGroupSessionApi session) {
-        if (groupController == null) {
-            throw new RuntimeException(getClass().getSimpleName() + " has no groupController");
-        }
-
-        GroupEvent event = convertMessage(message);
-
-        // If session not provided, create a new one
-        AgentGroupSessionApi effectiveSession = session;
-        if (effectiveSession == null) {
-            String sessionId = event.getConversationId() != null ? event.getConversationId() : "default";
-            effectiveSession = new AgentGroupSessionApi(sessionId);
-        }
-
-        Object result = groupController.invoke(event, effectiveSession);
-        return result != null ? result : Map.of("output", "processed");
-    }
-
-    /**
-     * stream.
-     * 
-     * @param message message
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Iterator<Object> stream(Object message, AgentGroupSessionApi session) {
-        if (groupController == null) {
-            throw new RuntimeException(getClass().getSimpleName() + " has no groupController");
-        }
-
-        GroupEvent event = convertMessage(message);
-
-        // If session not provided, create a new one
-        AgentGroupSessionApi effectiveSession = session;
-        if (effectiveSession == null) {
-            String sessionId = event.getConversationId() != null ? event.getConversationId() : "default";
-            effectiveSession = new AgentGroupSessionApi(sessionId);
-        }
-
-        AgentGroupSessionApi finalSession = effectiveSession;
-        CompletableFuture<Void> controllerTask = CompletableFuture.runAsync(() -> {
-            try {
-                groupController.invoke(event, finalSession);
-            } catch (Exception e) {
-                Loggers.MULTI_AGENT.error("ControllerGroup.stream: controller error: {}", e.getMessage());
-            } finally {
-                finalSession.getInner().streamWriterManager().getStreamEmitter().close();
-            }
-        }, runnable -> {
-            Thread thread = new Thread(runnable, "controller-group");
-            thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler(
-                    (t, e) -> Loggers.MULTI_AGENT.error("Uncaught exception in " + t.getName(), e));
-            thread.start();
-        });
-
-        Iterator<Object> sessionStream = finalSession.getInner().streamWriterManager().streamIterator();
-        return new Iterator<>() {
-            private Object next = null;
-            private boolean done = false;
-            @Override
-            public boolean hasNext() {
-                if (done) {
-                    return false;
-                }
-                if (next != null) {
-                    return true;
-                }
-                try {
-                    if (!sessionStream.hasNext()) {
-                        controllerTask.join();
-                        done = true;
-                        return false;
-                    }
-                    next = sessionStream.next();
-                    return true;
-                } catch (RuntimeException e) {
-                    controllerTask.join();
-                    done = true;
-                    throw e;
-                }
-            }
-
-            @Override
-            public Object next() {
-                if (!hasNext()) {
-                    throw new NoSuchElementException();
-                }
-                Object result = next;
-                next = null;
-                return result;
-            }
-        };
-    }
-
-    /**
-     * getGroupController.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public BaseGroupController getGroupController() {
+    public DefaultGroupController getGroupController() {
         return groupController;
+    }
+
+    public int getAgentCount() {
+        return agents.size();
+    }
+
+    public Object invoke(GroupEvent event, AgentSessionApi session) {
+        List<String> targets = groupController.route(event);
+        if (targets.isEmpty()) {
+            return Map.of("output", Map.of());
+        }
+        Object lastResult = null;
+        for (String agentId : targets) {
+            Object agent = agents.get(agentId);
+            if (agent == null) {
+                continue;
+            }
+            lastResult = Map.of("output", normalizeAgentPayload(
+                    invokeAgent(agent, Map.of("query", event.getPayload()), session)));
+        }
+        return lastResult == null ? Map.of("output", Map.of()) : lastResult;
+    }
+
+    private Object invokeAgent(Object agent, Map<String, Object> inputs, AgentSessionApi session) {
+        try {
+            Method method = agent.getClass().getMethod("invoke", Map.class, AgentSessionApi.class);
+            Object result = method.invoke(agent, inputs, session);
+            if (result instanceof CompletionStage<?> stage) {
+                return stage.toCompletableFuture().join();
+            }
+            return result;
+        } catch (NoSuchMethodException exception) {
+            throw new IllegalStateException("Agent does not expose invoke(Map, AgentSessionApi)", exception);
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Cannot access agent invoke method", exception);
+        } catch (InvocationTargetException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(cause);
+        }
+    }
+
+    private static Object normalizeAgentPayload(Object result) {
+        Object normalized = result;
+        if (result instanceof CompletionStage<?> stage) {
+            normalized = result instanceof Map<?, ?> ? result : stage.toCompletableFuture().join();
+        }
+        if (normalized instanceof ControllerOutput controllerOutput) {
+            Map<String, Object> dataMap = controllerOutput.getDataAsMap();
+            if (dataMap != null) {
+                return unwrapSingleOutputMap(dataMap);
+            }
+            return controllerOutput.getData();
+        }
+        if (normalized instanceof Map<?, ?> resultMap) {
+            return unwrapSingleOutputMap(stringKeyMap(resultMap));
+        }
+        return normalized;
+    }
+
+    private static Object unwrapSingleOutputMap(Map<String, Object> resultMap) {
+        Object output = resultMap.get("output");
+        if ("answer".equals(resultMap.get("result_type")) && output != null) {
+            return unwrapOutputValue(output);
+        }
+        if (resultMap.size() == 1 && output instanceof Map<?, ?> outputMap) {
+            return unwrapSingleOutputMap(stringKeyMap(outputMap));
+        }
+        return resultMap;
+    }
+
+    private static Object unwrapOutputValue(Object output) {
+        if (output instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            return unwrapOutputValue(workflowOutput.getResult());
+        }
+        if (output instanceof Map<?, ?> outputMap) {
+            return unwrapSingleOutputMap(stringKeyMap(outputMap));
+        }
+        return output;
+    }
+
+    private static Map<String, Object> stringKeyMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 }

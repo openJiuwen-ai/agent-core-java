@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.WorkflowFactory
+# com.openjiuwen.core.single_agent.legacy.agent.WorkflowFactory
 
 ## 类 WorkflowFactory
 

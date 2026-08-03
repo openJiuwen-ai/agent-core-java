@@ -30,8 +30,8 @@ public abstract class BaseGuardrail
 | `getBackend()` | `GuardrailBackend` | 返回当前绑定的后端实例。 |
 | `isEnableLogging()` / `setEnableLogging(boolean enableLogging)` | `boolean` / `void` | 读取或更新注册日志开关。 |
 | `detect(String eventName, Object[] args, Map<String, Object> kwargs)` | `GuardrailResult` | 默认检测入口；把事件数据整理为分析输入并委托给 `GuardrailBackend`。 |
-| `register(CallbackFramework framework)` | `void` | 为每个监听事件注册 `HookType.ERROR` hook 和主检测回调。 |
-| `unregister()` | `void` | 从最近一次注册的 `CallbackFramework` 中移除已登记回调。 |
+| `register(DecoratorFramework framework)` | `void` | 为每个监听事件注册主检测回调；常用实参是 `Runner.getCallbackFramework()`。 |
+| `unregister()` | `void` | 从最近一次注册的 `DecoratorFramework` 中移除已登记回调。 |
 
 ## 扩展点
 

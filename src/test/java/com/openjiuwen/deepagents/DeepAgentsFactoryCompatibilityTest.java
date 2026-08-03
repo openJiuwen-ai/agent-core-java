@@ -1,12 +1,9 @@
-
 package com.openjiuwen.deepagents;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.harness_config.HarnessConfig;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
-
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,7 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class DeepAgentsFactoryCompatibilityTest {
+
     @TempDir
     Path tempDir;
 
@@ -29,13 +29,13 @@ class DeepAgentsFactoryCompatibilityTest {
     @Test
     void factoryShouldAcceptDeepAgentConfig() {
         DeepAgentsFactory factory = new DeepAgentsFactory();
-        DeepAgent agent =
-            factory.createDeepAgent(DeepAgentConfig.builder().systemPrompt("Hi").workspacePath("./x").build());
+        DeepAgent agent = factory.createDeepAgent(DeepAgentConfig.builder().systemPrompt("Hi").workspacePath("./x").build());
 
         assertThat(agent.getConfig().getSystemPrompt()).isEqualTo("Hi");
     }
 
     @Test
+    @Tag("system-test")
     void factoryShouldAcceptHarnessConfigPathAndModel() throws Exception {
         Path configPath = tempDir.resolve("factory.yaml");
         Files.writeString(configPath, """
@@ -50,9 +50,13 @@ class DeepAgentsFactoryCompatibilityTest {
         DeepAgentsFactory factory = new DeepAgentsFactory();
         DeepAgent fromPath = factory.createDeepAgent(configPath);
         DeepAgent fromString = factory.createDeepAgent(configPath.toString());
-        DeepAgent fromModel = factory.createDeepAgent(HarnessConfig.builder().name("Model Factory Agent")
-                .prompts(HarnessConfig.PromptsSchema.builder().sections(List
-                        .of(HarnessConfig.SectionSchema.builder().name("identity").content("inline prompt").build()))
+        DeepAgent fromModel = factory.createDeepAgent(HarnessConfig.builder()
+                .name("Model Factory Agent")
+                .prompts(HarnessConfig.PromptsSchema.builder()
+                        .sections(List.of(HarnessConfig.SectionSchema.builder()
+                                .name("identity")
+                                .content("inline prompt")
+                                .build()))
                         .build())
                 .build());
 

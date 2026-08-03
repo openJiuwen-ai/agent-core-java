@@ -4,21 +4,21 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import java.util.regex.Pattern;
+
 /**
- * Normalizes repeated whitespace.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code WhitespaceNormalizer} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/chunker/text_preprocessor.py}.
  */
 public class WhitespaceNormalizer implements TextPreprocessor {
-    /**
-     * process.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
+
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+
     @Override
     public String process(String text) {
-        return text == null ? null : text.replaceAll("\\s+", " ").trim();
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return WHITESPACE_PATTERN.matcher(text).replaceAll(" ").trim();
     }
 }

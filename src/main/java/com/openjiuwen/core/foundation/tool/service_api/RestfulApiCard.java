@@ -4,380 +4,344 @@
 
 package com.openjiuwen.core.foundation.tool.service_api;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * RESTful API tool card with HTTP method and URL configuration.
- * <p>
- * Mirrors Python's {@code RestfulApiCard}.
- * 
- * @since 0.1.7
+ * RESTful API tool card with HTTP method validation.
+ *
+ * <p>Mirrors Python's {@code RestfulApiCard} in
+ * {@code openjiuwen/core/foundation/tool/service_api/restful_api.py}.</p>
  */
 public class RestfulApiCard extends ToolCard {
-    /**
-     * SUPPORTED_METHODS.
-     * 
-     * @since 0.1.7
-     */
-    public static final Set<String> SUPPORTED_METHODS =
-        Set.of("POST", "GET", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS");
 
-    /** Restful API URL, e.g. /api/v1/users. */
-    private String url;
+    public static final Set<String> SUPPORTED_METHODS = Set.of(
+            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
 
-    /** HTTP method (POST or GET). */
-    private String method = "POST";
+    private static final LoggerProtocol LOGGER = Loggers.TOOL;
+    private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{(\\w+)}");
+    private static final int DEFAULT_MAX_RESPONSE_BYTE_SIZE = 10 * 1024 * 1024;
 
-    /**
-     * Default request headers.
-     * 
-     * @since 0.1.7
-     */
-    private Map<String, Object> headers = Map.of();
+    private final String url;
+    private final String method;
+    private final Map<String, Object> headers;
+    private final Map<String, Object> queries;
+    private final Map<String, Object> paths;
+    private final double timeout;
+    private final int maxResponseByteSize;
 
-    /**
-     * Default query parameters.
-     * 
-     * @since 0.1.7
-     */
-    private Map<String, Object> queries = Map.of();
-
-    /**
-     * Path parameters for URL placeholders.
-     * 
-     * @since 0.1.7
-     */
-    private Map<String, Object> paths = Map.of();
-
-    /** Request timeout in seconds. */
-    private double timeout = 60.0;
-
-    /** Maximum response size in bytes (default 10 MB). */
-    private int maxResponseByteSize = 10 * 1024 * 1024;
-
-    /**
-     * RestfulApiCard.
-     * 
-     * @param url url
-     * @since 0.1.7
-     */
-    public RestfulApiCard(String url) {
-        this.url = url;
-    }
-
-    /**
-     * RestfulApiCard.
-     * 
-     * @param url url
-     * @param method method
-     * @param headers headers
-     * @param queries queries
-     * @param paths paths
-     * @param timeout timeout
-     * @param maxResponseByteSize maxResponseByteSize
-     * @since 0.1.7
-     */
-    private RestfulApiCard(String url, String method, Map<String, Object> headers, Map<String, Object> queries,
-            Map<String, Object> paths, double timeout, int maxResponseByteSize) {
-        this.url = url;
-        if (method != null && !method.isBlank()) {
-            this.method = method;
-        }
-        if (headers != null) {
-            this.headers = headers;
-        }
-        if (queries != null) {
-            this.queries = queries;
-        }
-        if (paths != null) {
-            this.paths = paths;
-        }
-        this.timeout = timeout;
+    public RestfulApiCard(String id,
+                          String name,
+                          String description,
+                          Map<String, Object> inputParams,
+                          Map<String, Object> properties,
+                          String url,
+                          String method,
+                          Map<String, Object> headers,
+                          Map<String, Object> queries,
+                          Map<String, Object> paths,
+                          double timeout,
+                          int maxResponseByteSize) {
+        super(id != null ? id : UUID.randomUUID().toString().replace("-", ""), name, description, inputParams,
+                properties);
+        this.url = validateUrl(url);
+        this.method = validateMethod(method);
+        this.headers = copyMap(headers);
+        this.queries = copyMap(queries);
+        this.paths = copyMap(paths);
+        this.timeout = validateTimeout(timeout);
         this.maxResponseByteSize = maxResponseByteSize;
+        validatePathParameters(this.url, getInputParams());
     }
 
-    /**
-     * getUrl.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getUrl() {
-        return url;
-    }
-
-    /**
-     * getMethod.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getMethod() {
-        return method;
-    }
-
-    /**
-     * getHeaders.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getHeaders() {
-        return headers;
-    }
-
-    /**
-     * getQueries.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getQueries() {
-        return queries;
-    }
-
-    /**
-     * getPaths.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Map<String, Object> getPaths() {
-        return paths;
-    }
-
-    /**
-     * getTimeout.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public double getTimeout() {
-        return timeout;
-    }
-
-    /**
-     * getMaxResponseByteSize.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int getMaxResponseByteSize() {
-        return maxResponseByteSize;
-    }
-
-    /**
-     * builder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public static Builder builder() {
         return new Builder();
     }
 
+    public String getUrl() {
+        return url;
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public Map<String, Object> getHeaders() {
+        return new LinkedHashMap<>(headers);
+    }
+
+    public Map<String, Object> getQueries() {
+        return new LinkedHashMap<>(queries);
+    }
+
+    public Map<String, Object> getPaths() {
+        return new LinkedHashMap<>(paths);
+    }
+
+    public double getTimeout() {
+        return timeout;
+    }
+
+    public int getMaxResponseByteSize() {
+        return maxResponseByteSize;
+    }
+
+    public int getMax_response_byte_size() {
+        return getMaxResponseByteSize();
+    }
+
+    private static String validateMethod(String rawMethod) {
+        String normalized = rawMethod == null ? "POST" : rawMethod.toUpperCase();
+        if (!SUPPORTED_METHODS.contains(normalized)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason",
+                    "support invalid method, method=" + rawMethod + ", only accepts: " + SUPPORTED_METHODS + "."
+            );
+        }
+        return normalized;
+    }
+
+    private static String validateUrl(String rawUrl) {
+        try {
+            String substitutedUrl = rawUrl != null ? PATH_PARAM_PATTERN.matcher(rawUrl).replaceAll("placeholder") : null;
+            if (hasUnsupportedSchemeWithHost(substitutedUrl)) {
+                return rawUrl;
+            }
+            validateHttpUrlSyntax(substitutedUrl);
+            return rawUrl;
+        } catch (Exception error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    null,
+                    null,
+                    error,
+                    Map.of("reason", "support invalid url, url=" + rawUrl + ".")
+            );
+        }
+    }
+
+    private static void validateHttpUrlSyntax(String url) throws URISyntaxException {
+        if (url == null || url.isBlank()) {
+            throw new URISyntaxException(String.valueOf(url), "url is empty");
+        }
+        URI parsedUrl = new URI(url);
+        String scheme = parsedUrl.getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+            throw new URISyntaxException(url, "illegal url protocol");
+        }
+        if (parsedUrl.getHost() == null || parsedUrl.getHost().isBlank()) {
+            throw new URISyntaxException(url, "host is required");
+        }
+    }
+
+    private static boolean hasUnsupportedSchemeWithHost(String url) throws URISyntaxException {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        URI parsedUrl = new URI(url);
+        String scheme = parsedUrl.getScheme();
+        if (scheme == null || scheme.isBlank()) {
+            return false;
+        }
+        return !"http".equalsIgnoreCase(scheme)
+                && !"https".equalsIgnoreCase(scheme)
+                && parsedUrl.getHost() != null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void validatePathParameters(String url, Map<String, Object> inputParams) {
+        Set<String> urlPathParams = Set.copyOf(extractPathParamNames(url));
+        if (urlPathParams.isEmpty()) {
+            return;
+        }
+        if (inputParams == null || inputParams.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason",
+                    "URL contains path parameters " + urlPathParams
+                            + " but input_params schema is not defined. You must define input_params with "
+                            + "'location': 'path' for each path parameter."
+            );
+        }
+
+        Object rawProperties = inputParams.get("properties");
+        Map<String, Object> properties = rawProperties instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : Map.of();
+        Set<String> schemaPathParams = properties.entrySet().stream()
+                .filter(entry -> entry.getValue() instanceof Map<?, ?>)
+                .filter(entry -> "path".equals(((Map<?, ?>) entry.getValue()).get("location")))
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<String> missing = urlPathParams.stream()
+                .filter(param -> !schemaPathParams.contains(param))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason",
+                    "URL contains path parameters " + missing
+                            + " that are not defined in input_params schema with 'location': 'path'."
+            );
+        }
+
+        List<String> extra = schemaPathParams.stream()
+                .filter(param -> !urlPathParams.contains(param))
+                .toList();
+        if (!extra.isEmpty()) {
+            LOGGER.warning("Schema defines path parameters {} that are not used in URL {}", extra, url);
+        }
+    }
+
+    private static List<String> extractPathParamNames(String url) {
+        List<String> result = new ArrayList<>();
+        Matcher matcher = PATH_PARAM_PATTERN.matcher(url != null ? url : "");
+        while (matcher.find()) {
+            result.add(matcher.group(1));
+        }
+        return result;
+    }
+
+    private static double validateTimeout(double timeout) {
+        if (timeout <= 0.0d || timeout > 300.0d) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                    "reason",
+                    "timeout must be greater than 0.0 and at most 300.0, timeout=" + timeout + "."
+            );
+        }
+        return timeout;
+    }
+
+    private static Map<String, Object> copyMap(Map<String, Object> source) {
+        return source == null ? new LinkedHashMap<>() : new LinkedHashMap<>(source);
+    }
+
     /**
-     * Builder.
-     * 
-     * @since 0.1.7
+     * Builder for RESTful API tool cards.
+     *
+     * <p>Mirrors Python's pydantic construction for {@code RestfulApiCard} in
+     * {@code openjiuwen/core/foundation/tool/service_api/restful_api.py}.</p>
      */
     public static class Builder extends ToolCard.Builder {
+        private String id;
+        private String name = "";
+        private String description = "";
+        private Map<String, Object> inputParams;
+        private Map<String, Object> properties;
         private String url;
         private String method = "POST";
+        private Map<String, Object> headers;
+        private Map<String, Object> queries;
+        private Map<String, Object> paths;
+        private double timeout = 60.0d;
+        private int maxResponseByteSize = DEFAULT_MAX_RESPONSE_BYTE_SIZE;
 
-        /**
-         * Map.of.
-         * 
-         * @since 0.1.7
-         */
-        private Map<String, Object> headers = Map.of();
+        protected Builder() {
+            super();
+        }
 
-        /**
-         * Map.of.
-         * 
-         * @since 0.1.7
-         */
-        private Map<String, Object> queries = Map.of();
-
-        /**
-         * Map.of.
-         * 
-         * @since 0.1.7
-         */
-        private Map<String, Object> paths = Map.of();
-        private double timeout = 60.0;
-        private int maxResponseByteSize = 10 * 1024 * 1024;
-
-        /**
-         * id.
-         * 
-         * @param id id
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Builder id(String id) {
-            super.id(id);
+            this.id = id;
             return this;
         }
 
-        /**
-         * name.
-         * 
-         * @param name name
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Builder name(String name) {
-            super.name(name);
+            this.name = name != null ? name : "";
             return this;
         }
 
-        /**
-         * description.
-         * 
-         * @param description description
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Builder description(String description) {
-            super.description(description);
+            this.description = description != null ? description : "";
             return this;
         }
 
-        /**
-         * inputParams.
-         * 
-         * @param inputParams inputParams
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Builder inputParams(Map<String, Object> inputParams) {
-            super.inputParams(inputParams);
+            this.inputParams = inputParams;
             return this;
         }
 
-        /**
-         * properties.
-         * 
-         * @param properties properties
-         * @return the result
-         * @since 0.1.7
-         */
         @Override
         public Builder properties(Map<String, Object> properties) {
-            super.properties(properties);
+            this.properties = properties;
             return this;
         }
 
-        /**
-         * url.
-         * 
-         * @param url url
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder url(String url) {
             this.url = url;
             return this;
         }
 
-        /**
-         * method.
-         * 
-         * @param method method
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder method(String method) {
             this.method = method;
             return this;
         }
 
-        /**
-         * headers.
-         * 
-         * @param headers headers
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder headers(Map<String, Object> headers) {
             this.headers = headers;
             return this;
         }
 
-        /**
-         * queries.
-         * 
-         * @param queries queries
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder queries(Map<String, Object> queries) {
             this.queries = queries;
             return this;
         }
 
-        /**
-         * paths.
-         * 
-         * @param paths paths
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder paths(Map<String, Object> paths) {
             this.paths = paths;
             return this;
         }
 
-        /**
-         * timeout.
-         * 
-         * @param timeout timeout
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder timeout(double timeout) {
             this.timeout = timeout;
             return this;
         }
 
-        /**
-         * maxResponseByteSize.
-         * 
-         * @param maxResponseByteSize maxResponseByteSize
-         * @return the result
-         * @since 0.1.7
-         */
         public Builder maxResponseByteSize(int maxResponseByteSize) {
             this.maxResponseByteSize = maxResponseByteSize;
             return this;
         }
 
-        /**
-         * build.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
+        public Builder max_response_byte_size(int maxResponseByteSize) {
+            return maxResponseByteSize(maxResponseByteSize);
+        }
+
         @Override
         public RestfulApiCard build() {
-            RestfulApiCard card =
-                new RestfulApiCard(url, method, headers, queries, paths, timeout, maxResponseByteSize);
-            if (id != null) {
-                card.setId(id);
-            }
-            card.setName(name);
-            card.setDescription(description);
-            card.setInputParams(inputParams);
-            card.setProperties(properties);
-            return card;
+            return new RestfulApiCard(
+                    id,
+                    name,
+                    description,
+                    inputParams,
+                    properties,
+                    url,
+                    method,
+                    headers,
+                    queries,
+                    paths,
+                    timeout,
+                    maxResponseByteSize
+            );
         }
     }
 }

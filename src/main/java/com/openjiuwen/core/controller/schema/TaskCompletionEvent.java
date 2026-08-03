@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.controller.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,73 +13,39 @@ import java.util.List;
  * <p>
  * Generated when task execution is completed, containing task results.
  * <p>
- * Mirrors Python's {@code TaskCompletionEvent}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code TaskCompletionEvent} in
+ * {@code openjiuwen/core/controller/schema/event.py}.
  */
 public class TaskCompletionEvent extends Event {
+
+    @JsonProperty("task_result")
     private List<DataFrame> taskResult;
+
     private Task task;
 
-    /**
-     * TaskCompletionEvent.
-     * 
-     * @since 0.1.7
-     */
     public TaskCompletionEvent() {
         super(EventType.TASK_COMPLETION);
         this.taskResult = new ArrayList<>();
     }
 
-    /**
-     * TaskCompletionEvent.
-     * 
-     * @param taskResult taskResult
-     * @param task task
-     * @since 0.1.7
-     */
     public TaskCompletionEvent(List<DataFrame> taskResult, Task task) {
         super(EventType.TASK_COMPLETION);
         this.taskResult = taskResult != null ? taskResult : new ArrayList<>();
         this.task = task;
     }
 
-    /**
-     * getTaskResult.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<DataFrame> getTaskResult() {
         return taskResult;
     }
 
-    /**
-     * setTaskResult.
-     * 
-     * @param taskResult taskResult
-     * @since 0.1.7
-     */
     public void setTaskResult(List<DataFrame> taskResult) {
         this.taskResult = taskResult != null ? taskResult : new ArrayList<>();
     }
 
-    /**
-     * getTask.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Task getTask() {
         return task;
     }
 
-    /**
-     * setTask.
-     * 
-     * @param task task
-     * @since 0.1.7
-     */
     public void setTask(Task task) {
         this.task = task;
     }

@@ -4,13 +4,20 @@
 
 package com.openjiuwen.extensions.context_evolver.summary.task.ace;
 
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.store.Embedding;
 import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
 import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
+import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
 import com.openjiuwen.extensions.context_evolver.schema.ACEMemory;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -19,172 +26,214 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.update.ApplyDeltaOp}.
+ * Apply ACE delta operations to the playbook and upsert affected bullets.
  * <p>
- * Applies ACE playbook delta operations, enforces the maximum playbook size, deletes removed
- * bullets from the vector store, and emits only the affected ACE memories for persistence.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ApplyDeltaOp} in
+ * {@code openjiuwen/extensions/context_evolver/summary/task/ace/update.py}.
+ * </p>
  */
 public class ApplyDeltaOp extends BaseOp {
+
+    private static final LoggerProtocol LOGGER = Loggers.CONTEXT_ENGINE;
+
     private final int maxBullets;
 
-    /**
-     * ApplyDeltaOp.
-     * 
-     * @since 0.1.7
-     */
     public ApplyDeltaOp() {
         this(50);
     }
 
-    /**
-     * ApplyDeltaOp.
-     * 
-     * @param maxBullets maxBullets
-     * @since 0.1.7
-     */
     public ApplyDeltaOp(int maxBullets) {
+        super(Map.of("max_bullets", maxBullets));
         this.maxBullets = maxBullets;
     }
 
-    /**
-     * asyncExecute.
-     * 
-     * @param context context
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
-        Object deltaValue = context.get("delta");
-        Playbook.DeltaBatch delta = null;
-        if (deltaValue instanceof Playbook.DeltaBatch) {
-            delta = (Playbook.DeltaBatch) deltaValue;
-        }
-        if (deltaValue instanceof Map<?, ?> deltaValueMap) {
-            delta = Playbook.DeltaBatch.fromJson(toStringKeyMap(deltaValueMap));;
-        }
-        Playbook playbook = context.get("playbook") instanceof Playbook existing ? existing : new Playbook();
-        String userId = context.getString("user_id", "default");
+    public CompletableFuture<Void> asyncExecute(RuntimeContext context) {
+        Playbook.DeltaBatch delta = deltaBatch(context.get("delta"));
+        Playbook playbook = ReflectOp.playbook(context.get("playbook", new Playbook()));
+        String userId = String.valueOf(context.get("user_id", "default"));
 
         if (delta == null || delta.getOperations().isEmpty()) {
+            LOGGER.info("No delta operations to apply");
             context.set("memories", List.of());
-            context.set("playbook", playbook);
             return CompletableFuture.completedFuture(null);
         }
 
-        int addCount = 0;
-        for (Playbook.DeltaOperation operation : delta.getOperations()) {
-            if ("ADD".equalsIgnoreCase(operation.getType())) {
-                addCount++;
-            }
+        Object vectorStoreObject = getVectorStore();
+        if (!(vectorStoreObject instanceof MemoryVectorStore vectorStore)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Vector store not configured in ServiceContext"));
         }
 
-        int currentCount = playbook.bullets().size();
-        int removeCount = Math.max(0, addCount + currentCount - maxBullets);
+        Object embeddingModelObject = getEmbeddingModel();
+        if (!(embeddingModelObject instanceof Embedding embeddingModel)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Embedding model not configured in ServiceContext"));
+        }
+
+        List<Playbook.DeltaOperation> operations = delta.getOperations();
+        long addCount = operations.stream()
+                .filter(operation -> "ADD".equals(operation.getType().toUpperCase(Locale.ROOT)))
+                .count();
+        int currentCount = ((Number) playbook.stats().get("bullets")).intValue();
+        int removeCount = Math.max(0, (int) addCount + currentCount - maxBullets);
 
         Set<String> affectedBulletIds = new LinkedHashSet<>();
         Set<String> removedBulletIds = new LinkedHashSet<>();
 
         if (removeCount > 0) {
             List<Playbook.Bullet> sortedBullets = new ArrayList<>(playbook.bullets());
-            sortedBullets.sort(Playbook.lowScoreComparator());
-            for (int index = 0; index < Math.min(removeCount, sortedBullets.size()); index++) {
-                Playbook.Bullet bullet = sortedBullets.get(index);
+            sortedBullets.sort(Comparator
+                    .comparingInt((Playbook.Bullet bullet) -> bullet.getHelpful() - bullet.getHarmful())
+                    .thenComparing(Playbook.Bullet::getUpdatedAt));
+            for (Playbook.Bullet bullet : sortedBullets.subList(0, Math.min(removeCount, sortedBullets.size()))) {
                 removedBulletIds.add(bullet.getId());
                 playbook.removeBullet(bullet.getId());
+                LOGGER.info("Removed low-scoring bullet: %s", bullet.getId());
             }
         }
 
-        for (Playbook.DeltaOperation operation : delta.getOperations()) {
-            String operationType = operation.getType() != null ? operation.getType().toUpperCase(Locale.ROOT) : "ADD";
+        for (Playbook.DeltaOperation operation : operations) {
+            applyOperation(playbook, operation, affectedBulletIds, removedBulletIds);
+        }
 
-            switch (operationType) {
-                case "ADD" -> {
-                    Playbook.Bullet bullet = playbook.addBullet(operation.getSection(),
-                            operation.getContent() != null ? operation.getContent() : "", operation.getBulletId(),
-                            operation.getMetadata());
-                    affectedBulletIds.add(bullet.getId());
-                }
-                case "UPDATE" -> {
-                    String bulletId = operation.getBulletId();
-                    if (bulletId == null || bulletId.isBlank()) {
-                        continue;
-                    }
-                    Playbook.Bullet updatedBullet =
-                        playbook.updateBullet(bulletId, operation.getContent(), operation.getMetadata());
-                    if (updatedBullet != null) {
-                        affectedBulletIds.add(bulletId);
-                    } else if (operation.getContent() != null && !operation.getContent().isBlank()) {
-                        String section = operation.getSection();
-                        if ((section == null || section.isBlank()) && bulletId.contains("-")) {
-                            section = bulletId.substring(0, bulletId.lastIndexOf('-')).replace('_', ' ');
+        List<ACEMemory> memories = new ArrayList<>();
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (String bulletId : removedBulletIds) {
+            String nodeId = "ace_" + userId + "_" + bulletId;
+            future = future.thenCompose(ignored -> vectorStore.asyncDelete(nodeId)
+                    .handle((deleted, error) -> {
+                        if (error != null) {
+                            LOGGER.warning("Failed to delete bullet %s: %s", bulletId, error);
+                        } else if (Boolean.TRUE.equals(deleted)) {
+                            LOGGER.debug("Deleted bullet %s from vector store", bulletId);
                         }
-                        Playbook.Bullet bullet =
-                            playbook.addBullet(section != null && !section.isBlank() ? section : "general",
-                                    operation.getContent(), null, operation.getMetadata());
-                        affectedBulletIds.add(bullet.getId());
-                    } else {
-                        // no-op
-                    }
-                }
-                case "TAG" -> {
-                    String bulletId = operation.getBulletId();
-                    if (bulletId == null || bulletId.isBlank() || playbook.getBullet(bulletId) == null) {
-                        continue;
-                    }
-                    for (var entry : operation.getMetadata().entrySet()) {
-                        playbook.tagBullet(bulletId, entry.getKey(), entry.getValue());
-                    }
-                    affectedBulletIds.add(bulletId);
-                }
-                case "REMOVE" -> {
-                    String bulletId = operation.getBulletId();
-                    if (bulletId == null || bulletId.isBlank()) {
-                        continue;
-                    }
-                    removedBulletIds.add(bulletId);
-                    playbook.removeBullet(bulletId);
-                    affectedBulletIds.remove(bulletId);
-                }
-                default -> {
-                    // Ignore unknown operations.
-                }
-            }
+                        return null;
+                    }));
         }
 
-        List<CompletableFuture<Boolean>> deletions = new ArrayList<>();
-        Object vectorStoreService = getVectorStore();
-        if (vectorStoreService instanceof MemoryVectorStore vectorStore) {
-            for (String bulletId : removedBulletIds) {
-                deletions.add(vectorStore.asyncDelete("ace_" + userId + "_" + bulletId));
+        for (String bulletId : affectedBulletIds) {
+            Playbook.Bullet bullet = playbook.getBullet(bulletId);
+            if (bullet == null) {
+                continue;
             }
+            ACEMemory aceMemory = toAceMemory(bullet, userId);
+            VectorNode vectorNode = aceMemory.toVectorNode();
+            future = future.thenCompose(ignored -> embeddingModel.embedQuery(aceMemory.getContent())
+                    .thenCompose(embedding -> {
+                        vectorNode.setEmbedding(embedding);
+                        return vectorStore.asyncUpsert(vectorNode);
+                    })
+                    .thenRun(() -> memories.add(aceMemory)));
         }
 
-        CompletableFuture<?>[] deletionArray = deletions.toArray(CompletableFuture[]::new);
-        return CompletableFuture.allOf(deletionArray).thenRun(() -> {
-            List<ACEMemory> memories = new ArrayList<>();
-            for (String bulletId : affectedBulletIds) {
-                Playbook.Bullet bullet = playbook.getBullet(bulletId);
-                if (bullet != null) {
-                    memories.add(toAceMemory(userId, bullet));
-                }
-            }
+        return future.thenRun(() -> {
             context.set("memories", memories);
-            context.set("playbook", playbook);
+            LOGGER.info(
+                    "Applied %s operations: %s bullets updated, %s bullets removed",
+                    operations.size(),
+                    affectedBulletIds.size(),
+                    removedBulletIds.size()
+            );
         });
     }
 
-    /**
-     * toAceMemory.
-     * 
-     * @param userId userId
-     * @param bullet bullet
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ACEMemory toAceMemory(String userId, Playbook.Bullet bullet) {
+    private static Playbook.DeltaBatch deltaBatch(Object value) {
+        return value instanceof Playbook.DeltaBatch deltaBatch ? deltaBatch : null;
+    }
+
+    private static void applyOperation(Playbook playbook,
+                                       Playbook.DeltaOperation operation,
+                                       Set<String> affectedBulletIds,
+                                       Set<String> removedBulletIds) {
+        String opType = operation.getType().toUpperCase(Locale.ROOT);
+        switch (opType) {
+            case "ADD" -> {
+                Playbook.Bullet bullet = playbook.addBullet(
+                        operation.getSection(),
+                        operation.getContent() != null ? operation.getContent() : "",
+                        operation.getBulletId(),
+                        operation.getMetadata()
+                );
+                if (bullet != null) {
+                    affectedBulletIds.add(bullet.getId());
+                }
+            }
+            case "UPDATE" -> applyUpdate(playbook, operation, affectedBulletIds);
+            case "TAG" -> applyTag(playbook, operation, affectedBulletIds);
+            case "REMOVE" -> {
+                if (operation.getBulletId() != null) {
+                    removedBulletIds.add(operation.getBulletId());
+                    playbook.removeBullet(operation.getBulletId());
+                }
+            }
+            default -> {
+                // Python ignores unknown operation types in the playbook layer.
+            }
+        }
+    }
+
+    private static void applyUpdate(Playbook playbook,
+                                    Playbook.DeltaOperation operation,
+                                    Set<String> affectedBulletIds) {
+        if (operation.getBulletId() == null) {
+            return;
+        }
+        Playbook.Bullet updatedBullet = playbook.updateBullet(
+                operation.getBulletId(),
+                operation.getContent(),
+                operation.getMetadata()
+        );
+        if (updatedBullet != null) {
+            affectedBulletIds.add(operation.getBulletId());
+            return;
+        }
+        if (operation.getContent() != null && !operation.getContent().isEmpty()) {
+            LOGGER.info(
+                    "UPDATE operation converted to ADD: bullet %s not found, creating new bullet",
+                    operation.getBulletId()
+            );
+            String section = operation.getSection();
+            if ((section == null || section.isEmpty()) && operation.getBulletId() != null) {
+                String[] parts = operation.getBulletId().split("-(?=[^-]*$)", 2);
+                if (parts.length > 1) {
+                    section = parts[0].replace('_', ' ');
+                }
+            }
+            Playbook.Bullet bullet = playbook.addBullet(
+                    section != null && !section.isEmpty() ? section : "general",
+                    operation.getContent(),
+                    null,
+                    operation.getMetadata()
+            );
+            if (bullet != null) {
+                affectedBulletIds.add(bullet.getId());
+            }
+        } else {
+            LOGGER.warning(
+                    "UPDATE operation failed: bullet %s not found and no content provided",
+                    operation.getBulletId()
+            );
+        }
+    }
+
+    private static void applyTag(Playbook playbook,
+                                 Playbook.DeltaOperation operation,
+                                 Set<String> affectedBulletIds) {
+        if (operation.getBulletId() == null) {
+            return;
+        }
+        if (playbook.getBullet(operation.getBulletId()) == null) {
+            LOGGER.warning("TAG operation failed: bullet %s not found", operation.getBulletId());
+            return;
+        }
+        affectedBulletIds.add(operation.getBulletId());
+        for (Map.Entry<String, Integer> entry : operation.getMetadata().entrySet()) {
+            playbook.tagBullet(operation.getBulletId(), entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static ACEMemory toAceMemory(Playbook.Bullet bullet, String userId) {
         ACEMemory memory = new ACEMemory(bullet.getId(), bullet.getSection(), bullet.getContent());
         memory.setWorkspaceId(userId);
         memory.setHelpful(bullet.getHelpful());
@@ -195,33 +244,18 @@ public class ApplyDeltaOp extends BaseOp {
         return memory;
     }
 
-    /**
-     * parseInstant.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static Instant parseInstant(String value) {
-        try {
-            return Instant.parse(value);
-        } catch (Exception ignored) {
+        if (value == null || value.isBlank()) {
             return Instant.now();
         }
-    }
-
-    /**
-     * toStringKeyMap.
-     * 
-     * @param rawMap rawMap
-     * @return the result
-     * @since 0.1.7
-     */
-    private static java.util.Map<String, Object> toStringKeyMap(java.util.Map<?, ?> rawMap) {
-        java.util.Map<String, Object> converted = new java.util.LinkedHashMap<>();
-        for (var entry : rawMap.entrySet()) {
-            converted.put(String.valueOf(entry.getKey()), entry.getValue());
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException ignored) {
+            try {
+                return OffsetDateTime.parse(value).toInstant();
+            } catch (DateTimeParseException ignoredAgain) {
+                return Instant.now();
+            }
         }
-        return converted;
     }
 }

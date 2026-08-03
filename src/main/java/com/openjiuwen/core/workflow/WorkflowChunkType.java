@@ -5,11 +5,8 @@
 package com.openjiuwen.core.workflow;
 
 /**
- * Types of data chunks produced during workflow execution.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.base.WorkflowChunkType}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code WorkflowChunkType} in
+ * {@code openjiuwen/core/workflow/base.py}.
  */
 public enum WorkflowChunkType {
     INTERACTION("interaction"),
@@ -22,12 +19,6 @@ public enum WorkflowChunkType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }

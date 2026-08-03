@@ -5,23 +5,15 @@
 package com.openjiuwen.core.foundation.tool.service_api;
 
 /**
- * API parameter locations based on OpenAPI specification.
- * <p>
- * Mirrors Python's {@code APIParamLocation} enum.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code APIParamLocation} in
+ * {@code openjiuwen/core/foundation/tool/service_api/api_param_mapper.py}.
  */
 public enum ApiParamLocation {
     QUERY("query"),
-
-    /** Path parameters in URL (e.g., /users/{id}). */
     PATH("path"),
-
-    /** Request body parameters. */
     BODY("body"),
-
-    /** HTTP header parameters. */
-    HEADER("header");
+    HEADER("header"),
+    FORM("form");
 
     private final String value;
 
@@ -29,29 +21,16 @@ public enum ApiParamLocation {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
-    /**
-     * Parse a location string (case-insensitive).
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    public static ApiParamLocation fromString(String text) {
-        for (ApiParamLocation loc : values()) {
-            if (loc.value.equalsIgnoreCase(text)) {
-                return loc;
+    public static ApiParamLocation fromString(String rawValue) {
+        for (ApiParamLocation location : values()) {
+            if (location.value.equalsIgnoreCase(rawValue)) {
+                return location;
             }
         }
-        return BODY;
+        throw new IllegalArgumentException("No enum constant for API parameter location: " + rawValue);
     }
 }

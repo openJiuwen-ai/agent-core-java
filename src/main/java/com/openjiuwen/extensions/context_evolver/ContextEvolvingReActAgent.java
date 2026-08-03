@@ -4,346 +4,408 @@
 
 package com.openjiuwen.extensions.context_evolver;
 
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.singleagent.ReActAgent;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.extensions.context_evolver.core.config.Config;
-import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileConnector;
-import com.openjiuwen.extensions.context_evolver.core.file_connector.SafeModelDump;
-import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * ReActAgent with integrated memory retrieval capabilities.
- * <p>
- * This agent automatically retrieves relevant memories before invoking
- * the base ReActAgent, augmenting the input with contextual knowledge.
- * <p>
- * Mirrors Python's
- * {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.ContextEvolvingReActAgent}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code ContextEvolvingReActAgent} in
+ * {@code openjiuwen/extensions/context_evolver/context_evolving_react_agent.py}.</p>
  */
 public class ContextEvolvingReActAgent extends ReActAgent {
-    private static final Logger logger = LoggerFactory.getLogger(ContextEvolvingReActAgent.class);
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ContextEvolvingReActAgent.class);
+    private static final String DEFAULT_PERSIST_PATH = "./memories/{algo_name}/{user_id}.json";
+    private static final String DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant with access to a memory system. "
+            + "When relevant memories are provided in your context, use them to inform "
+            + "your responses. Always provide accurate, helpful answers based on both "
+            + "your knowledge and any retrieved memories.";
+    private static final String SELF_REFINE_PROMPT = "Let's carefully re-examine the previous trajectory, including "
+            + "your reasoning steps and action taken. Pay special attention to whether you used the best "
+            + "search sequence and whether you used the tool correctly. If you find inconsistencies, "
+            + "correct them. If everything seems correct, make it more efficient. Now, solve the same "
+            + "problem again from scratch.\n\n";
+    private static final String SELF_DIVERSITY_PROMPT = "Let's carefully re-examine the previous trajectory, including "
+            + "your reasoning steps and action taken. The solution might be correct or wrong. Now, solve the "
+            + "same problem again from scratch using DIFFERENT reasoning approach. Focus on exploring "
+            + "alternative strategies.\n\n";
 
     private final String userId;
     private final TaskMemoryService memoryService;
     private final boolean injectMemoriesInContext;
-    private final JSONFileConnector fileConnector;
-    private final String memoryDir;
+    private final boolean autoSummarize;
+    private final String autoSummarizeMattsMode;
 
-    // Cache for memory retrieval
-    private String lastRetrievedQuery = null;
-    private Map<String, Object> lastRetrievalResult = null;
+    private String lastRetrievedQuery;
+    private Map<String, Object> lastRetrievalResult;
 
-    /**
-     * Initialize ContextEvolvingReActAgent.
-     * 
-     * @param card Agent card (required)
-     * @param userId User identifier for memory retrieval
-     * @param memoryService Optional pre-configured TaskMemoryService
-     * @param injectMemoriesInContext If True, inject retrieved memories into system context
-     * @param memoryDir Directory for memory persistence files
-     * @since 0.1.7
-     */
-    public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
-            boolean injectMemoriesInContext, String memoryDir) {
-        super(card);
-
-        this.userId = userId;
-        this.memoryService = memoryService != null ? memoryService : new TaskMemoryService();
-        this.injectMemoriesInContext = injectMemoriesInContext;
-        this.fileConnector = new JSONFileConnector();
-        this.memoryDir = memoryDir != null ? memoryDir : "memory_files";
-
-        // Ensure directories exist
-        try {
-            Files.createDirectories(Paths.get(this.memoryDir));
-        } catch (IOException e) {
-            logger.warn("Failed to create memory directory: {}", e.getMessage());
-        }
-
-        // Attempt to load existing memories
-        loadExistingMemories();
-
-        logger.info("ContextEvolvingReActAgent initialized for user={}, inject_in_context={}", userId,
-                injectMemoriesInContext);
-    }
-
-    /**
-     * ContextEvolvingReActAgent.
-     * 
-     * @param card card
-     * @param userId userId
-     * @since 0.1.7
-     */
     public ContextEvolvingReActAgent(AgentCard card, String userId) {
-        this(card, userId, null, true, "memory_files");
+        this(card, userId, null);
     }
 
-    /**
-     * ContextEvolvingReActAgent.
-     * 
-     * @param card card
-     * @param userId userId
-     * @param memoryService memoryService
-     * @since 0.1.7
-     */
     public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService) {
-        this(card, userId, memoryService, true, "memory_files");
+        this(card, userId, memoryService, true);
     }
 
-    /**
-     * ContextEvolvingReActAgent.
-     * 
-     * @param card card
-     * @param userId userId
-     * @param memoryService memoryService
-     * @param injectMemoriesInContext injectMemoriesInContext
-     * @since 0.1.7
-     */
-    public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
-            boolean injectMemoriesInContext) {
-        this(card, userId, memoryService, injectMemoriesInContext, "memory_files");
+    public ContextEvolvingReActAgent(
+            AgentCard card,
+            String userId,
+            TaskMemoryService memoryService,
+            boolean injectMemoriesInContext
+    ) {
+        this(card, userId, memoryService, injectMemoriesInContext, null, DEFAULT_PERSIST_PATH,
+                "localhost", 19530, "vector_nodes", false, "none");
     }
 
-    /**
-     * ContextEvolvingReActAgent.
-     * 
-     * @param card card
-     * @param userId userId
-     * @param injectMemoriesInContext injectMemoriesInContext
-     * @since 0.1.7
-     */
-    public ContextEvolvingReActAgent(AgentCard card, String userId, boolean injectMemoriesInContext) {
-        this(card, userId, null, injectMemoriesInContext, "memory_files");
+    public ContextEvolvingReActAgent(
+            AgentCard card,
+            String userId,
+            TaskMemoryService memoryService,
+            boolean injectMemoriesInContext,
+            String persistType,
+            String persistPath,
+            String milvusHost,
+            int milvusPort,
+            String milvusCollection,
+            boolean autoSummarize,
+            String autoSummarizeMattsMode
+    ) {
+        super(card);
+        this.userId = userId;
+        this.injectMemoriesInContext = injectMemoriesInContext;
+        this.autoSummarize = autoSummarize;
+        this.autoSummarizeMattsMode = autoSummarizeMattsMode != null ? autoSummarizeMattsMode : "none";
+        this.memoryService = memoryService != null
+                ? memoryService
+                : createMemoryService(persistType, persistPath, milvusHost, milvusPort, milvusCollection);
+        this.memoryService.loadMemories(userId);
+        autoConfigure();
+        LOGGER.info("ContextEvolvingReActAgent initialized for user={}, inject_in_context={}, "
+                + "auto_summarize={}, persist_type={}", userId, injectMemoriesInContext, autoSummarize, persistType);
     }
 
-    /**
-     * loadExistingMemories.
-     * 
-     * @since 0.1.7
-     */
-    private void loadExistingMemories() {
-        try {
-            String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
-            String filename = "memory_" + summaryAlgo + "_" + userId + ".json";
-            Path filePath = Paths.get(memoryDir, filename);
-
-            if (Files.exists(filePath)) {
-                logger.info("Found existing memory file: {}", filePath);
-                Map<String, Object> data = fileConnector.loadFromFile(filePath.toString());
-
-                if (memoryService.getVectorStore() != null) {
-                    int count = 0;
-                    for (Map.Entry<String, Object> entry : data.entrySet()) {
-                        try {
-                            String nodeId = entry.getKey();
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> nodeData = (Map<String, Object>) entry.getValue();
-                            VectorNode node = VectorNode.fromDict(nodeData);
-                            memoryService.getVectorStore().loadNode(nodeId, node);
-                            count++;
-                        } catch (Exception e) {
-                            logger.warn("Failed to load node: {}", e.getMessage());
-                        }
-                    }
-                    logger.info("Loaded {} memories into vector store from {}", count, filename);
-                } else {
-                    logger.warn("Memory service does not expose vector_store, cannot load memories.");
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Failed to load existing memories: {}", e.getMessage());
+    private static TaskMemoryService createMemoryService(
+            String persistType,
+            String persistPath,
+            String milvusHost,
+            int milvusPort,
+            String milvusCollection
+    ) {
+        if (persistType != null) {
+            Config.setValue("MILVUS_HOST", milvusHost != null ? milvusHost : "localhost");
+            Config.setValue("MILVUS_PORT", milvusPort);
+            Config.setValue("MILVUS_COLLECTION", milvusCollection != null ? milvusCollection : "vector_nodes");
         }
+        return new TaskMemoryService(null, null, null, null, null, null,
+                persistType, persistPath != null ? persistPath : DEFAULT_PERSIST_PATH);
     }
 
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Object invoke(Object inputs, Session session) {
-        try {
-            Map<String, Object> inputMap;
-            String query;
+    private void autoConfigure() {
+        String apiKey = configString("API_KEY", "");
+        if (apiKey.isEmpty()) {
+            return;
+        }
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.configureModelClient(
+                configString("MODEL_PROVIDER", "OpenAI"),
+                apiKey,
+                configString("API_BASE", "https://api.openai.com/v1"),
+                configString("MODEL_NAME", "gpt-4"),
+                false
+        );
+        config.configurePromptTemplate(List.of(Map.of("role", "system", "content", DEFAULT_SYSTEM_PROMPT)));
+        config.configureMaxIterations(5);
+        configure(config);
+    }
 
-            if (inputs instanceof Map<?, ?> map) {
-                inputMap = new HashMap<>();
-                for (Map.Entry<?, ?> entry : map.entrySet()) {
-                    if (entry.getKey() != null) {
-                        inputMap.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                }
-                Object queryValue = inputMap.get("query");
-                query = queryValue != null ? String.valueOf(queryValue) : "";
-            } else if (inputs instanceof String text) {
-                query = text;
-                inputMap = new HashMap<>();
-                inputMap.put("query", query);
-            } else {
-                query = "";
-                inputMap = new HashMap<>();
-            }
+    public void _auto_configure() {
+        autoConfigure();
+    }
 
-            if (query == null || query.isEmpty()) {
-                logger.warn("No query provided in inputs");
-                return super.invoke(inputs, session);
-            }
+    public CompletionStage<Object> invokeWithMemory(Object inputs, AgentSessionApi session) {
+        NormalizedInput normalizedInput = normalizeInput(inputs);
+        String retrievalQuery = normalizedInput.values().containsKey("retrieval_query")
+                ? stringOrNull(normalizedInput.values().get("retrieval_query"))
+                : normalizedInput.query();
+        LOGGER.debug("Retrieving memories for query: {}", retrievalQuery);
 
-            String retrievalQuery =
-                inputMap.containsKey("retrieval_query") ? String.valueOf(inputMap.get("retrieval_query")) : query;
-
-            logger.debug("Retrieving memories for query: {}", retrievalQuery);
-
-            int memoriesUsed = 0;
-            String memoryString = "";
-            try {
-                Map<String, Object> memoryResult;
-                if (retrievalQuery.equals(lastRetrievedQuery) && lastRetrievalResult != null) {
-                    memoryResult = lastRetrievalResult;
-                    logger.info("Reusing cached memory retrieval result");
-                } else {
-                    memoryResult = memoryService.retrieve(userId, retrievalQuery).join();
-                    lastRetrievedQuery = retrievalQuery;
-                    lastRetrievalResult = memoryResult;
-                    @SuppressWarnings("unchecked")
-                    List<?> retrievedMemory = (List<?>) memoryResult.get("retrieved_memory");
-                    logger.info("Retrieved {} memories for query",
-                            retrievedMemory != null ? retrievedMemory.size() : 0);
-                }
-
-                memoryString = (String) memoryResult.getOrDefault("memory_string", "");
-                @SuppressWarnings("unchecked")
-                List<?> retrievedMemory = (List<?>) memoryResult.get("retrieved_memory");
-                memoriesUsed = retrievedMemory != null ? retrievedMemory.size() : 0;
-            } catch (Exception e) {
-                logger.error("Failed to retrieve memories: {}", e.getMessage());
-            }
-
-            Map<String, Object> augmentedInput = new HashMap<>(inputMap);
-            if (memoriesUsed > 0 && memoryString != null && !memoryString.isEmpty()) {
+        return retrieveMemory(retrievalQuery).thenCompose(memoryLookup -> {
+            Map<String, Object> augmentedInput = new LinkedHashMap<>(normalizedInput.values());
+            if (memoryLookup.memoriesUsed() > 0 && !memoryLookup.memoryString().isEmpty()) {
                 if (injectMemoriesInContext) {
-                    String memoryContext =
-                        "Some Related Experience to help you complete the task:\n" + memoryString + "\n";
-                    augmentedInput.put("query", "Task:\n" + query + "\n\n" + memoryContext);
+                    String memoryContext = "Some Related Experience to help you complete the task:\n"
+                            + memoryLookup.memoryString() + "\n";
+                    augmentedInput.put("query", memoryContext + "\n\n" + normalizedInput.query());
                 } else {
-                    augmentedInput.put("memory_context", memoryString);
-                    augmentedInput.put("memories_used", memoriesUsed);
+                    augmentedInput.put("memory_context", memoryLookup.memoryString());
+                    augmentedInput.put("memories_used", memoryLookup.memoriesUsed());
                 }
             }
+            return invokeBase(augmentedInput, session).thenApply(result -> attachMemoriesUsed(result,
+                    memoryLookup.memoriesUsed()));
+        });
+    }
 
-            Object rawResult = super.invoke(augmentedInput, session);
-            if (rawResult instanceof Map<?, ?> mapResult) {
-                Map<String, Object> result = new HashMap<>();
-                for (Map.Entry<?, ?> entry : mapResult.entrySet()) {
-                    if (entry.getKey() != null) {
-                        result.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                }
-                result.put("memories_used", memoriesUsed);
-                return result;
-            }
-            return rawResult;
-        } catch (Exception e) {
-            logger.error("Failed to invoke agent: {}", e.getMessage());
-            Map<String, Object> errorResult = new HashMap<>();
-            errorResult.put("error", e.getMessage());
-            return errorResult;
+    public CompletionStage<Object> _invoke_with_memory(Object inputs, AgentSessionApi session) {
+        return invokeWithMemory(inputs, session);
+    }
+
+    @Override
+    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        NormalizedInput normalizedInput = normalizeInput(inputs);
+        if (normalizedInput.query().isEmpty()) {
+            LOGGER.warn("No query provided in inputs");
+            return invokeBase(inputs, session);
         }
+
+        Object mattsModeValue = normalizedInput.values().get("matts_mode");
+        if (mattsModeValue != null) {
+            return runTrials(
+                    normalizedInput.query(),
+                    Objects.toString(normalizedInput.values().getOrDefault("ground_truth", ""), ""),
+                    parseInteger(normalizedInput.values().get("matts_k")),
+                    String.valueOf(mattsModeValue)
+            );
+        }
+
+        return invokeWithMemory(inputs, session);
     }
 
     /**
-     * Format a list of messages into a clean trajectory string.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
+     * Isolates the parent ReAct call so tests can observe this class without real LLM calls.
      */
-    public String formatTrajectory(List<Object> messages) {
-        List<String> transcript = new ArrayList<>();
-
-        for (Object msg : messages) {
-            if (msg instanceof UserMessage) {
-                String content = ((UserMessage) msg).getContentAsString();
-
-                // Remove injected prompts
-                if (content.contains("Let's carefully re-examine the previous trajectory")) {
-                    content = content.split("Let's carefully re-examine the previous trajectory")[0];
-                }
-                if (content.contains("Some Related Experience to help you complete the task")) {
-                    content = content.split("Some Related Experience to help you complete the task")[0];
-                }
-                if (content.startsWith("Task:\n")) {
-                    content = content.substring(6);
-                }
-
-                transcript.add("USER: " + content.trim());
-            } else if (msg instanceof AssistantMessage) {
-                AssistantMessage am = (AssistantMessage) msg;
-                if (am.getContentAsString() != null && !am.getContentAsString().isEmpty()) {
-                    transcript.add("THOUGHT: " + am.getContentAsString());
-                }
-                if (am.getToolCalls() != null) {
-                    for (ToolCall toolCall : am.getToolCalls()) {
-                        transcript.add("ACTION: " + toolCall.getName() + "(" + toolCall.getArguments() + ")");
-                    }
-                }
-            } else if (msg instanceof ToolMessage) {
-                transcript.add("OBSERVATION: " + ((ToolMessage) msg).getContentAsString());
-            } else {
-                // no-op
-            }
-        }
-
-        return String.join("\n", transcript);
+    protected CompletionStage<Object> invokeBase(Object inputs, AgentSessionApi session) {
+        return super.invoke(inputs, session);
     }
 
-    /**
-     * Add a tool to this agent and register it with the resource manager.
-     * 
-     * @param tool tool
-     * @since 0.1.7
-     */
+    private CompletionStage<Object> runTrials(String question, String groundTruth, Integer mattsK, String mattsMode) {
+        int trialCount;
+        boolean selfRefine;
+        if ("none".equals(mattsMode)) {
+            trialCount = 1;
+            selfRefine = false;
+        } else {
+            trialCount = mattsK != null ? mattsK : configInt("MATTS_DEFAULT_K", 3);
+            selfRefine = "sequential".equals(mattsMode) || "combined".equals(mattsMode);
+        }
+
+        List<TrialOutput> outputs = new ArrayList<>();
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (int index = 0; index < trialCount; index++) {
+            int runIndex = index;
+            chain = chain.thenCompose(ignored -> {
+                Map<String, Object> trialInput = buildTrialInput(question, outputs, runIndex, selfRefine);
+                return invokeWithMemory(trialInput, null).handle((result, error) -> {
+                    outputs.add(error == null
+                            ? evaluateTrial(question, groundTruth, result)
+                            : new TrialOutput(null, null, 0));
+                    return null;
+                });
+            });
+        }
+
+        return chain.thenCompose(ignored -> summarizeTrialOutputs(question, mattsMode, outputs))
+                .thenApply(result -> result);
+    }
+
+    private Map<String, Object> buildTrialInput(
+            String question,
+            List<TrialOutput> previousOutputs,
+            int runIndex,
+            boolean selfRefine
+    ) {
+        String currentQuery;
+        List<String> previousTrajectories = previousOutputs.stream()
+                .map(TrialOutput::trajectory)
+                .filter(Objects::nonNull)
+                .toList();
+        if (selfRefine && runIndex > 0 && !previousTrajectories.isEmpty()) {
+            String previousTrajectory = previousTrajectories.get(previousTrajectories.size() - 1);
+            String prompt = "refine".equals(configString("COMBINED_MATTS_PROMPT", "refine"))
+                    ? SELF_REFINE_PROMPT
+                    : SELF_DIVERSITY_PROMPT;
+            currentQuery = "Previous attempt:\n" + previousTrajectory + "\n\n"
+                    + prompt + "Question: " + question;
+        } else {
+            currentQuery = "Question: " + question;
+        }
+
+        Map<String, Object> trialInput = new LinkedHashMap<>();
+        trialInput.put("query", currentQuery);
+        if (selfRefine) {
+            trialInput.put("retrieval_query", question);
+        }
+        return trialInput;
+    }
+
+    private TrialOutput evaluateTrial(String question, String groundTruth, Object result) {
+        String output = outputFromResult(result);
+        boolean success = true;
+        if (groundTruth != null && !groundTruth.isEmpty()) {
+            success = output.toLowerCase(Locale.ROOT).contains(groundTruth.toLowerCase(Locale.ROOT));
+        }
+        String feedback = success ? "success" : "failure";
+        int score = success ? 1 : 0;
+        String trajectory = "USER: " + question + "\nASSISTANT: " + output;
+        return new TrialOutput(trajectory, feedback, score);
+    }
+
+    private CompletionStage<Map<String, Object>> summarizeTrialOutputs(
+            String question,
+            String mattsMode,
+            List<TrialOutput> outputs
+    ) {
+        List<Object> trajectories = new ArrayList<>();
+        List<Boolean> labels = new ArrayList<>();
+        List<Integer> scores = new ArrayList<>();
+        for (TrialOutput output : outputs) {
+            trajectories.add(output.trajectory());
+            labels.add(output.score() == 1);
+            scores.add(output.score());
+        }
+
+        if ("sequential".equals(mattsMode) && !trajectories.isEmpty()) {
+            int last = trajectories.size() - 1;
+            trajectories = new ArrayList<>(List.of(trajectories.get(last)));
+            labels = new ArrayList<>(List.of(labels.get(last)));
+            scores = new ArrayList<>(List.of(scores.get(last)));
+        }
+
+        return memoryService.summarize(userId, mattsMode, question, trajectories, labels, scores);
+    }
+
+    private CompletionStage<MemoryLookup> retrieveMemory(String retrievalQuery) {
+        if (Objects.equals(lastRetrievedQuery, retrievalQuery)
+                && lastRetrievalResult != null
+                && !lastRetrievalResult.isEmpty()) {
+            LOGGER.info("Reusing cached memory retrieval result");
+            return CompletableFuture.completedFuture(memoryLookup(lastRetrievalResult));
+        }
+
+        return memoryService.retrieve(userId, retrievalQuery).handle((memoryResult, error) -> {
+            if (error != null) {
+                LOGGER.error("Failed to retrieve memories: {}", error.getMessage());
+                return new MemoryLookup("", 0);
+            }
+            Map<String, Object> safeResult = memoryResult != null
+                    ? new LinkedHashMap<>(memoryResult)
+                    : new LinkedHashMap<>();
+            lastRetrievedQuery = retrievalQuery;
+            lastRetrievalResult = safeResult;
+            MemoryLookup lookup = memoryLookup(safeResult);
+            LOGGER.info("Retrieved {} memories for query", lookup.memoriesUsed());
+            return lookup;
+        });
+    }
+
+    private static MemoryLookup memoryLookup(Map<String, Object> memoryResult) {
+        String memoryString = Objects.toString(memoryResult.getOrDefault("memory_string", ""), "");
+        Object retrieved = memoryResult.get("retrieved_memory");
+        int memoriesUsed = retrieved instanceof Collection<?> collection ? collection.size() : 0;
+        return new MemoryLookup(memoryString, memoriesUsed);
+    }
+
+    private static Object attachMemoriesUsed(Object result, int memoriesUsed) {
+        if (!(result instanceof Map<?, ?> resultMap)) {
+            return result;
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        resultMap.forEach((key, value) -> copy.put(String.valueOf(key), value));
+        copy.put("memories_used", memoriesUsed);
+        return copy;
+    }
+
+    private static NormalizedInput normalizeInput(Object inputs) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        String query;
+        if (inputs instanceof Map<?, ?> inputMap) {
+            inputMap.forEach((key, value) -> values.put(String.valueOf(key), value));
+            query = Objects.toString(values.getOrDefault("query", ""), "");
+        } else if (inputs instanceof String text) {
+            query = text;
+            values.put("query", query);
+        } else {
+            query = "";
+            values.put("query", inputs);
+        }
+        return new NormalizedInput(values, query);
+    }
+
+    private static String outputFromResult(Object result) {
+        if (!(result instanceof Map<?, ?> map)) {
+            return "";
+        }
+        Object output = map.containsKey("output") ? map.get("output") : "";
+        return Objects.toString(output, "");
+    }
+
+    private static String configString(String key, String defaultValue) {
+        Object value = Config.get(key, defaultValue);
+        return value == null ? defaultValue : String.valueOf(value);
+    }
+
+    private static int configInt(String key, int defaultValue) {
+        Object value = Config.get(key, defaultValue);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (RuntimeException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static Integer parseInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
     public void addTool(Tool tool) {
         if (tool == null) {
             throw new IllegalArgumentException("tool is required");
         }
         getAbilityManager().add(tool.getCard());
-        tryRegisterTool(tool);
+        Runner.resourceMgr().addTool(tool);
     }
 
-    /**
-     * Add multiple tools to this agent.
-     * 
-     * @param tools tools
-     * @since 0.1.7
-     */
-    public void addTools(List<? extends Tool> tools) {
+    public void add_tool(Tool tool) {
+        addTool(tool);
+    }
+
+    public void addTools(Collection<? extends Tool> tools) {
         if (tools == null) {
             return;
         }
@@ -352,216 +414,56 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         }
     }
 
-    /**
-     * tryRegisterTool.
-     * 
-     * @param tool tool
-     * @since 0.1.7
-     */
-    private void tryRegisterTool(Tool tool) {
-        try {
-            Class<?> runnerClass = Class.forName("com.openjiuwen.core.runner.Runner");
-            Object resourceMgr = runnerClass.getMethod("resourceMgr").invoke(null);
-            resourceMgr.getClass().getMethod("addTool", Tool.class, Object.class).invoke(resourceMgr, tool,
-                    getCard().getId());
-        } catch (ClassNotFoundException | LinkageError e) {
-            logger.debug("Runner runtime is unavailable; skipping resource-manager registration for {}",
-                    tool.getCard().getId());
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Failed to register tool " + tool.getCard().getId(), e);
-        }
+    public void add_tools(Collection<? extends Tool> tools) {
+        addTools(tools);
     }
 
-    /**
-     * Summarize trajectory based on feedback and save to JSON.
-     * 
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
-    public CompletableFuture<Map<String, Object>> summarizeTrajectories(SummarizeTrajectoriesInput params) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // Handle trajectory(ies)
-                List<String> trajectories = new ArrayList<>();
-                if (params.getTrajectory() instanceof List) {
-                    @SuppressWarnings("unchecked")
-                    List<String> trajList = (List<String>) params.getTrajectory();
-                    trajectories.addAll(trajList);
-                } else if (params.getTrajectory() instanceof String) {
-                    trajectories.add((String) params.getTrajectory());
-                }
-
-                // Handle feedback/labels
-                List<Boolean> labels = new ArrayList<>();
-                if (params.getFeedback() != null) {
-                    if (params.getFeedback() instanceof List) {
-                        @SuppressWarnings("unchecked")
-                        List<Object> feedbackList = (List<Object>) params.getFeedback();
-                        for (Object f : feedbackList) {
-                            labels.add(convertToBoolean(f));
-                        }
-                    } else {
-                        labels.add(convertToBoolean(params.getFeedback()));
-                    }
-                }
-
-                // Handle scores
-                List<Integer> scores = params.getScores() != null ? params.getScores() : new ArrayList<>();
-                if (scores.isEmpty() && !labels.isEmpty()) {
-                    for (Boolean label : labels) {
-                        scores.add(label ? 1 : 0);
-                    }
-                }
-
-                // For sequential mode, use only the last trajectory
-                if ("sequential".equals(params.getMattsMode())) {
-                    if (!trajectories.isEmpty()) {
-                        trajectories = trajectories.subList(trajectories.size() - 1, trajectories.size());
-                    }
-                    if (!labels.isEmpty()) {
-                        labels = labels.subList(labels.size() - 1, labels.size());
-                    }
-                    if (!scores.isEmpty()) {
-                        scores = scores.subList(scores.size() - 1, scores.size());
-                    }
-                }
-
-                Map<String, Object> summaryResult = memoryService
-                        .summarize(userId, params.getMattsMode(), params.getQuery(), trajectories, labels, scores)
-                        .join();
-
-                // Save memories to file
-                saveMemoriesToFile(summaryResult);
-
-                return summaryResult;
-            } catch (Exception e) {
-                logger.error("Failed to learn from feedback: {}", e.getMessage());
-                return null;
-            }
-        });
-    }
-
-    /**
-     * saveMemoriesToFile.
-     * 
-     * @param summaryResult summaryResult
-     * @since 0.1.7
-     */
-    private void saveMemoriesToFile(Map<String, Object> summaryResult) {
-        try {
-            String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
-            String filename = "memory_" + summaryAlgo + "_" + userId + ".json";
-            Path filePath = Paths.get(memoryDir, filename);
-
-            if (memoryService.getVectorStore() != null) {
-                List<VectorNode> allNodes = memoryService.getVectorStore().getAll();
-                Map<String, Object> allMemoriesData = new HashMap<>();
-
-                for (VectorNode node : allNodes) {
-                    try {
-                        allMemoriesData.put(node.getId(), SafeModelDump.safeModelDump(node));
-                    } catch (Exception e) {
-                        logger.warn("Skipping node {} serialization: {}", node.getId(), e.getMessage());
-                    }
-                }
-
-                fileConnector.saveToFile(filePath.toString(), allMemoriesData);
-                logger.info("Persisted {} total memories to {}", allMemoriesData.size(), filePath);
-            }
-        } catch (Exception e) {
-            logger.error("Failed to save full memory store: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * convertToBoolean.
-     * 
-     * @param feedback feedback
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean convertToBoolean(Object feedback) {
-        if (feedback instanceof Boolean) {
-            return (Boolean) feedback;
-        }
-        String fLower = feedback.toString().toLowerCase(java.util.Locale.ROOT);
-        return fLower.contains("success") || fLower.contains("helpful") || fLower.contains("positive")
-                || fLower.contains("good");
-    }
-
-    /**
-     * getConfig.
-     * 
-     * @param key key
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private String getConfig(String key, String defaultValue) {
-        return Config.getString(key, defaultValue);
-    }
-
-    // Getters
-    /**
-     * getUserId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getUserId() {
         return userId;
     }
 
-    /**
-     * getMemoryService.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public TaskMemoryService getMemoryService() {
         return memoryService;
     }
 
-    /**
-     * isInjectMemoriesInContext.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean isInjectMemoriesInContext() {
         return injectMemoriesInContext;
     }
 
-    /**
-     * getMemoryDir.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getMemoryDir() {
-        return memoryDir;
+    public boolean isAutoSummarize() {
+        return autoSummarize;
     }
 
-    /**
-     * Mirrors Python's {@code create_memory_agent_config()} helper.
-     * 
-     * @param params params
-     * @return the result
-     * @since 0.1.7
-     */
+    public String getAutoSummarizeMattsMode() {
+        return autoSummarizeMattsMode;
+    }
+
     public static ReActAgentConfig createMemoryAgentConfig(MemoryAgentConfigInput params) {
-        String defaultSystemPrompt = "You are a helpful assistant with access to a memory system. "
-                + "When relevant memories are provided in your context, use them to inform "
-                + "your responses. Always provide accurate, helpful answers based on both "
-                + "your knowledge and any retrieved memories.";
+        Objects.requireNonNull(params, "params");
+        String systemPrompt = params.getSystemPrompt() != null ? params.getSystemPrompt() : DEFAULT_SYSTEM_PROMPT;
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.configureModelClient(
+                params.getModelProvider(),
+                params.getApiKey(),
+                params.getApiBase(),
+                params.getModelName(),
+                false
+        );
+        config.configurePromptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)));
+        config.configureMaxIterations(params.getMaxIterations());
+        return config;
+    }
 
-        List<Map<String, String>> promptTemplate = List.of(Map.of("role", "system", "content",
-                params.getSystemPrompt() != null ? params.getSystemPrompt() : defaultSystemPrompt));
+    public static ReActAgentConfig create_memory_agent_config(MemoryAgentConfigInput params) {
+        return createMemoryAgentConfig(params);
+    }
 
-        return ReActAgentConfig.builder().build()
-                .configureModelClient(params.getModelProvider(), params.getApiKey(), params.getApiBase(),
-                        params.getModelName(), false)
-                .configurePromptTemplate(promptTemplate).configureMaxIterations(params.getMaxIterations());
+    private record NormalizedInput(Map<String, Object> values, String query) {
+    }
+
+    private record MemoryLookup(String memoryString, int memoriesUsed) {
+    }
+
+    private record TrialOutput(String trajectory, String feedback, int score) {
     }
 }

@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * User interaction related event.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code UserInteractionEvent} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 @Data
 @SuperBuilder
@@ -24,22 +25,11 @@ public class UserInteractionEvent extends BaseLogEvent {
     private String feedbackType;
     private String feedbackContent;
 
-    /**
-     * UserInteractionEvent.
-     * 
-     * @since 0.1.7
-     */
     public UserInteractionEvent() {
         super();
         setModuleType(ModuleType.USER);
     }
 
-    /**
-     * addFieldsToMap.
-     * 
-     * @param map map
-     * @since 0.1.7
-     */
     @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "user_id", userId);
@@ -48,3 +38,5 @@ public class UserInteractionEvent extends BaseLogEvent {
         putIfNotNull(map, "feedback_content", feedbackContent);
     }
 }
+
+

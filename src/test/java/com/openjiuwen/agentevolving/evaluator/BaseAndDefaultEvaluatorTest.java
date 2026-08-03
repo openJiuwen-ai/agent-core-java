@@ -1,16 +1,16 @@
-
 package com.openjiuwen.agentevolving.evaluator;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import com.openjiuwen.agentevolving.dataset.Case;
-import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agent_evolving.evaluator.BaseEvaluator;
+import com.openjiuwen.agent_evolving.evaluator.DefaultEvaluator;
+import com.openjiuwen.agent_evolving.dataset.Case;
+import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ValidationError;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
@@ -19,51 +19,66 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BaseAndDefaultEvaluatorTest {
+
     @Test
     void batchEvaluateRejectsLengthMismatch() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
-        assertThrows(BaseError.class, () -> evaluator.batchEvaluate(List.of(makeCase()), List.of(), 1));
+        assertThrows(BaseError.class, () ->
+                evaluator.batchEvaluate(List.of(makeCase()), List.of(), 1));
     }
 
     @Test
     void batchEvaluateRejectsInvalidParallelism() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
-        assertThrows(ValidationError.class,
-                () -> evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 0));
-        assertThrows(ValidationError.class,
-                () -> evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 100));
+        assertThrows(ValidationError.class, () ->
+                evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 0));
+        assertThrows(ValidationError.class, () ->
+                evaluator.batchEvaluate(List.of(makeCase()), List.of(Map.of("output", "x")), 100));
     }
 
     @Test
     void batchEvaluateRejectsEmptyInputLikePythonExecutor() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
-        assertThrows(IllegalArgumentException.class, () -> evaluator.batchEvaluate(List.of(), List.of(), 1));
+        assertThrows(IllegalArgumentException.class, () ->
+                evaluator.batchEvaluate(List.of(), List.of(), 1));
     }
 
     @Test
     void batchEvaluateRunsEachPrediction() {
         RecordingEvaluator evaluator = new RecordingEvaluator();
 
-        List<EvaluatedCase> result = evaluator.batchEvaluate(List.of(makeCase("case_1"), makeCase("case_2")),
-                List.of(Map.of("output", "a"), Map.of("output", "b")), 2);
+        List<EvaluatedCase> result = evaluator.batchEvaluate(
+                List.of(makeCase("case_1"), makeCase("case_2")),
+                List.of(Map.of("output", "a"), Map.of("output", "b")),
+                2
+        );
 
         assertEquals(2, result.size());
-        assertIterableEquals(List.of("case_1", "case_2"),
-                result.stream().map(evaluatedCase -> evaluatedCase.getCaseData().getCaseId()).toList());
+        assertIterableEquals(
+            List.of("case_1", "case_2"),
+            result.stream().map(evaluatedCase -> evaluatedCase.getCase().getCaseId()).toList()
+        );
         assertEquals(2, evaluator.seenCaseIds.size());
         assertTrue(evaluator.seenCaseIds.containsAll(List.of("case_1", "case_2")));
     }
 
     @Test
     void defaultEvaluatorReturnsPassAndFailFromParsedJson() {
-        StubDefaultEvaluator evaluator =
-            new StubDefaultEvaluator(assistant("```json\n{\"result\": true, \"reason\": \"good\"}\n```"),
-                    assistant("```json\n{\"result\": false, \"reason\": \"bad\"}\n```"));
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("```json\n{\"result\": true, \"reason\": \"good\"}\n```"),
+                assistant("```json\n{\"result\": false, \"reason\": \"bad\"}\n```")
+        );
 
         EvaluatedCase pass = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
         EvaluatedCase fail = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
@@ -76,8 +91,10 @@ class BaseAndDefaultEvaluatorTest {
 
     @Test
     void defaultEvaluatorRetriesWhenFirstResponseCannotBeParsed() {
-        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(assistant("invalid json"),
-                assistant("```json\n{\"result\": true, \"reason\": \"retry success\"}\n```"));
+        StubDefaultEvaluator evaluator = new StubDefaultEvaluator(
+                assistant("invalid json"),
+                assistant("```json\n{\"result\": true, \"reason\": \"retry success\"}\n```")
+        );
 
         EvaluatedCase result = evaluator.evaluate(makeCase(), Map.of("output", "pred"));
 
@@ -100,7 +117,7 @@ class BaseAndDefaultEvaluatorTest {
     }
 
     private static Case makeCase(String caseId) {
-        return new Case(Map.of("q", "test"), Map.of("ans", "expected"), caseId);
+        return new Case(Map.of("q", "test"), Map.of("ans", "expected"), null, caseId);
     }
 
     private static AssistantMessage assistant(String content) {
@@ -113,7 +130,7 @@ class BaseAndDefaultEvaluatorTest {
         @Override
         public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
             seenCaseIds.add(caseData.getCaseId());
-            return EvaluatedCase.builder().caseData(caseData).answer(predict).score(1.0).build();
+            return new EvaluatedCase(caseData, predict, 1.0, "", null);
         }
     }
 
@@ -121,18 +138,36 @@ class BaseAndDefaultEvaluatorTest {
         private final Deque<Object> scriptedResponses = new ArrayDeque<>();
 
         private StubDefaultEvaluator(Object... scriptedResponses) {
-            super(ModelRequestConfig.builder().modelName("test-model").build(), ModelClientConfig.builder()
-                    .clientProvider("OpenAI").apiKey("test").apiBase("https://test.example.com").build());
+            super(
+                    ModelRequestConfig.builder().modelName("test-model").build(),
+                    ModelClientConfig.builder()
+                            .clientProvider("OpenAI")
+                            .apiKey("test")
+                            .apiBase("https://test.example.com")
+                            .build()
+            );
             this.scriptedResponses.addAll(List.of(scriptedResponses));
+            injectMockModel();
         }
 
-        @Override
-        protected AssistantMessage invokeModel(List<?> messages) {
-            Object next = scriptedResponses.removeFirst();
-            if (next instanceof RuntimeException runtimeException) {
-                throw runtimeException;
+        @SuppressWarnings("unchecked")
+        private void injectMockModel() {
+            try {
+                java.lang.reflect.Field modelField = DefaultEvaluator.class.getDeclaredField("model");
+                modelField.setAccessible(true);
+                Deque<Object> responses = this.scriptedResponses;
+                Model mockModel = mock(Model.class);
+                when(mockModel.invoke(any(List.class))).thenAnswer(invocation -> {
+                    Object next = responses.removeFirst();
+                    if (next instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    return CompletableFuture.completedFuture((AssistantMessage) next);
+                });
+                modelField.set(this, mockModel);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
             }
-            return (AssistantMessage) next;
         }
     }
 }

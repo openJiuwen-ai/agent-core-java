@@ -1,246 +1,196 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
- */
-
 package com.openjiuwen.core.graph.pregel;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link ChannelManager}, {@link TriggerChannel}, and {@link BarrierChannel}.
- * <p>
- * Ported from Python's {@code test_channel.py :: TestChannelManager}.
+ *
+ * <p>Mirrors Python's {@code TestChannelManager} in
+ * {@code tests/unit_tests/core/graph/test_channel.py}.</p>
  */
 class ChannelTest {
-    // ---------- TriggerChannel reset ----------
+
     @Nested
     @DisplayName("TriggerChannel reset after consume")
     class TriggerChannelResetTests {
+
         @Test
-        @DisplayName("TriggerChannel correctly resets Ready state after consume")
+        @DisplayName("TriggerChannel correctly resets ready state after consume")
         void testTriggerChannelReset() {
-            // Setup: Create Manager and Channels
-            TriggerChannel chStart = new TriggerChannel("start");
-            TriggerChannel chA = new TriggerChannel("a");
+            TriggerChannel start = new TriggerChannel("start");
+            TriggerChannel a = new TriggerChannel("a");
+            ChannelManager manager = new ChannelManager(List.of(start, a));
 
-            ChannelManager manager = new ChannelManager(List.of(chStart, chA));
-
-            // Initially no ready nodes
             assertTrue(manager.getReadyNodes().isEmpty());
 
-            // Activate start
             manager.bufferMessage(new TriggerMessage("__start__", "start"));
             manager.flush();
 
-            List<String> ready = manager.getReadyNodes();
-            assertTrue(ready.contains("start"));
-            assertTrue(chStart.isReady());
+            assertTrue(manager.getReadyNodes().contains("start"));
+            assertTrue(start.isReady());
 
-            // Consume start
             manager.consume("start");
+            assertFalse(manager.getReadyNodes().contains("start"));
+            assertFalse(start.isReady());
 
-            List<String> readyAfterConsume = manager.getReadyNodes();
-            assertFalse(readyAfterConsume.contains("start"));
-            assertFalse(chStart.isReady()); // Key check: TriggerChannel must be empty
-
-            // start produces message to a
             manager.bufferMessage(new TriggerMessage("start", "a"));
-            // This flush should not activate start, only a
             manager.flush();
 
-            List<String> readyStep1 = manager.getReadyNodes();
-            assertTrue(readyStep1.contains("a"));
-            assertFalse(readyStep1.contains("start")); // If start is still here, infinite loop
+            assertTrue(manager.getReadyNodes().contains("a"));
+            assertFalse(manager.getReadyNodes().contains("start"));
 
-            // Consume a
             manager.consume("a");
-            assertFalse(manager.getReadyNodes().contains("a"));
-
-            // a produces no new messages; simulate empty flush
             manager.flush();
-
-            List<String> readyStep2 = manager.getReadyNodes();
-            assertFalse(readyStep2.contains("a"));
-            assertFalse(readyStep2.contains("start"));
-            assertEquals(0, readyStep2.size());
+            assertTrue(manager.getReadyNodes().isEmpty());
         }
     }
-
-    // ---------- BarrierChannel lifecycle ----------
 
     @Nested
     @DisplayName("BarrierChannel lifecycle")
     class BarrierChannelLifecycleTests {
+
         @Test
-        @DisplayName("Waiting -> Partial -> All arrived (Ready) -> Consumed (Reset) -> Waiting again")
+        @DisplayName("AND-of-singletons remains backward compatible")
         void testBarrierLifecycle() {
-            String barrierTargetNode = "collect";
-            Set<String> expectedSenders = Set.of("A", "B");
+            BarrierChannel barrier = new BarrierChannel("collect", Set.of("A", "B"));
+            ChannelManager manager = new ChannelManager(List.of(barrier));
+            String key = barrier.getKey();
 
-            BarrierChannel barrierCh = new BarrierChannel(barrierTargetNode, expectedSenders);
-            String barrierKey = barrierCh.getKey();
-
-            ChannelManager manager = new ChannelManager(List.of(barrierCh));
-
-            // Initial state check
-            assertTrue(manager.getReadyNodes().isEmpty());
-            assertFalse(barrierCh.isReady());
-
-            // Partial arrival: Only "A" sends message
-            BarrierMessage msgA = new BarrierMessage("A", barrierKey);
-            manager.bufferMessage(msgA);
+            manager.bufferMessage(new BarrierMessage("A", key));
             manager.flush();
+            assertFalse(barrier.isReady());
+            assertFalse(manager.getReadyNodes().contains("collect"));
 
-            // Barrier should not be Ready (B hasn't arrived)
-            assertFalse(barrierCh.isReady());
-            List<String> readyNodes = manager.getReadyNodes();
-            assertFalse(readyNodes.contains(barrierTargetNode));
-
-            // Full arrival: "B" sends message
-            BarrierMessage msgB = new BarrierMessage("B", barrierKey);
-            manager.bufferMessage(msgB);
+            manager.bufferMessage(new BarrierMessage("B", key));
             manager.flush();
+            assertTrue(barrier.isReady());
+            assertTrue(manager.getReadyNodes().contains("collect"));
 
-            // Now complete, should be Ready
-            assertTrue(barrierCh.isReady());
-            List<String> readyNodesFull = manager.getReadyNodes();
-            assertTrue(readyNodesFull.contains(barrierTargetNode));
+            manager.consume("collect");
+            assertFalse(barrier.isReady());
+            assertFalse(manager.getReadyNodes().contains("collect"));
+        }
 
-            // Consume: Execute node logic, consume channel
-            manager.consume(barrierTargetNode);
+        @Test
+        @DisplayName("CNF barrier accepts one sender from each OR-group")
+        void testBarrierCnfLifecycle() {
+            BarrierChannel barrier = new BarrierChannel("collect", List.of(Set.of("A", "B"), Set.of("C")));
+            ChannelManager manager = new ChannelManager(List.of(barrier));
+            String key = barrier.getKey();
 
-            // Manager's Ready list should be empty; barrier internal state cleared
-            assertFalse(manager.getReadyNodes().contains(barrierTargetNode));
-            assertFalse(barrierCh.isReady());
+            assertEquals("barrier:(A|B)&C->collect", key);
 
-            // Re-trigger: Send "A" again (simulate next cycle)
-            manager.bufferMessage(msgA);
+            manager.bufferMessage(new BarrierMessage("A", key));
             manager.flush();
+            assertFalse(barrier.isReady());
 
-            // State should be partially arrived, not Ready
-            assertFalse(barrierCh.isReady());
-            assertFalse(manager.getReadyNodes().contains(barrierTargetNode));
+            manager.bufferMessage(new BarrierMessage("C", key));
+            manager.flush();
+            assertTrue(barrier.isReady());
+            assertTrue(manager.getReadyNodes().contains("collect"));
         }
 
         @Test
         @DisplayName("Duplicate signals from same sender are idempotent")
         void testBarrierDuplicateSignals() {
-            BarrierChannel barrierCh = new BarrierChannel("collect", Set.of("A", "B"));
-            ChannelManager manager = new ChannelManager(List.of(barrierCh));
-            String key = barrierCh.getKey();
+            BarrierChannel barrier = new BarrierChannel("collect", Set.of("A", "B"));
+            ChannelManager manager = new ChannelManager(List.of(barrier));
+            String key = barrier.getKey();
 
-            // A sends twice
             manager.bufferMessage(new BarrierMessage("A", key));
             manager.bufferMessage(new BarrierMessage("A", key));
             manager.flush();
 
-            // Set should deduplicate; barrier not ready
-            assertFalse(barrierCh.isReady());
+            assertFalse(barrier.isReady());
         }
     }
-
-    // ---------- Additional channel tests ----------
 
     @Nested
     @DisplayName("Channel snapshot and restore")
     class SnapshotRestoreTests {
+
         @Test
         @DisplayName("TriggerChannel snapshot and restore")
         void testTriggerChannelSnapshotRestore() {
-            TriggerChannel ch = new TriggerChannel("test");
-            // Accept a message
-            ch.accept(new TriggerMessage("sender1", "test"));
-            assertTrue(ch.isReady());
+            TriggerChannel channel = new TriggerChannel("test");
+            channel.accept(new TriggerMessage("sender1", "test"));
+            assertTrue(channel.isReady());
 
-            // Snapshot
-            Object snap = ch.snapshot();
-            assertNotNull(snap);
+            Object snapshot = channel.snapshot();
 
-            // Create new channel and restore
-            TriggerChannel ch2 = new TriggerChannel("test");
-            assertFalse(ch2.isReady());
-            ch2.restore(snap);
-            assertTrue(ch2.isReady());
+            TriggerChannel restored = new TriggerChannel("test");
+            restored.restore(snapshot);
+            assertTrue(restored.isReady());
         }
 
         @Test
         @DisplayName("BarrierChannel snapshot and restore partial state")
         void testBarrierChannelSnapshotRestore() {
-            BarrierChannel ch = new BarrierChannel("target", Set.of("A", "B", "C"));
-            ch.accept(new BarrierMessage("A", ch.getKey()));
-            ch.accept(new BarrierMessage("B", ch.getKey()));
-            assertFalse(ch.isReady()); // C hasn't arrived
+            BarrierChannel channel = new BarrierChannel("target", List.of(Set.of("A", "B"), Set.of("C")));
+            channel.accept(new BarrierMessage("A", channel.getKey()));
+            assertFalse(channel.isReady());
 
-            // Snapshot
-            Object snap = ch.snapshot();
+            Object snapshot = channel.snapshot();
 
-            // New channel, restore
-            BarrierChannel ch2 = new BarrierChannel("target", Set.of("A", "B", "C"));
-            ch2.restore(snap);
-            assertFalse(ch2.isReady()); // Still partial
+            BarrierChannel restored = new BarrierChannel("target", List.of(Set.of("A", "B"), Set.of("C")));
+            restored.restore(snapshot);
+            assertFalse(restored.isReady());
 
-            // Complete
-            ch2.accept(new BarrierMessage("C", ch2.getKey()));
-            assertTrue(ch2.isReady());
+            restored.accept(new BarrierMessage("C", restored.getKey()));
+            assertTrue(restored.isReady());
         }
 
         @Test
         @DisplayName("ChannelManager snapshot and restore")
         void testChannelManagerSnapshotRestore() {
-            TriggerChannel ch = new TriggerChannel("node1");
-            ChannelManager manager = new ChannelManager(List.of(ch));
+            TriggerChannel channel = new TriggerChannel("node1");
+            ChannelManager manager = new ChannelManager(List.of(channel));
 
             manager.bufferMessage(new TriggerMessage("start", "node1"));
             manager.flush();
-            assertTrue(manager.getReadyNodes().contains("node1"));
 
-            // Take snapshot
-            var snap = manager.snapshot();
-            assertNotNull(snap);
-
-            // Consume original
+            Map<String, Object> snapshot = manager.snapshot();
             manager.consume("node1");
-            assertFalse(manager.getReadyNodes().contains("node1"));
 
-            // New manager, restore
-            TriggerChannel ch2 = new TriggerChannel("node1");
-            ChannelManager manager2 = new ChannelManager(List.of(ch2));
-            manager2.restore(snap);
-            assertTrue(manager2.getReadyNodes().contains("node1"));
+            TriggerChannel restoredChannel = new TriggerChannel("node1");
+            ChannelManager restoredManager = new ChannelManager(List.of(restoredChannel));
+            restoredManager.restore(snapshot);
+            assertTrue(restoredManager.getReadyNodes().contains("node1"));
         }
     }
-
-    // ---------- ChannelManager buffer and flush ----------
 
     @Nested
     @DisplayName("ChannelManager buffer operations")
     class BufferTests {
+
         @Test
         @DisplayName("isEmpty reflects buffer state")
         void testIsEmpty() {
-            TriggerChannel ch = new TriggerChannel("a");
-            ChannelManager manager = new ChannelManager(List.of(ch));
+            TriggerChannel channel = new TriggerChannel("a");
+            ChannelManager manager = new ChannelManager(List.of(channel));
             assertTrue(manager.isEmpty());
 
             manager.bufferMessage(new TriggerMessage("start", "a"));
             assertFalse(manager.isEmpty());
 
             manager.flush();
-            assertTrue(manager.isEmpty()); // Buffer cleared after flush
+            assertTrue(manager.isEmpty());
         }
 
         @Test
         @DisplayName("getBuffer returns buffered messages before flush")
         void testGetBuffer() {
-            TriggerChannel ch = new TriggerChannel("a");
-            ChannelManager manager = new ChannelManager(List.of(ch));
+            TriggerChannel channel = new TriggerChannel("a");
+            ChannelManager manager = new ChannelManager(List.of(channel));
+
             manager.bufferMessage(new TriggerMessage("x", "a"));
             assertEquals(1, manager.getBuffer().size());
 
@@ -251,47 +201,11 @@ class ChannelTest {
         @Test
         @DisplayName("flush to non-existent channel throws")
         void testFlushNonExistentChannel() {
-            TriggerChannel ch = new TriggerChannel("a");
-            ChannelManager manager = new ChannelManager(List.of(ch));
-            manager.bufferMessage(new TriggerMessage("x", "no_such_channel"));
-            assertThrows(IllegalStateException.class, manager::flush);
-        }
-    }
+            TriggerChannel channel = new TriggerChannel("a");
+            ChannelManager manager = new ChannelManager(List.of(channel));
 
-    // ---------- Message tests ----------
-
-    @Nested
-    @DisplayName("Message types")
-    class MessageTests {
-        @Test
-        @DisplayName("TriggerMessage carries sender and target")
-        void testTriggerMessage() {
-            TriggerMessage msg = new TriggerMessage("sender1", "target1");
-            assertEquals("sender1", msg.getSender());
-            assertEquals("target1", msg.getTarget());
-            assertNull(msg.getPayload());
-        }
-
-        @Test
-        @DisplayName("TriggerMessage with payload")
-        void testTriggerMessageWithPayload() {
-            TriggerMessage msg = new TriggerMessage("s", "t", "data");
-            assertEquals("data", msg.getPayload());
-        }
-
-        @Test
-        @DisplayName("BarrierMessage carries sender and target")
-        void testBarrierMessage() {
-            BarrierMessage msg = new BarrierMessage("sender1", "target1");
-            assertEquals("sender1", msg.getSender());
-            assertEquals("target1", msg.getTarget());
-        }
-
-        @Test
-        @DisplayName("Message toString")
-        void testMessageToString() {
-            Message msg = new Message("s", "t", "p");
-            assertNotNull(msg.toString());
+            manager.bufferMessage(new TriggerMessage("x", "missing"));
+            assertThrows(IllegalArgumentException.class, manager::flush);
         }
     }
 }

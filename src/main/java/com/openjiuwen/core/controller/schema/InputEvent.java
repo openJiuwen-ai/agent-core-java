@@ -4,68 +4,49 @@
 
 package com.openjiuwen.core.controller.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * User input event containing input data.
  * <p>
  * This is the main input type for the controller, used to receive user requests.
  * <p>
- * Mirrors Python's {@code InputEvent}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code InputEvent} in
+ * {@code openjiuwen/core/controller/schema/event.py}.
  */
 public class InputEvent extends Event {
+
+    @JsonProperty("input_data")
     private List<DataFrame> inputData;
 
-    /**
-     * InputEvent.
-     * 
-     * @since 0.1.7
-     */
     public InputEvent() {
         super(EventType.INPUT);
         this.inputData = new ArrayList<>();
     }
 
-    /**
-     * InputEvent.
-     * 
-     * @param inputData inputData
-     * @since 0.1.7
-     */
     public InputEvent(List<DataFrame> inputData) {
         super(EventType.INPUT);
         this.inputData = inputData != null ? inputData : new ArrayList<>();
     }
 
-    /**
-     * getInputData.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<DataFrame> getInputData() {
         return inputData;
     }
 
-    /**
-     * setInputData.
-     * 
-     * @param inputData inputData
-     * @since 0.1.7
-     */
     public void setInputData(List<DataFrame> inputData) {
         this.inputData = inputData != null ? inputData : new ArrayList<>();
     }
 
     /**
-     * fromUserInput.
-     * 
-     * @param userInput userInput
-     * @return the result
-     * @since 0.1.7
+     * Create input event from user input.
+     *
+     * @param userInput user input (String, Map, InteractiveInput, or InputEvent)
+     * @return InputEvent instance
      */
     @SuppressWarnings("unchecked")
     public static InputEvent fromUserInput(Object userInput) {
@@ -75,10 +56,17 @@ public class InputEvent extends Event {
         if (userInput instanceof String text) {
             return new InputEvent(List.of(new DataFrame.TextDataFrame(text)));
         }
-        if (userInput instanceof java.util.Map<?, ?> map) {
-            return new InputEvent(List.of(new DataFrame.JsonDataFrame((java.util.Map<String, Object>) map)));
+        if (userInput instanceof Map<?, ?> map) {
+            return new InputEvent(List.of(new DataFrame.JsonDataFrame((Map<String, Object>) map)));
         }
-        throw new IllegalArgumentException("Unsupported user input type: " + userInput.getClass().getName()
-                + ". Must be String, Map, or InputEvent.");
+        if (userInput instanceof InteractiveInput interactiveInput) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("query", interactiveInput);
+            return new InputEvent(List.of(new DataFrame.JsonDataFrame(data)));
+        }
+        throw new IllegalArgumentException(
+                "Unsupported user input type: "
+                        + (userInput == null ? "null" : userInput.getClass().getName())
+                        + ". Must be String, Map, InteractiveInput, or InputEvent.");
     }
 }

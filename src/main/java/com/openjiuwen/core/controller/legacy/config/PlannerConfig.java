@@ -1,14 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.controller.legacy.config;
 
 /**
  * Config of Planner Component.
- * Mirrors Python's {@code PlannerConfig}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code PlannerConfig} in
+ * {@code openjiuwen/core/controller/legacy/config/reasoner_config.py}.</p>
  */
 public class PlannerConfig {
 }

@@ -7,43 +7,11 @@ package com.openjiuwen.core.common.exception;
 import java.util.Map;
 
 /**
- * Agent execution error.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code AgentError} in
+ * {@code openjiuwen/core/common/exception/errors.py}.
  */
 public class AgentError extends ExecutionError {
-    /**
-     * AgentError.
-     * 
-     * @param status status
-     * @param msg msg
-     * @param details details
-     * @param cause cause
-     * @param params params
-     * @since 0.1.7
-     */
-    public AgentError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) {
-        super(status, msg, details, cause, params);
-    }
-
-    /**
-     * Creates an AgentError with status and parameters.
-     * 
-     * @param status the status code
-     * @param params template parameters for message rendering
-     * @since 0.1.7
-     */
-    public AgentError(StatusCode status, Map<String, Object> params) {
-        super(status, params);
-    }
-
-    /**
-     * Creates an AgentError with status only.
-     * 
-     * @param status the status code
-     * @since 0.1.7
-     */
-    public AgentError(StatusCode status) {
-        super(status);
-    }
+    public AgentError(StatusCode status, String msg, Object details, Throwable cause, Map<String, Object> params) { super(status, msg, details, cause, params); }
+    public AgentError(StatusCode status, Map<String, Object> params) { super(status, params); }
+    public AgentError(StatusCode status) { super(status); }
 }

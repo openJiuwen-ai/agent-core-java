@@ -10,36 +10,32 @@ import com.openjiuwen.core.session.BaseSession;
 /**
  * Loop condition based on iteration count with limit stored directly (not from schema).
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.number.NumberConditionInSession}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code NumberConditionInSession} in
+ * {@code openjiuwen/core/workflow/components/condition/number.py}.
  */
 public class NumberConditionInSession extends Condition {
-    private final int limit;
 
-    /**
-     * NumberConditionInSession.
-     * 
-     * @param limit limit
-     * @since 0.1.7
-     */
-    public NumberConditionInSession(int limit) {
+    private final Integer limit;
+
+    public NumberConditionInSession(Integer limit) {
         super();
         this.limit = limit;
     }
 
-    /**
-     * doInvoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Object doInvoke(Object inputs, BaseSession session) {
-        Object currentIdxObj = session.state().get(Constant.INDEX);
-        int currentIdx = (currentIdxObj instanceof Number) ? ((Number) currentIdxObj).intValue() : 0;
+        Object currentIdxObj = stateValue(session, Constant.INDEX);
+        int currentIdx = requireNumber(currentIdxObj, "index").intValue();
+        if (limit == null) {
+            throw new IllegalArgumentException("loop_number variable not found or is None");
+        }
         return currentIdx < limit;
+    }
+
+    private static Number requireNumber(Object value, String name) {
+        if (value instanceof Number number) {
+            return number;
+        }
+        throw new IllegalArgumentException(name + " must be numeric");
     }
 }

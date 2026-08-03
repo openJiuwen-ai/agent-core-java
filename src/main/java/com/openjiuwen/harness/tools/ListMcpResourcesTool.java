@@ -4,77 +4,116 @@
 
 package com.openjiuwen.harness.tools;
 
-import java.lang.reflect.Method;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Public class ListMcpResourcesTool used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Lists resources exposed by an MCP server.
+ *
+ * <p>Mirrors Python's {@code ListMcpResourcesTool} in
+ * {@code openjiuwen/harness/tools/mcp_tools.py}.</p>
  */
-public class ListMcpResourcesTool {
-    private final McpResourceService service;
+public class ListMcpResourcesTool extends AbstractHarnessTool {
 
-    /**
-     * ListMcpResourcesTool.
-     * 
-     * @param service service
-     * @since 0.1.7
-     */
-    public ListMcpResourcesTool(McpResourceService service) {
-        this.service = service;
+    private final McpResourceLister resourceLister;
+    private final String language;
+    private final String agentId;
+
+    public ListMcpResourcesTool(McpResourceLister resourceLister) {
+        this(toolCard("list_mcp_resources", "ListMcpResourcesTool", "List MCP resources for a server."),
+                resourceLister, "cn", null);
     }
 
-    /**
-     * invoke.
-     * 
-     * @param serverId serverId
-     * @return the result
-     * @since 0.1.7
-     */
-    public ToolOutput invoke(String serverId) {
-        if (serverId == null || serverId.isBlank()) {
-            return ToolOutput.builder().success(false).error("server_id is required").build();
+    public ListMcpResourcesTool(String language, String agentId) {
+        this(HarnessPromptToolsPackage.buildToolCard(
+                        "list_mcp_resources",
+                        "ListMcpResourcesTool",
+                        normalizeLanguage(language),
+                        agentId),
+                serverId -> toList(Runner.resourceMgr().listMcpResources(serverId).toCompletableFuture().join()),
+                normalizeLanguage(language),
+                agentId);
+    }
+
+    private ListMcpResourcesTool(ToolCard card, McpResourceLister resourceLister, String language, String agentId) {
+        super(card);
+        this.resourceLister = resourceLister;
+        this.language = normalizeLanguage(language);
+        this.agentId = agentId;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getAgentId() {
+        return agentId;
+    }
+
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        String serverId = stringValue(inputs == null ? null : inputs.get("server_id"));
+        if (serverId.isBlank()) {
+            return ToolOutput.failure("server_id is required");
+        }
+        if (resourceLister == null) {
+            return ToolOutput.success(List.of());
         }
         try {
-            List<?> resources = service.listResources(serverId);
-            List<McpResourceDescriptor> mapped = new ArrayList<>();
-            if (resources != null) {
-                for (Object resource : resources) {
-                    mapped.add(new McpResourceDescriptor(value(resource, "getUri", "uri"),
-                            value(resource, "getName", "name"), nullable(resource, "getMimeType", "mimeType"),
-                            nullable(resource, "getDescription", "description")));
-                }
+            List<?> resources = resourceLister.list(serverId);
+            List<Map<String, Object>> data = new ArrayList<>();
+            for (Object resource : resources == null ? List.of() : resources) {
+                data.add(resourceMap(resource, "uri", "name", "mimeType", "description"));
             }
-            return ToolOutput.builder().success(true).data(mapped).build();
-        } catch (Exception ex) {
-            return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+            return ToolOutput.success(data);
+        } catch (Exception exception) {
+            return ToolOutput.failure(exception.getMessage());
         }
     }
 
-    static String value(Object object, String getter, String fieldName) {
-        String value = nullable(object, getter, fieldName);
-        return value != null ? value : String.valueOf(object);
+    private static String normalizeLanguage(String language) {
+        return language == null || language.isBlank() ? "cn" : language;
     }
 
-    static String nullable(Object object, String getter, String fieldName) {
-        if (object instanceof java.util.Map<?, ?> map) {
-            Object value = map.get(fieldName);
-            return value != null ? String.valueOf(value) : null;
+    private static List<?> toList(Object value) {
+        if (value == null) {
+            return List.of();
         }
-        try {
-            Method method = object.getClass().getMethod(getter);
-            Object value = method.invoke(object);
-            return value != null ? String.valueOf(value) : null;
-        } catch (Exception ignored) {
-            try {
-                var field = object.getClass().getField(fieldName);
-                Object value = field.get(object);
-                return value != null ? String.valueOf(value) : null;
-            } catch (Exception ignoredAgain) {
-                return null;
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : iterable) {
+                result.add(item);
             }
+            return result;
         }
+        return List.of(value);
+    }
+
+    static Map<String, Object> resourceMap(Object value, String... keys) {
+        Map<String, Object> raw = stringObjectMap(value);
+        Map<String, Object> result = linkedMap();
+        for (String key : keys) {
+            result.put(key, raw.get(key));
+        }
+        if (!result.containsKey("uri") || result.get("uri") == null) {
+            result.put("uri", String.valueOf(value));
+        }
+        if (result.containsKey("name") && result.get("name") == null) {
+            result.put("name", "");
+        }
+        return result;
+    }
+
+    @FunctionalInterface
+    public interface McpResourceLister {
+        List<?> list(String serverId) throws Exception;
     }
 }

@@ -4,95 +4,55 @@
 
 package com.openjiuwen.core.retrieval.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.Set;
+
 /**
- * Index configuration.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code IndexConfig} in
+ * {@code openjiuwen/core/retrieval/common/config.py}.
  */
+@Data
+@Builder
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class IndexConfig {
+
+    private static final Set<String> VALID_INDEX_TYPES = Set.of("hybrid", "bm25", "vector");
+
+    @JsonProperty("index_name")
     private String indexName;
+
+    @JsonProperty("index_type")
+    @Builder.Default
     private String indexType = "hybrid";
 
-    /**
-     * IndexConfig.
-     * 
-     * @since 0.1.7
-     */
-    public IndexConfig() {
+    @JsonProperty("use_caption_for_images")
+    @Builder.Default
+    private boolean useCaptionForImages = false;
+
+    public IndexConfig(String indexName, String indexType, boolean useCaptionForImages) {
+        setIndexName(indexName);
+        setIndexType(indexType);
+        this.useCaptionForImages = useCaptionForImages;
     }
 
-    /**
-     * IndexConfig.
-     * 
-     * @param indexName indexName
-     * @since 0.1.7
-     */
-    public IndexConfig(String indexName) {
-        this(indexName, "hybrid");
-    }
-
-    /**
-     * IndexConfig.
-     * 
-     * @param indexName indexName
-     * @param indexType indexType
-     * @since 0.1.7
-     */
-    public IndexConfig(String indexName, String indexType) {
-        this.indexName = indexName;
-        this.indexType = indexType;
-        validate();
-    }
-
-    /**
-     * validate.
-     * 
-     * @since 0.1.7
-     */
-    public void validate() {
-        RetrievalValidation.requireNonBlank(indexName, "IndexConfig.indexName");
-        indexType = RetrievalValidation.validateIndexType(indexType, "IndexConfig.indexType");
-    }
-
-    /**
-     * getIndexName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getIndexName() {
-        return indexName;
-    }
-
-    /**
-     * setIndexName.
-     * 
-     * @param indexName indexName
-     * @since 0.1.7
-     */
     public void setIndexName(String indexName) {
+        if (indexName == null) {
+            throw RetrievalExceptions.validation("index_name is required");
+        }
         this.indexName = indexName;
-        validate();
     }
 
-    /**
-     * getIndexType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getIndexType() {
-        return indexType;
-    }
-
-    /**
-     * setIndexType.
-     * 
-     * @param indexType indexType
-     * @since 0.1.7
-     */
     public void setIndexType(String indexType) {
-        this.indexType = indexType;
-        validate();
+        String value = indexType == null ? "hybrid" : indexType;
+        if (!VALID_INDEX_TYPES.contains(value)) {
+            throw RetrievalExceptions.validation("index_type must be one of hybrid, bm25, vector");
+        }
+        this.indexType = value;
     }
 }

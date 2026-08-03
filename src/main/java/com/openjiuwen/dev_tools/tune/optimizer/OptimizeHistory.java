@@ -5,121 +5,69 @@
 package com.openjiuwen.dev_tools.tune.optimizer;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 优化历史记录存储类
- * <p>
- * 用于存储和管理执行轨迹历史记录，支持按用例ID和LLM调用ID进行查询。
- * </p>
- * <p>
- * 使用线程安全的数据结构实现，支持并发访问。
- * </p>
- * <p>
- * Mirrors Python's {@code openjiuwen.dev_tools.tune.optimizer.base.OptimizeHistory}
- * </p>
- * 
- * @author OpenJiuwen Team
- * @since 0.1.7
+ * Thread-safe trajectory ledger for optimizer traces.
+ *
+ * <p>Mirrors Python's {@code OptimizeHistory} in
+ * {@code openjiuwen/dev_tools/tune/optimizer/base.py}.</p>
  */
 public class OptimizeHistory {
-    private final ConcurrentHashMap<String, List<TraceNode>> trajectory;
 
-    /**
-     * 构造函数，初始化空的轨迹存储
-     * 
-     * @since 0.1.7
-     */
-    public OptimizeHistory() {
-        this.trajectory = new ConcurrentHashMap<>();
-    }
+    private final ReentrantLock lock = new ReentrantLock();
+    private Map<String, List<TraceNode>> trajectory = new LinkedHashMap<>();
 
-    /**
-     * 添加历史记录
-     * <p>
-     * 将追踪节点添加到指定用例ID的历史记录中。
-     * </p>
-     * <p>
-     * 线程安全：使用ConcurrentHashMap和同步列表保证并发安全。
-     * </p>
-     * 
-     * @param caseId 用例ID
-     * @param node 追踪节点
-     * @since 0.1.7
-     */
     public void addHistory(String caseId, TraceNode node) {
-        trajectory.computeIfAbsent(caseId, k -> Collections.synchronizedList(new ArrayList<>())).add(node);
+        lock.lock();
+        try {
+            trajectory.computeIfAbsent(caseId, ignored -> new ArrayList<>()).add(node);
+        } finally {
+            lock.unlock();
+        }
     }
 
-    /**
-     * 获取指定用例的历史记录
-     * 
-     * @param caseId 用例ID
-     * @return 追踪节点列表，如果不存在则返回Optional.empty()
-     * @since 0.1.7
-     */
-    public Optional<List<TraceNode>> getHistory(String caseId) {
-        List<TraceNode> history = trajectory.get(caseId);
-        return Optional.ofNullable(history);
+    public void add_history(String caseId, TraceNode node) {
+        addHistory(caseId, node);
     }
 
-    /**
-     * 获取指定用例和LLM调用的历史记录
-     * <p>
-     * 根据用例ID和LLM调用ID过滤历史记录。
-     * </p>
-     * 
-     * @param caseId 用例ID
-     * @param llmCallId LLM调用ID
-     * @return 过滤后的追踪节点列表，如果不存在则返回Optional.empty()
-     * @since 0.1.7
-     */
-    public Optional<List<TraceNode>> getLlmCallHistory(String caseId, String llmCallId) {
-        return getHistory(caseId).map(history -> history.stream().filter(node -> llmCallId.equals(node.getLlmCallId()))
-                .collect(Collectors.toList())).filter(list -> !list.isEmpty());
+    public List<TraceNode> getHistory(String caseId) {
+        if (!trajectory.containsKey(caseId)) {
+            return null;
+        }
+        return trajectory.get(caseId);
     }
 
-    /**
-     * 清空所有历史记录
-     * 
-     * @since 0.1.7
-     */
+    public List<TraceNode> get_history(String caseId) {
+        return getHistory(caseId);
+    }
+
+    public List<TraceNode> getLlmCallHistory(String caseId, String llmCallId) {
+        List<TraceNode> traceNodeList = getHistory(caseId);
+        if (traceNodeList == null || traceNodeList.isEmpty()) {
+            return null;
+        }
+        List<TraceNode> llmCallTraceNodeList = new ArrayList<>();
+        for (TraceNode node : traceNodeList) {
+            if (llmCallId.equals(node.getLlmCallId())) {
+                llmCallTraceNodeList.add(node);
+            }
+        }
+        return llmCallTraceNodeList;
+    }
+
+    public List<TraceNode> get_llm_call_history(String caseId, String llmCallId) {
+        return getLlmCallHistory(caseId, llmCallId);
+    }
+
     public void clearHistory() {
-        trajectory.clear();
+        trajectory = new LinkedHashMap<>();
     }
 
-    /**
-     * 获取所有用例ID
-     *
-     * @return Set<String>
-     * @since 0.1.7
-     */
-    public java.util.Set<String> getCaseIds() {
-        return trajectory.keySet();
-    }
-
-    /**
-     * 检查是否包含指定用例的历史记录
-     * 
-     * @param caseId 用例ID
-     * @return 如果存在则返回true
-     * @since 0.1.7
-     */
-    public boolean containsCase(String caseId) {
-        return trajectory.containsKey(caseId);
-    }
-
-    /**
-     * 获取历史记录总数
-     * 
-     * @return 所有用例的追踪节点总数
-     * @since 0.1.7
-     */
-    public int getTotalCount() {
-        return trajectory.values().stream().mapToInt(List::size).sum();
+    public void clear_history() {
+        clearHistory();
     }
 }

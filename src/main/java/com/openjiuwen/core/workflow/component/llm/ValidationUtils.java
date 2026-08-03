@@ -14,23 +14,15 @@ import java.util.Map;
  * Validation utilities for LLM component inputs and outputs.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.ValidationUtils}.
- * 
- * @since 0.1.7
+  * Python file: {@code openjiuwen/core/workflow/components/llm/llm_comp.py}.
  */
 public final class ValidationUtils {
-    /**
-     * ValidationUtils.
-     * 
-     * @since 0.1.7
-     */
+
     private ValidationUtils() {
     }
 
     /**
      * Raise an invalid params error.
-     * 
-     * @param errorMsg errorMsg
-     * @since 0.1.7
      */
     public static void raiseInvalidParamsError(String errorMsg) {
         throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_INVALID, "error_msg", errorMsg);
@@ -38,10 +30,6 @@ public final class ValidationUtils {
 
     /**
      * Validate that the instance matches the expected type.
-     * 
-     * @param instance instance
-     * @param expectedType expectedType
-     * @since 0.1.7
      */
     public static void validateType(Object instance, String expectedType) {
         boolean valid = switch (expectedType) {
@@ -55,17 +43,12 @@ public final class ValidationUtils {
         };
 
         if (!valid) {
-            raiseInvalidParamsError(expectedType + " is not the type of "
-                    + (instance == null ? "null" : instance.getClass().getSimpleName()));
+            raiseInvalidParamsError(expectedType + " is not the type of " + (instance == null ? "null" : instance.getClass().getSimpleName()));
         }
     }
 
     /**
      * Validate an instance against a JSON schema (simplified).
-     * 
-     * @param instance instance
-     * @param schema schema
-     * @since 0.1.7
      */
     public static void validateJsonSchema(Object instance, Map<String, Object> schema) {
         String type = (String) schema.get("type");
@@ -79,19 +62,10 @@ public final class ValidationUtils {
             validateObjectProperties(instance, schema);
         } else if ("array".equals(type)) {
             validateArrayItems(instance, schema);
-        } else {
-            // no-op
         }
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * validateObjectProperties.
-     * 
-     * @param instance instance
-     * @param schema schema
-     * @since 0.1.7
-     */
     private static void validateObjectProperties(Object instance, Map<String, Object> schema) {
         Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
         if (properties == null) {
@@ -116,13 +90,6 @@ public final class ValidationUtils {
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * validateArrayItems.
-     * 
-     * @param instance instance
-     * @param schema schema
-     * @since 0.1.7
-     */
     private static void validateArrayItems(Object instance, Map<String, Object> schema) {
         Map<String, Object> items = (Map<String, Object>) schema.get("items");
         if (items == null) {
@@ -140,9 +107,6 @@ public final class ValidationUtils {
 
     /**
      * Validate that output config is non-empty and is a Map.
-     * 
-     * @param outputsConfig outputsConfig
-     * @since 0.1.7
      */
     public static void validateOutputsConfig(Object outputsConfig) {
         if (outputsConfig == null) {

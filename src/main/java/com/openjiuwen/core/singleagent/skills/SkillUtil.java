@@ -4,134 +4,127 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * High-level utility for managing and working with skills.
- * <p>
- * Combines SkillManager and RemoteSkillUtil functionalities,
- * providing skill registration, tool management, and prompt generation.
- * </p>
- * 
- * @since 0.1.7
+ * High-level utility for local and remote skill management.
+ *
+ * <p>Mirrors Python's {@code SkillUtil} in
+ * {@code openjiuwen/core/single_agent/skills/skill_util.py}.</p>
  */
 public class SkillUtil {
-    private static final String SKILL_PROMPT_CONTENT =
-        "\nTo help you better complete tasks, the following skill knowledge is equipped:\n" + "%s\n"
-                + "You can use the readFile tool to read the corresponding SKILL.md file "
-                + "to obtain the relevant skill.\n";
+    public static final String SKILL_PROMPT_CONTENT = """
+            To help you better complete tasks, the following skill knowledge is equipped:
+            {{skills}}
+            You can use the read_file tool to read the corresponding SKILL.md file to obtain the relevant skill.
+            """;
 
     private final SkillManager skillManager;
     private final RemoteSkillUtil remoteSkillUtil;
 
-    /**
-     * SkillUtil.
-     * 
-     * @param sysOperationId sysOperationId
-     * @since 0.1.7
-     */
     public SkillUtil(String sysOperationId) {
         this.skillManager = new SkillManager(sysOperationId);
         this.remoteSkillUtil = new RemoteSkillUtil(sysOperationId);
     }
 
-    /**
-     * setSysOperationId.
-     * 
-     * @param sysOperationId sysOperationId
-     * @since 0.1.7
-     */
+    SkillUtil(SkillManager skillManager, RemoteSkillUtil remoteSkillUtil) {
+        this.skillManager = Objects.requireNonNull(skillManager, "skillManager");
+        this.remoteSkillUtil = Objects.requireNonNull(remoteSkillUtil, "remoteSkillUtil");
+    }
+
     public void setSysOperationId(String sysOperationId) {
-        this.skillManager.setSysOperationId(sysOperationId);
-        this.remoteSkillUtil.setSysOperationId(sysOperationId);
+        skillManager.setSysOperationId(sysOperationId);
+        remoteSkillUtil.setSysOperationId(sysOperationId);
     }
 
-    /**
-     * getSkillManager.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public SkillManager getSkillManager() {
-        return skillManager;
+    public void set_sys_operation_id(String sysOperationId) {
+        setSysOperationId(sysOperationId);
     }
 
-    /**
-     * getRemoteSkillUtil.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public RemoteSkillUtil getRemoteSkillUtil() {
-        return remoteSkillUtil;
+    public boolean registerSkills(String skillPath, Object agent, String sessionId) throws IOException {
+        return registerSkills(List.of(skillPath), agent, sessionId);
     }
 
-    /**
-     * Register skills from a path.
-     * 
-     * @param skillPath the path to the skill directory
-     * @param agent the agent instance (for compatibility)
-     * @since 0.1.7
-     */
-    public void registerSkills(Object skillPath, BaseAgent agent) {
-        if (skillPath instanceof String path) {
-            skillManager.register(path);
-        } else if (skillPath instanceof List<?> list) {
-            for (Object p : list) {
-                if (p instanceof String s) {
-                    skillManager.register(s);
-                }
-            }
-        } else {
-            // no-op
-        }
+    public boolean registerSkills(String skillPath, Object agent, String sessionId, boolean useMetadataName)
+            throws IOException {
+        return registerSkills(List.of(skillPath), agent, sessionId, useMetadataName);
     }
 
-    /**
-     * Register remote skills from GitHub.
-     * 
-     * @param skillsDir local skills directory
-     * @param githubTree the GitHub tree reference
-     * @param token GitHub API token (optional)
-     * @since 0.1.7
-     */
-    public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
-        remoteSkillUtil.uploadSkillFromGitHub(githubTree, skillsDir, token);
+    public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
+        return registerSkills(skillPaths, agent, sessionId, false);
     }
 
-    /**
-     * Check if any skills are registered.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public boolean registerSkills(List<String> skillPaths, Object agent, String sessionId, boolean useMetadataName)
+            throws IOException {
+        List<Path> paths = skillPaths == null ? List.of() : skillPaths.stream().map(Path::of).toList();
+        skillManager.register(paths, false, useMetadataName);
+        return true;
+    }
+
+    public boolean register_skills(List<String> skillPaths, Object agent, String sessionId) throws IOException {
+        return registerSkills(skillPaths, agent, sessionId);
+    }
+
+    public List<Path> registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
+        return remoteSkillUtil.uploadSkillFromGithub(githubTree, skillsDir, token);
+    }
+
+    public List<Path> register_remote_skills(String skillsDir, GitHubTree githubTree, String token) {
+        return registerRemoteSkills(skillsDir, githubTree, token);
+    }
+
     public boolean hasSkill() {
         return skillManager.count() > 0;
     }
 
-    /**
-     * Generate a formatted prompt string with information about all registered skills.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public boolean has_skill() {
+        return hasSkill();
+    }
+
     public String getSkillPrompt() {
         String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
                 + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using readFile and follow its workflow.\n";
-
+                + "using read_file and follow its workflow.\n";
+        List<String> skillsInfo = new ArrayList<>();
         List<Skill> skills = skillManager.getAll();
-        StringBuilder skillsInfo = new StringBuilder();
         for (int i = 0; i < skills.size(); i++) {
             Skill skill = skills.get(i);
-            skillsInfo.append(i).append(".Skill name: ").append(skill.getName()).append("; Skill description: ")
-                    .append(skill.getDescription()).append("; Skill directory file path: ").append(skill.getDirectory())
-                    .append("\n");
+            skillsInfo.add(i + ".Skill name: " + skill.getName()
+                    + "; Skill description: " + skill.getDescription()
+                    + "; Skill directory: " + skill.getDirectory());
         }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("skills", skillsInfo.stream().collect(Collectors.joining("\n")));
+        PromptTemplate template = PromptTemplate.builder().content(SKILL_PROMPT_CONTENT).build();
+        return systemPrompt + "\n" + template.format(values).getContent();
+    }
 
-        String skillText = String.format(SKILL_PROMPT_CONTENT, skillsInfo.toString());
-        return systemPrompt + "\n" + skillText;
+    public String get_skill_prompt() {
+        return getSkillPrompt();
+    }
+
+    public SkillManager getSkillManager() {
+        return skillManager;
+    }
+
+    public SkillManager get_skill_manager() {
+        return skillManager;
+    }
+
+    public RemoteSkillUtil getRemoteSkillUtil() {
+        return remoteSkillUtil;
+    }
+
+    public RemoteSkillUtil get_remote_skill_util() {
+        return remoteSkillUtil;
     }
 }

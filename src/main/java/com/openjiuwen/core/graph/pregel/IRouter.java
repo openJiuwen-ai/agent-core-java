@@ -7,19 +7,10 @@ package com.openjiuwen.core.graph.pregel;
 import java.util.List;
 
 /**
- * Router interface for dispatching messages after a node executes.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.IRouter}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code IRouter} in
+ * {@code openjiuwen/core/graph/pregel/base.py}.
  */
 public interface IRouter {
-    /**
-     * dispatch.
-     * 
-     * @param sourceNode sourceNode
-     * @return the result
-     * @since 0.1.7
-     */
-    List<Message> dispatch(String sourceNode);
+
+    List<Message> dispatch(String sourceNode) throws Exception;
 }

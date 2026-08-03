@@ -85,7 +85,7 @@ class JiuwenBoxFSProviderTest {
         ReadFileResult result = provider.readFile("/root/a.txt", "text", null, null, null, "utf-8", 0, null);
 
         assertThat(result.getCode()).isEqualTo(0);
-        assertThat(result.getData().getContentAsString()).isEqualTo("line1\nline2\nline3");
+        assertThat(result.getData().getContent()).isEqualTo("line1\nline2\nline3");
         assertThat(result.getData().getMode()).isEqualTo("text");
     }
 
@@ -97,7 +97,7 @@ class JiuwenBoxFSProviderTest {
 
         ReadFileResult result = provider.readFile("/root/a.txt", "text", 2, null, null, "utf-8", 0, null);
 
-        assertThat(result.getData().getContentAsString()).isEqualTo("line1\nline2");
+        assertThat(result.getData().getContent()).isEqualTo("line1\nline2");
     }
 
     @Test
@@ -108,7 +108,7 @@ class JiuwenBoxFSProviderTest {
 
         ReadFileResult result = provider.readFile("/root/a.txt", "text", null, 2, null, "utf-8", 0, null);
 
-        assertThat(result.getData().getContentAsString()).isEqualTo("line4\nline5");
+        assertThat(result.getData().getContent()).isEqualTo("line4\nline5");
     }
 
     @Test

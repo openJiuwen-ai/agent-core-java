@@ -14,24 +14,16 @@ import java.util.function.BooleanSupplier;
 
 /**
  * A single branch with condition and target nodes.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.branch_router.Branch}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code Branch} in
+ * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.</p>
  */
 public class Branch {
+
     private final String branchId;
     private final Condition condition;
     private final List<String> target;
 
-    /**
-     * Branch.
-     * 
-     * @param conditionObj conditionObj
-     * @param target target
-     * @param branchId branchId
-     * @since 0.1.7
-     */
     public Branch(Object conditionObj, List<String> target, String branchId) {
         this.branchId = branchId;
         this.target = target;
@@ -47,44 +39,18 @@ public class Branch {
         }
     }
 
-    /**
-     * evaluate.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     public boolean evaluate(BaseSession session) {
         return condition.evaluate(session);
     }
 
-    /**
-     * traceInfo.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
     public Object traceInfo(BaseSession session) {
         return condition.traceInfo(session);
     }
 
-    /**
-     * getBranchId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getBranchId() {
         return branchId;
     }
 
-    /**
-     * getTarget.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<String> getTarget() {
         return target;
     }

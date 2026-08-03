@@ -1,371 +1,426 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.memory.graph.extraction;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Relation;
-import com.openjiuwen.core.memory.config.graph.EpisodeType;
-import com.openjiuwen.core.memory.graph.extraction.prompts.TemplateManager;
-import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
+import com.openjiuwen.core.memory.config.EpisodeType;
+import com.openjiuwen.core.memory.graph.extraction.prompts.ThreadSafePromptManager;
+import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptBase;
+import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.EntityExtractionPromptsPackage;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeSet;
 
 /**
- * Prompt building and entity extraction orchestration by episode type.
- * 
- * @since 0.1.7
+ * Prompt builders and entity extraction orchestration by episode type.
+ *
+ * <p>Mirrors Python's {@code openjiuwen.core.memory.graph.extraction.extraction_prompts} in
+ * {@code openjiuwen/core/memory/graph/extraction/extraction_prompts.py}.</p>
  */
 public final class ExtractionPrompts {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * ExtractionPrompts.
-     * 
-     * @since 0.1.7
-     */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter PYTHON_SECONDS_ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
     private ExtractionPrompts() {
     }
 
     /**
-     * Public record PromptCall used by the Java parity implementation.
-     * 
-     * @since 0.1.7
+     * Tuple-style return matching Python's {@code (kwargs, prompt_template, response_format)}.
+     *
+     * @param kwargs formatting keyword arguments
+     * @param promptTemplate prompt template selected by name
+     * @param responseFormat structured output response format
      */
-    public record PromptCall(Map<String, Object> kwargs, PromptTemplate template, Map<String, Object> outputModel) {
+    public record PromptRequest(Map<String, Object> kwargs,
+                                PromptTemplate promptTemplate,
+                                Map<String, Object> responseFormat) {
+
+        public PromptRequest {
+            kwargs = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
+            responseFormat = responseFormat == null ? new LinkedHashMap<>() : new LinkedHashMap<>(responseFormat);
+        }
     }
 
-    /**
-     * extractEntityDeclaration.
-     * 
-     * @param srcType srcType
-     * @param content content
-     * @param history history
-     * @param description description
-     * @param entityTypes entityTypes
-     * @param language language
-     * @param extras extras
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall extractEntityDeclaration(EpisodeType srcType, String content, String history,
-            String description, List<EntityDef> entityTypes, String language, Map<String, Object> extras, int indent) {
+    public static PromptRequest extractEntityDeclaration(EpisodeType srcType,
+                                                         String content,
+                                                         String history,
+                                                         String description,
+                                                         List<EntityTypeDefinition.EntityDef> entityTypes,
+                                                         String language,
+                                                         Map<String, Object> extras,
+                                                         int indent) {
+        registerLanguages();
         String operation = srcType.name().toLowerCase(Locale.ROOT);
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(description,
-                EntityExtraction.class, indent, history, content, language));
-        if (extras != null) {
-            kwargs.putAll(extras);
-        }
-        List<EntityDef> resolvedEntityTypes =
-            entityTypes != null && !entityTypes.isEmpty() ? entityTypes : List.of(new EntityDef());
-        List<String> lines = new ArrayList<>();
-        for (int i = 0; i < resolvedEntityTypes.size(); i++) {
-            EntityDef entityType = resolvedEntityTypes.get(i);
-            String descriptionText = entityType.getDescription().getOrDefault(language, "");
-            lines.add(i + ". " + entityType.getName() + descriptionText);
-        }
-        kwargs.put("entity_types", String.join("\n", lines));
         String templateName = "entity_extraction_" + operation + "_" + language;
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(EntityExtraction.class, language));
+        ExtractionModels.EntityExtraction outputModel = new ExtractionModels.EntityExtraction();
+        Map<String, Object> kwargs = formattingKwargs(
+                description,
+                outputModel,
+                indent,
+                history,
+                content,
+                language
+        );
+        mergeExtras(kwargs, extras);
+        List<EntityTypeDefinition.EntityDef> effectiveTypes =
+                entityTypes == null ? List.of(new EntityTypeDefinition.EntityDef()) : entityTypes;
+        List<String> entityTypeLines = new ArrayList<>();
+        for (int i = 0; i < effectiveTypes.size(); i++) {
+            EntityTypeDefinition.EntityDef entityType = effectiveTypes.get(i);
+            entityTypeLines.add(i + ". " + entityType.getName() + entityType.getDescription().get(language));
+        }
+        kwargs.put("entity_types", String.join("\n", entityTypeLines));
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * extractEntityAttributes.
-     * 
-     * @param entity entity
-     * @param content content
-     * @param history history
-     * @param language language
-     * @param extras extras
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall extractEntityAttributes(Entity entity, String content, String history, String language,
-            Map<String, Object> extras, int indent) {
+    public static PromptRequest extractEntityAttributes(Entity entity,
+                                                        String content,
+                                                        String history,
+                                                        String language,
+                                                        Map<String, Object> extras,
+                                                        int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_summary_create_" + language;
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(null,
-                EntitySummary.class, indent, history, content, language));
+        ExtractionModels.EntitySummary outputModel = new ExtractionModels.EntitySummary();
+        Map<String, Object> kwargs = formattingKwargs(null, outputModel, indent, history, content, language);
         kwargs.put("entity_name", entity.getName());
-        kwargs.put("entity_summary", entity.getContent() != null ? entity.getContent() : "");
-        if (entity.getAttributes() != null && !entity.getAttributes().isEmpty()) {
-            kwargs.put("entity_attribute", toJson(entity.getAttributes()));
+        kwargs.put("entity_summary", entity.getContent() == null ? "" : entity.getContent());
+        if (!entity.getAttributes().isEmpty()) {
+            kwargs.put("entity_attribute", toJson(entity.getAttributes(), indent));
         }
-        if (extras != null) {
-            kwargs.putAll(extras);
+        mergeExtras(kwargs, extras);
+        if ("human".equalsIgnoreCase(entity.getObjType()) && kwargs.containsKey("summary_target")) {
+            Object summaryTarget = kwargs.get("summary_target");
+            if (summaryTarget instanceof Number number) {
+                kwargs.put("summary_target", number.intValue() * 2);
+            } else if (summaryTarget instanceof String text && text.chars().allMatch(Character::isDigit)) {
+                kwargs.put("summary_target", Integer.parseInt(text) * 2);
+            }
         }
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(EntitySummary.class, language));
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * extractRelationDeclaration.
-     * 
-     * @param relationTypes relationTypes
-     * @param entities entities
-     * @param referenceTime referenceTime
-     * @param tzInfo tzInfo
-     * @param content content
-     * @param history history
-     * @param entityTypes entityTypes
-     * @param description description
-     * @param language language
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall extractRelationDeclaration(List<RelationDef> relationTypes,
-            List<EntityDeclaration> entities, int referenceTime, Object tzInfo, String content, String history,
-            List<EntityDef> entityTypes, String description, String language, int indent) {
+    public static PromptRequest extractRelationDeclaration(List<EntityTypeDefinition.RelationDef> relationTypes,
+                                                           List<ExtractionModels.EntityDeclaration> entities,
+                                                           long referenceTime,
+                                                           Object tzInfo,
+                                                           String content,
+                                                           String history,
+                                                           List<EntityTypeDefinition.EntityDef> entityTypes,
+                                                           String description,
+                                                           String language,
+                                                           int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_relation_" + language;
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(description,
-                RelationExtraction.class, indent, history, content, language));
-        kwargs.put("tz_info",
-                (tzInfo instanceof Map || tzInfo instanceof List) ? toJson(tzInfo) : String.valueOf(tzInfo));
+        ExtractionModels.RelationExtraction outputModel = new ExtractionModels.RelationExtraction();
+        Map<String, Object> kwargs = formattingKwargs(
+                description,
+                outputModel,
+                indent,
+                history,
+                content,
+                language
+        );
+        kwargs.put("tz_info", tzInfo instanceof Map<?, ?> || tzInfo instanceof List<?>
+                ? toJson(tzInfo, indent)
+                : String.valueOf(tzInfo));
         kwargs.put("entities", formatNewEntities(entities, entityTypes, 1, language));
-        kwargs.put("relation_types", ExtractionPromptLanguageBase.formatRelationDefinitions(relationTypes, language));
-        kwargs.put("reference_time", Instant.ofEpochSecond(referenceTime).toString());
+        kwargs.put("relation_types", EntityExtractionPromptBase.formatRelationDefinitions(relationTypes, language));
+        kwargs.put("reference_time", Instant.ofEpochSecond(referenceTime)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime()
+                .format(PYTHON_SECONDS_ISO));
         kwargs.put("id_range", "1-" + entities.size());
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(RelationExtraction.class, language));
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * extractTimezone.
-     * 
-     * @param content content
-     * @param history history
-     * @param description description
-     * @param language language
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall extractTimezone(String content, String history, String description, String language,
-            int indent) {
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(description,
-                TimezonePredictions.class, indent, history, content, language));
+    public static PromptRequest extractTimezone(String content,
+                                                String history,
+                                                String description,
+                                                String language,
+                                                int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_timezone_" + language;
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(TimezonePredictions.class, language));
+        ExtractionModels.TimezonePredictions outputModel = new ExtractionModels.TimezonePredictions();
+        Map<String, Object> kwargs = formattingKwargs(
+                description,
+                outputModel,
+                indent,
+                history,
+                content,
+                language
+        );
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * mergeExistingEntities.
-     * 
-     * @param target target
-     * @param sources sources
-     * @param language language
-     * @param extras extras
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall mergeExistingEntities(Entity target, List<Entity> sources, String language,
-            Map<String, Object> extras, int indent) {
+    public static PromptRequest mergeExistingEntities(Entity target,
+                                                      List<Entity> sources,
+                                                      String language,
+                                                      Map<String, Object> extras,
+                                                      int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_entity_merge_" + language;
-        Map<String, Object> kwargs = new LinkedHashMap<>(
-                ExtractionPromptLanguageBase.getFormattingKwargs(null, EntitySummary.class, indent, "", "", language));
+        ExtractionModels.EntitySummary outputModel = new ExtractionModels.EntitySummary();
+        Map<String, Object> kwargs = formattingKwargs(null, outputModel, indent, "", "", language);
         kwargs.put("entity_name", target.getName());
-        kwargs.put("entity_summary", target.getContent() != null ? target.getContent() : "");
-        if (target.getAttributes() != null && !target.getAttributes().isEmpty()) {
-            kwargs.put("entity_attribute", toJson(target.getAttributes()));
+        kwargs.put("entity_summary", target.getContent() == null ? "" : target.getContent());
+        if (!target.getAttributes().isEmpty()) {
+            kwargs.put("entity_attribute", toJson(target.getAttributes(), indent));
         }
-        List<Map<String, Object>> existing = new ArrayList<>();
-        for (Entity source : sources) {
-            existing.add(source.toMap());
-        }
-        kwargs.put("entities_to_merge", ExtractionPromptLanguageBase.formatExistingEntities(existing, 1, language));
-        if (extras != null) {
-            kwargs.putAll(extras);
-        }
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(EntitySummary.class, language));
+        kwargs.put("entities_to_merge", EntityExtractionPromptBase.formatExistingEntities(entityMaps(sources), 1, language));
+        mergeExtras(kwargs, extras);
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * dedupeEntityList.
-     * 
-     * @param content content
-     * @param candidateEntities candidateEntities
-     * @param existingEntities existingEntities
-     * @param entityTypes entityTypes
-     * @param history history
-     * @param description description
-     * @param language language
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall dedupeEntityList(String content, List<EntityDeclaration> candidateEntities,
-            List<Map<String, Object>> existingEntities, List<EntityDef> entityTypes, String history, String description,
-            String language, int indent) {
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(description,
-                EntityDuplication.class, indent, history, content, language));
-        kwargs.put("entities", ExtractionPromptLanguageBase.formatExistingEntities(existingEntities, 1, language));
-        kwargs.put("candidate_entities",
-                formatNewEntities(candidateEntities, entityTypes, existingEntities.size() + 1, language));
-        String templateName = "entity_extraction_dedupe_entity_" + language;
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(EntityDuplication.class, language));
-    }
-
-    /**
-     * filterRelationsForMerge.
-     * 
-     * @param target target
-     * @param relations relations
-     * @param language language
-     * @param extras extras
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall filterRelationsForMerge(Entity target, List<Relation> relations, String language,
-            Map<String, Object> extras, int indent) {
-        Map<String, Object> kwargs = new LinkedHashMap<>(
-                ExtractionPromptLanguageBase.getFormattingKwargs(null, RelevantFacts.class, indent, "", "", language));
-        kwargs.put("entity_name", target.getName());
-        kwargs.put("entity_summary", target.getContent() != null ? target.getContent() : "");
-        if (target.getAttributes() != null && !target.getAttributes().isEmpty()) {
-            kwargs.put("entity_attribute", toJson(target.getAttributes()));
-        }
-        kwargs.put("existing_relations", formatExistingRelations(relations, true));
-        if (extras != null) {
-            kwargs.putAll(extras);
-        }
+    public static PromptRequest filterRelationsForMerge(Entity target,
+                                                        List<Relation> relations,
+                                                        String language,
+                                                        Map<String, Object> extras,
+                                                        int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_relation_filter_" + language;
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(RelevantFacts.class, language));
+        ExtractionModels.RelevantFacts outputModel = new ExtractionModels.RelevantFacts();
+        Map<String, Object> kwargs = formattingKwargs(null, outputModel, indent, "", "", language);
+        kwargs.put("entity_name", target.getName());
+        kwargs.put("entity_summary", target.getContent() == null ? "" : target.getContent());
+        if (!target.getAttributes().isEmpty()) {
+            kwargs.put("entity_attribute", toJson(target.getAttributes(), indent));
+        }
+        kwargs.put("existing_relations", EntityExtractionPromptBase.formatExistingRelations(
+                relationMaps(relations),
+                1,
+                false
+        ));
+        mergeExtras(kwargs, extras);
+        return request(kwargs, templateName, outputModel, language);
     }
 
-    /**
-     * dedupeRelationList.
-     * 
-     * @param content content
-     * @param relation relation
-     * @param existingRelations existingRelations
-     * @param existingEntities existingEntities
-     * @param history history
-     * @param description description
-     * @param language language
-     * @param indent indent
-     * @return the result
-     * @since 0.1.7
-     */
-    public static PromptCall dedupeRelationList(String content, Relation relation, List<?> existingRelations,
-            List<Entity> existingEntities, String history, String description, String language, int indent) {
+    public static PromptRequest dedupeEntityList(String content,
+                                                 List<ExtractionModels.EntityDeclaration> candidateEntities,
+                                                 List<Map<String, Object>> existingEntities,
+                                                 List<EntityTypeDefinition.EntityDef> entityTypes,
+                                                 String history,
+                                                 String description,
+                                                 String language,
+                                                 int indent) {
+        registerLanguages();
+        String templateName = "entity_extraction_dedupe_entity_" + language;
+        ExtractionModels.EntityDuplication outputModel = new ExtractionModels.EntityDuplication();
+        Map<String, Object> kwargs = formattingKwargs(
+                description,
+                outputModel,
+                indent,
+                history,
+                content,
+                language
+        );
+        kwargs.put("entities", EntityExtractionPromptBase.formatExistingEntities(existingEntities, 1, language));
+        kwargs.put("candidate_entities", formatNewEntities(
+                candidateEntities,
+                entityTypes,
+                existingEntities.size() + 1,
+                language
+        ));
+        return request(kwargs, templateName, outputModel, language);
+    }
+
+    public static PromptRequest dedupeRelationList(String content,
+                                                   Relation relation,
+                                                   List<?> existingRelations,
+                                                   List<Entity> existingEntities,
+                                                   String history,
+                                                   String description,
+                                                   String language,
+                                                   int indent) {
+        registerLanguages();
         String templateName = "entity_extraction_dedupe_relation_" + language;
-        Map<String, Object> kwargs = new LinkedHashMap<>(ExtractionPromptLanguageBase.getFormattingKwargs(description,
-                MergeRelations.class, indent, history, content, language));
-        List<Map<String, Object>> existingRelationMaps = new ArrayList<>();
-        for (Object existingRelation : existingRelations) {
-            if (existingRelation instanceof Relation rel) {
-                existingRelationMaps.add(rel.toMap());
-            } else if (existingRelation instanceof Map<?, ?> map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> typed = new LinkedHashMap<>((Map<String, Object>) map);
-                existingRelationMaps.add(typed);
+        ExtractionModels.MergeRelations outputModel = new ExtractionModels.MergeRelations();
+        Map<String, Object> kwargs = formattingKwargs(
+                description,
+                outputModel,
+                indent,
+                history,
+                content,
+                language
+        );
+        kwargs.put("entities", EntityExtractionPromptBase.formatExistingEntities(entityMaps(existingEntities), 1, language));
+        kwargs.put("existing_relations", EntityExtractionPromptBase.formatExistingRelations(
+                relationLikeMaps(existingRelations),
+                1,
+                true
+        ));
+        String newRelation = EntityExtractionPromptBase.formatExistingRelations(
+                List.of(relationMap(relation)),
+                0,
+                true
+        );
+        kwargs.put("new_relation", newRelation.startsWith("0. ") ? newRelation.substring("0. ".length()) : newRelation);
+        return request(kwargs, templateName, outputModel, language);
+    }
+
+    public static String formatNewEntities(List<ExtractionModels.EntityDeclaration> entities,
+                                           List<EntityTypeDefinition.EntityDef> entityTypes,
+                                           int startIdx,
+                                           String language) {
+        registerLanguages();
+        List<String> entityList = new ArrayList<>();
+        if (entityTypes != null && !entityTypes.isEmpty()) {
+            String sep = MultilingualBaseModel.getMultilingualDescription().get(language).get(":");
+            TreeSet<Integer> typeIds = new TreeSet<>();
+            for (ExtractionModels.EntityDeclaration entity : entities) {
+                typeIds.add(entity.getEntityTypeId());
+            }
+            for (Integer typeId : typeIds) {
+                EntityTypeDefinition.EntityDef entityType = entityTypes.get(typeId);
+                entityList.add(entityType.getName() + sep + entityType.getDescription().get(language));
+            }
+            entityList.add("---");
+            int index = startIdx;
+            for (ExtractionModels.EntityDeclaration entity : entities) {
+                entityList.add(index + ". " + entity.getName() + " ("
+                        + entityTypes.get(entity.getEntityTypeId()).getName() + ")");
+                index++;
+            }
+        } else {
+            int index = startIdx;
+            for (ExtractionModels.EntityDeclaration entity : entities) {
+                entityList.add(index + ". " + entity.getName());
+                index++;
+            }
+        }
+        return String.join("\n", entityList);
+    }
+
+    private static PromptRequest request(Map<String, Object> kwargs,
+                                         String templateName,
+                                         MultilingualBaseModel outputModel,
+                                         String language) {
+        PromptTemplate template = ThreadSafePromptManager.getInstance().get(templateName);
+        return new PromptRequest(kwargs, template, outputModel.responseFormat(language));
+    }
+
+    private static Map<String, Object> formattingKwargs(String sourceDescription,
+                                                        MultilingualBaseModel outputModel,
+                                                        int outputIndent,
+                                                        String history,
+                                                        String content,
+                                                        String language) {
+        return new LinkedHashMap<>(EntityExtractionPromptBase.getFormattingKwargs(
+                sourceDescription,
+                outputModel,
+                outputIndent,
+                history == null ? "" : history,
+                content == null ? "" : content,
+                language
+        ));
+    }
+
+    private static void mergeExtras(Map<String, Object> kwargs, Map<String, Object> extras) {
+        if (extras != null && !extras.isEmpty()) {
+            kwargs.putAll(extras);
+        }
+    }
+
+    private static void registerLanguages() {
+        EntityExtractionPromptsPackage.registerLanguages();
+    }
+
+    private static List<Map<String, Object>> entityMaps(List<Entity> entities) {
+        List<Map<String, Object>> maps = new ArrayList<>();
+        if (entities != null) {
+            for (Entity entity : entities) {
+                maps.add(entityMap(entity));
+            }
+        }
+        return maps;
+    }
+
+    private static Map<String, Object> entityMap(Entity entity) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("uuid", entity.getUuid());
+        map.put("created_at", entity.getCreatedAt());
+        map.put("user_id", entity.getUserId());
+        map.put("obj_type", entity.getObjType());
+        map.put("language", entity.getLanguage());
+        map.put("metadata", entity.getMetadata());
+        map.put("content", entity.getContent());
+        map.put("name", entity.getName());
+        map.put("attributes", entity.getAttributes());
+        return map;
+    }
+
+    private static List<Map<String, Object>> relationMaps(List<Relation> relations) {
+        List<Map<String, Object>> maps = new ArrayList<>();
+        if (relations != null) {
+            for (Relation relation : relations) {
+                maps.add(relationMap(relation));
+            }
+        }
+        return maps;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> relationLikeMaps(List<?> relations) {
+        List<Map<String, Object>> maps = new ArrayList<>();
+        if (relations == null) {
+            return maps;
+        }
+        for (Object relation : relations) {
+            if (relation instanceof Relation typedRelation) {
+                maps.add(relationMap(typedRelation));
+            } else if (relation instanceof Map<?, ?> map) {
+                maps.add(new LinkedHashMap<>((Map<String, Object>) map));
             } else {
-                // no-op
+                throw new IllegalArgumentException("relation must be Relation or Map: " + relation);
             }
         }
-        List<Map<String, Object>> entityMaps = existingEntities.stream().map(Entity::toMap).toList();
-        kwargs.put("entities", ExtractionPromptLanguageBase.formatExistingEntities(entityMaps, 1, language));
-        kwargs.put("existing_relations", formatExistingRelationMaps(existingRelationMaps, true));
-        kwargs.put("new_relation",
-                formatExistingRelationMaps(List.of(relation.toMap()), true).replaceFirst("^1\\.\\s*", ""));
-        return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
-                MultilingualBaseModel.responseFormat(MergeRelations.class, language));
+        return maps;
     }
 
-    /**
-     * formatNewEntities.
-     * 
-     * @param entities entities
-     * @param entityTypes entityTypes
-     * @param startIdx startIdx
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatNewEntities(List<EntityDeclaration> entities, List<EntityDef> entityTypes, int startIdx,
-            String language) {
-        List<String> lines = new ArrayList<>();
-        int typeIdMax = entityTypes.size() - 1;
-        int current = startIdx;
-        for (EntityDeclaration entity : entities) {
-            EntityDef type = entityTypes.get(Math.min(entity.getEntityTypeId(), typeIdMax));
-            lines.add(current++ + ". " + entity.getName() + " (" + type.getName() + ")");
-        }
-        return String.join("\n", lines);
+    private static Map<String, Object> relationMap(Relation relation) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("uuid", relation.getUuid());
+        map.put("created_at", relation.getCreatedAt());
+        map.put("user_id", relation.getUserId());
+        map.put("obj_type", relation.getObjType());
+        map.put("language", relation.getLanguage());
+        map.put("metadata", relation.getMetadata());
+        map.put("content", relation.getContent());
+        map.put("name", relation.getName());
+        map.put("valid_since", relation.getValidSince());
+        map.put("valid_until", relation.getValidUntil());
+        map.put("offset_since", relation.getOffsetSince());
+        map.put("offset_until", relation.getOffsetUntil());
+        return map;
     }
 
-    /**
-     * formatExistingRelations.
-     * 
-     * @param relations relations
-     * @param isIncludeTime isIncludeTime
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatExistingRelations(List<Relation> relations, boolean isIncludeTime) {
-        List<Map<String, Object>> mapped = new ArrayList<>();
-        for (Relation relation : relations) {
-            mapped.add(relation.toMap());
-        }
-        return formatExistingRelationMaps(mapped, isIncludeTime);
-    }
-
-    /**
-     * formatExistingRelationMaps.
-     * 
-     * @param relations relations
-     * @param isIncludeTime isIncludeTime
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatExistingRelationMaps(List<Map<String, Object>> relations, boolean isIncludeTime) {
-        List<String> lines = new ArrayList<>();
-        int i = 1;
-        for (Map<String, Object> relation : relations) {
-            String content = String.valueOf(relation.getOrDefault("content", ""));
-            int validSince = Integer.parseInt(String.valueOf(relation.getOrDefault("valid_since", -1)));
-            int validUntil = Integer.parseInt(String.valueOf(relation.getOrDefault("valid_until", -1)));
-            if (isIncludeTime && validSince != -1) {
-                content += "\nvalidSince=" + validSince;
-            }
-            if (isIncludeTime && validUntil != -1) {
-                content += "\nvalidUntil=" + validUntil;
-            }
-            lines.add(i++ + ". " + content);
-        }
-        return String.join("\n\n", lines);
-    }
-
-    /**
-     * toJson.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String toJson(Object value) {
+    private static String toJson(Object value, int indent) {
         try {
-            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value);
-        } catch (JsonProcessingException e) {
-            return String.valueOf(value);
+            DefaultPrettyPrinter printer = new DefaultPrettyPrinter();
+            DefaultIndenter indenter = new DefaultIndenter(" ".repeat(Math.max(indent, 0)), "\n");
+            printer.indentObjectsWith(indenter);
+            printer.indentArraysWith(indenter);
+            ObjectWriter writer = OBJECT_MAPPER.writer(printer);
+            return writer.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("failed to serialize prompt value", ex);
         }
     }
 }

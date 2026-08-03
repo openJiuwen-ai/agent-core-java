@@ -1,4 +1,4 @@
-# com.openjiuwen.core.controller.legacy.event.Event
+# com.openjiuwen.core.controller.schema.Event
 
 ## class Event
 

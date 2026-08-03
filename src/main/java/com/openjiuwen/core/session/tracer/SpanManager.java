@@ -5,65 +5,30 @@
 package com.openjiuwen.core.session.tracer;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Manages spans during a tracer session. Maintains ordered collection of spans.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.session.tracer.span.SpanManager}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code SpanManager} in
+ * {@code openjiuwen/core/session/tracer/span.py}.
  */
 public class SpanManager {
     private final String traceId;
     private final String parentNodeId;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<String> order = new ArrayList<>();
+    private final Map<String, Span> sessionSpans = new LinkedHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Span> sessionSpans = new ConcurrentHashMap<>();
-
-    /**
-     * SpanManager.
-     * 
-     * @param traceId traceId
-     * @since 0.1.7
-     */
     public SpanManager(String traceId) {
         this(traceId, "");
     }
 
-    /**
-     * SpanManager.
-     * 
-     * @param traceId traceId
-     * @param parentNodeId parentNodeId
-     * @since 0.1.7
-     */
     public SpanManager(String traceId, String parentNodeId) {
         this.traceId = traceId;
-        this.parentNodeId = parentNodeId != null ? parentNodeId : "";
+        this.parentNodeId = parentNodeId == null ? "" : parentNodeId;
     }
 
-    /**
-     * Get a span by invoke ID.
-     * 
-     * @param invokeId the invoke ID
-     * @return the span, or null if not found
-     * @since 0.1.7
-     */
     public Span getSpan(String invokeId) {
         if (!order.contains(invokeId)) {
             return null;
@@ -71,24 +36,14 @@ public class SpanManager {
         return sessionSpans.get(invokeId);
     }
 
-    /**
-     * Remove a span by invoke ID.
-     * 
-     * @param invokeId invokeId
-     * @since 0.1.7
-     */
     public void popSpan(String invokeId) {
+        if (!order.contains(invokeId)) {
+            return;
+        }
         order.remove(invokeId);
         sessionSpans.remove(invokeId);
     }
 
-    /**
-     * Add or update a span record.
-     * 
-     * @param invokeId invokeId
-     * @param span span
-     * @since 0.1.7
-     */
     public void refreshSpanRecord(String invokeId, Span span) {
         if (!order.contains(invokeId)) {
             order.add(invokeId);
@@ -96,91 +51,70 @@ public class SpanManager {
         sessionSpans.put(invokeId, span);
     }
 
-    /**
-     * Create an agent span with optional parent.
-     * 
-     * @param parentSpan parentSpan
-     * @return the result
-     * @since 0.1.7
-     */
-    public TraceAgentSpan createAgentSpan(Span parentSpan) {
+    public void refreshSpanRecord(String invokeId, Map<String, ? extends Span> sessionSpan) {
+        if (sessionSpan == null || !sessionSpan.containsKey(invokeId)) {
+            return;
+        }
+        refreshSpanRecord(invokeId, sessionSpan.get(invokeId));
+    }
+
+    public TraceAgentSpan createAgentSpan() {
+        return createAgentSpan(null);
+    }
+
+    public TraceAgentSpan createAgentSpan(TraceAgentSpan parentSpan) {
         String invokeId = UUID.randomUUID().toString();
-        String parentInvokeId = parentSpan != null ? parentSpan.getInvokeId() : null;
-        TraceAgentSpan span = new TraceAgentSpan(traceId, invokeId, parentInvokeId);
-
+        TraceAgentSpan span = new TraceAgentSpan(
+                traceId,
+                invokeId,
+                parentSpan == null ? null : parentSpan.getInvokeId()
+        );
         refreshParentChildSpan(span, parentSpan);
         return span;
     }
 
-    /**
-     * Create a workflow span with explicit invoke ID and optional parent.
-     * 
-     * @param invokeId invokeId
-     * @param parentSpan parentSpan
-     * @return the result
-     * @since 0.1.7
-     */
-    public TraceWorkflowSpan createWorkflowSpan(String invokeId, Span parentSpan) {
-        String parentInvokeId = parentSpan != null ? parentSpan.getInvokeId() : null;
-        TraceWorkflowSpan span = new TraceWorkflowSpan(traceId, invokeId, parentInvokeId, parentNodeId);
+    public TraceWorkflowSpan createWorkflowSpan(String invokeId) {
+        return createWorkflowSpan(invokeId, null);
+    }
 
+    public TraceWorkflowSpan createWorkflowSpan(String invokeId, TraceWorkflowSpan parentSpan) {
+        TraceWorkflowSpan span = new TraceWorkflowSpan(
+                traceId,
+                invokeId,
+                parentSpan == null ? null : parentSpan.getInvokeId(),
+                parentNodeId
+        );
         refreshParentChildSpan(span, parentSpan);
         return span;
     }
 
-    /**
-     * Update a span with data and refresh it in the record.
-     * 
-     * @param span span
-     * @param data data
-     * @since 0.1.7
-     */
     public void updateSpan(Span span, Map<String, Object> data) {
         span.update(data);
         refreshSpanRecord(span.getInvokeId(), span);
     }
 
-    /**
-     * Get the last span in order.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void endSpan() {
+    }
+
     public Span getLastSpan() {
         if (order.isEmpty()) {
             return null;
         }
-        String lastId = order.get(order.size() - 1);
-        return sessionSpans.get(lastId);
+        String lastSpanId = order.get(order.size() - 1);
+        if (!sessionSpans.containsKey(lastSpanId)) {
+            return null;
+        }
+        return sessionSpans.get(lastSpanId);
     }
 
-    /**
-     * getTraceId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getTraceId() {
         return traceId;
     }
 
-    /**
-     * getParentNodeId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getParentNodeId() {
         return parentNodeId;
     }
 
-    /**
-     * refreshParentChildSpan.
-     * 
-     * @param span span
-     * @param parentSpan parentSpan
-     * @since 0.1.7
-     */
     private void refreshParentChildSpan(Span span, Span parentSpan) {
         if (parentSpan != null) {
             parentSpan.appendChildInvokeId(span.getInvokeId());

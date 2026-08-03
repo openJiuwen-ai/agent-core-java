@@ -4,276 +4,866 @@
 
 package com.openjiuwen.core.memory.graph.graph_memory;
 
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
+import com.openjiuwen.core.foundation.store.Embedding;
+import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
+import com.openjiuwen.core.foundation.store.graph.BaseGraphObject;
+import com.openjiuwen.core.foundation.store.graph.BaseRankConfig;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Episode;
 import com.openjiuwen.core.foundation.store.graph.GraphConfig;
-import com.openjiuwen.core.foundation.store.graph.GraphConstants;
 import com.openjiuwen.core.foundation.store.graph.GraphStore;
 import com.openjiuwen.core.foundation.store.graph.GraphStoreFactory;
-import com.openjiuwen.core.foundation.store.graph.GraphUtils;
+import com.openjiuwen.core.foundation.store.graph.GraphStoreUtils;
+import com.openjiuwen.core.foundation.store.graph.RRFRankConfig;
 import com.openjiuwen.core.foundation.store.graph.Relation;
-import com.openjiuwen.core.memory.config.graph.AddMemStrategy;
-import com.openjiuwen.core.memory.config.graph.EpisodeType;
-import com.openjiuwen.core.memory.config.graph.GraphDefaults;
-import com.openjiuwen.core.memory.config.graph.SearchConfig;
-import com.openjiuwen.core.memory.graph.extraction.EntityDeclaration;
-import com.openjiuwen.core.memory.graph.extraction.EntityDuplication;
-import com.openjiuwen.core.memory.graph.extraction.EntityExtraction;
-import com.openjiuwen.core.memory.graph.extraction.AIEntity;
-import com.openjiuwen.core.memory.graph.extraction.EntityDef;
-import com.openjiuwen.core.memory.graph.extraction.HumanEntity;
-import com.openjiuwen.core.memory.graph.extraction.MergeRelations;
-import com.openjiuwen.core.memory.graph.extraction.EntitySummary;
+import com.openjiuwen.core.foundation.store.graph.WeightedRankConfig;
+import com.openjiuwen.core.foundation.store.query.QueryExpr;
+import com.openjiuwen.core.memory.config.AddMemStrategy;
+import com.openjiuwen.core.memory.config.EpisodeRetrievalStrategy;
+import com.openjiuwen.core.memory.config.EpisodeType;
+import com.openjiuwen.core.memory.config.RetrievalStrategy;
+import com.openjiuwen.core.memory.config.SearchConfig;
+import com.openjiuwen.core.memory.graph.extraction.EntityTypeDefinition;
+import com.openjiuwen.core.memory.graph.extraction.ExtractionModels;
 import com.openjiuwen.core.memory.graph.extraction.ParseResponse;
-import com.openjiuwen.core.memory.graph.extraction.RelationExtraction;
-import com.openjiuwen.core.memory.graph.extraction.RelevantFacts;
-import com.openjiuwen.core.memory.graph.extraction.TimezonePredictions;
-import com.openjiuwen.core.memory.graph.extraction.ExtractionPrompts;
-import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
-import com.openjiuwen.core.retrieval.reranker.Reranker;
-import com.openjiuwen.spi.store.query.QueryExpr;
-import com.openjiuwen.spi.store.query.QueryExpressions;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
-import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 /**
- * Graph memory that handles retrieval over knowledge graph memory.
- * This is the current migrated subset of Python graph_memory/base.py: constructor,
- * backend wiring, search strategy registration, search, state init, and episode preparation.
- * 
- * @since 0.1.7
+ * Graph memory store and retrieval.
+ *
+ * <p>Mirrors Python's {@code GraphMemory} in
+ * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
  */
 public class GraphMemory {
+
+    public static final String ENTITY_COLLECTION = "entity";
+    public static final String RELATION_COLLECTION = "relation";
+    public static final String EPISODE_COLLECTION = "episode";
+
     private static final String STORE_TYPE = "graph mem store";
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("graph-memory-search-io");
 
-    /**
-     * Public record SearchHit used by the Java parity implementation.
-     * 
-     * @since 0.1.7
-     */
-    public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph.BaseGraphObject object) {
-    }
-
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, Integer> tokenRecord = new LinkedHashMap<>();
-    private final AddMemStrategy defaultExtractionStrategy;
-    private Reranker reranker;
-    private final String language;
-    private final GraphStore dbBackend;
-    private final GraphConfig config;
-    private final Model llmClient;
-    private final Map<String, Object> llmExtraKwargs;
-    private final boolean isLlmStructuredOutputEnabled;
-
-    /**
-     * ReentrantLock.
-     * 
-     * @since 0.1.7
-     */
     private final ReentrantLock threadLock = new ReentrantLock();
-
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
-    private final boolean isDebugEnabled;
-    private final long timeTillNextGc = 300L;
-    private final boolean isMetricSimilarity;
+    private final Map<String, List<SearchConfig>> searchStrategies = new ConcurrentHashMap<>();
+    private final Map<String, Integer> tokenRecord = new ConcurrentHashMap<>();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
-    private final Map<String, List<SearchConfig>> searchStrategies = new LinkedHashMap<>();
+    private GraphMemoryStates.GraphMemState state = new GraphMemoryStates.GraphMemState();
+    private GraphStore dbBackend;
+    private GraphConfig config;
+    private String language;
+    private AddMemStrategy defaultExtractionStrategy;
+    private Reranker reranker;
+    private LlmInvoker llmClient;
+    private boolean llmStructuredOutput;
+    private Map<String, Object> llmExtraKwargs;
+    private boolean debug;
+    private boolean metricIsSim;
 
-    /**
-     * System.currentTimeMillis.
-     * 
-     * @since 0.1.7
-     */
-    private long lastGcMillis = System.currentTimeMillis();
-    private final Semaphore semaphore;
-
-    /**
-     * GraphMemory.
-     * 
-     * @param dbConfig dbConfig
-     * @param llmClient llmClient
-     * @param isLlmStructuredOutputEnabled isLlmStructuredOutputEnabled
-     * @param reranker reranker
-     * @param extractionStrategy extractionStrategy
-     * @param dbKwargs dbKwargs
-     * @param llmExtraKwargs llmExtraKwargs
-     * @param language language
-     * @param isDebugEnabled isDebugEnabled
-     * @since 0.1.7
-     */
-    public GraphMemory(GraphConfig dbConfig, Model llmClient, boolean isLlmStructuredOutputEnabled, Reranker reranker,
-            AddMemStrategy extractionStrategy, Map<String, Object> dbKwargs, Map<String, Object> llmExtraKwargs,
-            String language, boolean isDebugEnabled) {
-        this.tokenRecord.put("input_tokens", 0);
-        this.tokenRecord.put("output_tokens", 0);
-        this.defaultExtractionStrategy =
-            extractionStrategy != null ? extractionStrategy : GraphDefaults.DEFAULT_STRATEGY;
-        this.reranker = reranker;
-        this.language = ExtractionPromptLanguageBase.ensureValidLanguage(language != null ? language : "cn",
-                dbConfig.getDbStorageConfig().getLanguage());
-        this.dbBackend = GraphStoreFactory.fromConfig(dbConfig);
-        this.config = dbConfig;
-        this.llmClient = llmClient;
-        this.llmExtraKwargs = llmExtraKwargs != null ? new LinkedHashMap<>(llmExtraKwargs) : null;
-        this.isLlmStructuredOutputEnabled = isLlmStructuredOutputEnabled;
-        this.isDebugEnabled = isDebugEnabled;
-        this.isMetricSimilarity = true;
-        this.searchStrategies.put("default",
-                List.of(new SearchConfig(), createDefaultRelationSearch(), createDefaultEpisodeSearch()));
-        this.semaphore = new Semaphore(Math.max(1, dbConfig.getWorkerThreads()));
+    public GraphMemory() {
+        this(defaultConfig(), null, true, null, new AddMemStrategy(), null, Map.of(), "cn", false);
     }
 
-    /**
-     * GraphMemory.
-     * 
-     * @param dbConfig dbConfig
-     * @since 0.1.7
-     */
     public GraphMemory(GraphConfig dbConfig) {
-        this(dbConfig, null, true, null, GraphDefaults.DEFAULT_STRATEGY, Map.of(), null, "cn", false);
+        this(dbConfig, null, true, null, new AddMemStrategy(), null, Map.of(), "cn", false);
     }
 
-    /**
-     * createDefaultRelationSearch.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private static SearchConfig createDefaultRelationSearch() {
-        SearchConfig config = new SearchConfig();
-        config.setMinScore(0.02);
-        return config;
+    public GraphMemory(GraphConfig dbConfig, GraphStore dbBackend, LlmInvoker llmClient) {
+        this(dbConfig, llmClient, true, null, new AddMemStrategy(), dbBackend, Map.of(), "cn", false);
     }
 
-    /**
-     * createDefaultEpisodeSearch.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private static SearchConfig createDefaultEpisodeSearch() {
-        SearchConfig config = new SearchConfig();
-        config.setMinScore(0.025);
-        return config;
+    public GraphMemory(GraphConfig dbConfig,
+                       LlmInvoker llmClient,
+                       boolean llmStructuredOutput,
+                       Reranker reranker,
+                       AddMemStrategy extractionStrategy,
+                       GraphStore dbBackend,
+                       Map<String, Object> llmExtraKwargs,
+                       String language,
+                       boolean debug) {
+        this.config = dbConfig == null ? defaultConfig() : dbConfig;
+        this.dbBackend = dbBackend == null ? createBackend(this.config) : dbBackend;
+        this.llmClient = llmClient == null
+                ? params -> CompletableFuture.completedFuture(new LlmResponse("{}"))
+                : llmClient;
+        this.llmStructuredOutput = llmStructuredOutput;
+        this.reranker = reranker;
+        this.defaultExtractionStrategy = extractionStrategy == null ? new AddMemStrategy() : extractionStrategy;
+        this.llmExtraKwargs = llmExtraKwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(llmExtraKwargs);
+        this.language = normalizeLanguage(language);
+        this.debug = debug;
+        this.metricIsSim = this.dbBackend.isReturnSimilarityScore();
+        tokenRecord.put("input_tokens", 0);
+        tokenRecord.put("output_tokens", 0);
+        registerDefaultSearchStrategy();
     }
 
-    /**
-     * getEmbedder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Embedding getEmbedder() {
-        return dbBackend.getEmbedder();
+    public CompletableFuture<GraphMemoryStates.GraphMemUpdate> add(String content, String episodeType) {
+        EpisodeType type = episodeType == null ? EpisodeType.CONVERSATION : EpisodeType.valueOf(episodeType);
+        return addMemory(type, "default_user", content, null, null);
     }
 
-    /**
-     * attachEmbedder.
-     * 
-     * @param embedder embedder
-     * @since 0.1.7
-     */
+    public CompletableFuture<GraphMemoryStates.GraphMemUpdate> addMemory(EpisodeType srcType,
+                                                                         String userId,
+                                                                         Object content) {
+        return addMemory(srcType, userId, content, null, null);
+    }
+
+    public CompletableFuture<GraphMemoryStates.GraphMemUpdate> addMemory(EpisodeType srcType,
+                                                                         String userId,
+                                                                         Object content,
+                                                                         Map<String, String> contentFmtKwargs,
+                                                                         Object referenceTime) {
+        try {
+            GraphMemoryInputValidator.validateAddMemoryInput(32, srcType, userId, contentFmtKwargs);
+            if (getEmbedder() == null) {
+                return CompletableFuture.failedFuture(error("use the attach_embedder method to attach one"));
+            }
+            ensureThreadLock(userId);
+            ReentrantLock lock = userLocks.get(userId);
+            lock.lock();
+            try {
+                GraphMemoryStates.GraphMemState localState = initState(referenceTime);
+                localState.setEpisodeType(srcType);
+                String prepared = prepareEpisodes(srcType, userId, content, localState, contentFmtKwargs).join();
+                Episode episode = GraphMemoryPostProcessor.createEpisode(dbBackend, userId, prepared, localState).join();
+                dbBackend.addEpisode(List.of(episode), false, false, true).join();
+                dbBackend.refresh(true).join();
+                this.state = localState;
+                return CompletableFuture.completedFuture(
+                        localState.getMemUpdate().merge(localState.getMemUpdateSkipEmbed()));
+            } finally {
+                lock.unlock();
+            }
+        } catch (CompletionException exception) {
+            return CompletableFuture.failedFuture(exception.getCause() == null ? exception : exception.getCause());
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Map<String, List<SearchHit>>> search(String query,
+                                                                  String userId,
+                                                                  String searchStrategy,
+                                                                  boolean entity,
+                                                                  boolean relation,
+                                                                  boolean episode,
+                                                                  List<Double> queryEmbedding) {
+        return search(query, (Object) userId, searchStrategy, entity, relation, episode, queryEmbedding);
+    }
+
+    public CompletableFuture<Map<String, List<SearchHit>>> search(String query,
+                                                                  Object userId,
+                                                                  String searchStrategy,
+                                                                  boolean entity,
+                                                                  boolean relation,
+                                                                  boolean episode,
+                                                                  List<Double> queryEmbedding) {
+        try {
+            String strategyName = searchStrategy == null ? "default" : searchStrategy;
+            if (!searchStrategies.containsKey(strategyName)) {
+                if (strategyName.isBlank()) {
+                    throw error("strategy must be a non-empty string value");
+                }
+                throw error("Strategy [" + strategyName + "] not found, please register with register_search_configs "
+                        + "method or use \"default\".");
+            }
+            List<String> userIds = GraphMemoryInputValidator.validateSearchInput(
+                    query, userId, List.of(entity, relation, episode));
+            List<Double> embedding = queryEmbedding;
+            if (embedding == null) {
+                Embedding embedder = getEmbedder();
+                if (embedder == null) {
+                    throw error("use the attach_embedder method to attach one");
+                }
+                embedding = embedder.embedQuery(query).join();
+            } else if (embedding.stream().anyMatch(Objects::isNull)) {
+                throw error("query_embedding must be a list[float] or None");
+            }
+
+            List<CompletableFuture<SearchResult>> tasks = new ArrayList<>();
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            kwargs.put("query", query);
+            kwargs.put("query_embedding", embedding);
+            kwargs.put("user_ids", userIds);
+            if (entity) {
+                performSearch(0, strategyName, tasks, kwargs);
+            }
+            if (relation) {
+                performSearch(1, strategyName, tasks, kwargs);
+            }
+            if (episode) {
+                performSearch(2, strategyName, tasks, kwargs);
+            }
+
+            Map<String, List<SearchHit>> result = new LinkedHashMap<>();
+            for (CompletableFuture<SearchResult> task : tasks) {
+                SearchResult searchResult = task.join();
+                List<SearchHit> hits = new ArrayList<>();
+                for (Map<String, Object> row : searchResult.rows()) {
+                    Map<String, Object> copy = new LinkedHashMap<>(row);
+                    double score = number(copy.remove("distance"), 0.0d).doubleValue();
+                    hits.add(new SearchHit(score, graphObjectFromMap(searchResult.collection(), copy)));
+                }
+                result.put(searchResult.collection(), hits);
+            }
+            return CompletableFuture.completedFuture(result);
+        } catch (CompletionException exception) {
+            return CompletableFuture.failedFuture(exception.getCause() == null ? exception : exception.getCause());
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public GraphMemoryStates.GraphMemState initState(Object referenceTime) {
+        GraphMemoryStates.GraphMemState newState = new GraphMemoryStates.GraphMemState();
+        AddMemStrategy strategy = defaultExtractionStrategy;
+        newState.setStrategy(strategy);
+        newState.getPrompting().setLanguage(language);
+        newState.getPrompting().setEntityExtractionLanguage(strategy.isChineseEntity() ? "cn" : language);
+        newState.getPrompting().setRelationExtractionLanguage(strategy.isChineseRelation() ? "cn" : language);
+        newState.getPrompting().setEntityDedupeLanguage(strategy.isChineseEntityDedupe() ? "cn" : language);
+        newState.getExtras().put("summary_target", String.valueOf(strategy.getSummaryTarget()));
+        newState.getEntityTypes().clear();
+        newState.getEntityTypes().add(new EntityTypeDefinition.EntityDef());
+        newState.getEntityTypes().add(new EntityTypeDefinition.HumanEntity());
+        newState.getEntityTypes().add(new EntityTypeDefinition.AIEntity());
+
+        if (referenceTime == null) {
+            newState.setReferenceTimestamp(newState.getCurrentTimestamp());
+        } else if (referenceTime instanceof Instant instant) {
+            newState.setReferenceTimestamp(instant.getEpochSecond());
+        } else if (referenceTime instanceof LocalDateTime localDateTime) {
+            newState.setReferenceTimestamp(localDateTime.toEpochSecond(ZoneOffset.UTC));
+        } else if (referenceTime instanceof java.time.OffsetDateTime offsetDateTime) {
+            newState.setReferenceTimestamp(offsetDateTime.toInstant().getEpochSecond());
+        } else if (referenceTime instanceof java.time.ZonedDateTime zonedDateTime) {
+            newState.setReferenceTimestamp(zonedDateTime.toInstant().getEpochSecond());
+        } else if (referenceTime instanceof Number number) {
+            newState.setReferenceTimestamp(number.longValue());
+        } else {
+            throw error("reference_time must be a valid datetime object");
+        }
+        return newState;
+    }
+
+    public CompletableFuture<String> prepareEpisodes(EpisodeType srcType,
+                                                     String userId,
+                                                     Object content,
+                                                     GraphMemoryStates.GraphMemState state) {
+        return prepareEpisodes(srcType, userId, content, state, null);
+    }
+
+    public CompletableFuture<String> prepareEpisodes(EpisodeType srcType,
+                                                     String userId,
+                                                     Object content,
+                                                     GraphMemoryStates.GraphMemState state,
+                                                     Map<String, String> contentFmtKwargs) {
+        try {
+            String normalized;
+            if (content instanceof String text) {
+                if (contentFmtKwargs != null && !contentFmtKwargs.isEmpty()) {
+                    throw error("content_fmt_kwargs has no effect when content is str, please leave it empty");
+                }
+                normalized = text;
+            } else if (srcType == EpisodeType.CONVERSATION) {
+                normalized = formatConversationContent(content, contentFmtKwargs);
+            } else {
+                throw error("The content must be str when source type is not conversation");
+            }
+            normalized = normalized.strip();
+            if (normalized.isEmpty()) {
+                throw error("content must be a non-empty value");
+            }
+            populateHistory(userId, normalized, state);
+            return CompletableFuture.completedFuture(normalized);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public void performSearch(int collectionIndex,
+                              String searchStrategy,
+                              List<CompletableFuture<SearchResult>> tasks,
+                              Map<String, Object> kwargs) {
+        String[] collections = {ENTITY_COLLECTION, RELATION_COLLECTION, EPISODE_COLLECTION};
+        SearchConfig configForCollection = copySearchConfig(searchStrategies.get(searchStrategy).get(collectionIndex));
+        if (configForCollection.isRerank() && reranker == null) {
+            throw error("Search strategy [" + searchStrategy + "] for " + collections[collectionIndex]
+                    + " has rerank=True but reranker is not set");
+        }
+        tasks.add(CompletableFuture.supplyAsync(() -> {
+            @SuppressWarnings("unchecked")
+            List<Double> embedding = (List<Double>) kwargs.get("query_embedding");
+            List<Map<String, Object>> rows = searchCollection(
+                    collections[collectionIndex],
+                    String.valueOf(kwargs.get("query")),
+                    configForCollection,
+                    embedding);
+            return new SearchResult(rows, collections[collectionIndex]);
+        }, IO_EXECUTOR));
+    }
+
+    public List<Map<String, Object>> searchCollection(String collection,
+                                                      String query,
+                                                      SearchConfig searchConfig,
+                                                      List<Double> queryEmbedding) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("language", searchConfig.getLanguage());
+        kwargs.put("min_score", searchConfig.getMinScore());
+        return dbBackend.search(
+                query,
+                searchConfig.getTopK(),
+                collection,
+                searchConfig.getRankConfig(),
+                searchConfig.isRerank() ? reranker : null,
+                searchConfig.getBfsDepth(),
+                searchConfig.getBfsK(),
+                searchConfig.getFilterExpr(),
+                searchConfig.getOutputFields(),
+                queryEmbedding,
+                kwargs
+        ).join().getOrDefault(collection, List.of());
+    }
+
+    public CompletableFuture<ExtractDeclarationsResult> extractEntityDeclarations(EpisodeType srcType,
+                                                                                  String content,
+                                                                                  GraphMemoryStates.GraphMemState state) {
+        try {
+            LlmResponse response = invokeLlm(
+                    Map.of("content", content, "src_type", srcType.name()),
+                    stringPrompt("extract_entity", content),
+                    new ExtractionModels.EntityDeclaration().responseFormat(),
+                    Map.of()).join();
+            List<Map<String, Object>> declarationMaps = normalizeDeclarationMaps(parseJson(response.content()));
+            Set<String> blockedNames = new LinkedHashSet<>(Set.of("user", "assistant", "User", "Assistant",
+                    "USER", "ASSISTANT"));
+            List<ExtractionModels.EntityDeclaration> declarations = new ArrayList<>();
+            for (Map<String, Object> declarationMap : declarationMaps) {
+                Object nameValue = declarationMap.get("name");
+                if (!(nameValue instanceof String rawName)) {
+                    continue;
+                }
+                String name = rawName.strip();
+                if (name.isEmpty() || blockedNames.contains(name)) {
+                    continue;
+                }
+                blockedNames.add(name);
+                int typeId = number(declarationMap.getOrDefault(
+                        "entity_type_id", declarationMap.getOrDefault("entityTypeId", 0)), 0).intValue();
+                declarations.add(new ExtractionModels.EntityDeclaration(name, typeId));
+            }
+            boolean noExisting = dbBackend.isEmpty(ENTITY_COLLECTION);
+            if (!noExisting && !declarations.isEmpty() && getEmbedder() != null) {
+                List<String> names = declarations.stream().map(ExtractionModels.EntityDeclaration::getName).toList();
+                state.getTasks().add(getEmbedder().embedDocuments(names, config.getEmbedBatchSize()));
+            }
+            return CompletableFuture.completedFuture(new ExtractDeclarationsResult(noExisting, declarations));
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> fetchRelevantEntities(List<ExtractionModels.EntityDeclaration> extractedDeclarations,
+                                                         boolean noExistingEntity,
+                                                         String userId,
+                                                         GraphMemoryStates.GraphMemState state) {
+        try {
+            List<List<Double>> embeddings = consumeEmbeddingTask(state);
+            if (noExistingEntity) {
+                return CompletableFuture.completedFuture(null);
+            }
+            for (int index = 0; index < extractedDeclarations.size(); index++) {
+                ExtractionModels.EntityDeclaration declaration = extractedDeclarations.get(index);
+                List<Double> embedding = index < embeddings.size() ? embeddings.get(index) : null;
+                searchAndCacheEntities(declaration.getName(), embedding, userId, state);
+                List<Map<String, Object>> queryRows = dbBackend.query(ENTITY_COLLECTION, null, null, true).join();
+                for (Map<String, Object> row : queryRows) {
+                    String name = String.valueOf(row.getOrDefault("name", ""));
+                    if (Objects.equals(name, declaration.getName()) || name.contains(declaration.getName())) {
+                        Entity entity = state.getLookupTable().getEntity(row);
+                        state.getRetrievedEntities().put(entity.getUuid(), entity);
+                    }
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> resolveEntityMerges(List<GraphMemoryLlmResponseParser.MergeArgument> mergingArgs,
+                                                       GraphMemoryStates.GraphMemState state) {
+        try {
+            Set<String> episodesToUpdate = new LinkedHashSet<>();
+            Map<String, Map<String, Relation>> entityRelationUpdates = new LinkedHashMap<>();
+            Map<String, String> sourceToTarget = new LinkedHashMap<>();
+            for (GraphMemoryLlmResponseParser.MergeArgument argument : mergingArgs) {
+                Entity target = argument.target();
+                String targetUuid = target.getUuid();
+                GraphMemoryStates.EntityMerge mergeInfo = new GraphMemoryStates.EntityMerge(target);
+                state.getMergeInfos().put(targetUuid, mergeInfo);
+                state.getRelationDeferredUpdates().put(targetUuid, new ArrayList<>());
+                entityRelationUpdates.put(targetUuid, new LinkedHashMap<>());
+                Set<String> alias = new LinkedHashSet<>();
+                alias.add(targetUuid);
+                for (Entity source : argument.sources()) {
+                    mergeInfo.getSource().put(source.getUuid(), source);
+                    alias.add(source.getUuid());
+                    sourceToTarget.put(source.getUuid(), targetUuid);
+                    target.getEpisodes().addAll(source.getEpisodes());
+                    episodesToUpdate.addAll(source.getEpisodes());
+                    if (!source.getRelations().isEmpty()) {
+                        resolveEachRelation(targetUuid, source, sourceToTarget, entityRelationUpdates, state, alias).join();
+                    }
+                }
+                target.setEpisodes(new ArrayList<>(new LinkedHashSet<>(target.getEpisodes())));
+            }
+            state.getMemUpdate().getRemovedRelation().addAll(state.getFaultyRelations().keySet());
+            dispatchEntityMergeTasks(episodesToUpdate, entityRelationUpdates, state).join();
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> dispatchEntityMergeTasks(Set<String> episodesToUpdate,
+                                                            Map<String, Map<String, Relation>> entityRelationUpdates,
+                                                            GraphMemoryStates.GraphMemState state) {
+        try {
+            if (state.getStrategy().isMergeFilter()) {
+                for (Map.Entry<String, Map<String, Relation>> entry : entityRelationUpdates.entrySet()) {
+                    String targetUuid = entry.getKey();
+                    GraphMemoryStates.EntityMerge mergeInfo = state.getMergeInfos().get(targetUuid);
+                    if (mergeInfo == null) {
+                        continue;
+                    }
+                    List<Relation> relationList = entry.getValue().values().stream()
+                            .filter(relation -> !state.getFaultyRelations().containsKey(relation.getUuid()))
+                            .toList();
+                    mergeInfo.getNewRelations().clear();
+                    mergeInfo.getNewRelations().addAll(relationList);
+                    CompletableFuture<LlmResponse> task = invokeLlm(
+                            Map.of("target", mergeInfo.getTarget().getName()),
+                            stringPrompt("filter_relations", "filter"),
+                            state.getPrompting().getSchemaRelationFilter(),
+                            Map.of());
+                    state.getRelationFilterTasks().put(task,
+                            new GraphMemoryStates.RelationFilterTask(mergeInfo.getTarget(), relationList));
+                }
+            }
+            if (!episodesToUpdate.isEmpty()) {
+                List<Map<String, Object>> rows = dbBackend.query(
+                        EPISODE_COLLECTION, new ArrayList<>(episodesToUpdate), null, true).join();
+                for (Map<String, Object> row : rows) {
+                    state.getMemUpdateSkipEmbed().getUpdatedEpisode().add(state.getLookupTable().getEpisode(row));
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> resolveEachRelation(String targetUuid,
+                                                       Entity sourceEntity,
+                                                       Map<String, String> sourceToTarget,
+                                                       Map<String, Map<String, Relation>> entityRelationUpdates,
+                                                       GraphMemoryStates.GraphMemState state,
+                                                       Set<String> alias) {
+        try {
+            List<?> relationIds = new ArrayList<>(sourceEntity.getRelations());
+            List<Map<String, Object>> rows = dbBackend.query(RELATION_COLLECTION, relationIds, null, true).join();
+            Set<String> selfPointing = new LinkedHashSet<>();
+            for (Map<String, Object> row : rows) {
+                Relation relation = state.getLookupTable().getRelation(row);
+                String toReplace = sourceEntity.getUuid();
+                Set<String> lhsRhs = Set.of(stringRef(relation.getLhs()), stringRef(relation.getRhs()));
+                if (alias.containsAll(lhsRhs)) {
+                    state.getFaultyRelations().put(relation.getUuid(), relation);
+                    selfPointing.add(relation.getUuid());
+                    toReplace = null;
+                }
+                while (toReplace != null
+                        && sourceToTarget.containsKey(toReplace)
+                        && !state.getFaultyRelations().containsKey(relation.getUuid())) {
+                    if (Objects.equals(stringRef(relation.getLhs()), toReplace)) {
+                        replaceOneSideOfRelation("lhs", relation, targetUuid, entityRelationUpdates, state);
+                        break;
+                    }
+                    if (Objects.equals(stringRef(relation.getRhs()), toReplace)) {
+                        replaceOneSideOfRelation("rhs", relation, targetUuid, entityRelationUpdates, state);
+                        break;
+                    }
+                    toReplace = sourceToTarget.get(toReplace);
+                }
+                if (!state.getFaultyRelations().containsKey(relation.getUuid())
+                        && !entityRelationUpdates.getOrDefault(targetUuid, Map.of()).containsKey(relation.getUuid())
+                        && !selfPointing.contains(relation.getUuid())) {
+                    state.getFaultyRelations().put(relation.getUuid(), relation);
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<List<?>> entityMerge(List<?> extractedDeclarations,
+                                                  List<Map<String, Object>> existingEntitiesList,
+                                                  GraphMemoryStates.GraphMemState state) {
+        try {
+            for (CompletableFuture<?> task : List.copyOf(state.getTasks())) {
+                task.join();
+            }
+            if (existingEntitiesList.isEmpty()) {
+                return CompletableFuture.completedFuture(extractedDeclarations);
+            }
+            Object response = state.getTasks().isEmpty()
+                    ? "[]"
+                    : state.getTasks().remove(state.getTasks().size() - 1).join();
+            List<Entity> existingEntities = existingEntitiesList.stream()
+                    .map(state.getLookupTable()::getEntity)
+                    .toList();
+            List<ExtractionModels.EntityDeclaration> candidates = extractedDeclarations.stream()
+                    .filter(ExtractionModels.EntityDeclaration.class::isInstance)
+                    .map(ExtractionModels.EntityDeclaration.class::cast)
+                    .toList();
+            List<Map<String, Object>> duplication = normalizeDeclarationMaps(parseJson(contentFrom(response)));
+            GraphMemoryLlmResponseParser.ResolvedEntitiesResult resolved =
+                    GraphMemoryLlmResponseParser.resolveEntities(candidates, existingEntities, duplication);
+            if (state.getStrategy().isMergeEntities()) {
+                state.getMemUpdate().getRemovedEntity().addAll(resolved.entityUuidsToRemove());
+                resolveEntityMerges(resolved.mergingArgs(), state).join();
+            }
+            return CompletableFuture.completedFuture(resolved.entities());
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<List<Entity>> entityEnrich(List<Entity> entities,
+                                                        String content,
+                                                        GraphMemoryStates.GraphMemState state) {
+        try {
+            state.getTasks().clear();
+            for (Entity entity : entities) {
+                CompletableFuture<?> pending = state.getPendingMerge().remove(entity.getUuid());
+                if (pending != null) {
+                    GraphMemoryUtils.updateEntity(entity, contentFrom(pending.join()),
+                            state.getPrompting().getSchemaEntityExtraction());
+                    state.getMergingTasks().remove(pending);
+                }
+                state.getTasks().add(invokeLlm(
+                        Map.of("entity", entity.getName()),
+                        stringPrompt("extract_entity_attributes", content),
+                        state.getPrompting().getSchemaEntityExtraction(),
+                        Map.of()));
+            }
+            for (int index = 0; index < entities.size(); index++) {
+                Object response = state.getTasks().get(index).join();
+                GraphMemoryUtils.updateEntity(entities.get(index), contentFrom(response),
+                        state.getPrompting().getSchemaEntityExtraction());
+            }
+            state.getTasks().clear();
+            return CompletableFuture.completedFuture(entities);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> handleRelationDedupe(String userId,
+                                                        String content,
+                                                        List<Relation> relations,
+                                                        GraphMemoryStates.GraphMemState state) {
+        try {
+            relations.removeIf(state.getToRemove()::contains);
+            if (state.getStrategy().isMergeRelations()
+                    && !state.getTmpBuffer().isEmpty()
+                    && !dbBackend.isEmpty(RELATION_COLLECTION)
+                    && getEmbedder() != null) {
+                List<String> relationTexts = state.getTmpBuffer().stream().map(String::valueOf).toList();
+                List<List<Double>> embeddings = getEmbedder()
+                        .embedDocuments(relationTexts, config.getEmbedBatchSize()).join();
+                relationDedupe(userId, content, relations, embeddings, state).join();
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> relationDedupe(String userId,
+                                                  String content,
+                                                  List<Relation> relations,
+                                                  List<List<Double>> relationEmbeddings,
+                                                  GraphMemoryStates.GraphMemState state) {
+        try {
+            List<GraphMemoryPostProcessor.DedupeRelationTask> dedupeTasks = new ArrayList<>();
+            for (int index = 0; index < relations.size(); index++) {
+                Relation relation = relations.get(index);
+                List<String> endpoints = List.of(stringRef(relation.getLhs()), stringRef(relation.getRhs()));
+                if (endpoints.stream().anyMatch(String::isBlank)) {
+                    continue;
+                }
+                List<Double> embedding = index < relationEmbeddings.size() ? relationEmbeddings.get(index) : null;
+                RetrievalStrategy recall = state.getStrategy().getRecallRelation();
+                List<Map<String, Object>> rows = dbBackend.search(
+                        relation.getContent(),
+                        recall.getTopK(),
+                        RELATION_COLLECTION,
+                        recall.getRankConfig(),
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        embedding,
+                        Map.of("user_id", userId)
+                ).join().getOrDefault(RELATION_COLLECTION, List.of());
+                boolean maximize = metricIsSim || recall.getRankConfig().isHigherIsBetter();
+                List<Relation> currentRelations = new ArrayList<>();
+                for (Map<String, Object> row : rows) {
+                    double distance = number(row.get("distance"), 0.0d).doubleValue();
+                    boolean keep = maximize ? distance >= recall.getMinScore() : distance <= recall.getMinScore();
+                    if (keep) {
+                        Relation retrieved = state.getLookupTable().getRelation(row);
+                        state.getRetrievedRelations().put(retrieved.getUuid(), retrieved);
+                        currentRelations.add(retrieved);
+                    }
+                }
+                if (!currentRelations.isEmpty()) {
+                    CompletableFuture<LlmResponse> future = invokeLlm(
+                            Map.of("relation", relation.getContent()),
+                            stringPrompt("dedupe_relation_list", content),
+                            state.getPrompting().getSchemaRelationMerge(),
+                            Map.of());
+                    dedupeTasks.add(new GraphMemoryPostProcessor.DedupeRelationTask(relation, currentRelations, future));
+                }
+            }
+            GraphMemoryPostProcessor.parseRelationUuidsToRemove(dedupeTasks, state).join();
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<Void> updateEntitiesForRelationRemoval(GraphMemoryStates.GraphMemState state,
+                                                                    List<Entity> updateNeedsEmbed) {
+        try {
+            Set<String> entityIds = new LinkedHashSet<>();
+            for (Object object : state.getToRemove()) {
+                if (object instanceof Relation relation) {
+                    entityIds.add(stringRef(relation.getLhs()));
+                    entityIds.add(stringRef(relation.getRhs()));
+                }
+            }
+            entityIds.remove("");
+            if (!entityIds.isEmpty()) {
+                List<Map<String, Object>> rows = dbBackend.query(
+                        ENTITY_COLLECTION, new ArrayList<>(entityIds), null, true).join();
+                for (Map<String, Object> row : rows) {
+                    Entity entity = state.getLookupTable().getEntity(row);
+                    Entity entityToUpdate = updateNeedsEmbed.stream()
+                            .filter(candidate -> Objects.equals(candidate.getUuid(), entity.getUuid()))
+                            .findFirst()
+                            .orElse(entity);
+                    boolean needsReEmbed = entityToUpdate != entity;
+                    boolean changedWithoutEmbed = false;
+                    for (String relationUuid : new ArrayList<>(state.getMemUpdate().getRemovedRelation())) {
+                        if (entityToUpdate.getRelations().remove(relationUuid) && !needsReEmbed) {
+                            changedWithoutEmbed = true;
+                        }
+                    }
+                    if (changedWithoutEmbed
+                            && !state.getMemUpdateSkipEmbed().getUpdatedEntity().contains(entityToUpdate)
+                            && !state.getMemUpdate().getRemovedEntity().contains(entityToUpdate.getUuid())) {
+                        state.getMemUpdateSkipEmbed().getUpdatedEntity().add(entityToUpdate);
+                    }
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public static void replaceOneSideOfRelation(String side,
+                                                Relation relation,
+                                                String targetUuid,
+                                                Map<String, Map<String, Relation>> entityRelationUpdates,
+                                                GraphMemoryStates.GraphMemState state) {
+        Map<String, Relation> updates = entityRelationUpdates.computeIfAbsent(targetUuid, ignored -> new LinkedHashMap<>());
+        List<GraphMemoryStates.RelationDeferredUpdate> deferred = state.getRelationDeferredUpdates()
+                .computeIfAbsent(targetUuid, ignored -> new ArrayList<>());
+        if (!updates.containsKey(relation.getUuid())) {
+            deferred.add(new GraphMemoryStates.RelationDeferredUpdate(relation, side, targetUuid));
+            updates.put(relation.getUuid(), relation);
+            return;
+        }
+        state.getFaultyRelations().put(relation.getUuid(), relation);
+        updates.remove(relation.getUuid());
+        deferred.removeIf(update -> update.relation() == relation);
+    }
+
+    public static CompletableFuture<Void> parseRelationFilteringResult(List<Relation> relations,
+                                                                       GraphMemoryStates.GraphMemState state) {
+        try {
+            for (Map.Entry<CompletableFuture<?>, GraphMemoryStates.RelationFilterTask> entry
+                    : List.copyOf(state.getRelationFilterTasks().entrySet())) {
+                GraphMemoryStates.RelationFilterTask context = entry.getValue();
+                List<Relation> filtered;
+                try {
+                    Set<Integer> keepIds = relationKeepIds(parseJson(contentFrom(entry.getKey().join())));
+                    filtered = keepIds.stream()
+                            .filter(id -> id >= 1 && id <= context.relations().size())
+                            .map(id -> context.relations().get(id - 1))
+                            .toList();
+                } catch (RuntimeException exception) {
+                    filtered = context.relations();
+                }
+                GraphMemoryStates.EntityMerge mergeInfo = state.getMergeInfos().get(context.entity().getUuid());
+                if (mergeInfo != null) {
+                    mergeInfo.getNewRelations().clear();
+                    mergeInfo.getNewRelations().addAll(filtered);
+                }
+            }
+
+            for (Map.Entry<String, GraphMemoryStates.EntityMerge> entry : state.getMergeInfos().entrySet()) {
+                String targetUuid = entry.getKey();
+                GraphMemoryStates.EntityMerge mergeInfo = entry.getValue();
+                List<GraphMemoryStates.RelationDeferredUpdate> deferred =
+                        state.getRelationDeferredUpdates().getOrDefault(targetUuid, List.of());
+                for (GraphMemoryStates.RelationDeferredUpdate update : deferred) {
+                    if (mergeInfo.getNewRelations().contains(update.relation())) {
+                        if ("lhs".equals(update.lhsUuid())) {
+                            update.relation().setLhs(update.rhsUuid());
+                        } else {
+                            update.relation().setRhs(update.rhsUuid());
+                        }
+                        if (!state.getMemUpdateSkipEmbed().getUpdatedRelation().contains(update.relation())) {
+                            state.getMemUpdateSkipEmbed().getUpdatedRelation().add(update.relation());
+                        }
+                    } else {
+                        state.getMemUpdate().getRemovedRelation().add(update.relation().getUuid());
+                        state.getToRemove().add(update.relation());
+                    }
+                }
+            }
+            GraphMemoryStates.classifyRelationsExtracted(relations, state);
+            return CompletableFuture.completedFuture(null);
+        } catch (Throwable exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public CompletableFuture<LlmResponse> invokeLlm(Map<String, Object> kwargs,
+                                                    PromptTemplate template,
+                                                    Map<String, Object> outputModel,
+                                                    Map<String, Object> extra) {
+        Map<String, Object> params = GraphMemoryUtils.assembleInvokeParams(
+                kwargs == null ? Map.of() : kwargs,
+                template == null ? PromptTemplate.builder().content("").build() : template,
+                llmStructuredOutput ? outputModel : null);
+        params.putAll(llmExtraKwargs);
+        if (extra != null) {
+            params.putAll(extra);
+        }
+        return llmClient.invoke(params).handle((response, throwable) -> {
+            if (throwable != null) {
+                throw new CompletionException(error("LLM invoke failed: " + throwable.getMessage()));
+            }
+            return response == null ? new LlmResponse("{}") : response;
+        });
+    }
+
     public void attachEmbedder(Embedding embedder) {
         dbBackend.attachEmbedder(embedder);
     }
 
-    /**
-     * attachReranker.
-     * 
-     * @param reranker reranker
-     * @since 0.1.7
-     */
-    public void attachReranker(Reranker reranker) {
-        if (reranker == null) {
-            throw new IllegalArgumentException("Reranker must be an implementation of Reranker");
-        }
-        this.reranker = reranker;
+    public Embedding getEmbedder() {
+        return dbBackend.getEmbedder().orElse(null);
     }
 
-    /**
-     * registerSearchStrategy.
-     * 
-     * @param name name
-     * @param searchEntity searchEntity
-     * @param searchRelation searchRelation
-     * @param searchEpisode searchEpisode
-     * @param isForceRegister isForceRegister
-     * @since 0.1.7
-     */
-    public void registerSearchStrategy(String name, SearchConfig searchEntity, SearchConfig searchRelation,
-            SearchConfig searchEpisode, boolean isForceRegister) {
-        List<SearchConfig> configs = List.of(searchEntity, searchRelation, searchEpisode);
-        for (SearchConfig config : configs) {
-            if (config != null && !(config instanceof SearchConfig)) {
-                throw new IllegalArgumentException(
-                        "Search config for entity/relation/episode must be an instance of SearchConfig or None");
-            }
+    public void attachReranker(Object reranker) {
+        if (reranker instanceof Reranker typed) {
+            this.reranker = typed;
+            return;
         }
+        throw error("Reranker must be an implementation of Reranker, got "
+                + (reranker == null ? "null" : reranker.getClass()) + " instead.");
+    }
+
+    public void registerSearchStrategy(String name, SearchConfig searchEntity) {
+        registerSearchStrategy(name, searchEntity, null, null, false);
+    }
+
+    public void registerSearchStrategy(String name,
+                                       Object searchEntity,
+                                       Object searchRelation,
+                                       Object searchEpisode,
+                                       boolean force) {
+        if (!(searchEntity == null || searchEntity instanceof SearchConfig)
+                || !(searchRelation == null || searchRelation instanceof SearchConfig)
+                || !(searchEpisode == null || searchEpisode instanceof SearchConfig)) {
+            throw error("Search config for entity/relation/episode must be an instance of SearchConfig or None");
+        }
+        registerSearchStrategy(name, (SearchConfig) searchEntity, (SearchConfig) searchRelation,
+                (SearchConfig) searchEpisode, force);
+    }
+
+    public void registerSearchStrategy(String name,
+                                       SearchConfig searchEntity,
+                                       SearchConfig searchRelation,
+                                       SearchConfig searchEpisode,
+                                       boolean force) {
         threadLock.lock();
         try {
             if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("Search config cannot be registered as an empty value.");
+                throw error("Search config cannot be registered as an empty value.");
             }
-            if (searchStrategies.containsKey(name) && !isForceRegister) {
-                throw new IllegalArgumentException("Search config with name [" + name + "] already exists.");
+            if (searchStrategies.containsKey(name) && !force) {
+                throw error("Search config with name [" + name + "] already exists.");
             }
-            searchStrategies.put(name,
-                    List.of(searchEntity != null ? copySearchConfig(searchEntity) : new SearchConfig(),
-                            searchRelation != null ? copySearchConfig(searchRelation) : createDefaultRelationSearch(),
-                            searchEpisode != null ? copySearchConfig(searchEpisode) : createDefaultEpisodeSearch()));
+            searchStrategies.put(name, List.of(
+                    searchEntity == null ? defaultSearchConfig(new WeightedRankConfig(), 0.3d) : searchEntity,
+                    searchRelation == null ? defaultSearchConfig(new RRFRankConfig(), 0.02d) : searchRelation,
+                    searchEpisode == null ? defaultSearchConfig(new RRFRankConfig(), 0.025d) : searchEpisode));
         } finally {
             threadLock.unlock();
         }
     }
 
-    /**
-     * registerSearchStrategy.
-     * 
-     * @param name name
-     * @param searchEntity searchEntity
-     * @param searchRelation searchRelation
-     * @param searchEpisode searchEpisode
-     * @since 0.1.7
-     */
-    public void registerSearchStrategy(String name, SearchConfig searchEntity, SearchConfig searchRelation,
-            SearchConfig searchEpisode) {
-        registerSearchStrategy(name, searchEntity, searchRelation, searchEpisode, false);
-    }
-
-    /**
-     * ensureThreadLock.
-     * 
-     * @param userId userId
-     * @since 0.1.7
-     */
     public void ensureThreadLock(String userId) {
         threadLock.lock();
         try {
@@ -283,358 +873,166 @@ public class GraphMemory {
         }
     }
 
-    /**
-     * search.
-     * 
-     * @param query query
-     * @param userId userId
-     * @param searchStrategy searchStrategy
-     * @param isEntityEnabled isEntityEnabled
-     * @param isRelationEnabled isRelationEnabled
-     * @param isEpisodeEnabled isEpisodeEnabled
-     * @param queryEmbedding queryEmbedding
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public Map<String, List<SearchHit>> search(String query, Object userId, String searchStrategy,
-            boolean isEntityEnabled, boolean isRelationEnabled, boolean isEpisodeEnabled, List<Float> queryEmbedding)
-            throws Exception {
-        if (!searchStrategies.containsKey(searchStrategy)) {
-            if (searchStrategy == null || searchStrategy.isBlank()) {
-                throw new IllegalArgumentException("strategy must be a non-empty string value");
-            }
-            throw new IllegalArgumentException("Strategy [" + searchStrategy
-                    + "] not found, please register with register_search_configs method or use \"default\".");
-        }
-        List<String> users = ValidateInput.validateSearchInput(query, userId,
-                List.of(isEntityEnabled, isRelationEnabled, isEpisodeEnabled));
-        List<Float> effectiveQueryEmbedding = queryEmbedding;
-        if (queryEmbedding == null) {
-            if (dbBackend.getEmbedder() == null) {
-                throw new IllegalStateException("use the attach_embedder method to attach one");
-            }
-            effectiveQueryEmbedding = dbBackend.getEmbedder().embedQuery(query);
-        }
-        Map<String, List<SearchHit>> result = new LinkedHashMap<>();
-        if (isEntityEnabled) {
-            performSearch(0, users, searchStrategy, result, query, effectiveQueryEmbedding);
-        }
-        if (isRelationEnabled) {
-            performSearch(1, users, searchStrategy, result, query, effectiveQueryEmbedding);
-        }
-        if (isEpisodeEnabled) {
-            performSearch(2, users, searchStrategy, result, query, effectiveQueryEmbedding);
-        }
-        return result;
+    public List<Entity> getEntities() {
+        return new ArrayList<>(state.getLookupTable().getEntities().values());
     }
 
-    /**
-     * addMemory.
-     * 
-     * @param srcType srcType
-     * @param userId userId
-     * @param content content
-     * @param contentFmtKwargs contentFmtKwargs
-     * @param referenceTime referenceTime
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    public States.GraphMemUpdate addMemory(EpisodeType srcType, String userId, Object content,
-            Map<String, String> contentFmtKwargs, OffsetDateTime referenceTime) throws Exception {
-        ensureThreadLock(userId);
-        if (dbBackend.getEmbedder() == null) {
-            throw new IllegalStateException("use the attach_embedder method to attach one");
+    public List<Relation> getRelations() {
+        return new ArrayList<>(state.getLookupTable().getRelations().values());
+    }
+
+    public List<Episode> getEpisodes() {
+        return new ArrayList<>(state.getLookupTable().getEpisodes().values());
+    }
+
+    public GraphMemoryStates.GraphMemState getState() {
+        return state;
+    }
+
+    public GraphStore getDbBackend() {
+        return dbBackend;
+    }
+
+    public GraphConfig getConfig() {
+        return config;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public Reranker getReranker() {
+        return reranker;
+    }
+
+    public AddMemStrategy getDefaultExtractionStrategy() {
+        return defaultExtractionStrategy;
+    }
+
+    public Map<String, List<SearchConfig>> getSearchStrategies() {
+        return searchStrategies;
+    }
+
+    public Map<String, ReentrantLock> getUserLocks() {
+        return userLocks;
+    }
+
+    public Map<String, Integer> getTokenRecord() {
+        return tokenRecord;
+    }
+
+    public boolean isMetricIsSim() {
+        return metricIsSim;
+    }
+
+    public void setMetricIsSim(boolean metricIsSim) {
+        this.metricIsSim = metricIsSim;
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setLlmClient(LlmInvoker llmClient) {
+        this.llmClient = llmClient == null
+                ? params -> CompletableFuture.completedFuture(new LlmResponse("{}"))
+                : llmClient;
+    }
+
+    public void setDbBackend(GraphStore dbBackend) {
+        this.dbBackend = Objects.requireNonNull(dbBackend, "dbBackend");
+        this.metricIsSim = dbBackend.isReturnSimilarityScore();
+    }
+
+    private void populateHistory(String userId, String normalized, GraphMemoryStates.GraphMemState state) {
+        EpisodeRetrievalStrategy recall = state.getStrategy().getRecallEpisode();
+        if (recall.getTopK() <= 0 || dbBackend.isEmpty(EPISODE_COLLECTION)) {
+            return;
         }
-        if (llmClient == null) {
-            throw new IllegalStateException("llm_client is required for addMemory");
-        }
-        ReentrantLock userLock = userLocks.get(userId);
-        userLock.lock();
-        try {
-            States.GraphMemState state = initState(referenceTime);
-            String preparedContent = prepareEpisodes(srcType, userId, content, state, contentFmtKwargs);
-            Episode currentEpisode = PostprocessGraphObjects.createEpisode(dbBackend, userId, preparedContent, state);
-            String contentWithTime = GraphUtils.formatTimestamp(state.getReferenceTimestamp(), java.time.ZoneOffset.UTC,
-                    "(EEE) yyyy/MMM/dd HH:mm:ss") + "\n" + preparedContent;
-
-            AssistantMessage timezoneResponse = invokeLlm(ExtractionPrompts.extractTimezone(contentWithTime,
-                    state.getHistory(), null, state.getPrompting().getLanguage(), 2), Map.of());
-
-            EntityDeclarationResult declarationResult = extractEntityDeclarations(srcType, contentWithTime, state);
-            Object timezoneInfo = ParseResponse.parseJson(timezoneResponse.getContentAsString(),
-                    com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                            .responseFormat(TimezonePredictions.class, state.getPrompting().getLanguage()));
-
-            AssistantMessage relationResponse = invokeLlm(ExtractionPrompts.extractRelationDeclaration(null,
-                    declarationResult.entities(), state.getReferenceTimestamp(),
-                    timezoneInfo != null ? timezoneInfo : List.of(), contentWithTime, state.getHistory(),
-                    state.getEntityTypes(), null, state.getPrompting().getRelationExtractionLanguage(), 2), Map.of());
-
-            fetchRelevantEntities(declarationResult.entities(), declarationResult.existingEntityMissing(), userId,
-                    state);
-            List<Object> mergedDeclarations = entityMerge(declarationResult.entities(), state);
-
-            Object relationParsed = ParseResponse.parseJson(relationResponse.getContentAsString(),
-                    com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel.responseFormat(
-                            RelationExtraction.class, state.getPrompting().getRelationExtractionLanguage()));
-            List<Map<String, Object>> relationList = normalizeRelationList(relationParsed);
-            Map.Entry<List<Relation>, List<Entity>> parsed =
-                ParseLlmResponse.parseAllRelations(relationList, new ArrayList<>(mergedDeclarations),
-                        state.getEntityTypes(), Map.of("created_at", state.getReferenceTimestamp(), "user_id", userId,
-                                "language", state.getPrompting().getLanguage()));
-
-            List<Entity> entities = entityEnrich(parsed.getValue(), contentWithTime, state);
-            parseRelationFilteringResult(parsed.getKey(), state);
-            handleRelationDedupe(userId, contentWithTime, parsed.getKey(), state);
-            updateEntitiesForRelationRemoval(state, mergedDeclarations);
-
-            PostprocessGraphObjects.processRelations(dbBackend, entities, parsed.getKey(), state);
-            PostprocessGraphObjects.processEntities(dbBackend, entities, currentEpisode, state);
-            PostprocessGraphObjects.validateEntitiesEpisodes(entities, currentEpisode, state);
-            States.persistToDb(dbBackend, state, config);
-            dbBackend.refresh();
-            return state.getMemUpdate().or(state.getMemUpdateSkipEmbed());
-        } finally {
-            userLock.unlock();
-        }
-    }
-
-    /**
-     * performSearch.
-     * 
-     * @param collectionIndex collectionIndex
-     * @param userId userId
-     * @param searchStrategy searchStrategy
-     * @param result result
-     * @param query query
-     * @param queryEmbedding queryEmbedding
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void performSearch(int collectionIndex, List<String> userId, String searchStrategy,
-            Map<String, List<SearchHit>> result, String query, List<Float> queryEmbedding) throws Exception {
-        List<String> names = List.of(GraphConstants.ENTITY_COLLECTION, GraphConstants.RELATION_COLLECTION,
-                GraphConstants.EPISODE_COLLECTION);
-        SearchConfig configEntry = copySearchConfig(searchStrategies.get(searchStrategy).get(collectionIndex));
-        if (configEntry.isRerank() && reranker == null) {
-            throw new IllegalArgumentException(
-                    "Search strategy [" + searchStrategy + "] for " + names.get(collectionIndex)
-                            + " has rerank=True but reranker is not set, please use the attach_reranker "
-                            + "method to attach a reranker.");
-        }
-        QueryExpr filterByUser = QueryExpressions.filterUser(userId);
-        configEntry.setFilterExpr(
-                configEntry.getFilterExpr() != null ? configEntry.getFilterExpr().and(filterByUser) : filterByUser);
-        List<Map<String, Object>> returned =
-            searchSingle(names.get(collectionIndex), query, configEntry, queryEmbedding);
-        List<SearchHit> hits = new ArrayList<>();
-        for (Map<String, Object> item : returned) {
-            double score = Double.parseDouble(String.valueOf(item.getOrDefault("distance", 0.0)));
-            hits.add(new SearchHit(score, toGraphObject(names.get(collectionIndex), item)));
-        }
-        result.put(names.get(collectionIndex), hits);
-    }
-
-    /**
-     * searchSingle.
-     * 
-     * @param collection collection
-     * @param query query
-     * @param searchConfig searchConfig
-     * @param queryEmbedding queryEmbedding
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> searchSingle(String collection, String query, SearchConfig searchConfig,
-            List<Float> queryEmbedding) throws Exception {
-        Map<String, Object> kwargs = new LinkedHashMap<>();
-        kwargs.put("language", searchConfig.getLanguage());
-        kwargs.put("min_score", searchConfig.getMinScore());
-        if (searchConfig.isRerank()) {
-            kwargs.put("reranker", reranker);
-        }
-        Map<String, List<Map<String, Object>>> result = dbBackend.search(query, searchConfig.getTopK(), collection,
-                searchConfig.getRankConfig(), searchConfig.getBfsDepth(), searchConfig.getBfsK(),
-                searchConfig.getFilterExpr(), searchConfig.getOutputFields(), queryEmbedding, kwargs);
-        return result.getOrDefault(collection, List.of());
-    }
-
-    /**
-     * toGraphObject.
-     * 
-     * @param collection collection
-     * @param map map
-     * @return BaseGraphObject
-     * @since 0.1.7
-     */
-    private com.openjiuwen.core.foundation.store.graph.BaseGraphObject toGraphObject(String collection,
-            Map<String, Object> map) {
-        return switch (collection) {
-            case GraphConstants.ENTITY_COLLECTION -> mapToEntity(map);
-            case GraphConstants.RELATION_COLLECTION -> mapToRelation(map);
-            case GraphConstants.EPISODE_COLLECTION -> mapToEpisode(map);
-            default -> throw new IllegalArgumentException("Unknown collection: " + collection);
-        };
-    }
-
-    /**
-     * mapToEntity.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
-    private Entity mapToEntity(Map<String, Object> map) {
-        Entity entity = new Entity();
-        populateBaseGraphObject(entity, map, "Entity");
-        entity.setName(String.valueOf(map.getOrDefault("name", "")));
-        entity.setNameEmbedding(floatList(map.get("name_embedding")));
-        entity.setRelations(objectList(map.get("relations")));
-        entity.setEpisodes(stringList(map.get("episodes")));
-        entity.setAttributes(objectMap(map.get("attributes")));
-        return entity;
-    }
-
-    /**
-     * mapToRelation.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
-    private Relation mapToRelation(Map<String, Object> map) {
-        Relation relation = new Relation();
-        populateBaseGraphObject(relation, map, "Relation");
-        relation.setName(String.valueOf(map.getOrDefault("name", "")));
-        relation.setValidSince(intValue(map.get("valid_since"), -1));
-        relation.setValidUntil(intValue(map.get("valid_until"), -1));
-        relation.setOffsetSince(intValue(map.get("offset_since"), 0));
-        relation.setOffsetUntil(intValue(map.get("offset_until"), 0));
-        relation.setLhs(map.get("lhs"));
-        relation.setRhs(map.get("rhs"));
-        return relation;
-    }
-
-    /**
-     * mapToEpisode.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
-    private Episode mapToEpisode(Map<String, Object> map) {
-        Episode episode = new Episode();
-        populateBaseGraphObject(episode, map, "Episode");
-        episode.setValidSince(intValue(map.get("valid_since"), -1));
-        episode.setEntities(objectList(map.get("entities")));
-        return episode;
-    }
-
-    /**
-     * populateBaseGraphObject.
-     * 
-     * @param target target
-     * @param map map
-     * @param defaultType defaultType
-     * @since 0.1.7
-     */
-    private void populateBaseGraphObject(com.openjiuwen.core.foundation.store.graph.BaseGraphObject target,
-            Map<String, Object> map, String defaultType) {
-        target.setUuid(String.valueOf(map.getOrDefault("uuid", GraphUtils.getUuid())));
-        target.setCreatedAt(intValue(map.get("created_at"), GraphUtils.getCurrentUtcTimestamp()));
-        target.setUserId(String.valueOf(map.getOrDefault("user_id", "default_user")));
-        target.setObjType(String.valueOf(map.getOrDefault("obj_type", defaultType)));
-        target.setLanguage(String.valueOf(map.getOrDefault("language", "cn")));
-        target.setMetadata(objectMap(map.get("metadata")));
-        target.setContent(String.valueOf(map.getOrDefault("content", "")));
-        target.setContentEmbedding(floatList(map.get("content_embedding")));
-        target.setContentBm25(floatList(map.get("content_bm25")));
-    }
-
-    /**
-     * intValue.
-     * 
-     * @param value value
-     * @param defaultValue defaultValue
-     * @return the result
-     * @since 0.1.7
-     */
-    private int intValue(Object value, int defaultValue) {
-        return value == null ? defaultValue : Integer.parseInt(String.valueOf(value));
-    }
-
-    /**
-     * objectList.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Object> objectList(Object value) {
-        return value instanceof List<?> list ? new ArrayList<>(list) : new ArrayList<>();
-    }
-
-    /**
-     * stringList.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> stringList(Object value) {
-        if (!(value instanceof List<?> list)) {
-            return new ArrayList<>();
-        }
-        return list.stream().map(String::valueOf).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-    }
-
-    /**
-     * floatList.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Float> floatList(Object value) {
-        if (!(value instanceof List<?> list)) {
-            return new ArrayList<>();
-        }
-        List<Float> result = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Number number) {
-                result.add(number.floatValue());
+        List<Map<String, Object>> rows = dbBackend.search(
+                normalized,
+                recall.getTopK(),
+                EPISODE_COLLECTION,
+                recall.getRankConfig(),
+                null,
+                0,
+                0,
+                null,
+                null,
+                null,
+                Map.of("user_id", userId)
+        ).join().getOrDefault(EPISODE_COLLECTION, List.of());
+        boolean maximize = metricIsSim || recall.getRankConfig().isHigherIsBetter();
+        List<Episode> episodes = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            double distance = number(row.get("distance"), 0.0d).doubleValue();
+            boolean keep = maximize ? distance >= recall.getMinScore() : distance <= recall.getMinScore();
+            if (keep) {
+                episodes.add(state.getLookupTable().getEpisode(row));
             }
         }
-        return result;
+        episodes.sort((left, right) -> Long.compare(left.getValidSince(), right.getValidSince()));
+        state.setHistory(episodes.stream()
+                .map(episode -> episode.getCreatedAt() + "\n" + episode.getContent())
+                .collect(Collectors.joining("\n---\n")));
     }
 
-    /**
-     * objectMap.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private Map<String, Object> objectMap(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return new LinkedHashMap<>();
+    private void registerDefaultSearchStrategy() {
+        searchStrategies.put("default", List.of(
+                defaultSearchConfig(new WeightedRankConfig(), 0.3d),
+                defaultSearchConfig(new RRFRankConfig(), 0.02d),
+                defaultSearchConfig(new RRFRankConfig(), 0.025d)));
+    }
+
+    private void searchAndCacheEntities(String name,
+                                        List<Double> embedding,
+                                        String userId,
+                                        GraphMemoryStates.GraphMemState state) {
+        RetrievalStrategy recall = state.getStrategy().getRecallEntity();
+        List<Map<String, Object>> rows = dbBackend.search(
+                name,
+                recall.getTopK(),
+                ENTITY_COLLECTION,
+                recall.getRankConfig(),
+                null,
+                0,
+                0,
+                null,
+                null,
+                embedding,
+                Map.of("user_id", userId)
+        ).join().getOrDefault(ENTITY_COLLECTION, List.of());
+        boolean maximize = metricIsSim || recall.getRankConfig().isHigherIsBetter();
+        for (Map<String, Object> row : rows) {
+            double distance = number(row.get("distance"), 0.0d).doubleValue();
+            boolean keep = maximize ? distance >= recall.getMinScore() : distance <= recall.getMinScore();
+            if (keep) {
+                Entity entity = state.getLookupTable().getEntity(row);
+                state.getRetrievedEntities().put(entity.getUuid(), entity);
+            }
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        map.forEach((key, item) -> result.put(String.valueOf(key), item));
-        return result;
     }
 
-    /**
-     * copySearchConfig.
-     * 
-     * @param source source
-     * @return the result
-     * @since 0.1.7
-     */
-    private SearchConfig copySearchConfig(SearchConfig source) {
+    @SuppressWarnings("unchecked")
+    private static List<List<Double>> consumeEmbeddingTask(GraphMemoryStates.GraphMemState state) {
+        for (int index = 0; index < state.getTasks().size(); index++) {
+            Object result = state.getTasks().get(index).join();
+            if (result instanceof List<?> list && (list.isEmpty() || list.get(0) instanceof List<?>)) {
+                state.getTasks().remove(index);
+                return (List<List<Double>>) result;
+            }
+        }
+        return List.of();
+    }
+
+    private static SearchConfig defaultSearchConfig(BaseRankConfig rankConfig, double minScore) {
+        SearchConfig config = new SearchConfig();
+        config.setRankConfig(rankConfig);
+        config.setMinScore(minScore);
+        return config;
+    }
+
+    private static SearchConfig copySearchConfig(SearchConfig source) {
         SearchConfig copy = new SearchConfig();
         copy.setTopK(source.getTopK());
         copy.setMinScore(source.getMinScore());
@@ -642,908 +1040,455 @@ public class GraphMemory {
         copy.setBfsK(source.getBfsK());
         copy.setBfsDepth(source.getBfsDepth());
         copy.setFilterExpr(source.getFilterExpr());
-        copy.setOutputFields(source.getOutputFields());
+        copy.setOutputFields(source.getOutputFields() == null ? null : new ArrayList<>(source.getOutputFields()));
         copy.setRerank(source.isRerank());
         copy.setLanguage(source.getLanguage());
         return copy;
     }
 
-    /**
-     * initState.
-     * 
-     * @param referenceTime referenceTime
-     * @return the result
-     * @since 0.1.7
-     */
-    private States.GraphMemState initState(OffsetDateTime referenceTime) {
-        AddMemStrategy strategy = defaultExtractionStrategy;
-        States.GraphMemState state = new States.GraphMemState();
-        state.setStrategy(strategy);
-        state.getEntityTypes().add(new EntityDef());
-        state.getEntityTypes().add(new HumanEntity());
-        state.getEntityTypes().add(new AIEntity());
-        state.getPrompting().setLanguage(language);
-        state.getPrompting().setEntityExtractionLanguage(strategy.isChineseEntity() ? "cn" : language);
-        state.getPrompting().setRelationExtractionLanguage(strategy.isChineseRelation() ? "cn" : language);
-        state.getPrompting().setEntityDedupeLanguage(strategy.isChineseEntityDedupe() ? "cn" : language);
-        state.getPrompting().setSchemaEntityExtraction(com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                .responseFormat(EntitySummary.class, language));
-        state.getPrompting().setSchemaEntityDedupe(com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                .responseFormat(EntityDuplication.class, state.getPrompting().getEntityDedupeLanguage()));
-        state.getPrompting().setSchemaRelationMerge(com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                .responseFormat(MergeRelations.class, language));
-        state.getPrompting().setSchemaRelationFilter(com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                .responseFormat(RelevantFacts.class, language));
-        state.getExtras().put("summary_target", String.valueOf(strategy.getSummaryTarget()));
-        if (referenceTime == null) {
-            state.setReferenceTimestamp(state.getCurrentTimestamp());
-        } else {
-            state.setReferenceTimestamp((int) referenceTime.toEpochSecond());
-        }
-        return state;
+    private static PromptTemplate stringPrompt(String name, String content) {
+        return PromptTemplate.builder()
+                .name(name)
+                .content(List.of(UserMessage.builder().content(content == null ? "" : content).build()))
+                .build();
     }
 
-    /**
-     * prepareEpisodes.
-     * 
-     * @param srcType srcType
-     * @param userId userId
-     * @param content content
-     * @param state state
-     * @param contentFmtKwargs contentFmtKwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private String prepareEpisodes(EpisodeType srcType, String userId, Object content, States.GraphMemState state,
-            Map<String, String> contentFmtKwargs) throws Exception {
-        ValidateInput.validateAddMemoryInput(config.getDbStorageConfig().getUserId(), srcType, userId,
-                contentFmtKwargs);
-        String normalizedContent;
-        if (content instanceof String stringContent) {
-            if (contentFmtKwargs != null && !contentFmtKwargs.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "content_fmt_kwargs has no effect when content is str, please leave it empty");
-            }
-            normalizedContent = stringContent;
-        } else if (srcType == EpisodeType.CONVERSATION && content instanceof List<?> listContent) {
-            List<Map<String, Object>> messages = GraphMemoryUtils.msg2dict(listContent, false);
-            Map<String, String> formatKwargs = contentFmtKwargs != null ? contentFmtKwargs : Map.of();
-            normalizedContent =
-                GraphUtils.formatListOfMessages(messages, new LinkedHashMap<>(formatKwargs), "{role}: {content}\n");
-        } else {
-            throw new IllegalArgumentException("The content must be str when source type is not conversation");
+    private static BaseGraphObject graphObjectFromMap(String collection, Map<String, Object> row) {
+        GraphMemoryStates.LookupTables lookupTables = new GraphMemoryStates.LookupTables();
+        if (ENTITY_COLLECTION.equals(collection)) {
+            return lookupTables.getEntity(row);
         }
-        normalizedContent = normalizedContent.trim();
-        if (normalizedContent.isBlank()) {
-            throw new IllegalArgumentException(
-                    "content must be a non-empty value of either a str or a list of messages in OpenAI "
-                            + "(dict[str, str]) / openJiuwen (BaseMessage) standard");
+        if (RELATION_COLLECTION.equals(collection)) {
+            return lookupTables.getRelation(row);
         }
+        return lookupTables.getEpisode(row);
+    }
 
-        List<Episode> historyEpisodes = new ArrayList<>();
-        var recallStrategy = state.getStrategy().getRecallEpisode();
-        boolean isMaximizeScore = isMetricSimilarity || recallStrategy.getRankConfig().isHigherIsBetter();
-        if (recallStrategy.getTopK() > 0 && !dbBackend.isEmpty(GraphConstants.EPISODE_COLLECTION)) {
-            List<QueryExpr> filters = new ArrayList<>();
-            if (userId != null && !userId.isBlank()) {
-                filters.add(QueryExpressions.filterUser(userId));
+    private static String formatConversationContent(Object content, Map<String, String> replacements) {
+        List<?> messages;
+        if (content instanceof Map<?, ?> single) {
+            messages = List.of(single);
+        } else if (content instanceof List<?> list) {
+            messages = list;
+        } else {
+            throw error("The content must be str or list of messages in dict or BaseMessage");
+        }
+        List<Map<String, Object>> messageMaps = GraphMemoryUtils.msgToDict(messages);
+        List<String> lines = new ArrayList<>();
+        for (Map<String, Object> message : messageMaps) {
+            if (!message.containsKey("role") || !message.containsKey("content")) {
+                throw error("The content is not a list of dict with keys role and content");
             }
-            if (recallStrategy.isSameKind()) {
-                filters.add(QueryExpressions.eq("obj_type", srcType.name()));
+            String role = String.valueOf(message.get("role"));
+            if (replacements != null && replacements.containsKey(role)) {
+                role = replacements.get(role);
             }
-            if (recallStrategy.isExcludeFutureResults()) {
-                filters.add(QueryExpressions.lte("valid_since", state.getReferenceTimestamp()));
+            lines.add(role + ": " + message.get("content"));
+        }
+        return String.join("\n", lines);
+    }
+
+    private static List<Map<String, Object>> normalizeDeclarationMaps(Object parsed) {
+        if (parsed instanceof Collection<?> list) {
+            return list.stream()
+                    .filter(Map.class::isInstance)
+                    .map(item -> stringObjectMap((Map<?, ?>) item))
+                    .toList();
+        }
+        if (parsed instanceof Map<?, ?> map) {
+            Map<String, Object> typed = stringObjectMap(map);
+            Object entities = typed.getOrDefault("extracted_entities",
+                    typed.getOrDefault("entities", typed.get("entity")));
+            if (entities instanceof Collection<?> collection) {
+                return collection.stream()
+                        .filter(Map.class::isInstance)
+                        .map(item -> stringObjectMap((Map<?, ?>) item))
+                        .toList();
             }
-            QueryExpr episodeSearchQuery = QueryExpressions.chainFilters(filters);
-            List<Map<String, Object>> raw = dbBackend
-                    .search(normalizedContent, recallStrategy.getTopK(), GraphConstants.EPISODE_COLLECTION,
-                            recallStrategy.getRankConfig(), 0, 0, episodeSearchQuery, null, null,
-                            Map.of("language", state.getPrompting().getLanguage()))
-                    .getOrDefault(GraphConstants.EPISODE_COLLECTION, List.of());
-            for (Map<String, Object> item : raw) {
-                double distance = Double.parseDouble(String.valueOf(item.getOrDefault("distance", 1.0)));
-                if ((isMaximizeScore && distance >= recallStrategy.getMinScore())
-                        || (!isMaximizeScore && distance <= recallStrategy.getMinScore())) {
-                    historyEpisodes.add(mapToEpisode(item));
+            if (entities instanceof Map<?, ?> single) {
+                return List.of(stringObjectMap(single));
+            }
+            return List.of(typed);
+        }
+        return List.of();
+    }
+
+    private static Set<Integer> relationKeepIds(Object parsed) {
+        if (parsed instanceof Map<?, ?> map) {
+            Object ids = map.containsKey("relevant_relations")
+                    ? map.get("relevant_relations")
+                    : map.get("relevantRelations");
+            if (ids instanceof Collection<?> collection) {
+                Set<Integer> result = new LinkedHashSet<>();
+                for (Object id : collection) {
+                    if (id instanceof Number number) {
+                        result.add(number.intValue());
+                    }
                 }
+                return result;
             }
-            historyEpisodes.sort(java.util.Comparator.comparingInt(Episode::getValidSince));
         }
-        for (Episode episode : historyEpisodes) {
-            state.getLookupTable().getEpisodes().put(episode.getUuid(), episode);
-        }
-        List<String> history = new ArrayList<>();
-        for (Episode episode : historyEpisodes) {
-            history.add(GraphUtils.formatTimestamp(episode.getCreatedAt(), java.time.ZoneOffset.UTC,
-                    "(EEE) yyyy/MMM/dd HH:mm:ss") + "\n" + episode.getContent());
-        }
-        state.setHistory(String.join("\n---\n", history));
-        return normalizedContent;
+        return Set.of();
     }
 
-    /**
-     * invokeLlm.
-     * 
-     * @param promptCall promptCall
-     * @param extra extra
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private AssistantMessage invokeLlm(ExtractionPrompts.PromptCall promptCall, Map<String, Object> extra)
-            throws Exception {
-        if (promptCall.template() == null) {
-            throw new IllegalStateException("prompt template not found");
-        }
-        Map<String, Object> params = GraphMemoryUtils.assembleInvokeParams(promptCall.kwargs(), promptCall.template(),
-                isLlmStructuredOutputEnabled ? promptCall.outputModel() : null);
-        if (llmExtraKwargs != null) {
-            params.putAll(llmExtraKwargs);
-        }
-        if (extra != null) {
-            params.putAll(extra);
-        }
-        semaphore.acquire();
+    private static Object parseJson(String content) {
         try {
-            return llmClient.invoke(params.get("messages"), null, null, null, null, null, null, null, null, params);
-        } finally {
-            semaphore.release();
+            return JSON.readValue(content, new TypeReference<Object>() {});
+        } catch (Exception ignored) {
+            return content;
         }
     }
 
-    /**
-     * extractEntityDeclarations.
-     * 
-     * @param srcType srcType
-     * @param content content
-     * @param state state
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private EntityDeclarationResult extractEntityDeclarations(EpisodeType srcType, String content,
-            States.GraphMemState state) throws Exception {
-        AssistantMessage response =
-            invokeLlm(ExtractionPrompts.extractEntityDeclaration(srcType, content, state.getHistory(), null,
-                    state.getEntityTypes(), state.getPrompting().getEntityExtractionLanguage(), state.getExtras(), 2),
-                    Map.of());
-        Object parsed = ParseResponse.parseJson(response.getContentAsString(),
-                com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel.responseFormat(EntityExtraction.class,
-                        state.getPrompting().getEntityExtractionLanguage()));
-        List<Map<String, Object>> declarationsRaw = normalizeDeclarationList(parsed);
-        List<EntityDeclaration> declarations = new ArrayList<>();
-        List<String> names = new ArrayList<>(List.of("user", "assistant", "User", "Assistant", "USER", "ASSISTANT"));
-        for (Map<String, Object> raw : declarationsRaw) {
-            Object nameObj = firstPresent(raw, List.of("name"));
-            String name = nameObj != null ? String.valueOf(nameObj).trim() : "";
-            if (name.isBlank() || names.contains(name)) {
-                continue;
-            }
-            names.add(name);
-            Object typeObj = firstPresent(raw, List.of("entity_type_id", "entityTypeId"));
-            EntityDeclaration declaration = new EntityDeclaration();
-            declaration.setName(name);
-            declaration.setEntityTypeId(typeObj != null ? Integer.parseInt(String.valueOf(typeObj)) : 0);
-            declarations.add(declaration);
-        }
-        boolean existingEntityMissing = dbBackend.isEmpty(GraphConstants.ENTITY_COLLECTION);
-        return new EntityDeclarationResult(existingEntityMissing, declarations);
+    private static Object parseJson(Object content) {
+        return content instanceof String text ? parseJson(text) : content;
     }
 
-    /**
-     * fetchRelevantEntities.
-     * 
-     * @param extractedDeclarations extractedDeclarations
-     * @param existingEntityMissing existingEntityMissing
-     * @param userId userId
-     * @param state state
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void fetchRelevantEntities(List<EntityDeclaration> extractedDeclarations, boolean existingEntityMissing,
-            String userId, States.GraphMemState state) throws Exception {
-        if (existingEntityMissing || extractedDeclarations.isEmpty()) {
-            return;
-        }
-        List<List<Float>> entityEmbeddings = dbBackend.getEmbedder() != null
-                ? dbBackend.getEmbedder().embedDocuments(
-                        extractedDeclarations.stream().map(EntityDeclaration::getName).toList(),
-                        config.getEmbedBatchSize())
-                : List.of();
-        int idx = 0;
-        for (EntityDeclaration entity : extractedDeclarations) {
-            List<Float> embedding = idx < entityEmbeddings.size() ? entityEmbeddings.get(idx) : null;
-            idx++;
-            EntityDef entityType = entity.getEntityTypeId() < state.getEntityTypes().size()
-                    ? state.getEntityTypes().get(entity.getEntityTypeId())
-                    : null;
-            if (embedding != null) {
-                List<Map<String, Object>> result = dbBackend
-                        .search(entity.getName(), state.getStrategy().getRecallEntity().getTopK(),
-                                GraphConstants.ENTITY_COLLECTION, state.getStrategy().getRecallEntity().getRankConfig(),
-                                0, 0, QueryExpressions.filterUser(userId), null, embedding,
-                                Map.of("language", state.getPrompting().getLanguage()))
-                        .getOrDefault(GraphConstants.ENTITY_COLLECTION, List.of());
-                for (Map<String, Object> found : result) {
-                    state.getRetrievedEntities().put(String.valueOf(found.get("uuid")), mapToEntity(found));
-                }
-                if (entityType != null) {
-                    result = dbBackend
-                            .search(entity.getName(), state.getStrategy().getRecallEntity().getTopK(),
-                                    GraphConstants.ENTITY_COLLECTION,
-                                    state.getStrategy().getRecallEntity().getRankConfig(), 0, 0,
-                                    QueryExpressions.filterUser(userId)
-                                            .and(QueryExpressions.eq("obj_type", entityType.getName())),
-                                    null, embedding, Map.of("language", state.getPrompting().getLanguage()))
-                            .getOrDefault(GraphConstants.ENTITY_COLLECTION, List.of());
-                    for (Map<String, Object> found : result) {
-                        state.getRetrievedEntities().put(String.valueOf(found.get("uuid")), mapToEntity(found));
-                    }
-                }
-            }
-            List<Map<String, Object>> result =
-                dbBackend.query(GraphConstants.ENTITY_COLLECTION, null, QueryExpressions.filterUser(userId), true);
-            for (Map<String, Object> found : result) {
-                String existingName = String.valueOf(found.getOrDefault("name", ""));
-                if (existingName.equals(entity.getName()) || existingName.contains(entity.getName())
-                        || entity.getName().contains(existingName)) {
-                    state.getRetrievedEntities().put(String.valueOf(found.get("uuid")), mapToEntity(found));
-                }
+    private static Map<String, Object> stringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
+        return result;
+    }
+
+    private static String contentFrom(Object response) {
+        if (response == null) {
+            return "{}";
+        }
+        if (response instanceof LlmResponse llmResponse) {
+            return llmResponse.content();
+        }
+        return String.valueOf(response);
+    }
+
+    private static String stringRef(Object value) {
+        if (value instanceof BaseGraphObject graphObject) {
+            return graphObject.getUuid();
+        }
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static Number number(Object value, Number fallback) {
+        if (value instanceof Number number) {
+            return number;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String normalizeLanguage(String value) {
+        return "en".equals(value) ? "en" : "cn";
+    }
+
+    private static BaseError error(String message) {
+        return ErrorHelper.buildError(
+                StatusCode.MEMORY_STORE_VALIDATION_INVALID,
+                "store_type", STORE_TYPE,
+                "error_msg", message);
+    }
+
+    private static GraphConfig defaultConfig() {
+        return GraphConfig.builder()
+                .uri(System.getProperty("java.io.tmpdir") + "/openjiuwen_graph_memory")
+                .name("openjiuwen_graph_memory")
+                .backend("in_memory")
+                .embedDim(64)
+                .build();
+    }
+
+    private static GraphStore createBackend(GraphConfig config) {
+        try {
+            return GraphStoreFactory.fromConfig(config);
+        } catch (RuntimeException exception) {
+            return new InMemoryGraphStore(config);
+        }
     }
 
     /**
-     * entityMerge.
-     * 
-     * @param declarations declarations
-     * @param state state
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * <p>Mirrors Python's LLM invocation callable used by {@code GraphMemory} in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
      */
-    private List<Object> entityMerge(List<EntityDeclaration> declarations, States.GraphMemState state)
-            throws Exception {
-        if (state.getRetrievedEntities().isEmpty()) {
-            return new ArrayList<>(declarations);
-        }
-        List<Map<String, Object>> existingEntities =
-            state.getRetrievedEntities().values().stream().map(Entity::toMap).toList();
-        AssistantMessage response =
-            invokeLlm(ExtractionPrompts.dedupeEntityList("", declarations, existingEntities, state.getEntityTypes(),
-                    state.getHistory(), null, state.getPrompting().getEntityDedupeLanguage(), 2), Map.of());
-        Object parsed = ParseResponse.parseJson(response.getContentAsString(),
-                com.openjiuwen.core.memory.graph.extraction.MultilingualBaseModel
-                        .responseFormat(EntityDuplication.class, state.getPrompting().getEntityDedupeLanguage()));
-        List<Map<String, Object>> duplication = normalizeDuplicationList(parsed);
-        ParseLlmResponse.ResolveEntitiesResult isResolved = ParseLlmResponse.resolveEntities(declarations,
-                new ArrayList<>(state.getRetrievedEntities().values()), duplication);
-        if (state.getStrategy().isMergeEntities()) {
-            state.getMemUpdate().getRemovedEntity().addAll(isResolved.entityUuidsToRemove());
-        }
-        if (state.getStrategy().isMergeEntities() && !isResolved.mergingArgs().isEmpty()) {
-            resolveEntityMerges(isResolved.mergingArgs(), state);
-        }
-        return new ArrayList<>(isResolved.resolvedEntities());
+    @FunctionalInterface
+    public interface LlmInvoker {
+        CompletableFuture<LlmResponse> invoke(Map<String, Object> params);
     }
 
     /**
-     * entityEnrich.
-     * 
-     * @param entities entities
-     * @param content content
-     * @param state state
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
+     * <p>Mirrors Python's LLM response object consumed by {@code GraphMemory._invoke_llm} in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
      */
-    private List<Entity> entityEnrich(List<Entity> entities, String content, States.GraphMemState state)
-            throws Exception {
-        for (Entity entity : entities) {
-            AssistantMessage response = invokeLlm(ExtractionPrompts.extractEntityAttributes(entity, content,
-                    state.getHistory(), state.getPrompting().getLanguage(), state.getExtras(), 2), Map.of());
-            GraphMemoryUtils.updateEntity(entity, response.getContentAsString(),
-                    state.getPrompting().getSchemaEntityExtraction());
-        }
-        return entities;
+    public record LlmResponse(String content) {
     }
 
     /**
-     * parseRelationFilteringResult.
-     * 
-     * @param relations relations
-     * @param state state
-     * @since 0.1.7
+     * <p>Mirrors Python's per-collection search result handled by {@code GraphMemory.search} in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
      */
-    private void parseRelationFilteringResult(List<Relation> relations, States.GraphMemState state) {
-        if (!state.getRelationFilterTasks().isEmpty()) {
-            for (Map.Entry<CompletableFuture<?>, Object> entry : state.getRelationFilterTasks().entrySet()) {
-                CompletableFuture<?> task = entry.getKey();
-                @SuppressWarnings("unchecked")
-                Map.Entry<Entity, List<Relation>> payload = (Map.Entry<Entity, List<Relation>>) entry.getValue();
-                Entity targetEntity = payload.getKey();
-                List<Relation> newRelationList = payload.getValue();
-                String targetUuid = targetEntity.getUuid();
-                List<Relation> filteredRelations;
-                try {
-                    Object response = task.join();
-                    String content = response instanceof AssistantMessage message
-                            ? message.getContentAsString()
-                            : String.valueOf(response);
-                    Object parsed = ParseResponse.parseJson(content, state.getPrompting().getSchemaRelationFilter());
-                    Set<Integer> keepIds = new HashSet<>();
-                    if (parsed instanceof Map<?, ?> map) {
-                        Map<String, Object> parsedMap = new LinkedHashMap<>();
-                        for (Map.Entry<?, ?> mapEntry : map.entrySet()) {
-                            parsedMap.put(String.valueOf(mapEntry.getKey()), mapEntry.getValue());
-                        }
-                        Object relevant = firstPresent(parsedMap, List.of("relevant_relations", "relevantRelations"));
-                        if (relevant instanceof List<?> list) {
-                            for (Object value : list) {
-                                keepIds.add(Integer.parseInt(String.valueOf(value)));
-                            }
-                        }
-                    }
-                    filteredRelations = new ArrayList<>();
-                    for (Integer keepId : keepIds) {
-                        if (keepId > 0 && keepId <= newRelationList.size()) {
-                            filteredRelations.add(newRelationList.get(keepId - 1));
-                        }
-                    }
-                } catch (RuntimeException e) {
-                    filteredRelations = newRelationList;
-                }
-                state.getMergeInfos().get(targetUuid).getNewRelations().clear();
-                state.getMergeInfos().get(targetUuid).getNewRelations().addAll(filteredRelations);
+    public record SearchResult(List<Map<String, Object>> rows, String collection) {
+    }
+
+    /**
+     * <p>Mirrors Python's {@code (score, BaseGraphObject)} search tuple in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
+     */
+    public record SearchHit(double score, BaseGraphObject object) {
+    }
+
+    /**
+     * <p>Mirrors Python's {@code _extract_entity_declarations} return tuple in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
+     */
+    public record ExtractDeclarationsResult(boolean noExistingEntity,
+                                            List<ExtractionModels.EntityDeclaration> declarations) {
+    }
+
+    /**
+     * No-op reranker useful for smoke paths.
+     *
+     * <p>Mirrors Python's optional reranker dependency used by {@code GraphMemory} in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
+     */
+    public static class NoopReranker extends Reranker {
+        @Override
+        public CompletableFuture<Map<String, Double>> rerank(String query,
+                                                             List<Object> doc,
+                                                             Object instruct,
+                                                             Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(rerankSync(query, doc, instruct, kwargs));
+        }
+
+        @Override
+        public Map<String, Double> rerankSync(String query,
+                                              List<Object> doc,
+                                              Object instruct,
+                                              Map<String, Object> kwargs) {
+            Map<String, Double> scores = new LinkedHashMap<>();
+            for (Object item : doc) {
+                scores.put(String.valueOf(item), 0.0d);
             }
-            for (Map.Entry<String, States.EntityMerge> entry : state.getMergeInfos().entrySet()) {
-                String targetUuid = entry.getKey();
-                States.EntityMerge mergeInfo = entry.getValue();
-                for (Object deferred : state.getRelationDeferredUpdates().getOrDefault(targetUuid, List.of())) {
-                    if (!(deferred instanceof List<?> tuple) || tuple.size() < 3) {
-                        continue;
-                    }
-                    Object relationObj = tuple.get(0);
-                    if (!(relationObj instanceof Relation relation)) {
-                        continue;
-                    }
-                    String attr = String.valueOf(tuple.get(1));
-                    String value = String.valueOf(tuple.get(2));
-                    if (mergeInfo.getNewRelations().contains(relation)) {
-                        if ("lhs".equals(attr)) {
-                            relation.setLhs(value);
-                        } else {
-                            relation.setRhs(value);
-                        }
-                        if (!state.getMemUpdateSkipEmbed().getUpdatedRelation().contains(relation)) {
-                            state.getMemUpdateSkipEmbed().getUpdatedRelation().add(relation);
-                        }
-                    } else {
-                        state.getMemUpdate().getRemovedRelation().add(relation.getUuid());
-                        state.getToRemove().add(relation);
-                    }
+            return scores;
+        }
+    }
+
+    /**
+     * <p>Mirrors Python's graph-store backend boundary used by {@code GraphMemory} in
+     * {@code openjiuwen/core/memory/graph/graph_memory/base.py}.</p>
+     */
+    private static final class InMemoryGraphStore implements GraphStore {
+        private final GraphConfig config;
+        private final Map<String, Map<String, Map<String, Object>>> collections = new ConcurrentHashMap<>();
+        private Embedding embedder;
+
+        private InMemoryGraphStore(GraphConfig config) {
+            this.config = config;
+            this.embedder = config.getEmbeddingModel();
+            collections.put(ENTITY_COLLECTION, new ConcurrentHashMap<>());
+            collections.put(RELATION_COLLECTION, new ConcurrentHashMap<>());
+            collections.put(EPISODE_COLLECTION, new ConcurrentHashMap<>());
+        }
+
+        @Override
+        public GraphConfig getConfig() {
+            return config;
+        }
+
+        @Override
+        public Optional<Semaphore> getSemophore() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Embedding> getEmbedder() {
+            return Optional.ofNullable(embedder);
+        }
+
+        @Override
+        public boolean isReturnSimilarityScore() {
+            return true;
+        }
+
+        @Override
+        public void rebuild() {
+            collections.values().forEach(Map::clear);
+        }
+
+        @Override
+        public CompletableFuture<Void> refresh(boolean skipCompact, Map<String, Object> kwargs) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> addData(String collection,
+                                               Iterable<Map<String, Object>> data,
+                                               boolean flush,
+                                               boolean upsert,
+                                               Map<String, Object> kwargs) {
+            Map<String, Map<String, Object>> target = collection(collection);
+            for (Map<String, Object> row : data) {
+                Map<String, Object> copy = new LinkedHashMap<>(row);
+                String uuid = String.valueOf(copy.getOrDefault("uuid", GraphStoreUtils.getUuid()));
+                copy.put("uuid", uuid);
+                target.put(uuid, copy);
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletableFuture<Void> addEntity(Iterable<?> entities, boolean flush, boolean upsert, boolean noEmbed) {
+            return addObjects(ENTITY_COLLECTION, entities);
+        }
+
+        @Override
+        public CompletableFuture<Void> addRelation(Iterable<?> relations, boolean flush, boolean upsert, boolean noEmbed) {
+            return addObjects(RELATION_COLLECTION, relations);
+        }
+
+        @Override
+        public CompletableFuture<Void> addEpisode(Iterable<?> episodes, boolean flush, boolean upsert, boolean noEmbed) {
+            return addObjects(EPISODE_COLLECTION, episodes);
+        }
+
+        @Override
+        public boolean isEmpty(String collection) {
+            return collection(collection).isEmpty();
+        }
+
+        @Override
+        public CompletableFuture<List<Map<String, Object>>> query(String collection,
+                                                                  List<?> ids,
+                                                                  QueryExpr expr,
+                                                                  boolean silenceErrors,
+                                                                  Map<String, Object> kwargs) {
+            Map<String, Map<String, Object>> source = collection(collection);
+            if (ids == null) {
+                List<Map<String, Object>> rows = source.values().stream()
+                        .map(row -> new LinkedHashMap<String, Object>(row))
+                        .collect(Collectors.toList());
+                return CompletableFuture.completedFuture(rows);
+            }
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Object id : ids) {
+                Map<String, Object> row = source.get(String.valueOf(id));
+                if (row != null) {
+                    rows.add(new LinkedHashMap<>(row));
                 }
             }
+            return CompletableFuture.completedFuture(rows);
         }
-        States.classifyRelationsExtracted(relations, state);
-    }
 
-    /**
-     * handleRelationDedupe.
-     * 
-     * @param userId userId
-     * @param content content
-     * @param relations relations
-     * @param state state
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void handleRelationDedupe(String userId, String content, List<Relation> relations,
-            States.GraphMemState state) throws Exception {
-        relations.removeIf(state.getToRemove()::contains);
-        if (relations.isEmpty() || dbBackend.isEmpty(GraphConstants.RELATION_COLLECTION)
-                || !state.getStrategy().isMergeRelations() || dbBackend.getEmbedder() == null) {
-            return;
-        }
-        List<List<Float>> embeddings = dbBackend.getEmbedder()
-                .embedDocuments(relations.stream().map(Relation::getContent).toList(), config.getEmbedBatchSize());
-        relationDedupe(userId, content, relations, embeddings, state);
-    }
-
-    /**
-     * updateEntitiesForRelationRemoval.
-     * 
-     * @param state state
-     * @param extractedDeclarations extractedDeclarations
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void updateEntitiesForRelationRemoval(States.GraphMemState state, List<Object> extractedDeclarations)
-            throws Exception {
-        if (state.getMemUpdate().getRemovedRelation().isEmpty()) {
-            return;
-        }
-        for (Entity entity : state.getMemUpdate().getUpdatedEntity()) {
-            entity.getRelations().removeIf(relation -> {
-                String relationUuid =
-                    relation instanceof String s ? s : relation instanceof Relation r ? r.getUuid() : null;
-                return state.getMemUpdate().getRemovedRelation().contains(relationUuid);
-            });
-        }
-        Set<String> entitiesToUpdate = new HashSet<>();
-        for (Object relationObj : state.getToRemove()) {
-            if (relationObj instanceof Relation relation) {
-                entitiesToUpdate.add(relation.getLhs() instanceof String s
-                        ? s
-                        : relation.getLhs() instanceof Entity e ? e.getUuid() : null);
-                entitiesToUpdate.add(relation.getRhs() instanceof String s
-                        ? s
-                        : relation.getRhs() instanceof Entity e ? e.getUuid() : null);
-            } else if (relationObj instanceof String relationUuid) {
-                Relation relation = state.getLookupTable().getRelations().get(relationUuid);
-                if (relation != null) {
-                    entitiesToUpdate.add(relation.getLhs() instanceof String s
-                            ? s
-                            : relation.getLhs() instanceof Entity e ? e.getUuid() : null);
-                    entitiesToUpdate.add(relation.getRhs() instanceof String s
-                            ? s
-                            : relation.getRhs() instanceof Entity e ? e.getUuid() : null);
-                }
+        @Override
+        public CompletableFuture<Map<String, Object>> delete(String collection,
+                                                             List<?> ids,
+                                                             QueryExpr expr,
+                                                             Map<String, Object> kwargs) {
+            Map<String, Map<String, Object>> target = collection(collection);
+            if (ids == null) {
+                target.clear();
             } else {
-                // no-op
+                ids.forEach(id -> target.remove(String.valueOf(id)));
             }
+            return CompletableFuture.completedFuture(Map.of());
         }
-        if (!entitiesToUpdate.isEmpty()) {
-            List<Map<String, Object>> queryResult = dbBackend.query(GraphConstants.ENTITY_COLLECTION,
-                    new ArrayList<>(entitiesToUpdate.stream().map(Object.class::cast).toList()), null, true);
-            for (Map<String, Object> entityMap : queryResult) {
-                Entity entity = state.getLookupTable().getEntities().getOrDefault(String.valueOf(entityMap.get("uuid")),
-                        mapToEntity(entityMap));
-                boolean updateWithoutEmbed = false;
-                boolean needsReEmbed = false;
-                for (Object extracted : extractedDeclarations) {
-                    if (extracted instanceof EntityDeclaration declaration
-                            && entity.getName().equals(declaration.getName())) {
-                        needsReEmbed = true;
-                        break;
-                    }
-                }
-                List<Object> updatedRelations = new ArrayList<>();
-                for (Object relationRef : entity.getRelations()) {
-                    String relationUuid =
-                        relationRef instanceof String s ? s : relationRef instanceof Relation r ? r.getUuid() : null;
-                    if (!state.getMemUpdate().getRemovedRelation().contains(relationUuid)) {
-                        updatedRelations.add(relationRef);
-                    } else if (!needsReEmbed) {
-                        updateWithoutEmbed = true;
-                    } else {
-                        // no-op
-                    }
-                }
-                entity.setRelations(updatedRelations);
-                if (updateWithoutEmbed && !state.getMemUpdateSkipEmbed().getUpdatedEntity().contains(entity)
-                        && !state.getMemUpdate().getRemovedEntity().contains(entity.getUuid())) {
-                    state.getMemUpdateSkipEmbed().getUpdatedEntity().add(entity);
-                }
-            }
-        }
-    }
 
-    /**
-     * resolveEntityMerges.
-     * 
-     * @param mergingArgs mergingArgs
-     * @param state state
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void resolveEntityMerges(List<Map.Entry<Entity, List<Entity>>> mergingArgs, States.GraphMemState state)
-            throws Exception {
-        Set<String> episodesToUpdate = new HashSet<>();
-        Map<String, Map<String, Relation>> entityRelationUpdates = new LinkedHashMap<>();
-        Map<String, String> mapSrcToTarget = new LinkedHashMap<>();
-        for (Map.Entry<Entity, List<Entity>> entry : mergingArgs) {
-            Entity targetEntity = entry.getKey();
-            String targetUuid = targetEntity.getUuid();
-            States.EntityMerge mergeInfo = new States.EntityMerge(targetEntity);
-            for (Entity source : entry.getValue()) {
-                mergeInfo.getSource().put(source.getUuid(), source);
-            }
-            state.getMergeInfos().put(targetUuid, mergeInfo);
-            Set<String> alias = new HashSet<>(mergeInfo.getSource().keySet());
-            alias.add(targetUuid);
-            state.getRelationDeferredUpdates().put(targetUuid, new ArrayList<>());
-            entityRelationUpdates.put(targetUuid, new LinkedHashMap<>());
-            for (Entity sourceEntity : entry.getValue()) {
-                mapSrcToTarget.put(sourceEntity.getUuid(), targetUuid);
-                targetEntity.getEpisodes().addAll(sourceEntity.getEpisodes());
-                targetEntity.setEpisodes(targetEntity.getEpisodes().stream().distinct().toList());
-                episodesToUpdate.addAll(sourceEntity.getEpisodes());
-                if (!sourceEntity.getRelations().isEmpty()) {
-                    resolveEachRelation(targetUuid, sourceEntity, mapSrcToTarget, entityRelationUpdates, state, alias);
-                }
-            }
+        @Override
+        public CompletableFuture<Map<String, List<Map<String, Object>>>> search(String query,
+                                                                                int k,
+                                                                                String collection,
+                                                                                BaseRankConfig rankerConfig,
+                                                                                Reranker reranker,
+                                                                                int bfsDepth,
+                                                                                int bfsK,
+                                                                                QueryExpr filterExpr,
+                                                                                List<String> outputFields,
+                                                                                List<Double> queryEmbedding,
+                                                                                Map<String, Object> kwargs) {
+            String needle = query == null ? "" : query.toLowerCase();
+            List<Map<String, Object>> rows = collection(collection).values().stream()
+                    .filter(row -> needle.isBlank()
+                            || String.valueOf(row.getOrDefault("content", "")).toLowerCase().contains(needle)
+                            || String.valueOf(row.getOrDefault("name", "")).toLowerCase().contains(needle))
+                    .limit(Math.max(0, k))
+                    .map(row -> {
+                        Map<String, Object> copy = new LinkedHashMap<>(row);
+                        copy.putIfAbsent("distance", 1.0d);
+                        return copy;
+                    })
+                    .toList();
+            return CompletableFuture.completedFuture(Map.of(collection, rows));
         }
-        state.getMemUpdate().getRemovedRelation().addAll(state.getFaultyRelations().keySet());
-        dispatchEntityMergeTasks(episodesToUpdate, entityRelationUpdates, state);
-    }
 
-    /**
-     * dispatchEntityMergeTasks.
-     * 
-     * @param episodesToUpdate episodesToUpdate
-     * @param entityRelationUpdates entityRelationUpdates
-     * @param state state
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void dispatchEntityMergeTasks(Set<String> episodesToUpdate,
-            Map<String, Map<String, Relation>> entityRelationUpdates, States.GraphMemState state) throws Exception {
-        if (state.getStrategy().isMergeFilter()) {
-            for (Map.Entry<String, Map<String, Relation>> entry : entityRelationUpdates.entrySet()) {
-                String targetUuid = entry.getKey();
-                List<Relation> relationList = entry.getValue().values().stream()
-                        .filter(relation -> !state.getFaultyRelations().containsKey(relation.getUuid())).toList();
-                if (relationList.isEmpty()) {
-                    continue;
-                }
-                Entity targetEntity = state.getLookupTable().getEntities().get(targetUuid);
-                if (targetEntity == null && state.getMergeInfos().containsKey(targetUuid)) {
-                    targetEntity = state.getMergeInfos().get(targetUuid).getTarget();
-                }
-                state.getMergeInfos().get(targetUuid).getNewRelations().clear();
-                state.getMergeInfos().get(targetUuid).getNewRelations().addAll(relationList);
-                Entity finalTargetEntity = targetEntity;
-                CompletableFuture<AssistantMessage> task = CompletableFuture.supplyAsync(() -> {
-                    try {
-                        return invokeLlm(ExtractionPrompts.filterRelationsForMerge(finalTargetEntity, relationList,
-                                state.getPrompting().getLanguage(), state.getExtras(), 2), Map.of());
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
-                });
-                state.getRelationFilterTasks().put(task, Map.entry(targetEntity, relationList));
-            }
+        @Override
+        public void attachEmbedder(Embedding embedder) {
+            this.embedder = embedder;
         }
-        if (!episodesToUpdate.isEmpty()) {
-            List<Map<String, Object>> queryResult = dbBackend.query(GraphConstants.EPISODE_COLLECTION,
-                    new ArrayList<>(episodesToUpdate.stream().map(Object.class::cast).toList()), null, false);
-            for (Map<String, Object> item : queryResult) {
-                state.getMemUpdateSkipEmbed().getUpdatedEpisode().add(mapToEpisode(item));
-            }
-        }
-    }
 
-    /**
-     * resolveEachRelation.
-     * 
-     * @param targetUuid targetUuid
-     * @param sourceEntity sourceEntity
-     * @param mapSrcToTarget mapSrcToTarget
-     * @param entityRelationUpdates entityRelationUpdates
-     * @param state state
-     * @param alias alias
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void resolveEachRelation(String targetUuid, Entity sourceEntity, Map<String, String> mapSrcToTarget,
-            Map<String, Map<String, Relation>> entityRelationUpdates, States.GraphMemState state, Set<String> alias)
-            throws Exception {
-        Set<String> selfPointing = new HashSet<>();
-        List<Object> relationIds = sourceEntity.getRelations().stream()
-                .map(rel -> rel instanceof String s ? s : rel instanceof Relation r ? r.getUuid() : null)
-                .map(Object.class::cast).toList();
-        List<Map<String, Object>> queryResult =
-            dbBackend.query(GraphConstants.RELATION_COLLECTION, relationIds, null, false);
-        List<Relation> sourceRelations = new ArrayList<>();
-        for (Map<String, Object> relationMap : queryResult) {
-            Relation relation = mapToRelation(relationMap);
-            state.getLookupTable().getRelations().put(relation.getUuid(), relation);
-            sourceRelations.add(relation);
+        @Override
+        public void close() {
+            collections.values().forEach(Map::clear);
         }
-        for (Relation relation : sourceRelations) {
-            String lhs =
-                relation.getLhs() instanceof String s ? s : relation.getLhs() instanceof Entity e ? e.getUuid() : null;
-            String rhs =
-                relation.getRhs() instanceof String s ? s : relation.getRhs() instanceof Entity e ? e.getUuid() : null;
-            if (alias.contains(lhs) && alias.contains(rhs)) {
-                state.getFaultyRelations().put(relation.getUuid(), relation);
-                selfPointing.add(relation.getUuid());
-                continue;
-            }
-            String toReplace = sourceEntity.getUuid();
-            while (mapSrcToTarget.containsKey(toReplace)
-                    && !state.getFaultyRelations().containsKey(relation.getUuid())) {
-                if (lhs.equals(toReplace)) {
-                    replaceOneSideOfRelation("lhs", relation, targetUuid, entityRelationUpdates, state);
-                    break;
-                }
-                if (rhs.equals(toReplace)) {
-                    replaceOneSideOfRelation("rhs", relation, targetUuid, entityRelationUpdates, state);
-                    break;
-                }
-                toReplace = mapSrcToTarget.get(toReplace);
-            }
-            if (!selfPointing.contains(relation.getUuid())
-                    && !entityRelationUpdates.get(targetUuid).containsKey(relation.getUuid())) {
-                state.getFaultyRelations().put(relation.getUuid(), relation);
-            }
-        }
-    }
 
-    /**
-     * replaceOneSideOfRelation.
-     * 
-     * @param side side
-     * @param relation relation
-     * @param targetUuid targetUuid
-     * @param entityRelationUpdates entityRelationUpdates
-     * @param state state
-     * @since 0.1.7
-     */
-    private void replaceOneSideOfRelation(String side, Relation relation, String targetUuid,
-            Map<String, Map<String, Relation>> entityRelationUpdates, States.GraphMemState state) {
-        Map<String, Relation> relationMap = entityRelationUpdates.get(targetUuid);
-        if (!relationMap.containsKey(relation.getUuid())) {
-            state.getRelationDeferredUpdates().get(targetUuid).add(List.of(relation, side, targetUuid));
-            relationMap.put(relation.getUuid(), relation);
-        } else {
-            state.getFaultyRelations().put(relation.getUuid(), relation);
-            relationMap.remove(relation.getUuid());
-            state.getRelationDeferredUpdates().get(targetUuid).removeIf(tuple -> {
-                if (!(tuple instanceof List<?> list) || list.isEmpty()) {
-                    return false;
-                }
-                return list.get(0) == relation;
-            });
+        private CompletableFuture<Void> addObjects(String collection, Iterable<?> objects) {
+            Map<String, Map<String, Object>> target = collection(collection);
+            for (Object object : objects) {
+                Map<String, Object> row = graphObjectToMap(object);
+                target.put(String.valueOf(row.get("uuid")), row);
+            }
+            return CompletableFuture.completedFuture(null);
         }
-    }
 
-    /**
-     * relationDedupe.
-     * 
-     * @param userId userId
-     * @param content content
-     * @param relations relations
-     * @param relationEmbedResults relationEmbedResults
-     * @param state state
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void relationDedupe(String userId, String content, List<Relation> relations,
-            List<List<Float>> relationEmbedResults, States.GraphMemState state) throws Exception {
-        List<PostprocessGraphObjects.RelationTask> dedupeTasks = new ArrayList<>();
-        for (int i = 0; i < relations.size() && i < relationEmbedResults.size(); i++) {
-            Relation newRelation = relations.get(i);
-            List<String> lhsRhs = new ArrayList<>();
-            Object lhs = newRelation.getLhs();
-            Object rhs = newRelation.getRhs();
-            lhsRhs.add(lhs instanceof String s
-                    ? s
-                    : (lhs instanceof Entity e && e.getContent() != null && !e.getContent().isBlank()
-                            ? e.getUuid()
-                            : null));
-            lhsRhs.add(rhs instanceof String s
-                    ? s
-                    : (rhs instanceof Entity e && e.getContent() != null && !e.getContent().isBlank()
-                            ? e.getUuid()
-                            : null));
-            if (lhsRhs.contains(null)) {
-                continue;
-            }
-            List<Map<String, Object>> result = dbBackend
-                    .search(newRelation.getContent(), state.getStrategy().getRecallRelation().getTopK(),
-                            GraphConstants.RELATION_COLLECTION, state.getStrategy().getRecallRelation().getRankConfig(),
-                            0, 0,
-                            QueryExpressions.inList("lhs", lhsRhs).and(QueryExpressions.inList("rhs", lhsRhs))
-                                    .and(QueryExpressions.filterUser(userId)),
-                            null, relationEmbedResults.get(i), Map.of("language", state.getPrompting().getLanguage()))
-                    .getOrDefault(GraphConstants.RELATION_COLLECTION, List.of());
-            List<Relation> currentRelations = new ArrayList<>();
-            for (Map<String, Object> item : result) {
-                Relation relation = mapToRelation(item);
-                state.getRetrievedRelations().put(relation.getUuid(), relation);
-                currentRelations.add(relation);
-            }
-            if (!currentRelations.isEmpty()) {
-                List<Entity> existingEntities = List.of(endpointToEntity(newRelation.getLhs(), state),
-                        endpointToEntity(newRelation.getRhs(), state));
-                CompletableFuture<AssistantMessage> task = CompletableFuture.supplyAsync(() -> {
-                    try {
-                        return invokeLlm(ExtractionPrompts.dedupeRelationList(content, newRelation, currentRelations,
-                                existingEntities, state.getHistory(), null, state.getPrompting().getLanguage(), 2),
-                                Map.of());
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
-                });
-                dedupeTasks.add(new PostprocessGraphObjects.RelationTask(newRelation,
-                        currentRelations.stream().map(Relation::toMap).toList(), task));
-            }
+        private Map<String, Map<String, Object>> collection(String collection) {
+            return collections.computeIfAbsent(collection, ignored -> new ConcurrentHashMap<>());
         }
-        PostprocessGraphObjects.parseRelationUuidsToRemove(dedupeTasks, state);
-    }
 
-    /**
-     * endpointToEntity.
-     * 
-     * @param endpoint endpoint
-     * @param state state
-     * @return the result
-     * @since 0.1.7
-     */
-    private Entity endpointToEntity(Object endpoint, States.GraphMemState state) {
-        if (endpoint instanceof Entity entity) {
-            return entity;
+        private static Map<String, Object> graphObjectToMap(Object object) {
+            if (object instanceof Entity entity) {
+                Map<String, Object> row = baseMap(entity);
+                row.put("name", entity.getName());
+                row.put("relations", entity.serializeRelations());
+                row.put("episodes", entity.serializeEpisodes());
+                row.put("attributes", entity.getAttributes());
+                return row;
+            }
+            if (object instanceof Relation relation) {
+                Map<String, Object> row = baseMap(relation);
+                row.put("name", relation.getName());
+                row.put("lhs", relation.serializeLhs());
+                row.put("rhs", relation.serializeRhs());
+                row.put("valid_since", relation.getValidSince());
+                row.put("valid_until", relation.getValidUntil());
+                row.put("offset_since", relation.getOffsetSince());
+                row.put("offset_until", relation.getOffsetUntil());
+                return row;
+            }
+            if (object instanceof Episode episode) {
+                Map<String, Object> row = baseMap(episode);
+                row.put("entities", episode.serializeEntities());
+                row.put("valid_since", episode.getValidSince());
+                return row;
+            }
+            if (object instanceof Map<?, ?> map) {
+                Map<String, Object> row = stringObjectMap(map);
+                row.putIfAbsent("uuid", GraphStoreUtils.getUuid());
+                return row;
+            }
+            throw new IllegalArgumentException("Unsupported graph object: " + object);
         }
-        Entity entity = state.getLookupTable().getEntities().get(String.valueOf(endpoint));
-        if (entity == null) {
-            throw new IllegalArgumentException("The entity UUID " + endpoint
-                    + " is not present in lookup table while building relation dedupe prompts.");
-        }
-        return entity;
-    }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * normalizeRelationList.
-     * 
-     * @param parsed parsed
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> normalizeRelationList(Object parsed) {
-        if (parsed instanceof Map<?, ?> map) {
-            Map<String, Object> normalizedMap = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                normalizedMap.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            Object extracted = firstPresent(normalizedMap, List.of("extracted_relations", "extractedRelations"));
-            if (extracted instanceof List<?> list) {
-                List<Map<String, Object>> result = new ArrayList<>();
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> itemMap) {
-                        Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                        for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                            normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                        }
-                        result.add(normalizedItem);
-                    }
-                }
-                return result;
-            }
+        private static Map<String, Object> baseMap(BaseGraphObject object) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("uuid", object.getUuid());
+            row.put("created_at", object.getCreatedAt());
+            row.put("user_id", object.getUserId());
+            row.put("obj_type", object.getObjType());
+            row.put("language", object.getLanguage());
+            row.put("content", object.getContent());
+            row.put("metadata", object.getMetadata());
+            return row;
         }
-        if (parsed instanceof List<?> list) {
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> itemMap) {
-                    Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                    for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                        normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                    result.add(normalizedItem);
-                }
-            }
-            return result;
-        }
-        return List.of();
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * normalizeDeclarationList.
-     * 
-     * @param parsed parsed
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> normalizeDeclarationList(Object parsed) {
-        if (parsed instanceof Map<?, ?> map) {
-            Map<String, Object> normalizedMap = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                normalizedMap.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            Object extracted = firstPresent(normalizedMap, List.of("extracted_entities", "extractedEntities"));
-            if (extracted instanceof List<?> list) {
-                List<Map<String, Object>> result = new ArrayList<>();
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> itemMap) {
-                        Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                        for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                            normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                        }
-                        result.add(normalizedItem);
-                    }
-                }
-                return result;
-            }
-        }
-        if (parsed instanceof List<?> list) {
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> itemMap) {
-                    Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                    for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                        normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                    result.add(normalizedItem);
-                }
-            }
-            return result;
-        }
-        return List.of();
-    }
-
-    @SuppressWarnings("unchecked")
-    /**
-     * normalizeDuplicationList.
-     * 
-     * @param parsed parsed
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<Map<String, Object>> normalizeDuplicationList(Object parsed) {
-        if (parsed instanceof Map<?, ?> map) {
-            Map<String, Object> normalizedMap = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                normalizedMap.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            Object extracted = firstPresent(normalizedMap, List.of("duplicated_entities", "duplicatedEntities"));
-            if (extracted instanceof List<?> list) {
-                List<Map<String, Object>> result = new ArrayList<>();
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> itemMap) {
-                        Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                        for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                            normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                        }
-                        result.add(normalizedItem);
-                    }
-                }
-                return result;
-            }
-        }
-        if (parsed instanceof List<?> list) {
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> itemMap) {
-                    Map<String, Object> normalizedItem = new LinkedHashMap<>();
-                    for (Map.Entry<?, ?> entry : itemMap.entrySet()) {
-                        normalizedItem.put(String.valueOf(entry.getKey()), entry.getValue());
-                    }
-                    result.add(normalizedItem);
-                }
-            }
-            return result;
-        }
-        return List.of();
-    }
-
-    /**
-     * firstPresent.
-     * 
-     * @param source source
-     * @param keys keys
-     * @return the result
-     * @since 0.1.7
-     */
-    private Object firstPresent(Map<String, Object> source, List<String> keys) {
-        for (String key : keys) {
-            if (source.containsKey(key)) {
-                return source.get(key);
-            }
-        }
-        return null;
-    }
-
-    /**
-     * EntityDeclarationResult.
-     * 
-     * @param existingEntityMissing existingEntityMissing
-     * @param entities entities
-     * @since 0.1.7
-     */
-    private record EntityDeclarationResult(boolean existingEntityMissing, List<EntityDeclaration> entities) {
     }
 }

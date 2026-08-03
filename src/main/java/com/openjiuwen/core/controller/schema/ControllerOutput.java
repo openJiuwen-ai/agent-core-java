@@ -4,119 +4,96 @@
 
 package com.openjiuwen.core.controller.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.session.stream.CustomSchema;
+import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Controller output for batch processing.
  * <p>
  * Batch processing output result, containing type, data list, and input event ID.
  * <p>
- * Mirrors Python's {@code ControllerOutput(BaseModel)}.
+ * Mirrors Python's {@code ControllerOutput} in
+ * {@code openjiuwen/core/controller/schema/controller_output.py}.
  * <p>
  * The {@code type} field is a String to support both {@link EventType} values
  * and special constants like {@link ControllerOutputPayload#TASK_PROCESSING}.
- * The {@code data} field can be either a list of {@link ControllerOutputChunk}
- * or a {@link Map} (matching Python's {@code List[ControllerOutputChunk] | Dict}).
- * 
- * @since 0.1.7
+ * The {@code data} field can be either a list of {@link ControllerOutputChunk},
+ * {@link OutputSchema}, {@link CustomSchema}, {@link TraceSchema}, or a {@link Map}.
  */
 public class ControllerOutput {
+
+    private static final Set<String> SUPPORTED_TYPES = Set.of(
+            EventType.TASK_COMPLETION.getValue(),
+            EventType.TASK_INTERACTION.getValue(),
+            EventType.TASK_FAILED.getValue(),
+            ControllerOutputPayload.TASK_PROCESSING
+    );
+
     private String type;
-    private Object data; // List<ControllerOutputChunk> or Map
+
+    private Object data;
+
+    @JsonProperty("input_event_id")
     private String inputEventId;
 
-    /**
-     * ControllerOutput.
-     * 
-     * @since 0.1.7
-     */
     public ControllerOutput() {
     }
 
-    /**
-     * ControllerOutput.
-     * 
-     * @param type type
-     * @param data data
-     * @since 0.1.7
-     */
     public ControllerOutput(EventType type, List<ControllerOutputChunk> data) {
-        this.type = type.getValue();
-        this.data = data;
+        setType(type);
+        setData(data);
     }
 
-    /**
-     * ControllerOutput.
-     * 
-     * @param type type
-     * @param data data
-     * @since 0.1.7
-     */
     public ControllerOutput(String type, Object data) {
-        this.type = type;
-        this.data = data;
+        setType(type);
+        setData(data);
     }
 
-    /**
-     * getType.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getType() {
         return type;
     }
 
-    /**
-     * setType.
-     * 
-     * @param type type
-     * @since 0.1.7
-     */
     public void setType(String type) {
+        if (type != null && !SUPPORTED_TYPES.contains(type)) {
+            throw new IllegalArgumentException("Unsupported controller output type: " + type);
+        }
         this.type = type;
     }
 
-    /**
-     * setType.
-     * 
-     * @param type type
-     * @since 0.1.7
-     */
     public void setType(EventType type) {
         this.type = type.getValue();
     }
 
     /**
      * Get data as raw object (can be List or Map).
-     * 
-     * @return the result
-     * @since 0.1.7
      */
     public Object getData() {
         return data;
     }
 
     /**
-     * getDataAsChunks.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get data as a list of ControllerOutputChunk.
+     *
+     * @return list of chunks, or null if data is not a list
      */
     @SuppressWarnings("unchecked")
     public List<ControllerOutputChunk> getDataAsChunks() {
-        if (data instanceof List<?>) {
+        if (data instanceof List<?> list
+                && list.stream().allMatch(OutputSchema.class::isInstance)) {
             return (List<ControllerOutputChunk>) data;
         }
-        return java.util.Collections.emptyList();
+        return null;
     }
 
     /**
-     * getDataAsMap.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get data as a Map.
+     *
+     * @return map, or null if data is not a map
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getDataAsMap() {
@@ -126,32 +103,16 @@ public class ControllerOutput {
         return null;
     }
 
-    /**
-     * setData.
-     * 
-     * @param data data
-     * @since 0.1.7
-     */
     public void setData(Object data) {
         this.data = data;
     }
 
-    /**
-     * getInputEventId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @JsonProperty("input_event_id")
     public String getInputEventId() {
         return inputEventId;
     }
 
-    /**
-     * setInputEventId.
-     * 
-     * @param inputEventId inputEventId
-     * @since 0.1.7
-     */
+    @JsonProperty("input_event_id")
     public void setInputEventId(String inputEventId) {
         this.inputEventId = inputEventId;
     }

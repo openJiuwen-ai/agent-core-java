@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.process.extract;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -16,195 +17,209 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
-import com.openjiuwen.core.memory.prompt.PromptApplier;
+import com.openjiuwen.core.memory.config.MemoryScopeConfig;
+import com.openjiuwen.core.memory.prompts.PromptApplier;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Analyzes conversation messages to determine key information, extract variables, and generate summary.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code MemoryAnalyzer} in
+ * {@code openjiuwen/core/memory/process/extract/memory_analyzer.py}.
  */
-public class MemoryAnalyzer {
+public final class MemoryAnalyzer {
+
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final int DEFAULT_RETRIES = 3;
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("memory-analyzer-io");
 
-    /**
-     * ObjectMapper.
-     * 
-     * @since 0.1.7
-     */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    /**
-     * MemoryAnalyzer.
-     * 
-     * @since 0.1.7
-     */
     private MemoryAnalyzer() {
     }
 
-    /**
-     * analyze.
-     * 
-     * @param messages messages
-     * @param historyMessages historyMessages
-     * @param baseChatModel baseChatModel
-     * @param memoryConfig memoryConfig
-     * @param summaryMaxToken summaryMaxToken
-     * @param forbiddenVariables forbiddenVariables
-     * @param retries retries
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    public static MemoryAnalyzerResult analyze(List<BaseMessage> messages, List<BaseMessage> historyMessages,
-            Map.Entry<String, Model> baseChatModel, AgentMemoryConfig memoryConfig, int summaryMaxToken,
-            String forbiddenVariables, int retries) {
+    public static CompletionStage<MemoryAnalyzerResult> analyze(
+            List<BaseMessage> messages,
+            List<BaseMessage> historyMessages,
+            Model baseChatModel,
+            AgentMemoryConfig memoryConfig,
+            Integer summaryMaxToken
+    ) {
+        return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken, null, "", DEFAULT_RETRIES);
+    }
+
+    public static CompletionStage<MemoryAnalyzerResult> analyze(
+            List<BaseMessage> messages,
+            List<BaseMessage> historyMessages,
+            Model baseChatModel,
+            AgentMemoryConfig memoryConfig,
+            Integer summaryMaxToken,
+            MemoryScopeConfig scopeConfig,
+            String forbiddenVariables
+    ) {
+        return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken,
+                scopeConfig, forbiddenVariables, DEFAULT_RETRIES);
+    }
+
+    public static CompletionStage<MemoryAnalyzerResult> analyze(
+            List<BaseMessage> messages,
+            List<BaseMessage> historyMessages,
+            Model baseChatModel,
+            AgentMemoryConfig memoryConfig,
+            Integer summaryMaxToken,
+            MemoryScopeConfig scopeConfig,
+            String forbiddenVariables,
+            int retries
+    ) {
         if (messages == null || messages.isEmpty()) {
-            MEMORY_LOGGER.warn("[{}] No messages to analyze", LogEventType.MEMORY_PROCESS);
-            return null;
+            MEMORY_LOGGER.warning("[{}] No messages to analyze, messages_len={}",
+                    LogEventType.MEMORY_PROCESS.getValue(), 0);
+            return CompletableFuture.completedFuture(null);
         }
 
-        StringBuilder history = new StringBuilder();
-        StringBuilder conversation = new StringBuilder();
-
-        if (historyMessages != null) {
-            for (BaseMessage msg : historyMessages) {
-                history.append(msg.getRole()).append(": ").append(msg.getContentAsString()).append("\n");
-            }
-        }
-        for (BaseMessage msg : messages) {
-            conversation.append(msg.getRole()).append(": ").append(msg.getContentAsString()).append("\n");
-        }
+        String history = joinMessages(historyMessages);
+        String conversation = joinMessages(messages);
 
         List<Map<String, String>> variablesDescription = new ArrayList<>();
         List<Map<String, String>> variablesOutputFormat = new ArrayList<>();
-        if (memoryConfig.getMemVariables() != null) {
+        if (memoryConfig != null && memoryConfig.getMemVariables() != null) {
             for (Param param : memoryConfig.getMemVariables()) {
-                Map<String, String> desc = new HashMap<>();
-                desc.put("variable_key", param.getName());
-                desc.put("variable_value", param.getDescription());
-                variablesDescription.add(desc);
+                Map<String, String> description = new LinkedHashMap<>();
+                description.put("variable_key", param.getName());
+                description.put("variable_value", param.getDescription());
+                variablesDescription.add(description);
 
-                Map<String, String> output = new HashMap<>();
+                Map<String, String> output = new LinkedHashMap<>();
                 output.put("variable_key", param.getName());
                 output.put("variable_value", "");
                 variablesOutputFormat.add(output);
             }
         }
 
-        String variablesDescJson;
-        String variablesOutputJson;
-        try {
-            variablesDescJson = MAPPER.writeValueAsString(variablesDescription);
-            variablesOutputJson = MAPPER.writeValueAsString(variablesOutputFormat);
-        } catch (JsonProcessingException e) {
-            variablesDescJson = "[]";
-            variablesOutputJson = "[]";
-        }
+        boolean hasVariable = memoryConfig != null
+                && memoryConfig.getMemVariables() != null
+                && !memoryConfig.getMemVariables().isEmpty();
+        Map<String, String> promptVariables = new LinkedHashMap<>();
+        promptVariables.put("history", history);
+        promptVariables.put("conversation", conversation);
+        promptVariables.put("has_variable", pythonBoolean(hasVariable));
+        promptVariables.put("variables_define_template", toJson(variablesDescription));
+        promptVariables.put("variables_output_template", toJson(variablesOutputFormat));
+        promptVariables.put("forbidden_variables", forbiddenVariables == null || forbiddenVariables.isEmpty()
+                ? "None" : forbiddenVariables);
+        promptVariables.put("max_message_token", String.valueOf(summaryMaxToken));
+        promptVariables.put("user_profile_definition",
+                scopeConfig == null ? "" : nullToEmpty(scopeConfig.getUserProfileDefinition()));
+        promptVariables.put("semantic_memory_definition",
+                scopeConfig == null ? "" : nullToEmpty(scopeConfig.getSemanticMemoryDefinition()));
+        promptVariables.put("episodic_memory_definition",
+                scopeConfig == null ? "" : nullToEmpty(scopeConfig.getEpisodicMemoryDefinition()));
 
-        boolean hasVariable = memoryConfig.getMemVariables() != null && !memoryConfig.getMemVariables().isEmpty();
-        String normalizedForbiddenVariables = normalizeForbiddenVariables(forbiddenVariables);
-
-        Map<String, Object> variables = new HashMap<>();
-        variables.put("history", history.toString());
-        variables.put("conversation", conversation.toString());
-        variables.put("has_variable", hasVariable);
-        variables.put("variables_define_template", variablesDescJson);
-        variables.put("variables_output_template", variablesOutputJson);
-        variables.put("forbidden_variables", normalizedForbiddenVariables);
-        variables.put("max_message_token", summaryMaxToken);
-
-        String promptContent = PromptApplier.getInstance().apply("memory_analysis_prompt", variables);
+        String promptContent = new PromptApplier().apply("memory_analysis_prompt", promptVariables);
         List<BaseMessage> modelInput = List.of(new UserMessage(promptContent));
+        return CompletableFuture.supplyAsync(
+                () -> invokeAndParse(baseChatModel, modelInput, memoryConfig, retries),
+                IO_EXECUTOR);
+    }
 
-        String modelName = baseChatModel.getKey();
-        Model modelClient = baseChatModel.getValue();
+    private static MemoryAnalyzerResult invokeAndParse(
+            Model baseChatModel,
+            List<BaseMessage> modelInput,
+            AgentMemoryConfig memoryConfig,
+            int retries
+    ) {
         JsonOutputParser parser = new JsonOutputParser();
-
-        for (int attempt = 0; attempt < retries; attempt++) {
+        int maxRetries = Math.max(1, retries);
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                AssistantMessage response =
-                    modelClient.invoke(modelInput, null, null, null, modelName, null, null, null, null, null);
-                Object res = parser.parse(response.getContentAsString());
-                if (res instanceof Map<?, ?> resMap) {
-                    MemoryAnalyzerResult result = new MemoryAnalyzerResult();
-                    result.setHasKeyInformation(Boolean.TRUE.equals(resMap.get("has_key_information")));
-
-                    // Parse variables
-                    Object varsObj = resMap.get("variables");
-                    if (varsObj instanceof List<?> varsList) {
-                        List<VariableResult> variableResults = new ArrayList<>();
-                        for (Object item : varsList) {
-                            if (item instanceof Map<?, ?> itemMap) {
-                                VariableResult vr = new VariableResult();
-                                Object variableKey =
-                                    itemMap.containsKey("variable_key") ? itemMap.get("variable_key") : "";
-                                Object variableValue =
-                                    itemMap.containsKey("variable_value") ? itemMap.get("variable_value") : "";
-                                vr.setVariableKey(String.valueOf(variableKey));
-                                vr.setVariableValue(String.valueOf(variableValue));
-                                variableResults.add(vr);
-                            }
-                        }
-                        result.setVariables(variableResults);
-                    }
-
-                    // Parse summary
-                    Object summaryObj = resMap.get("summary");
-                    if (summaryObj != null) {
-                        result.setSummary(String.valueOf(summaryObj));
-                    }
-
-                    // Clear summary if not enabled
-                    if (!memoryConfig.isEnableLongTermMem() || !memoryConfig.isEnableSummaryMemory()) {
+                AssistantMessage response = baseChatModel.invoke(modelInput).toCompletableFuture().join();
+                Object parsed = parser.parse(response.getContentAsString()).toCompletableFuture().join();
+                if (parsed instanceof Map<?, ?> parsedMap) {
+                    MemoryAnalyzerResult result = fromMap(parsedMap);
+                    if (memoryConfig == null
+                            || !memoryConfig.isEnableLongTermMem()
+                            || !memoryConfig.isEnableSummaryMemory()) {
                         result.setSummary("");
                     }
                     return result;
                 }
-            } catch (Exception e) {
-                if (attempt < retries - 1) {
-                    continue;
+            } catch (RuntimeException exception) {
+                if (attempt >= maxRetries - 1) {
+                    MEMORY_LOGGER.error("[{}] Categories model output format error: {}",
+                            LogEventType.MEMORY_PROCESS.getValue(), exception.toString());
                 }
-                MEMORY_LOGGER.error("[{}] Categories model output format error: {}", LogEventType.MEMORY_PROCESS,
-                        e.getMessage());
             }
         }
         return new MemoryAnalyzerResult();
     }
 
-    /**
-     * analyze.
-     * 
-     * @param messages messages
-     * @param historyMessages historyMessages
-     * @param baseChatModel baseChatModel
-     * @param memoryConfig memoryConfig
-     * @param summaryMaxToken summaryMaxToken
-     * @param forbiddenVariables forbiddenVariables
-     * @return the result
-     * @since 0.1.7
-     */
-    public static MemoryAnalyzerResult analyze(List<BaseMessage> messages, List<BaseMessage> historyMessages,
-            Map.Entry<String, Model> baseChatModel, AgentMemoryConfig memoryConfig, int summaryMaxToken,
-            String forbiddenVariables) {
-        return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken, forbiddenVariables, 3);
+    private static MemoryAnalyzerResult fromMap(Map<?, ?> raw) {
+        MemoryAnalyzerResult result = new MemoryAnalyzerResult();
+        result.setHasKeyInformation(booleanValue(raw.get("has_key_information")));
+        Object variables = raw.get("variables");
+        if (variables instanceof List<?> variableList) {
+            List<VariableResult> variableResults = new ArrayList<>();
+            for (Object variable : variableList) {
+                if (variable instanceof Map<?, ?> variableMap) {
+                    variableResults.add(new VariableResult(
+                            stringOrDefault(variableMap.get("variable_key"), ""),
+                            stringOrDefault(variableMap.get("variable_value"), "")
+                    ));
+                }
+            }
+            result.setVariables(variableResults);
+        }
+        result.setSummary(stringOrDefault(raw.get("summary"), ""));
+        return result;
     }
 
-    /**
-     * normalizeForbiddenVariables.
-     * 
-     * @param forbiddenVariables forbiddenVariables
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String normalizeForbiddenVariables(String forbiddenVariables) {
-        if (forbiddenVariables == null || forbiddenVariables.isBlank()) {
-            return "None";
+    private static String joinMessages(List<BaseMessage> messages) {
+        StringBuilder builder = new StringBuilder();
+        if (messages == null) {
+            return "";
         }
-        return forbiddenVariables;
+        for (BaseMessage message : messages) {
+            builder.append(message.getRole()).append(": ")
+                    .append(message.getContentAsString()).append("\n");
+        }
+        return builder.toString();
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            if (value instanceof List<?>) {
+                return "[]";
+            }
+            return "{}";
+        }
+    }
+
+    private static boolean booleanValue(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (value instanceof String stringValue) {
+            return "true".equals(stringValue.toLowerCase(Locale.ROOT));
+        }
+        return false;
+    }
+
+    private static String pythonBoolean(boolean value) {
+        return value ? "True" : "False";
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String stringOrDefault(Object value, String defaultValue) {
+        return value == null ? defaultValue : String.valueOf(value);
     }
 }

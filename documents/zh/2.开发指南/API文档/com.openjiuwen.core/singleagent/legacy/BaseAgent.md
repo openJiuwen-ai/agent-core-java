@@ -1,4 +1,4 @@
-# com.openjiuwen.core.singleagent.legacy.BaseAgent
+# com.openjiuwen.core.single_agent.BaseAgent
 
 ## 抽象类 BaseAgent
 

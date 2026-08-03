@@ -1,4 +1,4 @@
-# com.openjiuwen.core.session.store.MemoryStore
+# com.openjiuwen.core.session.MemoryStore
 
 ## 类 MemoryStore
 

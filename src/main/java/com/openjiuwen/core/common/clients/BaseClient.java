@@ -6,59 +6,56 @@ package com.openjiuwen.core.common.clients;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Base class for common clients.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code BaseClient} in
+ * {@code openjiuwen/core/common/clients/client_registry.py}.
  */
-public abstract class BaseClient implements AutoCloseable {
-    private final Map<String, Object> config;
+public class BaseClient {
 
-    /**
-     * BaseClient.
-     * 
-     * @since 0.1.7
-     */
-    protected BaseClient() {
+    private Map<String, Object> config;
+
+    public BaseClient() {
         this(Map.of());
     }
 
-    /**
-     * BaseClient.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
-    protected BaseClient(Map<String, ?> config) {
-        this.config = new LinkedHashMap<>();
-        if (config != null) {
-            config.forEach((key, value) -> {
-                if (key != null) {
-                    this.config.put(key, value);
-                }
-            });
-        }
+    public BaseClient(Map<String, Object> kwargs) {
+        initialize(kwargs);
     }
 
-    /**
-     * getConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public static String getClientName() {
+        return null;
+    }
+
+    public static String getClientType() {
+        return "common";
+    }
+
+    public void initialize(Map<String, Object> kwargs) {
+        this.config = kwargs != null ? new LinkedHashMap<>(kwargs) : new LinkedHashMap<>();
+    }
+
     public Map<String, Object> getConfig() {
-        return new LinkedHashMap<>(config);
+        return config;
     }
 
-    /**
-     * close.
-     * 
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    @Override
-    public void close() throws Exception {
-        // Default no-op.
+    public CompletableFuture<Boolean> close() {
+        return CompletableFuture.completedFuture(Boolean.TRUE);
+    }
+
+    public BaseClient enter() {
+        return this;
+    }
+
+    public CompletableFuture<Void> exit(Throwable excType, Throwable excVal, Object excTb) {
+        return close().thenApply(ignored -> null);
+    }
+
+    public Map<String, Object> getMetadata() {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("client_name", getClientName());
+        metadata.put("client_type", getClientType());
+        return metadata;
     }
 }

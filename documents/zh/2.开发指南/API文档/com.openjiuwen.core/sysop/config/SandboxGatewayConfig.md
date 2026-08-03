@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.config.SandboxGatewayConfig
+# com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig
 
 ## 类 SandboxGatewayConfig
 

@@ -17,31 +17,19 @@ import java.util.List;
 /**
  * Configuration for the Questioner workflow component.
  * <p>
- * Mirrors Python's {@code QuestionerConfig}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code QuestionerConfig} in
+ * {@code openjiuwen/core/workflow/components/llm/questioner_comp.py}.
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class QuestionerConfig extends ComponentConfig {
+
     private String modelId;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfig;
-
-    /**
-     * ResponseType.REPLY_DIRECTLY.getValue.
-     * 
-     * @since 0.1.7
-     */
     private String responseType = ResponseType.REPLY_DIRECTLY.getValue();
     private String questionContent = "";
     private boolean extractFieldsFromResponse = true;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<FieldInfo> fieldNames = new ArrayList<>();
     private int maxResponse = 3;
     private boolean withChatHistory = false;

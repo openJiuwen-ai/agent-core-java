@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.tool.service_api.parser.DeflateDecompressor
+# com.openjiuwen.core.foundation.tool.service_api.DeflateDecompressor
 
 ## class DeflateDecompressor
 

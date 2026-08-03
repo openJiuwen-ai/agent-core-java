@@ -7,9 +7,8 @@ package com.openjiuwen.core.common.logging.events;
 /**
  * Log event type enumeration.
  * <p>
- * Faithfully ported from Python's {@code LogEventType}.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code LogEventType} in
+ * {@code openjiuwen/core/common/logging/events.py}.
  */
 public enum LogEventType {
     // Agent events
@@ -146,7 +145,14 @@ public enum LogEventType {
     RESOURCE_MGR_GET_RESOURCE("get_resource"),
     RESOURCE_MGR_ADD_RESOURCE_SERVER("add_resource_server"),
     RESOURCE_MGR_REMOVE_RESOURCE_SERVER("remove_resource_server"),
-    RESOURCE_MGR_REMOVE_TAG("remove_tag");
+    RESOURCE_MGR_REMOVE_TAG("remove_tag"),
+
+    // Coroutine task manager events
+    CORO_MANAGER_INIT("coro_manager_init"),
+    CORO_MANAGER_TASK_STATUS_CHANGED("coro_manager_task_status_changed"),
+    CORO_MANAGER_TASK_CANCELLED("coro_manager_task_cancelled"),
+    CORO_MANAGER_DEBUG_TASK_TREE("coro_manager_debug_task_tree"),
+    ;
 
     private final String value;
 
@@ -154,22 +160,12 @@ public enum LogEventType {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 
     /**
      * Lookup by string value, returns null if not found.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
      */
     public static LogEventType fromValue(String value) {
         for (LogEventType t : values()) {
@@ -180,3 +176,5 @@ public enum LogEventType {
         return null;
     }
 }
+
+

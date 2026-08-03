@@ -1,6 +1,6 @@
 # BaseGroup 与组封装
 
-这里重点说明 `com.openjiuwen.core.multiagent.BaseGroup` 及其配套的 `GroupCard`、`GroupConfig` 和 group session 能力。
+这里重点说明 `com.openjiuwen.core.multi_agent.BaseGroup` 及其配套的 `GroupCard`、`GroupConfig` 和 group session 能力。
 
 ## 功能定位
 
@@ -56,11 +56,11 @@ GroupConfig config = new GroupConfig()
 `BaseGroup` 提供的是团队封装骨架：你需要自己在子类里组织成员注册和路由逻辑。
 
 ```java
-import com.openjiuwen.core.multiagent.BaseGroup;
-import com.openjiuwen.core.multiagent.GroupConfig;
-import com.openjiuwen.core.multiagent.schema.GroupCard;
+import com.openjiuwen.core.multi_agent.BaseGroup;
+import com.openjiuwen.core.multi_agent.GroupConfig;
+import com.openjiuwen.core.multi_agent.schema.GroupCard;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
-import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.single_agent.BaseAgent;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -101,8 +101,8 @@ final class PlanningGroup extends BaseGroup {
 `BaseGroup.invoke(...)` 和 `stream(...)` 的第二个参数是 `AgentGroupSessionApi`。实际使用时，最方便的入口是 `MultiAgentSessions`：
 
 ```java
-import com.openjiuwen.core.multiagent.MultiAgentSessions;
-import com.openjiuwen.core.multiagent.Session;
+import com.openjiuwen.core.multi_agent.MultiAgentSessions;
+import com.openjiuwen.core.session.Session;
 
 Session session = MultiAgentSessions.createAgentGroupSession(
         "planning-001",
@@ -112,7 +112,7 @@ Session session = MultiAgentSessions.createAgentGroupSession(
 Object result = group.invoke(Map.of("task", "整理需求"), session);
 ```
 
-`Session` 其实是 `AgentGroupSessionApi` 的包级别别名，目的就是让调用方能继续沿用 `com.openjiuwen.core.multiagent.Session` 这一顶层导入入口。
+`Session` 其实是 `AgentGroupSessionApi` 的包级别别名，目的就是让调用方能继续沿用 `com.openjiuwen.core.session.Session` 这一顶层导入入口。
 
 ## 什么时候该用 `BaseGroup`
 

@@ -4,476 +4,515 @@
 
 package com.openjiuwen.core.runner.spawn;
 
-import lombok.Getter;
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
- * Public class SpawnedProcessHandle used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Handle for managing a spawned child process lifecycle.
+ *
+ * <p>Mirrors Python's {@code SpawnedProcessHandle} in
+ * {@code openjiuwen/core/runner/spawn/process_manager.py}.</p>
  */
-@Getter
 public class SpawnedProcessHandle {
+
+    private static final LoggerProtocol LOGGER = Loggers.RUNNER;
+    private static final ExecutorService EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("spawn-process-manager");
+
     private final String processId;
     private final Process process;
-    private final SpawnConfig config;
-    private final BufferedWriter stdin;
-    private final BufferedReader stdout;
-    private final BufferedReader stderr;
+    private SpawnConfig config;
+    private Runnable onUnhealthy;
+    private int maxHealthFailures = 2;
+    private Future<?> healthCheckTask;
+    private volatile boolean healthy = true;
+    private volatile boolean shutdownRequested;
+    private int consecutiveFailures;
+    private boolean unhealthyFired;
+    private Writer stdinWriter;
+    private BufferedReader stdoutReader;
 
-    /**
-     * Object.
-     * 
-     * @since 0.1.7
-     */
-    private final Object ioLock = new Object();
+    public SpawnedProcessHandle(String processId, Process process) {
+        this(processId, process, new SpawnConfig(), null, 2);
+    }
 
-    private volatile Runnable onUnhealthy;
-    private volatile int maxHealthFailures = 2;
-    private volatile ScheduledExecutorService healthCheckExecutor;
-    private volatile ScheduledFuture<?> healthCheckTask;
-    private volatile boolean isHealthy = true;
-    private volatile boolean isShutdownRequested;
-    private volatile int consecutiveFailures;
-    private volatile boolean isUnhealthyFired;
-    private volatile Message pendingMessage;
-
-    /**
-     * SpawnedProcessHandle.
-     * 
-     * @param processId processId
-     * @param process process
-     * @param config config
-     * @since 0.1.7
-     */
     public SpawnedProcessHandle(String processId, Process process, SpawnConfig config) {
-        this.processId = processId != null ? processId : UUID.randomUUID().toString();
+        this(processId, process, config, null, 2);
+    }
+
+    public SpawnedProcessHandle(
+            String processId,
+            Process process,
+            SpawnConfig config,
+            Runnable onUnhealthy,
+            int maxHealthFailures) {
+        this.processId = processId;
         this.process = process;
-        this.config = config != null ? config : new SpawnConfig();
-        this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
-        this.stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-        this.stderr = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8));
+        this.config = config == null ? new SpawnConfig() : config;
+        this.onUnhealthy = onUnhealthy;
+        this.maxHealthFailures = maxHealthFailures;
+    }
+
+    public String getProcessId() {
+        return processId;
+    }
+
+    public Process getProcess() {
+        return process;
+    }
+
+    public SpawnConfig getConfig() {
+        return config;
+    }
+
+    public void setConfig(SpawnConfig config) {
+        this.config = config == null ? new SpawnConfig() : config;
+    }
+
+    public Runnable getOnUnhealthy() {
+        return onUnhealthy;
+    }
+
+    public void setOnUnhealthy(Runnable onUnhealthy) {
+        this.onUnhealthy = onUnhealthy;
+    }
+
+    public int getMaxHealthFailures() {
+        return maxHealthFailures;
+    }
+
+    public void setMaxHealthFailures(int maxHealthFailures) {
+        this.maxHealthFailures = maxHealthFailures;
     }
 
     /**
-     * isAlive.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Checks if the process is still running.
+     *
+     * @return true when the wrapped process is alive
      */
     public boolean isAlive() {
         return process.isAlive();
     }
 
     /**
-     * getPid.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Gets the operating-system process id.
+     *
+     * @return process id, or null when unavailable
      */
     public Long getPid() {
-        return process.pid();
+        try {
+            return process.pid();
+        } catch (UnsupportedOperationException exception) {
+            return null;
+        }
     }
 
     /**
-     * getExitCode.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Gets the exit code if the process has terminated.
+     *
+     * @return exit code, or null while the process is still running
      */
     public Integer getExitCode() {
-        return process.isAlive() ? null : process.exitValue();
+        try {
+            return process.exitValue();
+        } catch (IllegalThreadStateException exception) {
+            return null;
+        }
     }
 
     /**
-     * isHealthy.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Checks if the process is healthy.
+     *
+     * @return true when the process is alive and the latest health state is healthy
      */
     public boolean isHealthy() {
-        return isHealthy && isAlive();
+        return healthy && isAlive();
     }
 
     /**
-     * sendMessage.
-     * 
-     * @param message message
-     * @since 0.1.7
+     * Sends a message to the child process via stdin.
+     *
+     * @param message protocol message
+     * @return completion signal
      */
-    public void sendMessage(Message message) {
-        if (!isAlive()) {
-            throw new IllegalStateException("Process " + processId + " is not running");
-        }
-        synchronized (ioLock) {
-            try {
-                MessageProtocol.serializeMessageToStream(message, stdin);
-            } catch (IOException ioException) {
-                throw new IllegalStateException("Failed to send message to process " + processId, ioException);
-            }
-        }
+    public CompletionStage<Void> sendMessage(SpawnMessage message) {
+        return CompletableFuture.runAsync(() -> sendMessageBlocking(message), EXECUTOR);
     }
 
     /**
-     * receiveMessage.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Receives a message from the child process via stdout.
+     *
+     * @return received protocol message, or null on EOF
      */
-    public Message receiveMessage() {
-        synchronized (ioLock) {
-            try {
-                if (pendingMessage != null) {
-                    Message message = pendingMessage;
-                    pendingMessage = null;
-                    return message;
-                }
-                return MessageProtocol.deserializeMessageFromStream(stdout);
-            } catch (IOException ioException) {
-                throw new IllegalStateException("Failed to receive message from process " + processId, ioException);
-            }
-        }
+    public CompletionStage<SpawnMessage> receiveMessage() {
+        return CompletableFuture.supplyAsync(this::receiveMessageBlocking, EXECUTOR);
     }
 
     /**
-     * readStderrLine.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Starts periodic health checks in the background.
+     *
+     * @param interval health check interval in seconds, or null for config value
+     * @return completion signal after the background task is scheduled
      */
-    public String readStderrLine() {
-        try {
-            return stderr.ready() ? stderr.readLine() : null;
-        } catch (IOException ioException) {
-            throw new IllegalStateException("Failed to receive stderr from process " + processId, ioException);
-        }
-    }
-
-    /**
-     * startHealthCheck.
-     * 
-     * @since 0.1.7
-     */
-    public void startHealthCheck() {
-        startHealthCheck(null);
-    }
-
-    /**
-     * startHealthCheck.
-     * 
-     * @param intervalSeconds intervalSeconds
-     * @since 0.1.7
-     */
-    public synchronized void startHealthCheck(Double intervalSeconds) {
+    public synchronized CompletionStage<Void> startHealthCheck(Double interval) {
         if (healthCheckTask != null && !healthCheckTask.isDone()) {
-            return;
+            LOGGER.warning("Health check already running for process {}", processId);
+            return CompletableFuture.completedFuture(null);
         }
-        long intervalMillis =
-            secondsToMillis(intervalSeconds != null ? intervalSeconds : config.getHealthCheckInterval());
-        healthCheckExecutor = new ScheduledThreadPoolExecutor(1, runnable -> {
-            Thread thread = new Thread(runnable, "runner-spawn-health-" + processId);
-            thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler((ignoredThread, ignoredError) -> {
-                isHealthy = false;
-                recordHealthFailure();
-            });
-            return thread;
-        });
-        healthCheckTask = healthCheckExecutor.scheduleWithFixedDelay(this::performHealthCheckSafely, intervalMillis,
-                intervalMillis, TimeUnit.MILLISECONDS);
+        double checkInterval = interval == null ? config.getHealthCheckInterval() : interval;
+        healthCheckTask = EXECUTOR.submit(() -> healthCheckLoop(checkInterval));
+        LOGGER.info("Started health check for process {}", processId);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletionStage<Void> startHealthCheck() {
+        return startHealthCheck(null);
     }
 
     /**
-     * stopHealthCheck.
-     * 
-     * @since 0.1.7
+     * Stops the background health check task.
+     *
+     * @return completion signal
      */
-    public synchronized void stopHealthCheck() {
-        if (healthCheckTask != null) {
+    public synchronized CompletionStage<Void> stopHealthCheck() {
+        if (healthCheckTask != null && !healthCheckTask.isDone()) {
             healthCheckTask.cancel(true);
             healthCheckTask = null;
+            LOGGER.info("Stopped health check for process {}", processId);
         }
-        if (healthCheckExecutor != null) {
-            healthCheckExecutor.shutdownNow();
-            healthCheckExecutor = null;
-        }
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
-     * isHealthCheckRunning.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Gracefully shuts down the process with timeout and force-kill fallback.
+     *
+     * @param timeout shutdown timeout in seconds, or null for config value
+     * @return true for graceful shutdown, false when force termination was needed
      */
-    public boolean isHealthCheckRunning() {
-        ScheduledFuture<?> task = healthCheckTask;
-        return task != null && !task.isDone() && !task.isCancelled();
+    public CompletionStage<Boolean> shutdown(Double timeout) {
+        return CompletableFuture.supplyAsync(() -> shutdownBlocking(timeout), EXECUTOR);
+    }
+
+    public CompletionStage<Boolean> shutdown() {
+        return shutdown(null);
     }
 
     /**
-     * shutdown.
-     * 
-     * @param timeoutSeconds timeoutSeconds
-     * @return the result
-     * @since 0.1.7
+     * Force-kills the process immediately.
+     *
+     * @return completion signal
      */
-    public boolean shutdown(Double timeoutSeconds) {
-        double shutdownTimeout = timeoutSeconds != null ? timeoutSeconds : config.getShutdownTimeout();
-        if (!isAlive()) {
-            return true;
-        }
-        isShutdownRequested = true;
-        stopHealthCheck();
-        try {
-            sendMessage(Message.builder().type(MessageType.SHUTDOWN)
-                    .payload(java.util.Map.of("reason", "parent_initiated")).build());
-            if (waitForShutdownAck(secondsToMillis(shutdownTimeout))) {
-                return process.waitFor(2L, TimeUnit.SECONDS);
+    public CompletionStage<Void> forceKill() {
+        return CompletableFuture.runAsync(() -> {
+            if (!isAlive()) {
+                return;
             }
-        } catch (RuntimeException | InterruptedException ignored) {
-            if (ignored instanceof InterruptedException) {
+            shutdownRequested = true;
+            await(stopHealthCheck());
+            try {
+                process.destroyForcibly();
+                process.waitFor();
+                LOGGER.info("Force killed process {}", processId);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException(interrupted);
             }
-        }
-        return forceTerminate();
+        }, EXECUTOR);
     }
 
     /**
-     * forceKill.
-     * 
-     * @since 0.1.7
+     * Waits for the process to complete.
+     *
+     * @return process exit code
      */
-    public void forceKill() {
-        if (!isAlive()) {
-            return;
-        }
-        isShutdownRequested = true;
-        stopHealthCheck();
-        process.destroyForcibly();
-        try {
-            process.waitFor();
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * waitForCompletion.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public int waitForCompletion() {
-        if (!isAlive()) {
-            return getExitCode() != null ? getExitCode() : -1;
-        }
-        stopHealthCheck();
-        try {
-            stdin.close();
-            return process.waitFor();
-        } catch (IOException | InterruptedException exception) {
-            if (exception instanceof InterruptedException) {
+    public CompletionStage<Integer> waitForCompletion() {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!isAlive()) {
+                Integer exitCode = getExitCode();
+                return exitCode == null ? -1 : exitCode;
             }
-
-            return -1;
-        }
+            await(stopHealthCheck());
+            try {
+                OutputStream stdin = process.getOutputStream();
+                if (stdin != null) {
+                    stdin.close();
+                }
+                int exitCode = process.waitFor();
+                LOGGER.info("Process {} completed", processId);
+                return exitCode;
+            } catch (IOException exception) {
+                throw new CompletionException(exception);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException(interrupted);
+            }
+        }, EXECUTOR);
     }
 
-    /**
-     * setOnUnhealthy.
-     * 
-     * @param onUnhealthy onUnhealthy
-     * @since 0.1.7
-     */
-    public void setOnUnhealthy(Runnable onUnhealthy) {
-        this.onUnhealthy = onUnhealthy;
+    CompletionStage<Boolean> performHealthCheck() {
+        return CompletableFuture.supplyAsync(this::performHealthCheckBlocking, EXECUTOR);
     }
 
-    /**
-     * setMaxHealthFailures.
-     * 
-     * @param maxHealthFailures maxHealthFailures
-     * @since 0.1.7
-     */
-    public void setMaxHealthFailures(int maxHealthFailures) {
-        this.maxHealthFailures = Math.max(1, maxHealthFailures);
-    }
-
-    /**
-     * performHealthCheckSafely.
-     * 
-     * @since 0.1.7
-     */
-    private void performHealthCheckSafely() {
-        if (!isAlive() || isShutdownRequested) {
-            stopHealthCheck();
-            return;
-        }
-        try {
-            boolean isPassed = performHealthCheck();
-            if (!isPassed) {
+    private void healthCheckLoop(double checkInterval) {
+        while (isAlive() && !shutdownRequested) {
+            try {
+                sleepSeconds(checkInterval);
+                if (!isAlive() || shutdownRequested) {
+                    break;
+                }
+                await(performHealthCheck());
+            } catch (CompletionException exception) {
+                LOGGER.error("Health check error for process {}: {}", processId, exception.getMessage());
+                healthy = false;
                 recordHealthFailure();
             }
-        } catch (RuntimeException runtimeException) {
-            isHealthy = false;
-            recordHealthFailure();
         }
     }
 
-    /**
-     * performHealthCheck.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean performHealthCheck() {
-        Message healthCheck = Message.builder().type(MessageType.HEALTH_CHECK).payload(java.util.Map.of()).build();
-        sendMessage(healthCheck);
-        Message response = waitForResponse(healthCheck.getMessageId(), secondsToMillis(config.getHealthCheckTimeout()));
-        if (response != null && response.getType() == MessageType.HEALTH_CHECK_RESPONSE) {
-            isHealthy = true;
-            consecutiveFailures = 0;
+    private boolean shutdownBlocking(Double timeout) {
+        double shutdownTimeout = timeout == null ? config.getShutdownTimeout() : timeout;
+        if (!isAlive()) {
+            LOGGER.debug("Process {} already terminated", processId);
             return true;
         }
-        isHealthy = false;
-        return false;
+        shutdownRequested = true;
+        await(stopHealthCheck());
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("reason", "parent_initiated");
+            SpawnMessage shutdownMessage = new SpawnMessage(
+                    SpawnMessageType.SHUTDOWN,
+                    payload,
+                    Instant.now(),
+                    UUID.randomUUID().toString()
+            );
+            sendMessageBlocking(shutdownMessage);
+            try {
+                boolean ack = waitWithTimeout(this::waitForShutdownAckBlocking, shutdownTimeout);
+                if (ack) {
+                    LOGGER.info("Received shutdown ack from process {}", processId);
+                    if (process.waitFor(2L, TimeUnit.SECONDS)) {
+                        return true;
+                    }
+                    throw new TimeoutException("Process did not exit after shutdown ack");
+                }
+            } catch (TimeoutException exception) {
+                LOGGER.warning("Shutdown timeout for process {}", processId);
+            }
+            return forceTerminateBlocking();
+        } catch (Exception exception) {
+            LOGGER.error("Error during shutdown of process {}: {}", processId, exception.getMessage());
+            return forceTerminateBlocking();
+        }
     }
 
-    /**
-     * waitForResponse.
-     * 
-     * @param messageId messageId
-     * @param timeoutMillis timeoutMillis
-     * @return the result
-     * @since 0.1.7
-     */
-    private Message waitForResponse(String messageId, long timeoutMillis) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        while (isAlive() && System.nanoTime() < deadline) {
-            Message message = receiveMessageBefore(deadline);
-            if (message == null) {
-                continue;
+    private boolean performHealthCheckBlocking() {
+        try {
+            SpawnMessage healthCheckMessage = new SpawnMessage(
+                    SpawnMessageType.HEALTH_CHECK,
+                    Map.of(),
+                    Instant.now(),
+                    UUID.randomUUID().toString()
+            );
+            sendMessageBlocking(healthCheckMessage);
+            try {
+                SpawnMessage response = waitWithTimeout(
+                        () -> waitForHealthCheckResponseBlocking(healthCheckMessage.getMessageId()),
+                        config.getHealthCheckTimeout()
+                );
+                if (response != null && response.getType() == SpawnMessageType.HEALTH_CHECK_RESPONSE) {
+                    healthy = true;
+                    consecutiveFailures = 0;
+                    LOGGER.debug("Health check passed for process {}", processId);
+                    return true;
+                }
+                healthy = false;
+                LOGGER.warning("Invalid health check response from process {}", processId);
+                recordHealthFailure();
+                return false;
+            } catch (TimeoutException exception) {
+                healthy = false;
+                LOGGER.warning("Health check timeout for process {}", processId);
+                recordHealthFailure();
+                return false;
             }
-            if (message.getType() == MessageType.HEALTH_CHECK_RESPONSE
-                    && (messageId == null || messageId.equals(message.getMessageId()))) {
+        } catch (Exception exception) {
+            healthy = false;
+            LOGGER.error("Health check failed for process {}: {}", processId, exception.getMessage());
+            recordHealthFailure();
+            return false;
+        }
+    }
+
+    private synchronized void recordHealthFailure() {
+        consecutiveFailures++;
+        if (consecutiveFailures >= maxHealthFailures && !unhealthyFired && onUnhealthy != null) {
+            unhealthyFired = true;
+            LOGGER.warning("Process {} exceeded health failure threshold", processId);
+            try {
+                onUnhealthy.run();
+            } catch (Exception exception) {
+                LOGGER.error("on_unhealthy callback error for process {}: {}", processId, exception.getMessage());
+            }
+        }
+    }
+
+    private SpawnMessage waitForHealthCheckResponseBlocking(String messageId) {
+        while (isAlive()) {
+            SpawnMessage message = receiveMessageBlocking();
+            if (message == null) {
+                return null;
+            }
+            if (message.getType() == SpawnMessageType.HEALTH_CHECK_RESPONSE) {
                 return message;
             }
-            pendingMessage = message;
-            return nullValue();
+            LOGGER.debug("Received non-health-check message during health check wait");
         }
-        return nullValue();
+        return null;
     }
 
-    /**
-     * waitForShutdownAck.
-     * 
-     * @param timeoutMillis timeoutMillis
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean waitForShutdownAck(long timeoutMillis) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        while (isAlive() && System.nanoTime() < deadline) {
-            Message message = receiveMessageBefore(deadline);
+    private boolean waitForShutdownAckBlocking() {
+        while (isAlive()) {
+            SpawnMessage message = receiveMessageBlocking();
             if (message == null) {
-                continue;
+                return false;
             }
-            if (message.getType() == MessageType.SHUTDOWN_ACK || message.getType() == MessageType.DONE) {
+            if (message.getType() == SpawnMessageType.SHUTDOWN_ACK || message.getType() == SpawnMessageType.DONE) {
                 return true;
             }
+            LOGGER.debug("Received non-shutdown message during shutdown wait");
         }
         return false;
     }
 
-    /**
-     * receiveMessageBefore.
-     * 
-     * @param deadlineNanos deadlineNanos
-     * @return the result
-     * @since 0.1.7
-     */
-    private Message receiveMessageBefore(long deadlineNanos) {
-        synchronized (ioLock) {
-            try {
-                while (isAlive() && System.nanoTime() < deadlineNanos) {
-                    if (stdout.ready()) {
-                        return MessageProtocol.deserializeMessageFromStream(stdout);
-                    }
-                    Thread.sleep(5L);
-                }
-                return nullValue();
-            } catch (IOException ioException) {
-                throw new IllegalStateException("Failed to receive message from process " + processId, ioException);
-            } catch (InterruptedException interruptedException) {
-                return nullValue();
-            }
-        }
-    }
-
-    /**
-     * recordHealthFailure.
-     * 
-     * @since 0.1.7
-     */
-    private void recordHealthFailure() {
-        consecutiveFailures++;
-        if (consecutiveFailures >= maxHealthFailures && !isUnhealthyFired && onUnhealthy != null) {
-            isUnhealthyFired = true;
-            onUnhealthy.run();
-        }
-    }
-
-    /**
-     * forceTerminate.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private boolean forceTerminate() {
+    private boolean forceTerminateBlocking() {
         if (!isAlive()) {
             return true;
         }
-        process.destroy();
         try {
-            if (!process.waitFor(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS)) {
+            process.destroy();
+            if (!process.waitFor(3L, TimeUnit.SECONDS)) {
+                LOGGER.warning("Process {} did not terminate, killing", processId);
                 process.destroyForcibly();
                 process.waitFor();
             }
-        } catch (InterruptedException interruptedException) {
+            LOGGER.info("Force terminated process {}", processId);
+            return false;
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            throw new CompletionException(interrupted);
         }
-        return false;
     }
 
-    /**
-     * secondsToMillis.
-     * 
-     * @param seconds seconds
-     * @return the result
-     * @since 0.1.7
-     */
-    private static long secondsToMillis(double seconds) {
-        return Math.max(1L, Math.round(seconds * 1_000.0));
+    private synchronized void sendMessageBlocking(SpawnMessage message) {
+        if (!isAlive()) {
+            throw new IllegalStateException("Process " + processId + " is not running");
+        }
+        try {
+            SpawnMessage.serializeMessageToStream(message, stdinWriter());
+            LOGGER.debug("Sent message to process {}", processId);
+        } catch (IOException exception) {
+            throw new CompletionException(exception);
+        }
     }
 
-    /**
-     * nullValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private static <T> T nullValue() {
-        return null;
+    private synchronized SpawnMessage receiveMessageBlocking() {
+        try {
+            SpawnMessage message = SpawnMessage.deserializeMessageFromStream(stdoutReader());
+            if (message != null) {
+                LOGGER.debug("Received message from process {}", processId);
+            }
+            return message;
+        } catch (IOException exception) {
+            throw new CompletionException(exception);
+        }
+    }
+
+    private Writer stdinWriter() {
+        if (stdinWriter == null) {
+            OutputStream stdin = process.getOutputStream();
+            if (stdin == null) {
+                throw new IllegalStateException("Process " + processId + " stdin is not available");
+            }
+            stdinWriter = new OutputStreamWriter(stdin, StandardCharsets.UTF_8);
+        }
+        return stdinWriter;
+    }
+
+    private BufferedReader stdoutReader() {
+        if (stdoutReader == null) {
+            InputStream stdout = process.getInputStream();
+            if (stdout == null) {
+                throw new IllegalStateException("Process " + processId + " stdout is not available");
+            }
+            stdoutReader = new BufferedReader(new InputStreamReader(stdout, StandardCharsets.UTF_8));
+        }
+        return stdoutReader;
+    }
+
+    private static void sleepSeconds(double seconds) {
+        try {
+            long millis = Math.max(0L, Math.round(seconds * 1000.0D));
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new CompletionException(interrupted);
+        }
+    }
+
+    private static <T> T waitWithTimeout(ThrowingSupplier<T> supplier, double timeoutSeconds) throws TimeoutException {
+        CompletableFuture<T> future = CompletableFuture.supplyAsync(() -> {
+            try {
+                return supplier.get();
+            } catch (Exception exception) {
+                throw new CompletionException(exception);
+            }
+        }, EXECUTOR);
+        try {
+            long timeoutMillis = Math.max(1L, Math.round(timeoutSeconds * 1000.0D));
+            return future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            future.cancel(true);
+            throw exception;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new CompletionException(interrupted);
+        } catch (java.util.concurrent.ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof CompletionException completionException) {
+                throw completionException;
+            }
+            throw new CompletionException(cause);
+        }
+    }
+
+    private static <T> T await(CompletionStage<T> stage) {
+        return stage.toCompletableFuture().join();
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
     }
 }

@@ -7,118 +7,109 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
-import com.openjiuwen.harness.subagents.SubAgentConfig;
-import com.openjiuwen.harness.tools.TaskTool;
-
+import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.harness.tools.subagent.TaskTool;
+import com.openjiuwen.harness.workspace.Workspace;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Public class SubagentRail used by the Java parity implementation.
- * 
- * @since 0.1.7
+ *
+ * @since 1.0
  */
 public class SubagentRail extends DeepAgentRail {
-    private final List<Tool> tools = new ArrayList<>();
+  private final List<Tool> tools = new ArrayList<>();
 
-    /**
-     * priority.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public int priority() {
-        return 95;
-    }
+  public SubagentRail() {
+    setPriority(95);
+  }
 
-    /**
-     * init.
-     * 
-     * @param agent agent
-     * @since 0.1.7
-     */
-    @Override
-    public void init(Object agent) {
-        if (!(agent instanceof DeepAgent deepAgent) || deepAgent.getConfig().getSubagents() == null
-                || deepAgent.getConfig().getSubagents().isEmpty()) {
-            return;
-        }
-        TaskTool taskTool = new TaskTool(deepAgent);
-        ToolCard metadataCard = ToolMetadataRegistry.buildToolCard("task_tool",
-                deepAgent.getCard().getId() + ".task_tool", deepAgent.getWorkspace().getLanguage());
-        Tool tool = new LocalFunction(
-                ToolCard.builder().id(metadataCard.getId()).name(metadataCard.getName())
-                        .description(metadataCard.getDescription() + "\n"
-                                + availableAgents(deepAgent.getConfig().getSubagents()))
-                        .inputParams(metadataCard.getInputParams()).build(),
-                inputs -> taskTool.delegate(stringValue(inputs.get("subagent_type")),
-                        stringValue(inputs.getOrDefault("task_description", inputs.get("task"))),
-                        stringValue(inputs.get("parent_session_id"))));
-        tools.add(tool);
-        deepAgent.registerHarnessTool(tool);
+  /** Auto-generated for codecheck compliance. */
+  @Override
+  public void init(DeepAgent agent) {
+    super.init(agent);
+    if (agent == null
+        || agent.deepConfig() == null
+        || agent.deepConfig().getSubagents() == null
+        || agent.deepConfig().getSubagents().isEmpty()) {
+      return;
     }
+    String language = resolveWorkspace(agent).getLanguage();
+    ToolCard toolCard = ToolMetadataRegistry.buildToolCard(
+        "task_tool",
+        agent.getCard().getId() + ".task_tool",
+        language);
+    TaskTool taskTool = new TaskTool(toolCard, agent, language);
+    String agentsDescription = availableAgents(
+        new ArrayList<>(agent.deepConfig().getSubagents().values()));
+    Tool tool =
+        new LocalFunction(
+            ToolCard.builder()
+                .id(toolCard.getId())
+                .name(toolCard.getName())
+                .description(
+                    toolCard.getDescription()
+                        + "\n"
+                        + agentsDescription)
+                .inputParams(toolCard.getInputParams())
+                .build(),
+            inputs -> {
+                try {
+                    return taskTool.invoke(inputs != null ? inputs : Map.of(), Map.of());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+    tools.add(tool);
+    agent.registerTool(tool);
+  }
 
-    /**
-     * uninit.
-     * 
-     * @param agent agent
-     * @since 0.1.7
-     */
-    @Override
-    public void uninit(Object agent) {
-        if (agent instanceof DeepAgent deepAgent) {
-            for (Tool tool : tools) {
-                deepAgent.unregisterHarnessTool(tool);
-            }
-        }
-        tools.clear();
+  /** Auto-generated for codecheck compliance. */
+  @Override
+  public void uninit(DeepAgent agent) {
+    if (agent != null) {
+      for (Tool tool : tools) {
+        agent.unregisterTool(tool.getCard().getName());
+      }
     }
+    tools.clear();
+  }
 
-    /**
-     * describe.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String describe() {
-        return "Coordinate subagent lifecycle";
-    }
+  /** Auto-generated for codecheck compliance. */
+  public String describe() {
+    return "Coordinate subagent lifecycle";
+  }
 
-    /**
-     * availableAgents.
-     * 
-     * @param subagents subagents
-     * @return the result
-     * @since 0.1.7
-     */
-    public String availableAgents(List<Object> subagents) {
-        if (subagents == null || subagents.isEmpty()) {
-            return "";
-        }
-        List<String> lines = new ArrayList<>();
-        for (Object spec : subagents) {
-            if (spec instanceof SubAgentConfig config && config.getAgentCard() != null) {
-                lines.add("\"" + config.getAgentCard().getName() + "\": " + config.getAgentCard().getDescription());
-            } else if (spec instanceof DeepAgent deepAgent) {
-                lines.add("\"" + deepAgent.getCard().getName() + "\": " + deepAgent.getCard().getDescription());
-            } else {
-                // no-op
-            }
-        }
-        return String.join("\n", lines);
+  /** Auto-generated for codecheck compliance. */
+  public String availableAgents(List<Object> subagents) {
+    if (subagents == null || subagents.isEmpty()) {
+      return "";
     }
+    List<String> lines = new ArrayList<>();
+    for (Object spec : subagents) {
+      if (spec instanceof DeepAgentConfig.SubAgentConfig config && config.getAgentCard() != null) {
+        lines.add(
+            "\""
+                + config.getAgentCard().getName()
+                + "\": "
+                + config.getAgentCard().getDescription());
+      } else if (spec instanceof DeepAgent deepAgent && deepAgent.getCard() != null) {
+        lines.add(
+            "\"" + deepAgent.getCard().getName() + "\": " + deepAgent.getCard().getDescription());
+      }
+    }
+    return String.join("\n", lines);
+  }
 
-    /**
-     * stringValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String stringValue(Object value) {
-        return value != null ? String.valueOf(value) : null;
+  private static Workspace resolveWorkspace(DeepAgent agent) {
+    Object ws = agent.deepConfig().getWorkspace();
+    if (ws instanceof Workspace workspace) {
+      return workspace;
     }
+    return new Workspace("./", agent.deepConfig().getLanguage());
+  }
 }

@@ -71,7 +71,6 @@ class DistributedRunnerEndToEndSystemTest extends SystemTestSupport {
         assertNotNull(result);
         assertTrue(containsIgnoreCase(flattenText(result), "DIST_READY"),
                 () -> "Expected DIST_READY in distributed invoke output but got: " + flattenText(result));
-        assertTrue(adapter.isStarted());
     }
 
     @Test

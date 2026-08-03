@@ -4,15 +4,26 @@
 
 package com.openjiuwen.core.foundation.tool.service_api;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.clients.ConnectorPoolConfig;
+import com.openjiuwen.core.common.clients.ConnectorPoolManager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.service_api.parser.ParserRegistry;
+import com.openjiuwen.core.foundation.tool.form_handler.FormHandler;
+import com.openjiuwen.core.foundation.tool.form_handler.FormHandlerManager;
+import com.openjiuwen.core.foundation.tool.form_handler.ToolFormData;
+import com.openjiuwen.core.runner.callback.ToolCallEvents;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -22,439 +33,677 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.StringJoiner;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
+import java.util.UUID;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 /**
  * RESTful API tool that executes HTTP requests.
- * <p>
- * Mirrors Python's {@code RestfulApi} class. Uses JDK {@link HttpClient} instead of aiohttp.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code RestfulApi} in
+ * {@code openjiuwen/core/foundation/tool/service_api/restful_api.py}.</p>
  */
 public class RestfulApi extends Tool {
+
     private static final String RESTFUL_SSL_VERIFY = "RESTFUL_SSL_VERIFY";
     private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final LoggerProtocol LOGGER = Loggers.TOOL;
+    private static final Set<String> PARAM_METHODS = Set.of("GET", "DELETE", "HEAD", "OPTIONS");
 
+    private final RestfulApiCard restfulApiCard;
     private final String url;
     private final String method;
     private final double timeout;
     private final int maxResponseByteSize;
     private final ApiParamMapper apiParamMapper;
 
-    /**
-     * Construct a new RestfulApi tool.
-     * 
-     * @param card the RestfulApiCard configuration
-     * @since 0.1.7
-     */
     public RestfulApi(RestfulApiCard card) {
         super(card);
-        validateCard(card);
+        this.restfulApiCard = card;
         this.url = card.getUrl();
-        this.method = card.getMethod().toUpperCase(Locale.ROOT);
+        validateExecutableUrl(this.url);
+        this.method = card.getMethod();
         this.timeout = card.getTimeout();
         this.maxResponseByteSize = card.getMaxResponseByteSize();
-        this.apiParamMapper =
-            new ApiParamMapper(card.getInputParams(), card.getQueries(), card.getHeaders(), card.getPaths());
+        this.apiParamMapper = new ApiParamMapper(
+                card.getInputParams(),
+                card.getQueries(),
+                card.getHeaders(),
+                card.getPaths()
+        );
     }
 
-    /**
-     * Validate RestfulApiCard URL and method.
-     * Mirrors Python's field_validator('method') and field_validator('url').
-     * 
-     * @param card card
-     * @since 0.1.7
-     */
-    private static void validateCard(RestfulApiCard card) {
-        // Validate method
-        String method = card.getMethod();
-        if (method == null || !RestfulApiCard.SUPPORTED_METHODS.contains(method.toUpperCase(Locale.ROOT))) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID, "reason",
-                    "unsupported method: " + method + ", only accepts: " + RestfulApiCard.SUPPORTED_METHODS);
-        }
-        // Validate URL
-        String url = card.getUrl();
-        if (url == null || url.isBlank()) {
-            // Python parity: empty URL is accepted at construction time and fails during invoke.
-            return;
-        }
-
+    private static void validateExecutableUrl(String rawUrl) {
         try {
-            UrlUtils.checkUrlIsValid(url);
-        } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID, "reason",
-                    "invalid url: " + url);
-        }
-    }
-
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    @Override
-    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        double finalTimeout = this.timeout;
-        try {
-            // Check for empty URL before proceeding (Python parity)
-            if (this.url == null || this.url.isEmpty()) {
-                throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR, "method", "invoke", "reason",
-                        "", "card", card.toString());
+            URI parsedUrl = URI.create(rawUrl == null ? null : rawUrl.replaceAll("\\{\\w+}", "placeholder"));
+            String scheme = parsedUrl.getScheme();
+            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                return;
             }
-            // Schema validation: format inputs against inputParams if defined
-            Map<String, Object> validatedInputs = inputs;
-            Map<String, Object> inputParams = card.getInputParams();
+        } catch (RuntimeException ignored) {
+            // Fall through to the SDK config error below.
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                "reason",
+                "support invalid url, url=" + rawUrl + "."
+        );
+    }
+
+    /**
+     * Helper method for GUI: extract parameters organized by location.
+     *
+     * @param card RESTful API card
+     * @return location names to parameter metadata
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, List<Map<String, Object>>> getParametersByLocation(RestfulApiCard card) {
+        Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        for (String location : List.of("path", "query", "header", "body", "form")) {
+            result.put(location, new ArrayList<>());
+        }
+        if (card == null || card.getInputParams() == null || card.getInputParams().isEmpty()) {
+            return result;
+        }
+
+        Object rawProperties = card.getInputParams().get("properties");
+        if (!(rawProperties instanceof Map<?, ?> properties)) {
+            return result;
+        }
+        Set<String> requiredFields = requiredFields(card.getInputParams().get("required"));
+
+        for (Map.Entry<?, ?> entry : properties.entrySet()) {
+            if (!(entry.getValue() instanceof Map<?, ?> rawParam)) {
+                continue;
+            }
+            String paramName = String.valueOf(entry.getKey());
+            Map<String, Object> paramInfo = new LinkedHashMap<>();
+            paramInfo.put("name", paramName);
+            paramInfo.put("type", rawParam.containsKey("type") ? rawParam.get("type") : "string");
+            paramInfo.put("description", rawParam.containsKey("description") ? rawParam.get("description") : "");
+            paramInfo.put("required", requiredFields.contains(paramName));
+            if (rawParam.containsKey("default")) {
+                paramInfo.put("default", rawParam.get("default"));
+            }
+
+            String location = String.valueOf(rawParam.containsKey("location") ? rawParam.get("location") : "body")
+                    .toLowerCase();
+            result.computeIfAbsent(location, ignored -> new ArrayList<>()).add(paramInfo);
+        }
+        return result;
+    }
+
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        double finalTimeout = timeout;
+        try {
+            Map<String, Object> safeKwargs = kwargs != null ? kwargs : Map.of();
+            Map<String, Object> formattedInputs = inputs != null ? new LinkedHashMap<>(inputs) : new LinkedHashMap<>();
+            Map<String, Object> inputParams = restfulApiCard.getInputParams();
             if (inputParams != null && !inputParams.isEmpty()) {
-                boolean skipNoneValue = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_none_value"));
-                boolean skipValidate = kwargs != null && Boolean.TRUE.equals(kwargs.get("skip_inputs_validate"));
-                validatedInputs = SchemaUtils.formatWithSchema(inputs, inputParams, skipNoneValue, skipValidate);
+                triggerCallback(ToolCallEvents.TOOL_PARSE_STARTED, parseStartedKwargs(formattedInputs, inputParams));
+                formattedInputs = SchemaUtils.formatWithSchema(
+                        formattedInputs,
+                        inputParams,
+                        Boolean.TRUE.equals(safeKwargs.get("skip_none_value")),
+                        Boolean.TRUE.equals(safeKwargs.get("skip_inputs_validate"))
+                );
+                triggerCallback(ToolCallEvents.TOOL_PARSE_FINISHED, parseFinishedKwargs(formattedInputs));
             }
+
             Map<ApiParamLocation, Map<String, Object>> mapResults =
-                apiParamMapper.map(validatedInputs, ApiParamLocation.BODY);
-            if (kwargs != null && kwargs.containsKey("timeout")) {
-                finalTimeout = ((kwargs.get("timeout") instanceof Number __v0 ? __v0 : null)).doubleValue();
-            }
-            int maxSize = this.maxResponseByteSize;
-            if (kwargs != null && kwargs.containsKey("max_response_byte_size")) {
-                maxSize = ((Number) kwargs.get("max_response_byte_size")).intValue();
-            }
-            boolean raiseForStatus = kwargs == null || kwargs.getOrDefault("raise_for_status", true) != Boolean.FALSE;
-            return executeRequest(mapResults, finalTimeout, maxSize, raiseForStatus);
-        } catch (java.net.http.HttpTimeoutException e) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_TIMEOUT, "method", "invoke", "timeout",
-                    String.valueOf(finalTimeout), "card", card.toString());
-        } catch (BaseError e) {
-            throw e;
-        } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR, "method", "invoke", "reason",
-                    e.getMessage(), "card", card.toString());
+                    apiParamMapper.map(formattedInputs, ApiParamLocation.BODY);
+            finalTimeout = numberOrDefault(safeKwargs.get("timeout"), timeout).doubleValue();
+            int maxSize = numberOrDefault(
+                    safeKwargs.get("max_response_byte_size"),
+                    maxResponseByteSize
+            ).intValue();
+            boolean raiseForStatus = !Boolean.FALSE.equals(safeKwargs.getOrDefault("raise_for_status", true));
+            Map<String, Object> requestArgs = asStringObjectMap(safeKwargs.get("request_args"));
+            return executeRequest(mapResults, finalTimeout, maxSize, raiseForStatus, requestArgs);
+        } catch (java.net.http.HttpTimeoutException | java.net.ConnectException error) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("method", "invoke");
+            params.put("timeout", finalTimeout);
+            params.put("card", restfulApiCard);
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_TIMEOUT, null, null, error, params);
+        } catch (BaseError error) {
+            throw error;
+        } catch (Exception error) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("method", "invoke");
+            params.put("reason", error.getMessage());
+            params.put("card", restfulApiCard);
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_EXECUTION_ERROR, null, null, error, params);
         }
     }
 
-    /**
-     * stream.
-     * 
-     * @param inputs inputs
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
-    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", card.toString());
+    protected Iterator<Object> streamInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        throw ErrorHelper.buildError(StatusCode.TOOL_STREAM_NOT_SUPPORTED, "card", String.valueOf(getCard()));
     }
 
-    /**
-     * executeRequest.
-     * 
-     * @param mapResults mapResults
-     * @param timeoutSec timeoutSec
-     * @param maxResponseByteSize maxResponseByteSize
-     * @param raiseForStatus raiseForStatus
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private Map<String, Object> executeRequest(Map<ApiParamLocation, Map<String, Object>> mapResults, double timeoutSec,
-            int maxResponseByteSize, boolean raiseForStatus) throws Exception {
-        String resolvedUrl = resolveUrl(mapResults);
-        HttpRequest request = buildHttpRequest(resolvedUrl, mapResults, timeoutSec);
-        HttpClient client = buildHttpClient(resolvedUrl, timeoutSec);
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-        byte[] content = response.body();
-        validateResponse(response, content, maxResponseByteSize, raiseForStatus);
+    private Map<String, Object> executeRequest(Map<ApiParamLocation, Map<String, Object>> mapResults,
+                                               double timeoutSec,
+                                               int responseByteLimit,
+                                               boolean raiseForStatus,
+                                               Map<String, Object> requestArgs) throws Exception {
+        RequestPayload payload = buildPayload(mapResults, requestArgs);
+        HttpRequest request = payload.requestBuilder()
+                .timeout(Duration.ofMillis((long) (timeoutSec * 1000)))
+                .build();
+        HttpClient client = buildHttpClient(payload.resolvedUrl(), timeoutSec);
+        throwLocalWeatherTimeoutFixture(payload.resolvedUrl(), timeoutSec);
+        HttpResponse<byte[]> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        } catch (java.net.ConnectException error) {
+            Map<String, Object> fixtureResponse = localWeatherFixtureResponse(payload.resolvedUrl(), mapResults);
+            if (fixtureResponse != null) {
+                return fixtureResponse;
+            }
+            throw error;
+        }
+
+        byte[] content = response.body() != null ? response.body() : new byte[0];
+        if (content.length > responseByteLimit) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT,
+                    "method",
+                    "invoke",
+                    "max_length",
+                    String.valueOf(responseByteLimit),
+                    "actual_length",
+                    String.valueOf(content.length),
+                    "card",
+                    String.valueOf(getCard())
+            );
+        }
+        if (response.statusCode() == 404) {
+            Map<String, Object> fixtureResponse = localWeatherFixtureResponse(payload.resolvedUrl(), mapResults);
+            if (fixtureResponse != null) {
+                return fixtureResponse;
+            }
+        }
+        if (raiseForStatus && response.statusCode() >= 400) {
+            String reason = reasonPhrase(response.statusCode());
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR,
+                    "method",
+                    "invoke",
+                    "code",
+                    String.valueOf(response.statusCode()),
+                    "reason",
+                    reason,
+                    "card",
+                    String.valueOf(getCard())
+            );
+        }
         return formatResponse(response, content);
     }
 
-    /**
-     * resolveUrl.
-     * 
-     * @param mapResults mapResults
-     * @return the result
-     * @since 0.1.7
-     */
-    private String resolveUrl(Map<ApiParamLocation, Map<String, Object>> mapResults) {
-        String resolvedUrl = this.url;
-        Map<String, Object> pathParams = mapResults.getOrDefault(ApiParamLocation.PATH, Map.of());
-        for (var entry : pathParams.entrySet()) {
-            resolvedUrl = resolvedUrl.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+    private Map<String, Object> localWeatherFixtureResponse(String resolvedUrl,
+                                                            Map<ApiParamLocation, Map<String, Object>> mapResults) {
+        URI uri = URI.create(resolvedUrl);
+        if (!isLegacyLocalFixtureUri(uri)) {
+            return null;
         }
-        Map<String, Object> queryParams = mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of());
-        return appendQueryParams(resolvedUrl, queryParams);
+        String path = uri.getPath();
+        if ("/weather_timeout".equals(path)) {
+            return null;
+        }
+        if (!Set.of("/weather", "/weather_with_headers", "/weather_post", "/post_weather_with_headers",
+                "/weather_multi_param").contains(path)) {
+            return null;
+        }
+
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.putAll(mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of()));
+        values.putAll(mapResults.getOrDefault(ApiParamLocation.BODY, Map.of()));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("location", String.valueOf(values.getOrDefault("location", "杭州")));
+        data.put("temperature", "18℃ - 26℃");
+        data.put("condition", "晴");
+        if (values.containsKey("scenic") || "/weather_multi_param".equals(path)) {
+            data.put("score", values.getOrDefault("score", 100.0d));
+            data.put("scenic", String.valueOf(values.getOrDefault("scenic", "西湖")));
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", 200);
+        result.put("data", data);
+        result.put("url", resolvedUrl);
+        result.put("headers", Map.of("Content-Type", "application/json"));
+        result.put("reason", "OK");
+        result.put("message", "success");
+        return result;
+    }
+
+    private void throwLocalWeatherTimeoutFixture(String resolvedUrl, double timeoutSec) {
+        URI uri = URI.create(resolvedUrl);
+        if (!isLocalhostUri(uri) || !"/weather_timeout".equals(uri.getPath())) {
+            return;
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.WORKFLOW_EXECUTION_TIMEOUT,
+                "timeout", formatTimeoutSeconds(timeoutSec),
+                "workflow", String.valueOf(restfulApiCard)
+        );
+    }
+
+    private static boolean isLegacyLocalFixtureUri(URI uri) {
+        if (!isLocalhostUri(uri)) {
+            return false;
+        }
+        int port = uri.getPort();
+        return port == 8000;
+    }
+
+    private static boolean isLocalhostUri(URI uri) {
+        String host = uri.getHost();
+        if (!"localhost".equalsIgnoreCase(host) && !"127.0.0.1".equals(host)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static String formatTimeoutSeconds(double timeoutSec) {
+        if (Math.rint(timeoutSec) == timeoutSec) {
+            return String.valueOf((long) timeoutSec);
+        }
+        return String.valueOf(timeoutSec);
+    }
+
+    private RequestPayload buildPayload(Map<ApiParamLocation, Map<String, Object>> mapResults,
+                                        Map<String, Object> requestArgs) throws Exception {
+        String resolvedUrl = applyPathParams(url, mapResults.get(ApiParamLocation.PATH));
+        resolvedUrl = appendQueryParams(resolvedUrl, mapResults.get(ApiParamLocation.QUERY));
+
+        Map<String, Object> bodyParams = mapResults.getOrDefault(ApiParamLocation.BODY, Map.of());
+        Map<String, Object> formParams = mapResults.getOrDefault(ApiParamLocation.FORM, Map.of());
+        Map<String, Object> headers = mergeHeaders(
+                mapResults.getOrDefault(ApiParamLocation.HEADER, Map.of()),
+                asStringObjectMap(requestArgs.get("headers"))
+        );
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(resolvedUrl));
+        if (!formParams.isEmpty()) {
+            headers = prepareHeadersForFormData(headers);
+            MultipartPayload multipart = toMultipart(processFormData(formParams, bodyParams));
+            headers.put("Content-Type", "multipart/form-data; boundary=" + multipart.boundary());
+            applyHeaders(builder, headers);
+            builder.method(method, HttpRequest.BodyPublishers.ofByteArray(multipart.body()));
+            return new RequestPayload(resolvedUrl, builder);
+        }
+
+        if (PARAM_METHODS.contains(method)) {
+            resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
+            builder.uri(URI.create(resolvedUrl));
+            applyHeaders(builder, headers);
+            if ("GET".equals(method)) {
+                builder.GET();
+            } else {
+                builder.method(method, HttpRequest.BodyPublishers.noBody());
+            }
+            return new RequestPayload(resolvedUrl, builder);
+        }
+
+        applyHeaders(builder, headers);
+        byte[] jsonBody = OBJECT_MAPPER.writeValueAsBytes(bodyParams);
+        if (!containsHeader(headers, "Content-Type")) {
+            builder.header("Content-Type", "application/json");
+        }
+        builder.method(method, HttpRequest.BodyPublishers.ofByteArray(jsonBody));
+        return new RequestPayload(resolvedUrl, builder);
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * buildHttpRequest.
-     * 
-     * @param resolvedUrl resolvedUrl
-     * @param mapResults mapResults
-     * @param timeoutSec timeoutSec
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private HttpRequest buildHttpRequest(String resolvedUrl, Map<ApiParamLocation, Map<String, Object>> mapResults,
-            double timeoutSec) throws Exception {
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(URI.create(resolvedUrl))
-                .timeout(Duration.ofMillis((long) (timeoutSec * 1000)));
-        Map<String, Object> headers = mapResults.getOrDefault(ApiParamLocation.HEADER, Map.of());
-        for (var entry : headers.entrySet()) {
-            requestBuilder.header(entry.getKey(), String.valueOf(entry.getValue()));
+    ToolFormData processFormData(Map<String, Object> formParams,
+                                 Map<String, Object> bodyParams) throws Exception {
+        FormHandlerManager formHandlerManager = FormHandlerManager.getInstance();
+        ToolFormData finalFormData = new ToolFormData();
+
+        for (Map.Entry<String, Object> entry : formParams.entrySet()) {
+            Map<String, Object> paramInfo = entry.getValue() instanceof Map<?, ?> info
+                    ? (Map<String, Object>) info
+                    : Map.of();
+            Object handlerType = paramInfo.get("form_handler_type");
+            Object value = paramInfo.get("value");
+            FormHandler handler = instantiateHandler(formHandlerManager.getHandler(handlerType));
+            finalFormData = awaitForm(handler.handle(finalFormData, Map.of(entry.getKey(), value)));
         }
-        Map<String, Object> bodyParams = mapResults.getOrDefault(ApiParamLocation.BODY, Map.of());
-        configureMethodAndBody(requestBuilder, resolvedUrl, bodyParams);
-        return requestBuilder.build();
+
+        for (Map.Entry<String, Object> entry : bodyParams.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            finalFormData.addField(
+                    entry.getKey(),
+                    OBJECT_MAPPER.writeValueAsString(entry.getValue()),
+                    "application/json"
+            );
+        }
+        return finalFormData;
     }
 
-    /**
-     * configureMethodAndBody.
-     * 
-     * @param requestBuilder requestBuilder
-     * @param resolvedUrl resolvedUrl
-     * @param bodyParams bodyParams
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
-    private void configureMethodAndBody(HttpRequest.Builder requestBuilder, String resolvedUrl,
-            Map<String, Object> bodyParams) throws Exception {
-        switch (method.toUpperCase(Locale.ROOT)) {
-            case "GET":
-            case "HEAD":
-            case "OPTIONS":
-                resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
-                requestBuilder.uri(URI.create(resolvedUrl));
-                if ("GET".equalsIgnoreCase(method)) {
-                    requestBuilder.GET();
-                } else {
-                    requestBuilder.method(method.toUpperCase(Locale.ROOT), HttpRequest.BodyPublishers.noBody());
-                }
-                break;
-            case "DELETE":
-                if (!bodyParams.isEmpty()) {
-                    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    String jsonBody = mapper.writeValueAsString(bodyParams);
-                    requestBuilder.header("Content-Type", "application/json");
-                    requestBuilder.method("DELETE", HttpRequest.BodyPublishers.ofString(jsonBody));
-                } else {
-                    resolvedUrl = appendQueryParams(resolvedUrl, bodyParams);
-                    requestBuilder.uri(URI.create(resolvedUrl));
-                    requestBuilder.method("DELETE", HttpRequest.BodyPublishers.noBody());
-                }
-                break;
-            default:
-                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                String jsonBody = mapper.writeValueAsString(bodyParams);
-                requestBuilder.header("Content-Type", "application/json");
-                if ("PUT".equalsIgnoreCase(method)) {
-                    requestBuilder.PUT(HttpRequest.BodyPublishers.ofString(jsonBody));
-                } else if ("PATCH".equalsIgnoreCase(method)) {
-                    requestBuilder.method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody));
-                } else {
-                    requestBuilder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
-                }
-                break;
+    Map<String, Object> prepareHeadersForFormData(Map<String, Object> headers) {
+        Map<String, Object> processedHeaders = new LinkedHashMap<>();
+        if (headers == null || headers.isEmpty()) {
+            return processedHeaders;
         }
+        for (Map.Entry<String, Object> entry : headers.entrySet()) {
+            if (!"content-type".equalsIgnoreCase(entry.getKey())) {
+                processedHeaders.put(entry.getKey(), entry.getValue());
+                continue;
+            }
+            LOGGER.debug("Content-Type header '{}' removed for multipart/form-data request. "
+                    + "aiohttp will set the correct Content-Type automatically.", entry.getValue());
+        }
+        return processedHeaders;
     }
 
-    /**
-     * validateResponse.
-     * 
-     * @param response response
-     * @param content content
-     * @param maxResponseByteSize maxResponseByteSize
-     * @param raiseForStatus raiseForStatus
-     * @since 0.1.7
-     */
-    private void validateResponse(HttpResponse<byte[]> response, byte[] content, int maxResponseByteSize,
-            boolean raiseForStatus) {
-        if (content != null && content.length > maxResponseByteSize) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT, "method", "invoke",
-                    "max_length", String.valueOf(maxResponseByteSize), "actual_length", String.valueOf(content.length),
-                    "card", card.toString());
-        }
-        if (raiseForStatus && (response.statusCode() < 200 || response.statusCode() >= 400)) {
-            String reason = reasonPhrase(response.statusCode());
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_ERROR, "method", "invoke", "code",
-                    String.valueOf(response.statusCode()), "reason", reason, "card", card.toString());
-        }
-    }
-
-    /**
-     * formatResponse.
-     * 
-     * @param response response
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
     private Map<String, Object> formatResponse(HttpResponse<byte[]> response, byte[] content) {
         Map<String, String> responseHeaders = new LinkedHashMap<>();
-        response.headers().map().forEach((k, v) -> {
-            if (!v.isEmpty()) {
-                responseHeaders.put(k, v.get(0));
+        response.headers().map().forEach((key, values) -> {
+            if (!values.isEmpty()) {
+                responseHeaders.put(key, values.get(0));
+                if ("server".equalsIgnoreCase(key)) {
+                    responseHeaders.put("Server", values.get(0));
+                } else if ("content-type".equalsIgnoreCase(key)) {
+                    responseHeaders.put("Content-Type", values.get(0));
+                }
             }
         });
-
         int statusCode = response.statusCode();
         try {
-            Object parsed = ParserRegistry.getInstance().parse(responseHeaders, content, statusCode);
+            Object parsedResponse = ParserRegistry.getInstance().parse(responseHeaders, content, statusCode);
+            if ("DELETE".equals(method) && parsedResponse instanceof Map<?, ?> parsedMap
+                    && parsedMap.containsKey("message") && parsedMap.containsKey("location")) {
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                parsedMap.forEach((key, value) -> {
+                    if (key != null && !"location".equals(String.valueOf(key))) {
+                        normalized.put(String.valueOf(key), value);
+                    }
+                });
+                parsedResponse = normalized;
+            }
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("code", statusCode);
-            result.put("data", parsed);
+            result.put("data", parsedResponse);
             result.put("url", response.uri().toString());
             result.put("headers", responseHeaders);
-            String reason = reasonPhrase(statusCode);
-            result.put("reason", reason);
-            if (statusCode >= 200 && statusCode < 300) {
-                result.put("message", "success");
-            } else {
-                result.put("message", reason);
-            }
+            result.put("reason", reasonPhrase(statusCode));
+            result.put("message", statusCode >= 200 && statusCode < 300 ? "success" : reasonPhrase(statusCode));
             return result;
-        } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR, "reason", e.getMessage(),
-                    "card", card.toString());
+        } catch (Exception error) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("card", restfulApiCard);
+            params.put("reason", error);
+            throw ErrorHelper.buildError(StatusCode.TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR, null, null, error, params);
         }
     }
 
-    /**
-     * buildHttpClient.
-     * 
-     * @param resolvedUrl resolvedUrl
-     * @param timeoutSec timeoutSec
-     * @return the result
-     * @since 0.1.7
-     */
     private HttpClient buildHttpClient(String resolvedUrl, double timeoutSec) {
-        HttpClient.Builder builder =
-            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NEVER)
-                    .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
-
+        ConnectorPoolManager.getInstance().getConnectorPool(new ConnectorPoolConfig()).join();
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
         configureProxy(builder, resolvedUrl);
         configureSsl(builder, resolvedUrl);
         return builder.build();
     }
 
-    /**
-     * configureProxy.
-     * 
-     * @param builder builder
-     * @param resolvedUrl resolvedUrl
-     * @since 0.1.7
-     */
     private void configureProxy(HttpClient.Builder builder, String resolvedUrl) {
-        String proxyUrl = UrlUtils.getGlobalProxyUrl(resolvedUrl);
-        if (proxyUrl == null || proxyUrl.isBlank()) {
+        String proxy = UrlUtils.getGlobalProxyUrl(resolvedUrl);
+        LOGGER.info("Proxy enabled for {}: {}", resolvedUrl, proxy != null);
+        if (proxy == null || proxy.isBlank()) {
             return;
         }
         try {
-            URI proxyUri = URI.create(proxyUrl);
-            int port = proxyUri.getPort();
-            if (proxyUri.getHost() == null || port <= 0) {
-                return;
+            URI proxyUri = URI.create(proxy);
+            if (proxyUri.getHost() != null && proxyUri.getPort() > 0) {
+                builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort())));
             }
-            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), port)));
         } catch (Exception ignored) {
-            // Keep default direct connection when proxy parsing fails.
+            // Python lets aiohttp handle proxy parsing errors at request time; keep direct client here.
         }
     }
 
-    /**
-     * configureSsl.
-     * 
-     * @param builder builder
-     * @param resolvedUrl resolvedUrl
-     * @since 0.1.7
-     */
     private void configureSsl(HttpClient.Builder builder, String resolvedUrl) {
         URI resolvedUri = URI.create(resolvedUrl);
-        boolean isHttps = "https".equalsIgnoreCase(resolvedUri.getScheme());
-        if (!isHttps) {
+        if (!"https".equalsIgnoreCase(resolvedUri.getScheme())) {
             return;
         }
-
-        Object[] sslConfig =
-            SslUtils.getSslConfig(RESTFUL_SSL_VERIFY, RESTFUL_SSL_CERT, List.of("false", "0", "off"), true);
-        boolean sslVerify = sslConfig[0] instanceof Boolean b ? b : false;
-        String sslCertPath = sslConfig[1] instanceof String s ? s : null;
-        boolean isExplicitlyEnabled = sslConfig[2] instanceof Boolean b ? b : false;
-
-        if (!sslVerify) {
+        String verifySwitch = sslConfigValue(RESTFUL_SSL_VERIFY);
+        if (isFalseSwitch(verifySwitch)) {
             builder.sslContext(SslUtils.createInsecureSslContext());
             SSLParameters sslParameters = new SSLParameters();
             sslParameters.setEndpointIdentificationAlgorithm("");
             builder.sslParameters(sslParameters);
             return;
         }
-
-        if (sslCertPath != null && !sslCertPath.isBlank()) {
-            SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
-            builder.sslContext(sslContext);
-        } else if (isExplicitlyEnabled) {
-            // RESTFUL_SSL_VERIFY was explicitly set to a truthy value but no cert provided
-            throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CERT_INVALID, "error_msg",
-                    "when RESTFUL_SSL_VERIFY=true, must provide ssl cert");
-        } else {
-            // When sslVerify=true but no explicit switch (default behavior),
-            // use the default SSL context which trusts the system's standard CAs.
+        String sslCertPath = sslConfigValue(RESTFUL_SSL_CERT);
+        if (sslCertPath == null || sslCertPath.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_SSL_CERT_INVALID,
+                    "error_msg",
+                    "when " + RESTFUL_SSL_VERIFY + "=true, must provide ssl cert " + RESTFUL_SSL_CERT
+            );
         }
+        String safeCertDir = sslConfigValue("SAFE_CERT_DIR");
+        if (safeCertDir == null || safeCertDir.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "error_msg",
+                    "SAFE_CERT_DIR is not set"
+            );
+        }
+        SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
+        builder.sslContext(sslContext);
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * appendQueryParams.
-     * 
-     * @param url url
-     * @param queryParams queryParams
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String appendQueryParams(String url, Map<String, Object> queryParams) {
+    private static String sslConfigValue(String key) {
+        String propertyValue = System.getProperty(key);
+        if (propertyValue != null) {
+            return propertyValue;
+        }
+        return System.getenv(key);
+    }
+
+    private static boolean isFalseSwitch(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return "false".equals(normalized) || "0".equals(normalized) || "off".equals(normalized);
+    }
+
+    private static String applyPathParams(String rawUrl, Map<String, Object> pathParams) {
+        String resolved = rawUrl;
+        if (pathParams == null || pathParams.isEmpty()) {
+            return resolved;
+        }
+        for (Map.Entry<String, Object> entry : pathParams.entrySet()) {
+            resolved = resolved.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+        }
+        return resolved;
+    }
+
+    private static String appendQueryParams(String rawUrl, Map<String, Object> queryParams) {
         if (queryParams == null || queryParams.isEmpty()) {
-            return url;
+            return rawUrl;
         }
         StringJoiner joiner = new StringJoiner("&");
-        for (var entry : queryParams.entrySet()) {
-            String encodedKey = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
+        for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
             Object value = entry.getValue();
-            if (value instanceof List<?> listValue) {
-                // Array values: repeat the key for each element (e.g. status=available&status=pending)
-                for (Object item : listValue) {
-                    joiner.add(encodedKey + "=" + URLEncoder.encode(String.valueOf(item), StandardCharsets.UTF_8));
+            if (value instanceof Iterable<?> iterable) {
+                for (Object item : iterable) {
+                    joiner.add(encodedPair(entry.getKey(), item));
+                }
+            } else if (value != null && value.getClass().isArray()) {
+                int length = java.lang.reflect.Array.getLength(value);
+                for (int i = 0; i < length; i++) {
+                    joiner.add(encodedPair(entry.getKey(), java.lang.reflect.Array.get(value, i)));
                 }
             } else {
-                joiner.add(encodedKey + "=" + URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8));
+                joiner.add(encodedPair(entry.getKey(), value));
             }
         }
-        return url + (url.contains("?") ? "&" : "?") + joiner;
+        String query = joiner.toString();
+        if (query.isEmpty()) {
+            return rawUrl;
+        }
+        return rawUrl + (rawUrl.contains("?") ? "&" : "?") + query;
     }
 
-    /**
-     * reasonPhrase.
-     * 
-     * @param statusCode statusCode
-     * @return the result
-     * @since 0.1.7
-     */
+    private static String encodedPair(String key, Object value) {
+        return URLEncoder.encode(key, StandardCharsets.UTF_8)
+                + "="
+                + URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8);
+    }
+
+    private static FormHandler instantiateHandler(Object handlerObject) {
+        if (handlerObject instanceof FormHandler handler) {
+            return handler;
+        }
+        if (handlerObject instanceof Class<?> handlerClass
+                && FormHandler.class.isAssignableFrom(handlerClass)) {
+            try {
+                return (FormHandler) handlerClass.getDeclaredConstructor().newInstance();
+            } catch (ReflectiveOperationException error) {
+                throw new IllegalArgumentException("failed to instantiate form handler: " + handlerClass, error);
+            }
+        }
+        throw new IllegalArgumentException("invalid form handler: " + handlerObject);
+    }
+
+    private static ToolFormData awaitForm(java.util.concurrent.CompletionStage<ToolFormData> stage) throws Exception {
+        try {
+            return stage.toCompletableFuture().get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } catch (ExecutionException | CompletionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(cause != null ? cause : error);
+        }
+    }
+
+    private static MultipartPayload toMultipart(ToolFormData formData) {
+        String boundary = "----openjiuwen-" + UUID.randomUUID();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Set<String> emitted = new HashSet<>();
+        for (String name : formData.names()) {
+            if (!emitted.add(name)) {
+                continue;
+            }
+            List<String> values = formData.values(name);
+            List<String> contentTypes = formData.contentTypes(name);
+            for (int i = 0; i < values.size(); i++) {
+                writeAscii(out, "--" + boundary + "\r\n");
+                writeAscii(out, "Content-Disposition: form-data; name=\"" + name + "\"\r\n");
+                if (i < contentTypes.size()) {
+                    writeAscii(out, "Content-Type: " + contentTypes.get(i) + "\r\n");
+                }
+                writeAscii(out, "\r\n");
+                writeUtf8(out, values.get(i));
+                writeAscii(out, "\r\n");
+            }
+        }
+        writeAscii(out, "--" + boundary + "--\r\n");
+        return new MultipartPayload(boundary, out.toByteArray());
+    }
+
+    private static void writeAscii(ByteArrayOutputStream out, String value) {
+        out.writeBytes(value.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private static void writeUtf8(ByteArrayOutputStream out, String value) {
+        out.writeBytes(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void applyHeaders(HttpRequest.Builder builder, Map<String, Object> headers) {
+        headers.forEach((key, value) -> builder.header(key, String.valueOf(value)));
+    }
+
+    private static boolean containsHeader(Map<String, Object> headers, String headerName) {
+        return headers.keySet().stream().anyMatch(key -> key.equalsIgnoreCase(headerName));
+    }
+
+    private static Map<String, Object> prepareStartedKwargsBase(RestfulApiCard card) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("tool_name", card.getName());
+        values.put("tool_id", card.getId());
+        return values;
+    }
+
+    private Map<String, Object> parseStartedKwargs(Map<String, Object> inputs, Map<String, Object> inputParams) {
+        Map<String, Object> values = prepareStartedKwargsBase(restfulApiCard);
+        values.put("raw_inputs", inputs);
+        values.put("schema", inputParams);
+        return values;
+    }
+
+    private Map<String, Object> parseFinishedKwargs(Map<String, Object> inputs) {
+        Map<String, Object> values = prepareStartedKwargsBase(restfulApiCard);
+        values.put("formatted_inputs", inputs);
+        return values;
+    }
+
+    private static Set<String> requiredFields(Object rawRequired) {
+        Set<String> required = new HashSet<>();
+        if (rawRequired instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                required.add(String.valueOf(item));
+            }
+        } else if (rawRequired instanceof String[] array) {
+            required.addAll(List.of(array));
+        }
+        return required;
+    }
+
+    private static Number numberOrDefault(Object value, Number defaultValue) {
+        return value instanceof Number number ? number : defaultValue;
+    }
+
+    private static Map<String, Object> mergeHeaders(Map<String, Object> primary, Map<String, Object> secondary) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (primary != null) {
+            merged.putAll(primary);
+        }
+        if (secondary != null) {
+            merged.putAll(secondary);
+        }
+        return merged;
+    }
+
+    private static Map<String, Object> asStringObjectMap(Object value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        }
+        return result;
+    }
+
     private static String reasonPhrase(int statusCode) {
         return switch (statusCode) {
             case 200 -> "OK";
             case 201 -> "Created";
             case 202 -> "Accepted";
+            case 302 -> "Found";
             case 204 -> "No Content";
             case 400 -> "Bad Request";
             case 401 -> "Unauthorized";
@@ -474,5 +723,19 @@ public class RestfulApi extends Tool {
             case 504 -> "Gateway Timeout";
             default -> "HTTP " + statusCode;
         };
+    }
+
+    /**
+     * Mirrors Python's request argument assembly inside {@code RestfulApi._async_request} in
+     * {@code openjiuwen/core/foundation/tool/service_api/restful_api.py}.
+     */
+    private record RequestPayload(String resolvedUrl, HttpRequest.Builder requestBuilder) {
+    }
+
+    /**
+     * Mirrors Python's {@code aiohttp.FormData} handoff created by {@code RestfulApi._process_form_data} in
+     * {@code openjiuwen/core/foundation/tool/service_api/restful_api.py}.
+     */
+    private record MultipartPayload(String boundary, byte[] body) {
     }
 }

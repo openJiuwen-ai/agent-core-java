@@ -4,487 +4,332 @@
 
 package com.openjiuwen.core.workflow.component.loop;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.ExecutableGraph;
+import com.openjiuwen.core.graph.PregelGraph;
+import com.openjiuwen.core.graph.pregel.PregelConfig;
+import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
+import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.internal.NodeSession;
-import com.openjiuwen.core.session.internal.SubWorkflowSession;
 import com.openjiuwen.core.workflow.BaseWorkflow;
 import com.openjiuwen.core.workflow.ComponentComposable;
+import com.openjiuwen.core.workflow.HasDrawable;
+import com.openjiuwen.core.workflow.WorkflowConfig;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.internal.LegacyWorkflowComponentSupport;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * A group of components that form the body of a loop.
- * Extends BaseWorkflow for graph construction and Executable for invocation.
- * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopGroup}.
- * 
- * @since 0.1.7
+ * Workflow-like group used as a loop body and drawable subgraph owner.
+ *
+ * <p>Mirrors Python's {@code LoopGroup} in
+ * {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.</p>
  */
-public class LoopGroup extends BaseWorkflow {
-    private ExecutableGraph<?, ?> compiledGraph;
+public class LoopGroup extends BaseWorkflow implements HasDrawable {
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<LoopBreakComponent> breakComponents = new ArrayList<>();
+    private final List<String> startNodes = new ArrayList<>();
+    private final List<String> endNodes = new ArrayList<>();
+    private final List<String> nodeIds = new ArrayList<>();
+    private final List<String[]> connections = new ArrayList<>();
+    private final Set<String> setVariableNodes = new HashSet<>();
+    private final Set<String> setVariableDependencyEdges = new HashSet<>();
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<String> startNodesList = new ArrayList<>();
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<String> endNodesList = new ArrayList<>();
-
-    /**
-     * LoopGroup.
-     * 
-     * @since 0.1.7
-     */
     public LoopGroup() {
-        super();
+        super(null, new PregelGraph());
     }
 
-    /**
-     * addWorkflowComp.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param waitForAll waitForAll
-     * @param inputsSchema inputsSchema
-     * @param outputsSchema outputsSchema
-     * @param streamInputsSchema streamInputsSchema
-     * @param streamOutputsSchema streamOutputsSchema
-     * @param compAbility compAbility
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public BaseWorkflow addWorkflowComp(String compId, ComponentComposable workflowComp, Boolean waitForAll,
-            Object inputsSchema, Object outputsSchema, Object streamInputsSchema, Object streamOutputsSchema,
-            List<ComponentAbility> compAbility) {
-        if (workflowComp instanceof LoopComponentImpl) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID, "reason",
-                    "cannot add 'LoopComponent' to a loop group.");
+    public LoopGroup addWorkflowComp(String componentId, ComponentComposable workflowComponent) {
+        return addWorkflowComp(componentId, workflowComponent, null, null, null, null, null, null);
+    }
+
+    public LoopGroup addWorkflowComp(String componentId,
+                                     ComponentComposable workflowComponent,
+                                     Boolean waitForAll,
+                                     Object inputsSchema,
+                                     Object outputsSchema,
+                                     Object streamInputsSchema,
+                                     Object streamOutputsSchema,
+                                     List<ComponentAbility> compAbility) {
+        if (workflowComponent instanceof LoopComponentImpl) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID,
+                    "reason", "cannot add 'LoopComponent' to a loop group.");
         }
-
-        super.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, streamInputsSchema,
-                streamOutputsSchema, compAbility);
-
-        if (workflowComp instanceof LoopBreakComponent) {
-            breakComponents.add((LoopBreakComponent) workflowComp);
+        super.addWorkflowComp(componentId, workflowComponent, waitForAll, inputsSchema, outputsSchema,
+                streamInputsSchema, streamOutputsSchema, compAbility);
+        if (workflowComponent instanceof LoopBreakComponent breakComponent) {
+            breakComponents.add(breakComponent);
+            if (getDrawable() != null) {
+                getDrawable().setBreakNode(componentId);
+            }
         }
-
+        if (workflowComponent instanceof LoopSetVariableComponent) {
+            setVariableNodes.add(componentId);
+        }
+        if (!nodeIds.contains(componentId)) {
+            nodeIds.add(componentId);
+        }
         return this;
     }
 
-    /**
-     * Compatibility overload for translated tests that omit advanced options.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp) {
-        addWorkflowComp(compId, workflowComp, null, null, null, null, null, null);
+    public LoopGroup addWorkflowComp(String componentId,
+                                     ComponentComposable workflowComponent,
+                                     Map<String, ?> inputsSchema,
+                                     Map<String, ?> streamInputsSchema,
+                                     boolean waitForAll,
+                                     List<ComponentAbility> compAbility) {
+        return addWorkflowComp(componentId, workflowComponent, Boolean.valueOf(waitForAll), inputsSchema, null,
+                streamInputsSchema, null, compAbility);
+    }
+
+    public LoopGroup addWorkflowComp(String componentId,
+                                     Object workflowComponent,
+                                     Boolean waitForAll,
+                                     Object inputsSchema,
+                                     Object outputsSchema,
+                                     Object streamInputsSchema,
+                                     Object streamOutputsSchema,
+                                     Object compAbility) {
+        List<ComponentAbility> abilities = compAbility instanceof List<?> list
+                ? castAbilities(list)
+                : null;
+        return addWorkflowComp(componentId, LegacyWorkflowComponentSupport.adapt(workflowComponent), waitForAll,
+                inputsSchema, outputsSchema, streamInputsSchema, streamOutputsSchema, abilities);
+    }
+
+    public LoopGroup addConnection(String sourceComponentId, String targetComponentId) {
+        super.addConnection(sourceComponentId, targetComponentId);
+        connections.add(new String[] {sourceComponentId, targetComponentId});
+        addSetVariableSiblingDependencies(sourceComponentId, targetComponentId);
         return this;
     }
 
-    /**
-     * Compatibility overload for translated tests that still use legacy POJO nodes.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp));
+    private void addSetVariableSiblingDependencies(String sourceComponentId, String targetComponentId) {
+        if (setVariableNodes.contains(targetComponentId)) {
+            for (String[] connection : connections) {
+                if (sourceComponentId.equals(connection[0]) && !targetComponentId.equals(connection[1])) {
+                    addSetVariableDependency(connection[1], targetComponentId);
+                }
+            }
+            return;
+        }
+        for (String[] connection : connections) {
+            if (sourceComponentId.equals(connection[0]) && setVariableNodes.contains(connection[1])) {
+                addSetVariableDependency(targetComponentId, connection[1]);
+            }
+        }
     }
 
-    /**
-     * Compatibility overload for translated tests that omit outputs schema.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema) {
-        addWorkflowComp(compId, workflowComp, null, inputsSchema, null, null, null, null);
+    private void addSetVariableDependency(String sourceComponentId, String setVariableComponentId) {
+        if (sourceComponentId == null || setVariableComponentId == null
+                || sourceComponentId.equals(setVariableComponentId)) {
+            return;
+        }
+        String edgeKey = sourceComponentId + "->" + setVariableComponentId;
+        if (setVariableDependencyEdges.add(edgeKey)) {
+            super.addConnection(sourceComponentId, setVariableComponentId);
+        }
+    }
+
+    public LoopGroup addWorkflowComp(String componentId, ComponentComposable workflowComponent,
+                                     Map<String, ?> inputsSchema) {
+        return addWorkflowComp(componentId, workflowComponent, null, inputsSchema, null, null, null, null);
+    }
+
+    public LoopGroup addWorkflowComp(String componentId, Object workflowComponent, Map<String, ?> inputsSchema) {
+        return addWorkflowComp(componentId, LegacyWorkflowComponentSupport.adapt(workflowComponent), inputsSchema);
+    }
+
+    public LoopGroup addWorkflowComp(String componentId, ComponentComposable workflowComponent,
+                                     Map<String, ?> inputsSchema, boolean waitForAll) {
+        return addWorkflowComp(componentId, workflowComponent, waitForAll, inputsSchema, null, null, null, null);
+    }
+
+    public LoopGroup addWorkflowComp(String componentId, Object workflowComponent, Map<String, ?> inputsSchema,
+                                     boolean waitForAll) {
+        return addWorkflowComp(componentId, LegacyWorkflowComponentSupport.adapt(workflowComponent),
+                inputsSchema, waitForAll);
+    }
+
+    public LoopGroup addStreamConnection(String sourceComponentId, String targetComponentId) {
+        super.addStreamConnection(sourceComponentId, targetComponentId);
         return this;
     }
 
-    /**
-     * Compatibility overload for translated tests that still use legacy POJO nodes.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp, Object inputsSchema) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), inputsSchema);
-    }
-
-    /**
-     * Compatibility overload for translated tests that place wait_for_all after schemas.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param waitForAll waitForAll
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
-            Boolean waitForAll) {
-        addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, null, null, null, null);
-        return this;
-    }
-
-    /**
-     * Compatibility overload for translated tests that place wait_for_all after schemas.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param waitForAll waitForAll
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Boolean waitForAll) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), inputsSchema, waitForAll);
-    }
-
-    /**
-     * Compatibility overload for translated tests that place wait_for_all after schemas.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param outputsSchema outputsSchema
-     * @param waitForAll waitForAll
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
-            Object outputsSchema, Boolean waitForAll) {
-        addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, null, null, null);
-        return this;
-    }
-
-    /**
-     * Compatibility overload for translated tests that place wait_for_all after schemas.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param outputsSchema outputsSchema
-     * @param waitForAll waitForAll
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema,
-            Boolean waitForAll) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), inputsSchema, outputsSchema,
-                waitForAll);
-    }
-
-    /**
-     * Compatibility overload for translated tests that still pass explicit abilities.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param waitForAll waitForAll
-     * @param compAbility compAbility
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
-            Boolean waitForAll, List<ComponentAbility> compAbility) {
-        addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, null, null, null, compAbility);
-        return this;
-    }
-
-    /**
-     * Compatibility overload for translated tests that still pass explicit abilities.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param waitForAll waitForAll
-     * @param compAbility compAbility
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Boolean waitForAll,
-            List<ComponentAbility> compAbility) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), inputsSchema, waitForAll,
-                compAbility);
-    }
-
-    /**
-     * Compatibility overload for translated tests that still pass explicit abilities.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param outputsSchema outputsSchema
-     * @param waitForAll waitForAll
-     * @param compAbility compAbility
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
-            Object outputsSchema, Boolean waitForAll, List<ComponentAbility> compAbility) {
-        addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, null, null, compAbility);
-        return this;
-    }
-
-    /**
-     * Compatibility overload for translated tests that still pass explicit abilities.
-     * 
-     * @param compId compId
-     * @param workflowComp workflowComp
-     * @param inputsSchema inputsSchema
-     * @param outputsSchema outputsSchema
-     * @param waitForAll waitForAll
-     * @param compAbility compAbility
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema,
-            Boolean waitForAll, List<ComponentAbility> compAbility) {
-        return addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), inputsSchema, outputsSchema,
-                waitForAll, compAbility);
-    }
-
-    /**
-     * Set the start nodes of the loop group.
-     * 
-     * @param nodes nodes
-     * @return the result
-     * @since 0.1.7
-     */
     public LoopGroup startNodes(List<String> nodes) {
-        for (String node : nodes) {
-            startComp(node);
+        startNodes.clear();
+        if (nodes != null) {
+            for (String node : nodes) {
+                startComp(node);
+            }
         }
-        startNodesList.clear();
-        startNodesList.addAll(nodes);
         return this;
     }
 
-    /**
-     * Compatibility alias for translated tests that still use snake_case naming.
-     * 
-     * @param nodes nodes
-     * @return the result
-     * @since 0.1.7
-     */
     public LoopGroup start_nodes(List<String> nodes) {
         return startNodes(nodes);
     }
 
-    /**
-     * startComp.
-     * 
-     * @param startCompId startCompId
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public BaseWorkflow startComp(String startCompId) {
-        super.startComp(startCompId);
-        if (!startNodesList.contains(startCompId)) {
-            startNodesList.add(startCompId);
+    public LoopGroup startComp(String componentId) {
+        if (!startNodes.contains(componentId)) {
+            startNodes.add(componentId);
         }
+        super.startComp(componentId);
         return this;
     }
 
-    /**
-     * Set the end nodes of the loop group.
-     * 
-     * @param nodes nodes
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup endNodes(Object nodes) {
-        if (nodes instanceof String) {
-            endComp((String) nodes);
-            endNodesList.add((String) nodes);
-        } else if (nodes instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<String> nodeList = (List<String>) nodes;
-            for (String node : nodeList) {
+    public LoopGroup endNodes(List<String> nodes) {
+        endNodes.clear();
+        if (nodes != null) {
+            for (String node : nodes) {
                 endComp(node);
             }
-            endNodesList.clear();
-            endNodesList.addAll(nodeList);
         }
         return this;
     }
 
-    /**
-     * Compatibility alias for translated tests that still use snake_case naming.
-     * 
-     * @param nodes nodes
-     * @return the result
-     * @since 0.1.7
-     */
-    public LoopGroup end_nodes(Object nodes) {
+    public LoopGroup end_nodes(List<String> nodes) {
         return endNodes(nodes);
     }
 
-    /**
-     * endComp.
-     * 
-     * @param endCompId endCompId
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public BaseWorkflow endComp(String endCompId) {
-        super.endComp(endCompId);
-        if (!endNodesList.contains(endCompId)) {
-            endNodesList.add(endCompId);
+    public LoopGroup endComp(String componentId) {
+        if (!endNodes.contains(componentId)) {
+            endNodes.add(componentId);
         }
+        super.endComp(componentId);
         return this;
     }
 
-    /**
-     * Invoke the loop group graph.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
-        autoCompleteAbilities();
-        BaseSession parentSession = (session instanceof NodeSession) ? ((NodeSession) session).parent() : session;
-        String loopNodeId = getConfig().getCard().getId();
-        String loopNodeType = getConfig().getCard().getId();
-        if (parentSession instanceof NodeSession nodeSession) {
-            loopNodeId = nodeSession.nodeId();
-            loopNodeType = nodeSession.nodeType();
-        }
-        SubWorkflowSession loopSession = new SubWorkflowSession(parentSession != null ? parentSession : session,
-                loopNodeId, loopNodeType, getConfig().getCard().getId());
-        loopSession.setActorManager(buildActorManager(loopSession));
-        loopSession.config().addWorkflowConfig(getConfig().getCard().getId(), getConfig());
-        compiledGraph = compile(loopSession, kwargs.length > 0 ? kwargs[0] : null);
-        @SuppressWarnings("unchecked")
-        ExecutableGraph<Object, Object> typedGraph = (ExecutableGraph<Object, Object>) compiledGraph;
-        typedGraph.invoke(inputs, loopSession);
-        return null;
-    }
-
-    /**
-     * skipTrace.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean skipTrace() {
-        return true;
-    }
-
-    /**
-     * graphInvoker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean graphInvoker() {
-        return true;
-    }
-
-    /**
-     * getBreakComponents.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<LoopBreakComponent> getBreakComponents() {
-        return breakComponents;
-    }
-
-    /**
-     * getStartNodesList.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<String> getStartNodesList() {
-        return startNodesList;
-    }
-
-    /**
-     * getEndNodesList.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<String> getEndNodesList() {
-        return endNodesList;
-    }
-
-    /**
-     * Validate the loop group configuration.
-     * 
-     * @since 0.1.7
-     */
     public void checkValidate() {
-        if (startNodesList.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID, "reason",
-                    "missing start_nodes in loop group");
+        if (startNodes.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID,
+                    "reason", "missing start_nodes in loop group");
         }
-        if (endNodesList.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID, "reason",
-                    "missing end_nodes in loop group");
+        if (endNodes.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID,
+                    "reason", "missing end_nodes in loop group");
         }
-        if (getGraph().getNodes().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID, "reason",
-                    "loop group is empty (contains no nodes)");
+        if (nodeIds.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_GROUP_PARAM_INVALID,
+                    "reason", "loop group is empty (contains no nodes)");
         }
     }
 
-    /**
-     * buildActorManager.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    private ActorManager buildActorManager(BaseSession session) {
-        return new ActorManager(getConfig().getSpec().getStreamEdges(), getStreamActor(), true, session, compId -> {
-            if (getConfig().getSpec().getCompConfigs().containsKey(compId)) {
-                List<ComponentAbility> abilities = getConfig().getSpec().getCompConfigs().get(compId).getAbilities();
-                return abilities != null ? abilities : List.of();
+    @SuppressWarnings("unchecked")
+    public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+        if (!(session instanceof WorkflowRuntimeSession runtimeSession)) {
+            return null;
+        }
+        validateConfiguredNodes();
+        reset();
+        autoCompleteAbilities();
+        WorkflowConfig config = getConfig();
+        runtimeSession.config().addWorkflowConfig(config.getCard().getId(), config);
+        clearFinishedStreamNodes(runtimeSession);
+        ActorManager previousActorManager = runtimeSession.runtimeActorManager();
+        runtimeSession.setActorManager(new ActorManager(config.getSpec(), getStreamActor(), true, runtimeSession));
+        try {
+            ExecutableGraph<?, ?> compiled = compile(runtimeSession, context);
+            Map<String, Object> envelope = inputs instanceof Map<?, ?> map
+                    ? toStringObjectMap(map)
+                    : Map.of();
+            Map<String, Object> graphInputs = new java.util.LinkedHashMap<>();
+            graphInputs.put(Constant.INPUTS_KEY, envelope.getOrDefault(Constant.INPUTS_KEY, Map.of()));
+            String graphNamespace = loopGraphNamespace(runtimeSession, config);
+            PregelConfig graphConfig = new PregelConfig(
+                    runtimeSession.sessionId(),
+                    graphNamespace,
+                    PregelConstants.MAX_RECURSIVE_LIMIT);
+            graphConfig.setParentNs(runtimeSession.workflowId());
+            graphInputs.put(Constant.CONFIG_KEY, graphConfig);
+            Object result = ((ExecutableGraph<Object, Object>) compiled).invoke(graphInputs, runtimeSession);
+            clearLoopGraphCheckpoint(runtimeSession, graphNamespace);
+            return result;
+        } finally {
+            runtimeSession.setActorManager(previousActorManager);
+        }
+    }
+
+    private void clearFinishedStreamNodes(WorkflowRuntimeSession runtimeSession) {
+        Object rawFinished = runtimeSession.state().getWorkflowState("finished_stream_nodes");
+        if (!(rawFinished instanceof List<?> list) || list.isEmpty()) {
+            return;
+        }
+        List<String> finished = new ArrayList<>(list.stream().map(String::valueOf).toList());
+        if (finished.removeIf(nodeIds::contains)) {
+            runtimeSession.state().updateAndCommitWorkflowState(Map.of("finished_stream_nodes", finished));
+        }
+    }
+
+    private static String loopGraphNamespace(WorkflowRuntimeSession session, WorkflowConfig config) {
+        String executableId = session.executableId();
+        if (executableId == null || executableId.isBlank()) {
+            executableId = config.getCard().getId();
+        }
+        String workflowId = session.workflowId();
+        if (workflowId == null || workflowId.isBlank()) {
+            return executableId + ".loop-body";
+        }
+        return workflowId + "." + executableId + ".loop-body";
+    }
+
+    private static void clearLoopGraphCheckpoint(WorkflowRuntimeSession session, String graphNamespace) {
+        if (session == null || graphNamespace == null || graphNamespace.isBlank() || session.checkpointer() == null) {
+            return;
+        }
+        Store graphStore = session.checkpointer().graphStore();
+        if (graphStore != null) {
+            graphStore.delete(session.sessionId(), graphNamespace).toCompletableFuture().join();
+        }
+    }
+
+    public List<LoopBreakComponent> getBreakComponents() {
+        return Collections.unmodifiableList(breakComponents);
+    }
+
+    public List<String> getNodeIds() {
+        return Collections.unmodifiableList(nodeIds);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ComponentAbility> castAbilities(List<?> list) {
+        for (Object item : list) {
+            if (!(item instanceof ComponentAbility)) {
+                return null;
             }
-            return List.of();
-        });
+        }
+        return (List<ComponentAbility>) list;
+    }
+
+    private static Map<String, Object> toStringObjectMap(Map<?, ?> source) {
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private void validateConfiguredNodes() {
+        for (String node : startNodes) {
+            if (!nodeIds.contains(node)) {
+                throw new IllegalStateException("getRouters returned null for start node " + node);
+            }
+        }
+        for (String node : endNodes) {
+            if (!nodeIds.contains(node)) {
+                throw new IllegalStateException("getRouters returned null for end node " + node);
+            }
+        }
     }
 }

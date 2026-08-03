@@ -10,9 +10,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to mark methods as trigger events in a handler.
- * <p>
- * Mirrors Python's {@code @trigger_event} decorator.
+ * Marks callback handler methods that can be triggered by name.
+ *
+ * <p>Mirrors Python's {@code trigger_event} decorator in
+ * {@code openjiuwen/core/session/callback/base.py}.</p>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)

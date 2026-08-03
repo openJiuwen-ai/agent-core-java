@@ -4,67 +4,110 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for {@link StreamProcessor}.
+ * Mirrors Python focused stream actor behavior in
+ * {@code openjiuwen/core/graph/stream_actor/base.py}.
  */
 class StreamProcessorTest {
+
     @Test
-    @DisplayName("generator routes stream chunks to schema iterators and ends cleanly")
-    void testGeneratorRoutesChunks() throws Exception {
-        StreamProcessor processor = new StreamProcessor("collector", List.of("producer-STREAM"), 1);
-        List<Object> callbacks = new CopyOnWriteArrayList<>();
-
+    @DisplayName("active source in an alternative group closes inactive source queues")
+    void activeSourceInAlternativeGroupClosesInactiveSourceQueues() throws Exception {
+        StreamProcessor processor = new StreamProcessor(
+                "consumer",
+                List.of(List.of("left-stream", "right-transform")),
+                1.0d);
+        List<Map<String, Object>> callbacks = new ArrayList<>();
         Map<String, Object> generated = processor.generator(
-                Map.of("value", "${producer.value}", "nested", Map.of("other", "${producer.other}"), "static", 1),
+                Map.of("left", "${left.answer}", "right", "${right.answer}"),
                 callbacks::add);
+        Iterator<Object> left = iterator(generated, "left");
+        Iterator<Object> right = iterator(generated, "right");
 
-        @SuppressWarnings("unchecked")
-        Iterator<Object> valueIterator = (Iterator<Object>) generated.get("value");
-        @SuppressWarnings("unchecked")
-        Iterator<Object> otherIterator =
-            (Iterator<Object>) ((Map<String, Object>) generated.get("nested")).get("other");
+        Thread runner = new Thread(() -> processor.run(ComponentAbility.COLLECT));
+        runner.start();
+        processor.receive(new StreamPayload(Map.of("left", Map.of("answer", "L")), ComponentAbility.STREAM));
 
-        CompletableFuture<Void> runner = CompletableFuture.runAsync(() -> processor.run(ComponentAbility.STREAM));
+        assertTrue(left.hasNext());
+        assertEquals("L", left.next());
+        assertEquals(List.of(Map.of("left", "L")), callbacks);
+        assertFalse(right.hasNext());
 
-        processor.receive(
-                new StreamPayload(Map.of("producer", Map.of("value", "alpha", "other", 2)), ComponentAbility.STREAM));
-
-        assertTrue(valueIterator.hasNext());
-        assertEquals("alpha", valueIterator.next());
-        assertTrue(otherIterator.hasNext());
-        assertEquals(2, otherIterator.next());
-        assertEquals(1, generated.get("static"));
-        assertEquals(List.of(Map.of("value", "alpha"), Map.of("nested.other", 2)), callbacks);
-
-        processor.receive(new StreamPayload(Map.of("producer", "END_STREAM"), ComponentAbility.STREAM));
-
-        assertFalse(valueIterator.hasNext());
-        assertFalse(otherIterator.hasNext());
-        runner.get(5, TimeUnit.SECONDS);
+        processor.receive(new StreamPayload(Map.of("left", "END_left"), ComponentAbility.STREAM));
+        runner.join(1000L);
+        assertFalse(runner.isAlive());
     }
 
     @Test
-    @DisplayName("helper methods identify end messages and source ownership")
-    void testHelperMethods() {
-        Map<String, Object> endMessage = Map.of("producer", "END_STREAM");
+    @DisplayName("source groups finish when any source in each group ends")
+    void sourceGroupsFinishWhenAnySourceInEachGroupEnds() throws Exception {
+        StreamProcessor processor = new StreamProcessor(
+                "consumer",
+                List.of(List.of("a-stream", "b-stream"), List.of("c-transform")),
+                1.0d);
+        Map<String, Object> generated = processor.generator(
+                Map.of("a", "${a.value}", "c", "${c.value}"),
+                null);
+        Iterator<Object> a = iterator(generated, "a");
+        Iterator<Object> c = iterator(generated, "c");
 
-        assertTrue(StreamProcessor.isEndMessage(endMessage));
-        assertEquals("producer", StreamProcessor.getProducerId(endMessage));
-        assertTrue(StreamProcessor.isValueFromSource("producer.output", "producer"));
-        assertFalse(StreamProcessor.isValueFromSource("another.output", "producer"));
+        Thread runner = new Thread(() -> processor.run(ComponentAbility.COLLECT));
+        runner.start();
+        processor.receive(new StreamPayload(Map.of("a", Map.of("value", "A")), ComponentAbility.STREAM));
+        processor.receive(new StreamPayload(Map.of("a", "END_a"), ComponentAbility.STREAM));
+        processor.receive(new StreamPayload(Map.of("c", Map.of("value", "C")), ComponentAbility.TRANSFORM));
+        processor.receive(new StreamPayload(Map.of("c", "END_c"), ComponentAbility.TRANSFORM));
+
+        assertTrue(a.hasNext());
+        assertEquals("A", a.next());
+        assertTrue(c.hasNext());
+        assertEquals("C", c.next());
+        assertFalse(a.hasNext());
+        assertFalse(c.hasNext());
+        runner.join(1000L);
+        assertFalse(runner.isAlive());
+    }
+
+    @Test
+    @DisplayName("undeclared source paths use generator timeout")
+    void undeclaredSourcePathsUseGeneratorTimeout() {
+        StreamProcessor processor = new StreamProcessor(
+                "consumer",
+                List.of(List.of("declared-stream")),
+                0.05d);
+        Map<String, Object> generated = processor.generator(Map.of("ghost", "${ghost.value}"), null);
+        Iterator<Object> ghost = iterator(generated, "ghost");
+
+        assertFalse(ghost.hasNext());
+    }
+
+    @Test
+    @DisplayName("message validation mirrors Python producer id checks")
+    void messageValidationMirrorsPythonProducerIdChecks() {
+        assertEquals("node", StreamProcessor.getProducerId(Map.of("node", "END_node")));
+        assertTrue(StreamProcessor.isEndMessage(Map.of("node", "END_node")));
+        assertFalse(StreamProcessor.isEndMessage(Map.of("node", Map.of("value", "chunk"))));
+        assertThrows(IllegalArgumentException.class, () -> StreamProcessor.getProducerId(Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> StreamProcessor.isEndMessage("invalid"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Iterator<Object> iterator(Map<String, Object> generated, String key) {
+        return (Iterator<Object>) generated.get(key);
     }
 }

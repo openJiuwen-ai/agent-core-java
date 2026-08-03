@@ -7,12 +7,11 @@ package com.openjiuwen.core.runner.spawn;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-import java.util.Locale;
-
 /**
- * Public enum SpawnAgentKind used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Supported spawned-agent bootstrap kinds.
+ *
+ * <p>Mirrors Python's {@code SpawnAgentKind} in
+ * {@code openjiuwen/core/runner/spawn/agent_config.py}.</p>
  */
 public enum SpawnAgentKind {
     CLASS_AGENT("class_agent"),
@@ -24,35 +23,18 @@ public enum SpawnAgentKind {
         this.value = value;
     }
 
-    /**
-     * value.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @JsonValue
-    public String value() {
+    public String getValue() {
         return value;
     }
 
-    /**
-     * fromValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     @JsonCreator
     public static SpawnAgentKind fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
         for (SpawnAgentKind kind : values()) {
-            if (kind.value.equals(normalized) || kind.name().equalsIgnoreCase(value)) {
+            if (kind.value.equals(value)) {
                 return kind;
             }
         }
-        throw new IllegalArgumentException("Unknown spawn agent kind: " + value);
+        throw new IllegalArgumentException("unknown spawn agent kind: " + value);
     }
 }

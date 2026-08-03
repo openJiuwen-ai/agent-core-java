@@ -1,15 +1,14 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
-import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
-
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -17,188 +16,156 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
- * Unified configuration manager for retrieval module.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ConfigManager} in
+ * {@code openjiuwen/core/retrieval/utils/config_manager.py}.
  */
 public class ConfigManager {
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, Object> configs = new LinkedHashMap<>();
 
-    /**
-     * ConfigManager.
-     * 
-     * @since 0.1.7
-     */
     public ConfigManager() {
     }
 
-    /**
-     * ConfigManager.
-     * 
-     * @param configPath configPath
-     * @since 0.1.7
-     */
     public ConfigManager(String configPath) {
         if (configPath != null) {
             loadFromFile(configPath);
         }
     }
 
-    /**
-     * loadFromFile.
-     * 
-     * @param path path
-     * @since 0.1.7
-     */
     public void loadFromFile(String path) {
-        Path file = Path.of(path);
-        if (!Files.exists(file)) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FILE_NOT_FOUND,
-                    "Configuration file does not exist: " + path);
+        Path pathObject = Path.of(path);
+        if (!Files.exists(pathObject)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_CONFIG_FILE_NOT_FOUND,
+                    "error_msg",
+                    "Configuration file does not exist: " + path
+            );
         }
-        String lowerName = file.getFileName().toString().toLowerCase(Locale.ROOT);
+
+        String suffix = fileSuffix(pathObject);
+        Map<String, Object> data;
         try {
-            Map<String, Object> data;
-            if (lowerName.endsWith(".json")) {
-                data = MAPPER.readValue(Files.readString(file), new TypeReference<>() {
-                });
-            } else if (lowerName.endsWith(".yaml") || lowerName.endsWith(".yml")) {
-                try (InputStream input = Files.newInputStream(file)) {
-                    Object loaded = new Yaml().load(input);
-                    data = loaded instanceof Map<?, ?> map ? castMap(map) : Map.of();
-                }
+            if (".json".equals(suffix)) {
+                data = MAPPER.readValue(Files.readString(pathObject), new TypeReference<>() { });
+            } else if (".yaml".equals(suffix) || ".yml".equals(suffix)) {
+                data = loadYaml(pathObject);
             } else {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
-                        "Unsupported configuration file format: " + lowerName);
+                throw ErrorHelper.buildError(
+                        StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
+                        "error_msg",
+                        "Unsupported configuration file format: " + suffix
+                );
             }
-            KnowledgeBaseConfig config = fromMap(data);
-            configs.put("knowledge_base", config);
-        } catch (IOException e) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR, e.getMessage());
+        } catch (IOException exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
+                    "error_msg",
+                    exception.getMessage()
+            );
         }
+
+        configs.put("knowledge_base", MAPPER.convertValue(data, KnowledgeBaseConfig.class));
     }
 
-    /**
-     * saveToFile.
-     * 
-     * @param path path
-     * @since 0.1.7
-     */
     public void saveToFile(String path) {
-        KnowledgeBaseConfig config = getKnowledgeBaseConfig();
-        Path file = Path.of(path);
-        String lowerName = file.getFileName().toString().toLowerCase(Locale.ROOT);
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("kb_id", config.getKbId());
-        data.put("index_type", config.getIndexType());
-        data.put("use_graph", config.isUseGraph());
-        data.put("chunk_size", config.getChunkSize());
-        data.put("chunk_overlap", config.getChunkOverlap());
+        Object config = configs.get("knowledge_base");
+        if (!(config instanceof KnowledgeBaseConfig knowledgeBaseConfig)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_CONFIG_NOT_FOUND,
+                    "error_msg",
+                    "No configuration to save"
+            );
+        }
+
+        Path pathObject = Path.of(path);
+        String suffix = fileSuffix(pathObject);
+        Map<String, Object> data = MAPPER.convertValue(knowledgeBaseConfig, new TypeReference<>() { });
         try {
-            if (lowerName.endsWith(".json")) {
-                MAPPER.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), data);
-            } else if (lowerName.endsWith(".yaml") || lowerName.endsWith(".yml")) {
-                Files.writeString(file, new Yaml().dump(data));
+            if (".json".equals(suffix)) {
+                MAPPER.writerWithDefaultPrettyPrinter().writeValue(pathObject.toFile(), data);
+            } else if (".yaml".equals(suffix) || ".yml".equals(suffix)) {
+                dumpYaml(pathObject, data);
             } else {
-                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
-                        "Unsupported configuration file format: " + lowerName);
+                throw ErrorHelper.buildError(
+                        StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
+                        "error_msg",
+                        "Unsupported configuration file format: " + suffix
+                );
             }
-        } catch (IOException e) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR, e.getMessage());
+        } catch (IOException exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
+                    "error_msg",
+                    exception.getMessage()
+            );
         }
     }
 
-    /**
-     * getConfig.
-     * 
-     * @param configType configType
-     * @return the result
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
     public <T> T getConfig(Class<T> configType) {
-        for (Object value : configs.values()) {
-            if (configType.isInstance(value)) {
-                return (T) value;
+        for (Object config : configs.values()) {
+            if (configType.isInstance(config)) {
+                return configType.cast(config);
             }
         }
         return null;
     }
 
-    /**
-     * getKnowledgeBaseConfig.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public KnowledgeBaseConfig getKnowledgeBaseConfig() {
-        Object value = configs.get("knowledge_base");
-        if (!(value instanceof KnowledgeBaseConfig config)) {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
-                    "Knowledge base configuration not loaded");
+        Object config = configs.get("knowledge_base");
+        if (!(config instanceof KnowledgeBaseConfig knowledgeBaseConfig)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
+                    "error_msg",
+                    "Knowledge base configuration not loaded"
+            );
         }
-        return config;
+        return knowledgeBaseConfig;
     }
 
-    /**
-     * updateConfig.
-     * 
-     * @param config config
-     * @since 0.1.7
-     */
     public void updateConfig(Object config) {
         configs.put(config.getClass().getSimpleName(), config);
     }
 
-    /**
-     * fromMap.
-     * 
-     * @param data data
-     * @return the result
-     * @since 0.1.7
-     */
-    private static KnowledgeBaseConfig fromMap(Map<String, Object> data) {
-        KnowledgeBaseConfig config = new KnowledgeBaseConfig();
-        config.setKbId((String) data.get("kb_id"));
-        if (data.containsKey("index_type")) {
-            config.setIndexType(String.valueOf(data.get("index_type")));
+    private static Map<String, Object> loadYaml(Path path) throws IOException {
+        try (InputStream input = Files.newInputStream(path)) {
+            Object loaded = new Yaml().load(input);
+            if (loaded instanceof Map<?, ?> map) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    result.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                return result;
+            }
+            return new LinkedHashMap<>();
+        } catch (NoClassDefFoundError error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_PYYAML_NOT_FOUND,
+                    "error_msg",
+                    "PyYAML is required to support YAML configuration files"
+            );
         }
-        if (data.containsKey("use_graph")) {
-            config.setUseGraph(Boolean.TRUE.equals(data.get("use_graph")));
-        }
-        if (data.containsKey("chunk_size")) {
-            config.setChunkSize(((Number) data.get("chunk_size")).intValue());
-        }
-        if (data.containsKey("chunk_overlap")) {
-            config.setChunkOverlap(((Number) data.get("chunk_overlap")).intValue());
-        }
-        return config;
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * castMap.
-     * 
-     * @param source source
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> castMap(Map<?, ?> source) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : source.entrySet()) {
-            result.put(String.valueOf(entry.getKey()), entry.getValue());
+    private static void dumpYaml(Path path, Map<String, Object> data) throws IOException {
+        try {
+            Files.writeString(path, new Yaml().dump(data));
+        } catch (NoClassDefFoundError error) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_UTILS_PYYAML_NOT_FOUND,
+                    "error_msg",
+                    "PyYAML is required to support YAML configuration files"
+            );
         }
-        return result;
+    }
+
+    private static String fileSuffix(Path path) {
+        String fileName = path.getFileName() == null ? "" : path.getFileName().toString();
+        int dotIndex = fileName.lastIndexOf('.');
+        return dotIndex >= 0 ? fileName.substring(dotIndex).toLowerCase() : "";
     }
 }

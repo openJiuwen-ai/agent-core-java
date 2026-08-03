@@ -4,7 +4,9 @@
 
 package com.openjiuwen.core.foundation.store.vector;
 
-import com.openjiuwen.core.retrieval.common.SearchResult;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.RetrievalValidation;
 import com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
@@ -25,317 +27,182 @@ import java.util.concurrent.ConcurrentHashMap;
  * Adapter that exposes retrieval vector stores through foundation.store's BaseVectorStore API.
  */
 abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
-    private final VectorStore delegate;
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
+    private final VectorStore delegate;
     private final Map<String, CollectionSchema> schemas = new ConcurrentHashMap<>();
 
-    /**
-     * AbstractRetrievalVectorStoreAdapter.
-     * 
-     * @param delegate delegate
-     * @since 0.1.7
-     */
     protected AbstractRetrievalVectorStoreAdapter(VectorStore delegate) {
         this.delegate = delegate;
     }
 
-    /**
-     * delegate.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     protected VectorStore delegate() {
         return delegate;
     }
 
-    /**
-     * createCollection.
-     * 
-     * @param collectionName collectionName
-     * @param schema schema
-     * @param kwargs kwargs
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public void createCollection(String collectionName, Object schema, Map<String, Object> kwargs) throws Exception {
         CollectionSchema resolvedSchema = normalizeSchema(schema);
         schemas.put(collectionName, resolvedSchema);
-
-        if (delegate instanceof com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore milvusStore) {
-            milvusStore.createCollection(collectionName, resolvedSchema, kwargs);
-            return;
-        }
-
-        Integer dimension = resolvedSchema.getVectorFields().stream().findFirst().map(FieldSchema::getDim).orElse(null);
-
-        VectorStore scoped = delegate.withCollection(collectionName);
-        String requestedIndexType = scoped.getIndexType();
-        if (kwargs != null) {
-            Object rawIndexType = kwargs.containsKey("indexType") ? kwargs.get("indexType") : kwargs.get("index_type");
-            if (rawIndexType != null) {
-                String normalized = String.valueOf(rawIndexType).toLowerCase(Locale.ROOT);
-                if (RetrievalValidation.INDEX_TYPES.contains(normalized)) {
-                    requestedIndexType = normalized;
-                }
-            }
-        }
-        scoped.ensureCollection(collectionName, requestedIndexType, dimension, kwargs == null ? Map.of() : kwargs);
     }
 
-    /**
-     * deleteCollection.
-     * 
-     * @param collectionName collectionName
-     * @param kwargs kwargs
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public void deleteCollection(String collectionName, Map<String, Object> kwargs) throws Exception {
         delegate.deleteTable(collectionName);
         schemas.remove(collectionName);
     }
 
-    /**
-     * collectionExists.
-     * 
-     * @param collectionName collectionName
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public boolean collectionExists(String collectionName, Map<String, Object> kwargs) throws Exception {
-        return delegate.tableExists(collectionName) || schemas.containsKey(collectionName);
+        Boolean exists = delegate.tableExists(collectionName).join();
+        return (exists != null && exists) || schemas.containsKey(collectionName);
     }
 
-    /**
-     * getSchema.
-     * 
-     * @param collectionName collectionName
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public CollectionSchema getSchema(String collectionName, Map<String, Object> kwargs) throws Exception {
         if (delegate instanceof SchemaMutableVectorStore schemaMutableStore) {
-            CollectionSchema backendSchema = schemaMutableStore.getSchema(collectionName);
-            schemas.put(collectionName, backendSchema);
-            return backendSchema;
+            try {
+                CollectionSchema backendSchema = schemaMutableStore.getSchema(collectionName);
+                schemas.put(collectionName, backendSchema);
+                return backendSchema;
+            } catch (Exception ignored) {
+                // Fall through to cached schema
+            }
         }
         return schemas.computeIfAbsent(collectionName, key -> defaultSchema());
     }
 
-    /**
-     * addDocs.
-     * 
-     * @param collectionName collectionName
-     * @param docs docs
-     * @param kwargs kwargs
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
-    public void addDocs(String collectionName, List<Map<String, Object>> docs, Map<String, Object> kwargs)
-            throws Exception {
-        VectorStore scoped = delegate.withCollection(collectionName);
-        scoped.add(docs, kwargs != null && kwargs.get("batch_size") instanceof Number number ? number.intValue() : null,
-                kwargs);
+    public void addDocs(
+            String collectionName,
+            List<Map<String, Object>> docs,
+            Map<String, Object> kwargs) throws Exception {
+        delegate.add(
+                docs,
+                kwargs != null && kwargs.get("batch_size") instanceof Number number ? number.intValue() : null,
+                kwargs).join();
     }
 
-    /**
-     * search.
-     * 
-     * @param collectionName collectionName
-     * @param queryVector queryVector
-     * @param vectorField vectorField
-     * @param topK topK
-     * @param filters filters
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
-    public List<VectorSearchResult> search(String collectionName, List<Float> queryVector, String vectorField, int topK,
-            Map<String, Object> filters, Map<String, Object> kwargs) throws Exception {
-        VectorStore scoped = delegate.withCollection(collectionName);
-        // Pass vectorField through via options so the backend can use it
+    public List<VectorSearchResult> search(String collectionName,
+                                           List<Float> queryVector,
+                                           String vectorField,
+                                           int topK,
+                                           Map<String, Object> filters,
+                                           Map<String, Object> kwargs) throws Exception {
         Map<String, Object> options = kwargs != null ? new LinkedHashMap<>(kwargs) : new LinkedHashMap<>();
         if (vectorField != null && !vectorField.isBlank()) {
             options.put("vector_field", vectorField);
         }
-        List<SearchResult> results = scoped.search(queryVector, topK, filters, options);
+        List<Double> doubleVector = new ArrayList<>(queryVector.size());
+        for (Float f : queryVector) {
+            doubleVector.add(f != null ? f.doubleValue() : 0.0);
+        }
+        VectorStore.VectorStoreFilter vsFilter = filters != null
+                ? VectorStore.VectorStoreFilter.ofMap(filters)
+                : VectorStore.VectorStoreFilter.none();
+        List<RetrievalResult> results = delegate.search(doubleVector, topK, vsFilter, options).join();
         List<VectorSearchResult> mapped = new ArrayList<>();
-        for (SearchResult result : results) {
-            // Build fields including all available data, not just id/text/metadata
+        for (RetrievalResult result : results) {
             Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("id", result.getId());
+            fields.put("id", result.getDocId());
             fields.put("text", result.getText());
-            // Merge metadata fields directly into the result fields map
             Map<String, Object> metadata = result.getMetadata();
             if (metadata != null) {
                 fields.putAll(metadata);
             }
-            mapped.add(VectorSearchResult.builder().score(result.getScore()).fields(fields).build());
+            mapped.add(VectorSearchResult.builder()
+                    .score(result.getScore())
+                    .fields(fields)
+                    .build());
         }
         return mapped;
     }
 
-    /**
-     * deleteDocsByIds.
-     * 
-     * @param collectionName collectionName
-     * @param ids ids
-     * @param kwargs kwargs
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public void deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) throws Exception {
-        delegate.withCollection(collectionName).delete(ids, null, kwargs);
+        delegate.delete(ids, VectorStore.DeleteFilter.none(), kwargs).join();
     }
 
-    /**
-     * deleteDocsByFilters.
-     * 
-     * @param collectionName collectionName
-     * @param filters filters
-     * @param kwargs kwargs
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
-    public void deleteDocsByFilters(String collectionName, Map<String, Object> filters, Map<String, Object> kwargs)
-            throws Exception {
-        delegate.withCollection(collectionName).delete(null, filters, kwargs);
+    public void deleteDocsByFilters(
+            String collectionName,
+            Map<String, Object> filters,
+            Map<String, Object> kwargs) throws Exception {
+        VectorStore.DeleteFilter deleteFilter = filters != null
+                ? VectorStore.DeleteFilter.ofExpression(null)
+                : VectorStore.DeleteFilter.none();
+        delegate.delete(null, deleteFilter, kwargs).join();
     }
 
-    /**
-     * listCollectionNames.
-     * 
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public List<String> listCollectionNames() throws Exception {
-        // Delegate to real backend when possible (e.g. Milvus can list collections)
-        if (delegate instanceof com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore milvusStore) {
-            List<String> names = new ArrayList<>(milvusStore.getClient().listCollections().getCollectionNames());
-            // Merge with locally cached names
-            for (String cached : schemas.keySet()) {
-                if (!names.contains(cached)) {
-                    names.add(cached);
+        if (delegate instanceof SchemaMutableVectorStore schemaMutableStore) {
+            try {
+                List<String> names = new ArrayList<>(schemaMutableStore.listCollectionNames());
+                for (String cached : schemas.keySet()) {
+                    if (!names.contains(cached)) {
+                        names.add(cached);
+                    }
                 }
+                return names;
+            } catch (Exception ignored) {
+                // Fall through
             }
-            return names;
         }
-        // Fallback: return known collection names from cache
         return new ArrayList<>(schemas.keySet());
     }
 
-    /**
-     * updateSchema.
-     * 
-     * @param collectionName collectionName
-     * @param operations operations
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public void updateSchema(String collectionName, List<?> operations) throws Exception {
         if (delegate instanceof SchemaMutableVectorStore schemaMutableStore) {
             schemaMutableStore.updateSchema(collectionName, operations);
         }
-        // Default: update in-memory schema cache if possible
         CollectionSchema current = schemas.get(collectionName);
         if (current != null) {
-            CollectionSchema newSchema = VectorStoreUtils.computeNewSchema(current, operations);
-            schemas.put(collectionName, newSchema);
+            @SuppressWarnings("unchecked")
+            List<BaseOperation> typedOps = (List<BaseOperation>) operations;
+            com.openjiuwen.core.foundation.store.CollectionSchema foundationSchema =
+                    com.openjiuwen.core.foundation.store.CollectionSchema.fromDict(current.toDict());
+            com.openjiuwen.core.foundation.store.CollectionSchema newFoundationSchema =
+                    VectorStoreUtils.computeNewSchema(foundationSchema, typedOps);
+            schemas.put(collectionName, CollectionSchema.fromDict(newFoundationSchema.toDict()));
         }
     }
 
-    /**
-     * Per-collection metadata cache.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, Map<String, Object>> collectionMetadata = new ConcurrentHashMap<>();
 
-    /**
-     * updateCollectionMetadata.
-     * 
-     * @param collectionName collectionName
-     * @param metadata metadata
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) throws Exception {
         if (metadata == null || metadata.isEmpty()) {
             return;
         }
-        // Update local metadata cache
         collectionMetadata.merge(collectionName, new LinkedHashMap<>(metadata), (existing, incoming) -> {
             existing.putAll(incoming);
             return existing;
         });
-        // Attempt to propagate to real backend when possible
-        if (delegate instanceof com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore milvusStore) {
-            Map<String, String> properties = new LinkedHashMap<>();
-            for (var entry : metadata.entrySet()) {
-                properties.put(entry.getKey(), String.valueOf(entry.getValue()));
-            }
+        if (delegate instanceof SchemaMutableVectorStore schemaMutableStore) {
             try {
-                milvusStore.getClient()
-                        .alterCollectionProperties(io.milvus.v2.service.collection.request.AlterCollectionPropertiesReq
-                                .builder().collectionName(collectionName).properties(properties).build());
+                schemaMutableStore.updateCollectionMetadata(collectionName, metadata);
             } catch (Exception e) {
-                // Log but don't fail - metadata update is best-effort on some backends
-                com.openjiuwen.core.common.logging.Loggers.STORE
-                        .warn("Failed to update collection metadata on backend: %s", e.getMessage());
+                com.openjiuwen.core.common.logging.Loggers.STORE.warn(
+                        "Failed to update collection metadata on backend: %s", e.getMessage());
             }
         }
     }
 
-    /**
-     * getCollectionMetadata.
-     * 
-     * @param collectionName collectionName
-     * @return the result
-     * @throws Exception Exception
-     * @since 0.1.7
-     */
     @Override
     public Map<String, Object> getCollectionMetadata(String collectionName) throws Exception {
-        // Return cached metadata if available
         Map<String, Object> cached = collectionMetadata.get(collectionName);
         if (cached != null) {
             return new LinkedHashMap<>(cached);
         }
-        // Attempt to fetch from real backend
-        if (delegate instanceof com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore milvusStore) {
+        if (delegate instanceof SchemaMutableVectorStore schemaMutableStore) {
             try {
-                var info = milvusStore.getClient()
-                        .describeCollection(io.milvus.v2.service.collection.request.DescribeCollectionReq.builder()
-                                .collectionName(collectionName).build());
-                Map<String, Object> result = new LinkedHashMap<>();
-                if (info.getProperties() != null) {
-                    result.putAll(info.getProperties());
+                Map<String, Object> result = schemaMutableStore.getCollectionMetadata(collectionName);
+                if (result != null) {
+                    collectionMetadata.put(collectionName, result);
+                    return result;
                 }
-                collectionMetadata.put(collectionName, result);
-                return result;
             } catch (Exception e) {
                 // Fall through to empty map
             }
@@ -343,23 +210,10 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
         return new LinkedHashMap<>();
     }
 
-    /**
-     * Close the underlying vector store connection.
-     * Delegates to the retrieval-layer store's close method.
-     * 
-     * @since 0.1.7
-     */
     public void close() {
         delegate.close();
     }
 
-    /**
-     * normalizeSchema.
-     * 
-     * @param schema schema
-     * @return the result
-     * @since 0.1.7
-     */
     private CollectionSchema normalizeSchema(Object schema) {
         if (schema instanceof CollectionSchema collectionSchema) {
             return collectionSchema;
@@ -372,19 +226,12 @@ abstract class AbstractRetrievalVectorStoreAdapter extends BaseVectorStore {
         return defaultSchema();
     }
 
-    /**
-     * defaultSchema.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private CollectionSchema defaultSchema() {
-        return CollectionSchema.fromFields(
-                List.of(FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256)
-                        .build(),
-                        FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(1536).build(),
-                        FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build(),
-                        FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()),
-                "Default adapter schema", false);
+        return CollectionSchema.fromFields(List.of(
+                FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256).build(),
+                FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(1536).build(),
+                FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build(),
+                FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()
+        ), "Default adapter schema", false);
     }
 }

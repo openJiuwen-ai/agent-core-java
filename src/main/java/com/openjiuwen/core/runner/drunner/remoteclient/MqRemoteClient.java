@@ -134,7 +134,7 @@ public class MqRemoteClient implements RemoteClient {
             replySubscription.registerCollector(messageId, config.getId(), null, effectiveTimeout);
         try {
             mq.produceMessage(config.getTopic(), buildRequest(messageId, inputs, true, effectiveTimeout));
-            return collector.stream(effectiveTimeout);
+            return collector.stream(effectiveTimeout).join().iterator();
         } catch (CancellationException e) {
             logger.info("[MqRemoteClient] stream {} cancelled, sending STOP", messageId);
             sendStopMessage(messageId);

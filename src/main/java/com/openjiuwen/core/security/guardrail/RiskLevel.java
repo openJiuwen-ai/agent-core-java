@@ -4,10 +4,12 @@
 
 package com.openjiuwen.core.security.guardrail;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Risk severity levels for guardrail assessments.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code RiskLevel} in
+ * {@code openjiuwen/core/security/guardrail/enums.py}.
  */
 public enum RiskLevel {
     SAFE("safe"),
@@ -22,13 +24,18 @@ public enum RiskLevel {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public String getValue() {
+    @JsonValue
+    public String value() {
         return value;
+    }
+
+    @JsonCreator
+    public static RiskLevel fromValue(String value) {
+        for (RiskLevel level : values()) {
+            if (level.value.equals(value)) {
+                return level;
+            }
+        }
+        throw new IllegalArgumentException("Unknown risk level: " + value);
     }
 }

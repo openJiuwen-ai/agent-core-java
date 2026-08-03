@@ -43,41 +43,20 @@ import java.util.Optional;
 /**
  * JiuwenBox sandbox file system provider that extends BaseFSProvider
  * and uses JiuwenBoxProviderMixin for sandbox management.
- * 
- * @since 0.1.7
+ *
+ * @since 2026-01-01
  */
 public class JiuwenBoxFSProvider extends BaseFSProvider {
     private final JiuwenBoxProviderMixin mixin;
 
-    /**
-     * JiuwenBoxFSProvider.
-     * 
-     * @param endpoint endpoint
-     * @param config config
-     * @since 0.1.7
-     */
     public JiuwenBoxFSProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         super(endpoint, config);
         this.mixin = new JiuwenBoxProviderMixin(endpoint, config);
     }
 
-    /**
-     * readFile.
-     * 
-     * @param path path
-     * @param mode mode
-     * @param head head
-     * @param tail tail
-     * @param lineRange lineRange
-     * @param encoding encoding
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public ReadFileResult readFile(String path, String mode, Integer head, Integer tail, int[] lineRange,
-            String encoding, int chunkSize, Map<String, Object> options) {
+    public ReadFileResult readFile(String path, String mode, Integer head, Integer tail,
+            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
             byte[] raw = mixin.getClient().downloadBytes(sandboxId, path);
             Object content;
@@ -89,32 +68,26 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
             } else {
                 content = raw;
             }
-            ReadFileData data = ReadFileData.builder().path(path).content(content).mode(mode).build();
-            return new ReadFileResult(0, "success", data);
+            ReadFileData data = new ReadFileData();
+            data.setPath(path);
+            data.setContent(content);
+            data.setMode(mode);
+            ReadFileResult result = new ReadFileResult();
+            result.setCode(0);
+            result.setMessage("success");
+            result.setData(data);
+            return result;
         });
     }
 
-    /**
-     * readFileStream.
-     * 
-     * @param path path
-     * @param mode mode
-     * @param head head
-     * @param tail tail
-     * @param lineRange lineRange
-     * @param encoding encoding
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head, Integer tail,
-            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options) {
+    public Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head,
+            Integer tail, int[] lineRange, String encoding, int chunkSize,
+            Map<String, Object> options) {
         ReadFileResult fullResult = readFile(path, mode, head, tail, lineRange, encoding, chunkSize, options);
         ReadFileData fullData = fullResult.getData();
         if ("text".equals(mode)) {
-            String text = fullData.getContentAsString();
+            String text = (String) fullData.getContent();
             String[] lines = text.split("\n", -1);
             int effectiveChunkSize = chunkSize > 0 ? chunkSize : 4096;
             int totalChunks = Math.max(1, (int) Math.ceil((double) lines.length / effectiveChunkSize));
@@ -123,13 +96,19 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
                 int from = i * effectiveChunkSize;
                 int to = Math.min(from + effectiveChunkSize, lines.length);
                 String chunkText = String.join("\n", Arrays.copyOfRange(lines, from, to));
-                ReadFileChunkData chunkData = ReadFileChunkData.builder().path(path).chunkContent(chunkText).mode(mode)
-                        .chunkSize(effectiveChunkSize).chunkIndex(i).lastChunk(i == totalChunks - 1).build();
+                ReadFileChunkData chunkData = ReadFileChunkData.builder()
+                        .path(path)
+                        .chunkContent(chunkText)
+                        .mode(mode)
+                        .chunkSize(effectiveChunkSize)
+                        .chunkIndex(i)
+                        .isLastChunk(i == totalChunks - 1)
+                        .build();
                 chunks.add(new ReadFileStreamResult(0, "success", chunkData));
             }
             return chunks.iterator();
         } else {
-            byte[] bytes = fullData.getContentAsBytes();
+            byte[] bytes = fullData.getContent() instanceof byte[] b ? b : new byte[0];
             int effectiveChunkSize = chunkSize > 0 ? chunkSize : 8192;
             int totalChunks = Math.max(1, (int) Math.ceil((double) bytes.length / effectiveChunkSize));
             List<ReadFileStreamResult> chunks = new ArrayList<>();
@@ -137,33 +116,24 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
                 int from = i * effectiveChunkSize;
                 int to = Math.min(from + effectiveChunkSize, bytes.length);
                 byte[] chunkBytes = Arrays.copyOfRange(bytes, from, to);
-                ReadFileChunkData chunkData = ReadFileChunkData.builder().path(path).chunkContent(chunkBytes).mode(mode)
-                        .chunkSize(effectiveChunkSize).chunkIndex(i).lastChunk(i == totalChunks - 1).build();
+                ReadFileChunkData chunkData = ReadFileChunkData.builder()
+                        .path(path)
+                        .chunkContent(chunkBytes)
+                        .mode(mode)
+                        .chunkSize(effectiveChunkSize)
+                        .chunkIndex(i)
+                        .isLastChunk(i == totalChunks - 1)
+                        .build();
                 chunks.add(new ReadFileStreamResult(0, "success", chunkData));
             }
             return chunks.iterator();
         }
     }
 
-    /**
-     * writeFile.
-     * 
-     * @param path path
-     * @param content content
-     * @param mode mode
-     * @param isPrependNewline isPrependNewline
-     * @param isAppendNewline isAppendNewline
-     * @param isCreateIfMissing isCreateIfMissing
-     * @param permissions permissions
-     * @param encoding encoding
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public WriteFileResult writeFile(String path, Object content, String mode, boolean isPrependNewline,
-            boolean isAppendNewline, boolean isCreateIfMissing, String permissions, String encoding,
-            Map<String, Object> options) {
+    public WriteFileResult writeFile(String path, Object content, String mode,
+            boolean isPrependNewline, boolean isAppendNewline, boolean isCreateIfMissing,
+            String permissions, String encoding, Map<String, Object> options) {
         Object appendObj = options != null ? options.get("append") : null;
         boolean isAppend = appendObj instanceof Boolean isAppendBool && isAppendBool;
         return mixin.executeWithSandboxRetry(sandboxId -> {
@@ -194,34 +164,29 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
             } else {
                 mixin.getClient().uploadBytes(sandboxId, path, finalBytes);
             }
-            WriteFileData data = WriteFileData.builder().path(path).size(finalBytes.length).mode(mode).build();
+            WriteFileData data = WriteFileData.builder()
+                    .path(path)
+                    .size(finalBytes.length)
+                    .mode(mode)
+                    .build();
             return new WriteFileResult(0, "success", data);
         });
     }
 
-    /**
-     * uploadFile.
-     * 
-     * @param localPath localPath
-     * @param targetPath targetPath
-     * @param isOverwrite isOverwrite
-     * @param isCreateParentDirs isCreateParentDirs
-     * @param isPreservePermissions isPreservePermissions
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public UploadFileResult uploadFile(String localPath, String targetPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+    public UploadFileResult uploadFile(String localPath, String targetPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
+            int chunkSize, Map<String, Object> options) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
             try {
                 boolean isExisting = mixin.getClient().pathExists(sandboxId, targetPath);
                 byte[] content = Files.readAllBytes(Path.of(localPath));
                 mixin.getClient().uploadBytes(sandboxId, targetPath, content);
-                UploadFileData data =
-                    UploadFileData.builder().localPath(localPath).targetPath(targetPath).size(content.length).build();
+                UploadFileData data = UploadFileData.builder()
+                        .localPath(localPath)
+                        .targetPath(targetPath)
+                        .size(content.length)
+                        .build();
                 return new UploadFileResult(0, "success", data);
             } catch (IOException e) {
                 throw new SandboxOperationException("uploadFile IO error", e);
@@ -229,22 +194,10 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         });
     }
 
-    /**
-     * uploadFileStream.
-     * 
-     * @param localPath localPath
-     * @param targetPath targetPath
-     * @param isOverwrite isOverwrite
-     * @param isCreateParentDirs isCreateParentDirs
-     * @param isPreservePermissions isPreservePermissions
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+    public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
+            int chunkSize, Map<String, Object> options) {
         try {
             byte[] allBytes = Files.readAllBytes(Path.of(localPath));
             int effectiveChunkSize = chunkSize > 0 ? chunkSize : 8192;
@@ -263,9 +216,13 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
                     }
                     return null;
                 });
-                UploadFileChunkData chunkData =
-                    UploadFileChunkData.builder().localPath(localPath).targetPath(targetPath).chunkSize(chunk.length)
-                            .chunkIndex(i).lastChunk(i == totalChunks - 1).build();
+                UploadFileChunkData chunkData = UploadFileChunkData.builder()
+                        .localPath(localPath)
+                        .targetPath(targetPath)
+                        .chunkSize(chunk.length)
+                        .chunkIndex(i)
+                        .isLastChunk(i == totalChunks - 1)
+                        .build();
                 chunks.add(new UploadFileStreamResult(0, "success", chunkData));
             }
             return chunks.iterator();
@@ -276,28 +233,19 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         }
     }
 
-    /**
-     * downloadFile.
-     * 
-     * @param sourcePath sourcePath
-     * @param localPath localPath
-     * @param isOverwrite isOverwrite
-     * @param isCreateParentDirs isCreateParentDirs
-     * @param isPreservePermissions isPreservePermissions
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public DownloadFileResult downloadFile(String sourcePath, String localPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+    public DownloadFileResult downloadFile(String sourcePath, String localPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
+            int chunkSize, Map<String, Object> options) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
             try {
                 byte[] content = mixin.getClient().downloadBytes(sandboxId, sourcePath);
                 Files.write(Path.of(localPath), content);
-                DownloadFileData data =
-                    DownloadFileData.builder().sourcePath(sourcePath).localPath(localPath).size(content.length).build();
+                DownloadFileData data = DownloadFileData.builder()
+                        .sourcePath(sourcePath)
+                        .localPath(localPath)
+                        .size(content.length)
+                        .build();
                 return new DownloadFileResult(0, "success", data);
             } catch (IOException e) {
                 throw new SandboxOperationException("downloadFile IO error", e);
@@ -305,26 +253,13 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         });
     }
 
-    /**
-     * downloadFileStream.
-     * 
-     * @param sourcePath sourcePath
-     * @param localPath localPath
-     * @param isOverwrite isOverwrite
-     * @param isCreateParentDirs isCreateParentDirs
-     * @param isPreservePermissions isPreservePermissions
-     * @param chunkSize chunkSize
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
-            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize,
-            Map<String, Object> options) {
+    public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath,
+            String localPath, boolean isOverwrite, boolean isCreateParentDirs,
+            boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
         try {
-            byte[] allBytes =
-                mixin.executeWithSandboxRetry(sandboxId -> mixin.getClient().downloadBytes(sandboxId, sourcePath));
+            byte[] allBytes = mixin.executeWithSandboxRetry(sandboxId ->
+                    mixin.getClient().downloadBytes(sandboxId, sourcePath));
             int effectiveChunkSize = chunkSize > 0 ? chunkSize : 8192;
             int totalChunks = Math.max(1, (int) Math.ceil((double) allBytes.length / effectiveChunkSize));
             Path localFilePath = Path.of(localPath);
@@ -337,11 +272,16 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
                 if (i == 0) {
                     Files.write(localFilePath, chunk);
                 } else {
-                    Files.write(localFilePath, chunk, java.nio.file.StandardOpenOption.APPEND);
+                    Files.write(localFilePath, chunk,
+                            java.nio.file.StandardOpenOption.APPEND);
                 }
-                DownloadFileChunkData chunkData =
-                    DownloadFileChunkData.builder().sourcePath(sourcePath).localPath(localPath).chunkSize(chunk.length)
-                            .chunkIndex(i).lastChunk(i == totalChunks - 1).build();
+                DownloadFileChunkData chunkData = DownloadFileChunkData.builder()
+                        .sourcePath(sourcePath)
+                        .localPath(localPath)
+                        .chunkSize(chunk.length)
+                        .chunkIndex(i)
+                        .isLastChunk(i == totalChunks - 1)
+                        .build();
                 chunks.add(new DownloadFileStreamResult(0, "success", chunkData));
             }
             return chunks.iterator();
@@ -352,90 +292,64 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         }
     }
 
-    /**
-     * listFiles.
-     * 
-     * @param path path
-     * @param isRecursive isRecursive
-     * @param maxDepth maxDepth
-     * @param sortBy sortBy
-     * @param isSortDescending isSortDescending
-     * @param fileTypes fileTypes
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth, String sortBy,
-            boolean isSortDescending, List<String> fileTypes, Map<String, Object> options) {
+    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth,
+            String sortBy, boolean isSortDescending, List<String> fileTypes,
+            Map<String, Object> options) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
-            List<Map<String, Object>> items =
-                mixin.getClient().listFiles(sandboxId, path, isRecursive, maxDepth, true, false);
+            List<Map<String, Object>> items = mixin.getClient().listFiles(
+                    sandboxId, path, isRecursive, maxDepth, true, false);
             items.sort(Comparator.comparing(m -> String.valueOf(m.get("path"))));
             List<FileSystemItem> fsItems = mapToFileSystemItems(items);
-            FileSystemData data = FileSystemData.builder().totalCount(fsItems.size()).listItems(fsItems).rootPath(path)
-                    .recursive(isRecursive).maxDepth(maxDepth).build();
+            FileSystemData data = FileSystemData.builder()
+                    .totalCount(fsItems.size())
+                    .listItems(fsItems)
+                    .rootPath(path)
+                    .recursive(isRecursive)
+                    .maxDepth(maxDepth)
+                    .build();
             return new ListFilesResult(0, "success", data);
         });
     }
 
-    /**
-     * listDirectories.
-     * 
-     * @param path path
-     * @param isRecursive isRecursive
-     * @param maxDepth maxDepth
-     * @param sortBy sortBy
-     * @param isSortDescending isSortDescending
-     * @param options options
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth, String sortBy,
-            boolean isSortDescending, Map<String, Object> options) {
+    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth,
+            String sortBy, boolean isSortDescending, Map<String, Object> options) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
-            List<Map<String, Object>> items =
-                mixin.getClient().listFiles(sandboxId, path, isRecursive, maxDepth, false, true);
+            List<Map<String, Object>> items = mixin.getClient().listFiles(
+                    sandboxId, path, isRecursive, maxDepth, false, true);
             items.sort(Comparator.comparing(m -> String.valueOf(m.get("path"))));
             List<FileSystemItem> fsItems = mapToFileSystemItems(items);
-            FileSystemData data = FileSystemData.builder().totalCount(fsItems.size()).listItems(fsItems).rootPath(path)
-                    .recursive(isRecursive).maxDepth(maxDepth).build();
+            FileSystemData data = FileSystemData.builder()
+                    .totalCount(fsItems.size())
+                    .listItems(fsItems)
+                    .rootPath(path)
+                    .recursive(isRecursive)
+                    .maxDepth(maxDepth)
+                    .build();
             return new ListDirsResult(0, "success", data);
         });
     }
 
-    /**
-     * searchFiles.
-     * 
-     * @param path path
-     * @param pattern pattern
-     * @param excludePatterns excludePatterns
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public SearchFilesResult searchFiles(String path, String pattern, List<String> excludePatterns) {
+    public SearchFilesResult searchFiles(String path, String pattern,
+            List<String> excludePatterns) {
         return mixin.executeWithSandboxRetry(sandboxId -> {
-            List<Map<String, Object>> items = mixin.getClient().searchFiles(sandboxId, path, pattern, excludePatterns);
+            List<Map<String, Object>> items = mixin.getClient().searchFiles(
+                    sandboxId, path, pattern, excludePatterns);
             items.sort(Comparator.comparing(m -> String.valueOf(m.get("path"))));
             List<FileSystemItem> fsItems = mapToFileSystemItems(items);
-            SearchFilesData data = SearchFilesData.builder().totalMatches(fsItems.size()).matchingFiles(fsItems)
-                    .searchPath(path).searchPattern(pattern).excludePatterns(excludePatterns).build();
+            SearchFilesData data = SearchFilesData.builder()
+                    .totalMatches(fsItems.size())
+                    .matchingFiles(fsItems)
+                    .searchPath(path)
+                    .searchPattern(pattern)
+                    .excludePatterns(excludePatterns)
+                    .build();
             return new SearchFilesResult(0, "success", data);
         });
     }
 
-    /**
-     * applyLineSelection.
-     * 
-     * @param lines lines
-     * @param head head
-     * @param tail tail
-     * @param lineRange lineRange
-     * @return the result
-     * @since 0.1.7
-     */
     private List<String> applyLineSelection(String[] lines, Integer head, Integer tail, int[] lineRange) {
         List<String> selected = new ArrayList<>(List.of(lines));
         if (head != null && head > 0) {
@@ -455,33 +369,22 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         return selected;
     }
 
-    /**
-     * mapToFileSystemItems.
-     * 
-     * @param items items
-     * @return the result
-     * @since 0.1.7
-     */
     private List<FileSystemItem> mapToFileSystemItems(List<Map<String, Object>> items) {
         List<FileSystemItem> result = new ArrayList<>();
         for (Map<String, Object> item : items) {
-            FileSystemItem fsItem = FileSystemItem.builder().name(stringValue(item, "name").orElse(null))
-                    .path(stringValue(item, "path").orElse(null)).size(longValue(item, "size"))
+            FileSystemItem fsItem = FileSystemItem.builder()
+                    .name(stringValue(item, "name").orElse(null))
+                    .path(stringValue(item, "path").orElse(null))
+                    .size((int) longValue(item, "size"))
                     .modifiedTime(stringValue(item, "modified_time").orElse(null))
-                    .directory(booleanValue(item, "is_dir")).type(stringValue(item, "type").orElse(null)).build();
+                    .isDirectory(booleanValue(item, "is_dir"))
+                    .type(stringValue(item, "type").orElse(null))
+                    .build();
             result.add(fsItem);
         }
         return result;
     }
 
-    /**
-     * concat.
-     * 
-     * @param a a
-     * @param b b
-     * @return the result
-     * @since 0.1.7
-     */
     private static byte[] concat(byte[] a, byte[] b) {
         byte[] result = new byte[a.length + b.length];
         System.arraycopy(a, 0, result, 0, a.length);
@@ -489,27 +392,11 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         return result;
     }
 
-    /**
-     * stringValue.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static Optional<String> stringValue(Map<String, Object> map, String key) {
         Object val = map.get(key);
         return val != null ? Optional.of(String.valueOf(val)) : Optional.empty();
     }
 
-    /**
-     * longValue.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static long longValue(Map<String, Object> map, String key) {
         Object val = map.get(key);
         if (val instanceof Number n) {
@@ -518,14 +405,6 @@ public class JiuwenBoxFSProvider extends BaseFSProvider {
         return 0L;
     }
 
-    /**
-     * booleanValue.
-     * 
-     * @param map map
-     * @param key key
-     * @return the result
-     * @since 0.1.7
-     */
     private static boolean booleanValue(Map<String, Object> map, String key) {
         Object val = map.get(key);
         if (val instanceof Boolean isBoolVal) {

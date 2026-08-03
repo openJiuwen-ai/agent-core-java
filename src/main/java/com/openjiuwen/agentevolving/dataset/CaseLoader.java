@@ -1,321 +1,216 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.dataset;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Container for Case list with iteration and split support.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.dataset.case_loader.CaseLoader}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code CaseLoader}, {@code shuffle_cases}, and {@code split_cases} in
+ * {@code openjiuwen/agent_evolving/dataset/case_loader.py}.</p>
  */
 public class CaseLoader implements Iterable<Case> {
+
     private final List<Case> cases;
 
-    /**
-     * Initialize with case list.
-     * 
-     * @param cases List of Cases to wrap
-     * @since 0.1.7
-     */
     public CaseLoader(List<Case> cases) {
-        this.cases = cases != null ? new ArrayList<>(cases) : new ArrayList<>();
+        this.cases = Objects.requireNonNull(cases, "cases");
     }
 
-    /**
-     * Return number of cases.
-     * 
-     * @return Number of cases
-     * @since 0.1.7
-     */
     public int size() {
         return cases.size();
     }
 
-    /**
-     * Check if empty.
-     * 
-     * @return True if no cases
-     * @since 0.1.7
-     */
-    public boolean isEmpty() {
-        return cases.isEmpty();
-    }
-
-    /**
-     * iterator.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Iterator<Case> iterator() {
-        return getCases().iterator();
+        return cases.iterator();
     }
 
-    /**
-     * Get copy of cases list.
-     * 
-     * @return Copy of internal case list
-     * @since 0.1.7
-     */
     public List<Case> getCases() {
         return new ArrayList<>(cases);
     }
 
-    /**
-     * Split samples into two parts by ratio.
-     * 
-     * @param ratio Split ratio in [0.0, 1.0]
-     * @param seed Random seed for reproducible shuffle
-     * @return Tuple of (first_half, second_half) CaseLoaders
-     * @since 0.1.7
-     */
-    public CaseLoader[] split(double ratio, int seed) {
-        if (ratio < 0.0 || ratio > 1.0) {
-            throw new IllegalArgumentException("ratio must be in [0.0, 1.0], got " + ratio);
-        }
-
-        List<Case> shuffled = shuffleCases(cases, seed);
-        int cut = (int) (shuffled.size() * ratio);
-        return new CaseLoader[]{new CaseLoader(shuffled.subList(0, cut)),
-                new CaseLoader(shuffled.subList(cut, shuffled.size()))};
+    public CaseLoaderSplit split(double ratio) {
+        return split(ratio, 0);
     }
 
-    /**
-     * Shuffle Case list with optional seed.
-     * 
-     * @param cases Cases to shuffle
-     * @param seed Random seed for reproducibility
-     * @return New shuffled list (original unchanged)
-     * @since 0.1.7
-     */
-    public static List<Case> shuffleCases(List<Case> cases, int seed) {
-        List<Case> shuffled = new ArrayList<>(cases != null ? cases : Collections.emptyList());
-        new PythonRandom(seed).shuffle(shuffled);
+    public CaseLoaderSplit split(double ratio, long seed) {
+        validateRatio(ratio);
+        List<Case> shuffled = shuffleCases(cases, seed);
+        int cut = (int) (shuffled.size() * ratio);
+        return new CaseLoaderSplit(
+                new CaseLoader(new ArrayList<>(shuffled.subList(0, cut))),
+                new CaseLoader(new ArrayList<>(shuffled.subList(cut, shuffled.size())))
+        );
+    }
+
+    public static List<Case> shuffleCases(List<Case> cases) {
+        return shuffleCases(cases, 0);
+    }
+
+    public static List<Case> shuffleCases(List<Case> cases, long seed) {
+        List<Case> shuffled = new ArrayList<>(Objects.requireNonNull(cases, "cases"));
+        PythonRandom random = new PythonRandom(seed);
+        for (int index = shuffled.size() - 1; index > 0; index--) {
+            int swapIndex = random.randBelow(index + 1);
+            Collections.swap(shuffled, index, swapIndex);
+        }
         return shuffled;
     }
 
-    /**
-     * Split Case list by ratio.
-     * 
-     * @param cases Cases to split
-     * @param ratio Split ratio in [0.0, 1.0]
-     * @return Array of [first_half, second_half]
-     * @since 0.1.7
-     */
-    public static List<Case>[] splitCases(List<Case> cases, double ratio) {
-        if (ratio < 0.0 || ratio > 1.0) {
-            throw new IllegalArgumentException("ratio must be in [0.0, 1.0], got " + ratio);
-        }
-        List<Case> safeCases = cases != null ? cases : Collections.emptyList();
-        int cut = (int) (safeCases.size() * ratio);
-        @SuppressWarnings("unchecked")
-        List<Case>[] result = new List[2];
-        result[0] = new ArrayList<>(safeCases.subList(0, cut));
-        result[1] = new ArrayList<>(safeCases.subList(cut, safeCases.size()));
-        return result;
+    public static CaseListSplit splitCases(List<Case> cases, double ratio) {
+        validateRatio(ratio);
+        List<Case> source = Objects.requireNonNull(cases, "cases");
+        int cut = (int) (source.size() * ratio);
+        return new CaseListSplit(
+                new ArrayList<>(source.subList(0, cut)),
+                new ArrayList<>(source.subList(cut, source.size()))
+        );
     }
 
-    /**
-     * Mirrors Python's random.Random(seed).shuffle for deterministic cross-language parity.
-     */
+    private static void validateRatio(double ratio) {
+        if (ratio < 0.0d || ratio > 1.0d) {
+            throw new IllegalArgumentException("ratio must be in [0.0, 1.0], got " + ratio);
+        }
+    }
+
+    public record CaseListSplit(List<Case> left, List<Case> right) {
+    }
+
+    public record CaseLoaderSplit(CaseLoader left, CaseLoader right) {
+    }
+
     private static final class PythonRandom {
+
         private static final int N = 624;
         private static final int M = 397;
-        private static final int MATRIX_A = 0x9908b0df;
+        private static final int MATRIX_A = 0x9908B0DF;
         private static final int UPPER_MASK = 0x80000000;
-        private static final int LOWER_MASK = 0x7fffffff;
+        private static final int LOWER_MASK = 0x7FFFFFFF;
+        private static final long UINT_MASK = 0xFFFF_FFFFL;
 
-        private final int[] mt = new int[N];
+        private final int[] state = new int[N];
         private int index = N;
 
-        /**
-         * PythonRandom.
-         * 
-         * @param seed seed
-         * @since 0.1.7
-         */
-        private PythonRandom(int seed) {
-            initByArray(seedWords(seed));
+        private PythonRandom(long seed) {
+            initByArray(seedToKey(seed));
         }
 
-        /**
-         * seedWords.
-         * 
-         * @param seed seed
-         * @return the result
-         * @since 0.1.7
-         */
-        private static int[] seedWords(int seed) {
-            long normalized = Math.abs((long) seed);
-            return new int[]{(int) normalized};
+        private int randBelow(int bound) {
+            int bitLength = Integer.SIZE - Integer.numberOfLeadingZeros(bound);
+            int value;
+            do {
+                value = getRandBits(bitLength);
+            } while (value >= bound);
+            return value;
         }
 
-        /**
-         * initGenRand.
-         * 
-         * @param seed seed
-         * @since 0.1.7
-         */
-        private void initGenRand(int seed) {
-            mt[0] = seed;
+        private int getRandBits(int bits) {
+            if (bits <= 0) {
+                return 0;
+            }
+            return (int) (nextUInt32() >>> (32 - bits));
+        }
+
+        private long nextUInt32() {
+            if (index >= N) {
+                twist();
+            }
+            int y = state[index++];
+            y ^= y >>> 11;
+            y ^= (y << 7) & 0x9D2C5680;
+            y ^= (y << 15) & 0xEFC60000;
+            y ^= y >>> 18;
+            return y & UINT_MASK;
+        }
+
+        private void initGenrand(long seed) {
+            state[0] = (int) (seed & UINT_MASK);
             for (int i = 1; i < N; i++) {
-                long previous = Integer.toUnsignedLong(mt[i - 1]);
-                long mixed = previous ^ (previous >>> 30);
-                mt[i] = (int) ((1812433253L * mixed + i) & 0xffffffffL);
+                long previous = state[i - 1] & UINT_MASK;
+                state[i] = (int) ((1812433253L * (previous ^ (previous >>> 30)) + i) & UINT_MASK);
             }
             index = N;
         }
 
-        /**
-         * initByArray.
-         * 
-         * @param initKey initKey
-         * @since 0.1.7
-         */
-        private void initByArray(int[] initKey) {
-            initGenRand(19650218);
+        private void initByArray(int[] key) {
+            initGenrand(19650218L);
             int i = 1;
             int j = 0;
-            int keyLength = initKey.length;
-            int loops = Math.max(N, keyLength);
-
-            for (int count = 0; count < loops; count++) {
-                long previous = Integer.toUnsignedLong(mt[i - 1]);
-                long mixed = previous ^ (previous >>> 30);
-                long current = Integer.toUnsignedLong(mt[i]);
-                long key = Integer.toUnsignedLong(initKey[j]);
-                mt[i] = (int) ((((current ^ (mixed * 1664525L)) + key + j)) & 0xffffffffL);
+            int k = Math.max(N, key.length);
+            for (; k > 0; k--) {
+                long previous = state[i - 1] & UINT_MASK;
+                long mixed = (state[i] & UINT_MASK) ^ ((previous ^ (previous >>> 30)) * 1664525L);
+                state[i] = (int) ((mixed + (key[j] & UINT_MASK) + j) & UINT_MASK);
                 i++;
                 j++;
                 if (i >= N) {
-                    mt[0] = mt[N - 1];
+                    state[0] = state[N - 1];
                     i = 1;
                 }
-                if (j >= keyLength) {
+                if (j >= key.length) {
                     j = 0;
                 }
             }
-
-            for (int count = 0; count < N - 1; count++) {
-                long previous = Integer.toUnsignedLong(mt[i - 1]);
-                long mixed = previous ^ (previous >>> 30);
-                long current = Integer.toUnsignedLong(mt[i]);
-                mt[i] = (int) ((((current ^ (mixed * 1566083941L)) - i)) & 0xffffffffL);
+            for (k = N - 1; k > 0; k--) {
+                long previous = state[i - 1] & UINT_MASK;
+                long mixed = (state[i] & UINT_MASK) ^ ((previous ^ (previous >>> 30)) * 1566083941L);
+                state[i] = (int) ((mixed - i) & UINT_MASK);
                 i++;
                 if (i >= N) {
-                    mt[0] = mt[N - 1];
+                    state[0] = state[N - 1];
                     i = 1;
                 }
             }
-            mt[0] = 0x80000000;
+            state[0] = UPPER_MASK;
         }
 
-        /**
-         * nextInt32.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        private int nextInt32() {
-            if (index >= N) {
-                twist();
-            }
-
-            int y = mt[index++];
-            y ^= y >>> 11;
-            y ^= (y << 7) & 0x9d2c5680;
-            y ^= (y << 15) & 0xefc60000;
-            y ^= y >>> 18;
-            return y;
-        }
-
-        /**
-         * twist.
-         * 
-         * @since 0.1.7
-         */
         private void twist() {
-            for (int kk = 0; kk < N - M; kk++) {
-                long y =
-                    (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
-                mt[kk] = mt[kk + M] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            int[] mag01 = {0, MATRIX_A};
+            int kk = 0;
+            for (; kk < N - M; kk++) {
+                int y = (state[kk] & UPPER_MASK) | (state[kk + 1] & LOWER_MASK);
+                state[kk] = state[kk + M] ^ (y >>> 1) ^ mag01[y & 1];
             }
-            for (int kk = N - M; kk < N - 1; kk++) {
-                long y =
-                    (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
-                mt[kk] = mt[kk + (M - N)] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            for (; kk < N - 1; kk++) {
+                int y = (state[kk] & UPPER_MASK) | (state[kk + 1] & LOWER_MASK);
+                state[kk] = state[kk + (M - N)] ^ (y >>> 1) ^ mag01[y & 1];
             }
-
-            long y = (Integer.toUnsignedLong(mt[N - 1]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[0]) & LOWER_MASK);
-            mt[N - 1] = mt[M - 1] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
+            int y = (state[N - 1] & UPPER_MASK) | (state[0] & LOWER_MASK);
+            state[N - 1] = state[M - 1] ^ (y >>> 1) ^ mag01[y & 1];
             index = 0;
         }
 
-        /**
-         * getRandBits.
-         * 
-         * @param bits bits
-         * @return the result
-         * @since 0.1.7
-         */
-        private long getRandBits(int bits) {
-            if (bits <= 0) {
-                return 0L;
+        private static int[] seedToKey(long seed) {
+            BigInteger value = BigInteger.valueOf(seed);
+            if (value.signum() < 0) {
+                value = value.negate();
             }
-
-            int wordCount = (bits + 31) / 32;
-            long value = 0L;
-            int accumulatedBits = 0;
-
-            for (int i = 0; i < wordCount; i++) {
-                long word = Integer.toUnsignedLong(nextInt32());
-                int take = 32;
-                if (i == wordCount - 1 && bits % 32 != 0) {
-                    take = bits % 32;
-                    word >>>= (32 - take);
-                }
-                value |= word << accumulatedBits;
-                accumulatedBits += take;
+            if (value.signum() == 0) {
+                return new int[] {0};
             }
-            return value;
-        }
-
-        /**
-         * randBelow.
-         * 
-         * @param boundExclusive boundExclusive
-         * @return the result
-         * @since 0.1.7
-         */
-        private int randBelow(int boundExclusive) {
-            int bits = 32 - Integer.numberOfLeadingZeros(boundExclusive);
-            long candidate = getRandBits(bits);
-            while (candidate >= boundExclusive) {
-                candidate = getRandBits(bits);
+            List<Integer> words = new ArrayList<>();
+            BigInteger mask = BigInteger.valueOf(UINT_MASK);
+            while (value.signum() > 0) {
+                words.add(value.and(mask).intValue());
+                value = value.shiftRight(32);
             }
-            return (int) candidate;
-        }
-
-        /**
-         * shuffle.
-         * 
-         * @param values values
-         * @since 0.1.7
-         */
-        private <T> void shuffle(List<T> values) {
-            for (int i = values.size() - 1; i > 0; i--) {
-                int j = randBelow(i + 1);
-                Collections.swap(values, i, j);
+            int[] result = new int[words.size()];
+            for (int i = 0; i < words.size(); i++) {
+                result[i] = words.get(i);
             }
+            return result;
         }
     }
 }

@@ -98,8 +98,8 @@ class WorkflowTraceSystemTest {
     @DisplayName("Workflow trace keeps raw top-level payloads and raw component outputs")
     void workflowTraceKeepsRawTopLevelPayloadsAndRawComponentOutputs() {
         WorkflowSession rawSession = newTraceSession("workflow-raw-payload", StreamMode.TRACE);
-        TracerWorkflowUtils.traceWorkflowStart(rawSession, List.of("alpha", "beta"));
-        TracerWorkflowUtils.traceWorkflowDone(rawSession, "done");
+        TracerWorkflowUtils.traceWorkflowStart(rawSession, Map.of("components", List.of("alpha", "beta")));
+        TracerWorkflowUtils.traceWorkflowDone(rawSession, Map.of("result", "done"));
         rawSession.streamWriterManager().getStreamEmitter().close();
 
         List<TraceWorkflowSpan> rawWorkflowSpans =

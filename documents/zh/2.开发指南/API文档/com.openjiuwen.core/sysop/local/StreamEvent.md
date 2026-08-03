@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sysop.local.StreamEvent
+# com.openjiuwen.core.common.logging.events.StreamEvent
 
 ## 类 StreamEvent
 

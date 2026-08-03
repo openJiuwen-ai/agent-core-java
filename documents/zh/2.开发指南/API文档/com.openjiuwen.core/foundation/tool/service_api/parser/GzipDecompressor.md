@@ -1,4 +1,4 @@
-# com.openjiuwen.core.foundation.tool.service_api.parser.GzipDecompressor
+# com.openjiuwen.core.foundation.tool.service_api.GzipDecompressor
 
 ## class GzipDecompressor
 

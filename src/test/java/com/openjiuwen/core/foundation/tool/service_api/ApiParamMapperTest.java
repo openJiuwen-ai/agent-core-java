@@ -4,168 +4,346 @@
 
 package com.openjiuwen.core.foundation.tool.service_api;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * Tests for ApiParamMapper.
- * Ported from Python: tests/unit_tests/core/foundation/tool/test_api_param_mapper.py
- */
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class ApiParamMapperTest {
-    private static final Map<String, Object> DEFAULT_SCHEMAS = Map.of("type", "object", "properties", Map.of("id",
-            Map.of("type", "integer", "location", "path"), "name", Map.of("type", "string", "location", "query"), "age",
-            Map.of("type", "integer", "location", "query"), "data", Map.of("type", "object", "location", "body"),
-            "auth_token", Map.of("type", "string", "location", "header")));
 
-    @Nested
-    @DisplayName("Initialization tests")
-    class InitTests {
-        @Test
-        @DisplayName("Init with dict schema stores schema and empty defaults")
-        void testInitBase() {
-            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, null, null, null);
+    @Test
+    void mapRoutesExplicitStringLocationsIntoSeparateBuckets() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "q", Map.of("location", "query"),
+                        "id", Map.of("location", "path"),
+                        "payload", Map.of("location", "body"),
+                        "token", Map.of("location", "header")
+                )
+        ));
 
-            // Defaults should be empty maps for each location
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(), ApiParamLocation.BODY);
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of(
+                "q", "hello",
+                "id", "42",
+                "payload", Map.of("x", 1),
+                "token", "abc"
+        ));
 
-            // With no inputs, query/path/header should have empty defaults
-            assertTrue(result.get(ApiParamLocation.QUERY).isEmpty());
-            assertTrue(result.get(ApiParamLocation.HEADER).isEmpty());
-            assertTrue(result.get(ApiParamLocation.PATH).isEmpty());
-        }
+        assertThat(mapped.get(ApiParamLocation.QUERY)).containsEntry("q", "hello");
+        assertThat(mapped.get(ApiParamLocation.PATH)).containsEntry("id", "42");
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("payload", Map.of("x", 1));
+        assertThat(mapped.get(ApiParamLocation.HEADER)).containsEntry("token", "abc");
     }
 
-    @Nested
-    @DisplayName("Map method tests")
-    class MapTests {
-        @Test
-        @DisplayName("Map distributes params to correct locations based on schema")
-        void testMapWithDictSchema() {
-            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, null, null, null);
+    @Test
+    void mapWrapsTruthyFormValuesWithHandlerMetadata() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "upload", Map.of("location", "form", "form_handler_type", "file"),
+                        "ignored", Map.of("location", "form")
+                )
+        ));
 
-            Map<String, Object> inputs = new LinkedHashMap<>();
-            inputs.put("id", 123);
-            inputs.put("name", "John");
-            inputs.put("age", 30);
-            inputs.put("data", Map.of("key", "value"));
-            inputs.put("auth_token", "abc123");
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of(
+                "upload", "bytes",
+                "ignored", ""
+        ));
 
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
-
-            assertEquals(Map.of("id", 123), result.get(ApiParamLocation.PATH));
-            assertEquals(Map.of("name", "John", "age", 30), result.get(ApiParamLocation.QUERY));
-            assertEquals(Map.of("data", Map.of("key", "value")), result.get(ApiParamLocation.BODY));
-            assertEquals(Map.of("auth_token", "abc123"), result.get(ApiParamLocation.HEADER));
-        }
-
-        @Test
-        @DisplayName("Map with default values merges correctly")
-        void testMapWithDefaultValues() {
-            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, Map.of("lang", "en", "format", "json"), // default
-                                                                                                                // queries
-                    Map.of("X-API-Key", "test-key"), // default headers
-                    Map.of("version", "v1") // default paths
-            );
-
-            Map<String, Object> inputs = new LinkedHashMap<>();
-            inputs.put("id", 123);
-            inputs.put("name", "John");
-
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
-
-            // Defaults should be merged with input values
-            Map<String, Object> pathResult = result.get(ApiParamLocation.PATH);
-            assertEquals("v1", pathResult.get("version"));
-            assertEquals(123, pathResult.get("id"));
-
-            Map<String, Object> queryResult = result.get(ApiParamLocation.QUERY);
-            assertEquals("en", queryResult.get("lang"));
-            assertEquals("json", queryResult.get("format"));
-            assertEquals("John", queryResult.get("name"));
-
-            Map<String, Object> headerResult = result.get(ApiParamLocation.HEADER);
-            assertEquals("test-key", headerResult.get("X-API-Key"));
-
-            assertTrue(result.get(ApiParamLocation.BODY).isEmpty());
-        }
-
-        @Test
-        @DisplayName("Input values override default values")
-        void testMapInputOverridesDefaults() {
-            ApiParamMapper mapper = new ApiParamMapper(DEFAULT_SCHEMAS, Map.of("lang", "en", "name", "Default Name"), // default
-                                                                                                                      // queries
-                    null, Map.of("id", 999, "version", "v1") // default paths
-            );
-
-            Map<String, Object> inputs = new LinkedHashMap<>();
-            inputs.put("id", 123);
-            inputs.put("name", "Actual Name");
-
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
-
-            // Input should override default
-            assertEquals(123, result.get(ApiParamLocation.PATH).get("id"));
-            assertEquals("v1", result.get(ApiParamLocation.PATH).get("version"));
-            assertEquals("Actual Name", result.get(ApiParamLocation.QUERY).get("name"));
-            assertEquals("en", result.get(ApiParamLocation.QUERY).get("lang"));
-        }
-
-        @Test
-        @DisplayName("Map with null schema puts all inputs to default location")
-        void testMapNullSchema() {
-            ApiParamMapper mapper = new ApiParamMapper(null, null, null, null);
-
-            Map<String, Object> inputs = Map.of("key1", "val1", "key2", "val2");
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(inputs, ApiParamLocation.BODY);
-
-            assertEquals(inputs, result.get(ApiParamLocation.BODY));
-        }
-
-        @Test
-        @DisplayName("Map with empty inputs returns only defaults")
-        void testMapEmptyInputs() {
-            ApiParamMapper mapper =
-                new ApiParamMapper(DEFAULT_SCHEMAS, Map.of("lang", "en"), Map.of("X-Key", "abc"), null);
-
-            Map<ApiParamLocation, Map<String, Object>> result = mapper.map(Map.of(), ApiParamLocation.BODY);
-
-            assertEquals(Map.of("lang", "en"), result.get(ApiParamLocation.QUERY));
-            assertEquals(Map.of("X-Key", "abc"), result.get(ApiParamLocation.HEADER));
-            assertTrue(result.get(ApiParamLocation.PATH).isEmpty());
-            assertTrue(result.get(ApiParamLocation.BODY).isEmpty());
-        }
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "upload",
+                Map.of("form_handler_type", "file", "value", "bytes")
+        );
+        assertThat(mapped.get(ApiParamLocation.FORM)).doesNotContainKey("ignored");
     }
 
-    @Nested
-    @DisplayName("ApiParamLocation tests")
-    class ParamLocationTests {
-        @Test
-        @DisplayName("fromString returns correct enum values")
-        void testFromString() {
-            assertEquals(ApiParamLocation.QUERY, ApiParamLocation.fromString("query"));
-            assertEquals(ApiParamLocation.PATH, ApiParamLocation.fromString("path"));
-            assertEquals(ApiParamLocation.BODY, ApiParamLocation.fromString("body"));
-            assertEquals(ApiParamLocation.HEADER, ApiParamLocation.fromString("header"));
-        }
+    @Test
+    void mapSupportsSingleFormParameterMapping() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "file", Map.of("location", "form", "form_handler_type", "file")
+                )
+        ));
 
-        @Test
-        @DisplayName("fromString is case-insensitive")
-        void testFromStringCaseInsensitive() {
-            assertEquals(ApiParamLocation.QUERY, ApiParamLocation.fromString("QUERY"));
-            assertEquals(ApiParamLocation.HEADER, ApiParamLocation.fromString("Header"));
-        }
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("file", "http://example.com/document.pdf")
+        );
 
-        @Test
-        @DisplayName("fromString defaults to BODY for unknown values")
-        void testFromStringDefaultsToBody() {
-            assertEquals(ApiParamLocation.BODY, ApiParamLocation.fromString("unknown"));
-            assertEquals(ApiParamLocation.BODY, ApiParamLocation.fromString(""));
-        }
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "file",
+                Map.of("form_handler_type", "file", "value", "http://example.com/document.pdf")
+        );
+    }
+
+    @Test
+    void mapSupportsMultipleFormParametersAndBodyTogether() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "file", Map.of("location", "form", "form_handler_type", "file"),
+                        "image", Map.of("location", "form", "form_handler_type", "file"),
+                        "name", Map.of("location", "body")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of(
+                "file", "http://example.com/document.pdf",
+                "image", "http://example.com/image.png",
+                "name", "test_document"
+        ));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).isEqualTo(Map.of(
+                "file", Map.of("form_handler_type", "file", "value", "http://example.com/document.pdf"),
+                "image", Map.of("form_handler_type", "file", "value", "http://example.com/image.png")
+        ));
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("name", "test_document");
+    }
+
+    @Test
+    void mapSupportsMixedFormAndRegularParameters() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "document", Map.of("location", "form", "form_handler_type", "file"),
+                        "title", Map.of("location", "body"),
+                        "userId", Map.of("location", "query"),
+                        "authToken", Map.of("location", "header"),
+                        "version", Map.of("location", "path")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of(
+                "document", "http://example.com/doc.pdf",
+                "title", "My Document",
+                "userId", 123,
+                "authToken", "token123",
+                "version", "v1"
+        ));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "document",
+                Map.of("form_handler_type", "file", "value", "http://example.com/doc.pdf")
+        );
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("title", "My Document");
+        assertThat(mapped.get(ApiParamLocation.QUERY)).containsEntry("userId", 123);
+        assertThat(mapped.get(ApiParamLocation.HEADER)).containsEntry("authToken", "token123");
+        assertThat(mapped.get(ApiParamLocation.PATH)).containsEntry("version", "v1");
+    }
+
+    @Test
+    void mapUsesDefaultFormHandlerTypeWhenSchemaOmitsIt() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "file", Map.of("location", "form")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("file", "http://example.com/file.pdf")
+        );
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "file",
+                Map.of("form_handler_type", "default", "value", "http://example.com/file.pdf")
+        );
+    }
+
+    @Test
+    void mapPreservesCustomFormHandlerType() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "data", Map.of("location", "form", "form_handler_type", "custom")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of("data", "custom_value"));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "data",
+                Map.of("form_handler_type", "custom", "value", "custom_value")
+        );
+    }
+
+    @Test
+    void mapPreservesEmptyFormHandlerTypeWhenSchemaExplicitlySetsIt() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "file", Map.of("location", "form", "form_handler_type", "")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("file", "http://example.com/file.pdf")
+        );
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "file",
+                Map.of("form_handler_type", "", "value", "http://example.com/file.pdf")
+        );
+    }
+
+    @Test
+    void mapDropsFormParamWhenValueIsNull() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "formField", Map.of("location", "form", "form_handler_type", "default")
+                )
+        ));
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("formField", null);
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(inputs);
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).isEmpty();
+    }
+
+    @Test
+    void mapDropsFormParamWhenValueIsEmptyString() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "formField", Map.of("location", "form", "form_handler_type", "default")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of("formField", ""));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).isEmpty();
+    }
+
+    @Test
+    void mapKeepsFormParamWhenValueIsPresent() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "formField", Map.of("location", "form", "form_handler_type", "default")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of("formField", "test_value"));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).containsEntry(
+                "formField",
+                Map.of("form_handler_type", "default", "value", "test_value")
+        );
+    }
+
+    @Test
+    void mapLeavesFormBucketEmptyWhenInputsDoNotContainFormParameter() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "file", Map.of("location", "form", "form_handler_type", "file"),
+                        "name", Map.of("location", "body")
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(Map.of("name", "test"));
+
+        assertThat(mapped.get(ApiParamLocation.FORM)).isEmpty();
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("name", "test");
+    }
+
+    @Test
+    void mapDefaultsUnknownLocationsToBodyWhenBodyIsRequestedDefault() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "bodyOnly", Map.of()
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("bodyOnly", 7),
+                ApiParamLocation.BODY
+        );
+
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("bodyOnly", 7);
+        assertThat(mapped.get(ApiParamLocation.QUERY)).isEmpty();
+    }
+
+    @Test
+    void mapDefaultsUnknownLocationsToQueryWhenNonBodyDefaultIsRequested() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "fallback", Map.of()
+                )
+        ));
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("fallback", "value"),
+                ApiParamLocation.HEADER
+        );
+
+        assertThat(mapped.get(ApiParamLocation.QUERY)).containsEntry("fallback", "value");
+        assertThat(mapped.get(ApiParamLocation.HEADER)).isEmpty();
+    }
+
+    @Test
+    void mapMergesDefaultsButKeepsDefaultsWhenInputIsNullOrEmptyString() {
+        ApiParamMapper mapper = new ApiParamMapper(
+                Map.of(
+                        "properties", Map.of(
+                                "pathId", Map.of("location", "path"),
+                                "headerAuth", Map.of("location", "header"),
+                                "queryPage", Map.of("location", "query")
+                        )
+                ),
+                Map.of("queryPage", 5),
+                Map.of("headerAuth", "default-token"),
+                Map.of("pathId", "default-id")
+        );
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("pathId", "");
+        inputs.put("headerAuth", null);
+        inputs.put("queryPage", 9);
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(inputs);
+
+        assertThat(mapped.get(ApiParamLocation.PATH)).containsEntry("pathId", "default-id");
+        assertThat(mapped.get(ApiParamLocation.HEADER)).containsEntry("headerAuth", "default-token");
+        assertThat(mapped.get(ApiParamLocation.QUERY)).containsEntry("queryPage", 9);
+    }
+
+    @Test
+    void mapPlacesEverythingIntoDefaultBucketWhenSchemaIsNull() {
+        ApiParamMapper mapper = new ApiParamMapper((Map<String, Object>) null);
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("value", 1),
+                ApiParamLocation.HEADER
+        );
+
+        assertThat(mapped.get(ApiParamLocation.HEADER)).containsEntry("value", 1);
+        assertThat(mapped.get(ApiParamLocation.BODY)).isEmpty();
+    }
+
+    @Test
+    void classSchemaConstructorUsesSchemaUtilsGeneratedProperties() {
+        ApiParamMapper mapper = new ApiParamMapper(DemoParams.class);
+
+        Map<ApiParamLocation, Map<String, Object>> mapped = mapper.map(
+                Map.of("query", "v", "count", 2),
+                ApiParamLocation.BODY
+        );
+
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("query", "v");
+        assertThat(mapped.get(ApiParamLocation.BODY)).containsEntry("count", 2);
+    }
+
+    @Test
+    void invalidExplicitLocationFailsFast() {
+        ApiParamMapper mapper = new ApiParamMapper(Map.of(
+                "properties", Map.of(
+                        "value", Map.of("location", "invalid")
+                )
+        ));
+
+        assertThatThrownBy(() -> mapper.map(Map.of("value", "x")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalid");
+    }
+
+    private static final class DemoParams {
+        private String query;
+        private int count;
+        private List<String> tags;
     }
 }

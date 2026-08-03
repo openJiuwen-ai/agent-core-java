@@ -4,55 +4,105 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Public class ReadMcpResourceTool used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Reads a single MCP resource by URI.
+ *
+ * <p>Mirrors Python's {@code ReadMcpResourceTool} in
+ * {@code openjiuwen/harness/tools/mcp_tools.py}.</p>
  */
-public class ReadMcpResourceTool {
-    private final McpResourceService service;
+public class ReadMcpResourceTool extends AbstractHarnessTool {
 
-    /**
-     * ReadMcpResourceTool.
-     * 
-     * @param service service
-     * @since 0.1.7
-     */
-    public ReadMcpResourceTool(McpResourceService service) {
-        this.service = service;
+    private final McpResourceReader resourceReader;
+    private final String language;
+    private final String agentId;
+
+    public ReadMcpResourceTool(McpResourceReader resourceReader) {
+        this(toolCard("read_mcp_resource", "ReadMcpResourceTool", "Read an MCP resource by URI."),
+                resourceReader, "cn", null);
     }
 
-    /**
-     * invoke.
-     * 
-     * @param serverId serverId
-     * @param uri uri
-     * @return the result
-     * @since 0.1.7
-     */
-    public ToolOutput invoke(String serverId, String uri) {
-        if (serverId == null || serverId.isBlank()) {
-            return ToolOutput.builder().success(false).error("server_id is required").build();
+    public ReadMcpResourceTool(String language, String agentId) {
+        this(HarnessPromptToolsPackage.buildToolCard(
+                        "read_mcp_resource",
+                        "ReadMcpResourceTool",
+                        normalizeLanguage(language),
+                        agentId),
+                (serverId, uri) -> toList(Runner.resourceMgr().readMcpResource(serverId, uri).toCompletableFuture().join()),
+                normalizeLanguage(language),
+                agentId);
+    }
+
+    private ReadMcpResourceTool(ToolCard card, McpResourceReader resourceReader, String language, String agentId) {
+        super(card);
+        this.resourceReader = resourceReader;
+        this.language = normalizeLanguage(language);
+        this.agentId = agentId;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getAgentId() {
+        return agentId;
+    }
+
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        String serverId = stringValue(inputs == null ? null : inputs.get("server_id"));
+        String uri = stringValue(inputs == null ? null : inputs.get("uri"));
+        if (serverId.isBlank()) {
+            return ToolOutput.failure("server_id is required");
         }
-        if (uri == null || uri.isBlank()) {
-            return ToolOutput.builder().success(false).error("uri is required").build();
+        if (uri.isBlank()) {
+            return ToolOutput.failure("uri is required");
+        }
+        if (resourceReader == null) {
+            return ToolOutput.success(List.of());
         }
         try {
-            List<?> contents = service.readResource(serverId, uri);
-            List<McpResourceContent> mapped = new ArrayList<>();
-            if (contents != null) {
-                for (Object content : contents) {
-                    mapped.add(new McpResourceContent(ListMcpResourcesTool.value(content, "getUri", "uri"),
-                            ListMcpResourcesTool.nullable(content, "getMimeType", "mimeType"),
-                            ListMcpResourcesTool.nullable(content, "getText", "text")));
-                }
+            List<?> contents = resourceReader.read(serverId, uri);
+            List<Map<String, Object>> data = new ArrayList<>();
+            for (Object content : contents == null ? List.of() : contents) {
+                data.add(ListMcpResourcesTool.resourceMap(content, "uri", "mimeType", "text"));
             }
-            return ToolOutput.builder().success(true).data(mapped).build();
-        } catch (Exception ex) {
-            return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+            return ToolOutput.success(data);
+        } catch (Exception exception) {
+            return ToolOutput.failure(exception.getMessage());
         }
+    }
+
+    private static String normalizeLanguage(String language) {
+        return language == null || language.isBlank() ? "cn" : language;
+    }
+
+    private static List<?> toList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : iterable) {
+                result.add(item);
+            }
+            return result;
+        }
+        return List.of(value);
+    }
+
+    @FunctionalInterface
+    public interface McpResourceReader {
+        List<?> read(String serverId, String uri) throws Exception;
     }
 }

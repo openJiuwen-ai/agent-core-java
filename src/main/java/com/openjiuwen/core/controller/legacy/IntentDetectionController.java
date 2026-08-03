@@ -1,24 +1,29 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.controller.legacy;
 
+import com.openjiuwen.core.common.utils.MessageUtils;
+import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.controller.legacy.event.Event;
 import com.openjiuwen.core.controller.legacy.task.Task;
+import com.openjiuwen.core.controller.legacy.task.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
-
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Method;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,81 +31,83 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
 /**
- * Legacy intent-detection controller with task routing support.
- * <p>
- * Supports real-time interruption: cancels running handlers and tasks
- * when a new request arrives for the same conversation.
- * 
- * @since 0.1.7
+ * Intent detection controller with task routing and interruption handling.
+ *
+ * <p>Mirrors Python's {@code IntentDetectionController} in
+ * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.</p>
  */
 public abstract class IntentDetectionController extends BaseController {
+
     private static final Logger LOG = LoggerFactory.getLogger(IntentDetectionController.class);
 
-    /**
-     * taskQueue.
-     * 
-     * @since 0.1.7
-     */
     protected final TaskQueue taskQueue = new TaskQueue();
 
-    /**
-     * Track currently processing handlers (conversationId -> Thread).
-     * This tracks at handleEvent level, earlier than TaskQueue.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, Thread> processingHandlers = new ConcurrentHashMap<>();
 
-    /**
-     * invoke.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public Map<String, Object> invoke(Map<String, Object> inputs, Session session) {
-        String conversationId = String.valueOf(inputs.getOrDefault("conversation_id", "default_session"));
+    private Object session;
 
-        // Cancel processing handler BEFORE sending message to queue
-        Thread oldHandler = processingHandlers.get(conversationId);
-        if (oldHandler != null && oldHandler.isAlive()) {
-            LOG.info("[IntentDetectionController] New request received, " + "cancelling processing handler for {}",
-                    conversationId);
-            oldHandler.interrupt();
-        }
+    protected IntentDetectionController() {
+        super();
+    }
 
-        // Also check TaskQueue for running tasks
-        if (taskQueue.hasRunningTask(conversationId)) {
-            LOG.info("[IntentDetectionController] Also cancelling running task " + "for {}", conversationId);
-            taskQueue.cancelRunningTask(conversationId);
-        }
+    protected IntentDetectionController(Object config, ContextEngine contextEngine) {
+        super(config, contextEngine);
+    }
 
-        return super.invoke(inputs, session);
+    protected IntentDetectionController(Object config, ContextEngine contextEngine, Object session) {
+        super(config, contextEngine);
+        this.session = session;
     }
 
     /**
-     * handleEvent.
-     * 
-     * @param event event
-     * @param session session
-     * @return the result
-     * @since 0.1.7
+     * Override invoke to support Python's real-time interruption behavior.
+     *
+     * @param inputs input dictionary containing query and conversation_id
+     * @param session session context
+     * @return processing result
      */
     @Override
-    protected Map<String, Object> handleEvent(Event event, Session session) {
-        String conversationId = event.getSource() != null ? event.getSource().getConversationId() : "default_session";
-        Thread currentThread = Thread.currentThread();
+    public Map<String, Object> invoke(Map<String, Object> inputs, Object session) {
+        Map<String, Object> safeInputs = inputs == null ? Map.of() : inputs;
+        String conversationId = String.valueOf(
+                safeInputs.getOrDefault("conversation_id", "default_session")
+        );
 
-        // Register current handler thread for cancellation tracking
+        Thread oldHandler = processingHandlers.get(conversationId);
+        if (oldHandler != null && oldHandler.isAlive()) {
+            LOG.info("[IntentDetectionController] New request received, "
+                    + "cancelling processing handler for {}", conversationId);
+            oldHandler.interrupt();
+        }
+
+        if (taskQueue.hasRunningTask(conversationId)) {
+            LOG.info("[IntentDetectionController] Also cancelling workflow task for {}", conversationId);
+            taskQueue.cancelRunningTask(conversationId);
+        }
+
+        this.session = session;
+        return super.invoke(safeInputs, session);
+    }
+
+    /**
+     * Standard message flow: intent detection, user-message persistence, and route dispatch.
+     *
+     * @param event event object
+     * @param session session context
+     * @return processing result
+     */
+    @Override
+    protected Map<String, Object> handleEvent(Event event, Object session) {
+        String conversationId = conversationId(event);
+        Thread currentThread = Thread.currentThread();
         processingHandlers.put(conversationId, currentThread);
         LOG.debug("[IntentDetectionController] Registered handler for {}", conversationId);
 
         try {
             Intent intent = intentDetection(event, session);
-            if (intent == null) {
-                return handleUnknownIntent(event, null, session);
+            addUserMessage(event, session);
+            if (intent == null || intent.getIntentType() == null) {
+                return handleUnknownIntent(event, intent, session);
             }
 
             return switch (intent.getIntentType()) {
@@ -111,8 +118,7 @@ public abstract class IntentDetectionController extends BaseController {
                 case UNKNOWN -> handleUnknownIntent(event, intent, session);
             };
         } catch (RuntimeException e) {
-            if (Thread.interrupted()) {
-                // Handler was cancelled by new request
+            if (Thread.currentThread().isInterrupted()) {
                 LOG.info("[IntentDetectionController] Handler cancelled for {}", conversationId);
                 Map<String, Object> cancelled = new LinkedHashMap<>();
                 cancelled.put("status", "cancelled");
@@ -121,215 +127,248 @@ public abstract class IntentDetectionController extends BaseController {
             }
             throw e;
         } finally {
-            // Unregister handler thread
             processingHandlers.remove(conversationId, currentThread);
             LOG.debug("[IntentDetectionController] Unregistered handler for {}", conversationId);
         }
     }
 
-    /**
-     * handleNewTask.
-     * 
-     * @param event event
-     * @param intent intent
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Map<String, Object> handleNewTask(Event event, Intent intent, Session session) {
-        if (intent.getTask() == null) {
+    protected Map<String, Object> handleNewTask(Event event, Intent intent, Object session) {
+        Task task = intent.getTask();
+        if (task == null) {
             return Map.of("status", "error", "message", "Task not found in intent");
         }
-        intent.getTask().setStatus(Task.TaskStatus.PENDING);
-        return execTask(event.getContent(), intent.getTask(), session);
+        task.setStatus(TaskStatus.PENDING);
+        LOG.info("Handling new task: task_id={}", task.getTaskId());
+        return execTask(event == null ? null : event.getContent(), task, session);
     }
 
     /**
-     * handleResume.
-     * 
-     * @param event event
-     * @param intent intent
-     * @param session session
-     * @return the result
-     * @since 0.1.7
+     * Handle task resumption by remapping the user's input to the interrupted component.
+     *
+     * @param event event object
+     * @param intent detected intent
+     * @param session session context
+     * @return execution result
      */
-    @SuppressWarnings("unchecked")
-    protected Map<String, Object> handleResume(Event event, Intent intent, Session session) {
-        if (intent.getTask() == null) {
+    protected Map<String, Object> handleResume(Event event, Intent intent, Object session) {
+        Task task = intent.getTask();
+        if (task == null) {
             return Map.of("status", "error", "message", "Task not found in intent");
         }
-        Task task = intent.getTask();
-
-        // Task status should already be INTERRUPTED
-        if (task.getStatus() != Task.TaskStatus.INTERRUPTED) {
+        if (task.getStatus() != TaskStatus.INTERRUPTED) {
             LOG.warn("Resuming task with unexpected status: {}", task.getStatus());
         }
 
-        LOG.info("Handling resume task: task_id={}", task.getTaskId());
+        String workflowId = task.getInput() == null ? "" : task.getInput().getTargetId();
+        Object targetComponentValue = interruptedComponentId(session, workflowId);
+        List<String> targetIds = normalizeTargetIds(targetComponentValue);
 
-        // Get target workflow's interrupted component_id
-        String workflowId = task.getInput() != null ? task.getInput().getTargetId() : null;
-        String targetComponentId = "questioner"; // Default value
-
-        Object state = session.getState("workflow_controller");
-        if (state instanceof Map<?, ?> stateMap && workflowId != null) {
-            String stateKey = workflowId.replace('.', '_');
-            Object interruptedTasks = ((Map<String, Object>) stateMap).get("interrupted_tasks");
-            if (interruptedTasks instanceof Map<?, ?> interruptedMap) {
-                Object interruptedInfo = ((Map<String, Object>) interruptedMap).get(stateKey);
-                if (interruptedInfo instanceof Map<?, ?> infoMap) {
-                    Object compId = ((Map<String, Object>) infoMap).get("component_id");
-                    if (compId != null) {
-                        targetComponentId = String.valueOf(compId);
-                    }
-                }
-            }
-        }
-
-        LOG.info("Target workflow interrupted component_id: {}", targetComponentId);
-
-        // Build InteractiveInput for resume
-        InteractiveInput interactiveInput;
-
-        Event.EventContent eventContent = event.getContent();
-        if (eventContent != null && eventContent.getInteractiveInput() != null) {
-            InteractiveInput providedInput = eventContent.getInteractiveInput();
-            LOG.info("Provided InteractiveInput for resume");
-
-            if (providedInput.getUserInputs() != null && !providedInput.getUserInputs().isEmpty()) {
-                List<String> providedKeys = List.copyOf(providedInput.getUserInputs().keySet());
-                List<String> targetIds = List.of(targetComponentId);
-
-                boolean matches = providedKeys.stream().anyMatch(targetIds::contains);
-                if (!matches) {
-                    // Mismatch: remap user input value to target component
-                    Object userValue = providedInput.getUserInputs().values().iterator().next();
-                    LOG.info("Component ID mismatch: provided={}, target={}. Remapping.", providedKeys,
-                            targetComponentId);
-                    interactiveInput = new InteractiveInput();
-                    interactiveInput.update(targetIds.get(0), userValue);
-                } else {
-                    interactiveInput = providedInput;
-                }
-            } else {
-                interactiveInput = providedInput;
-            }
-        } else {
-            // Create InteractiveInput from user query text
-            String queryText = eventContent != null ? eventContent.getQueryText() : "";
-            interactiveInput = new InteractiveInput();
-            interactiveInput.update(targetComponentId, queryText);
-            LOG.info("Created InteractiveInput for resume: component_id={}, query={}", targetComponentId, queryText);
-        }
-
-        // Update task input arguments to InteractiveInput
+        Event.EventContent content = event == null ? null : event.getContent();
+        InteractiveInput interactiveInput = resolveInteractiveInput(content, targetIds);
         if (task.getInput() != null) {
             task.getInput().setArguments(interactiveInput);
         }
 
-        return execTask(event.getContent(), task, session);
+        return execTask(content, task, session);
     }
 
-    /**
-     * handleCancel.
-     * 
-     * @param event event
-     * @param intent intent
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Map<String, Object> handleCancel(Event event, Intent intent, Session session) {
-        if (intent.getTask() == null) {
+    protected Map<String, Object> handleCancel(Event event, Intent intent, Object session) {
+        Task task = intent.getTask();
+        if (task == null) {
             return Map.of("status", "error", "message", "Task not found in intent");
         }
-        intent.getTask().setStatus(Task.TaskStatus.CANCELLED);
-        return Map.of("status", "cancelled", "task_id", intent.getTask().getTaskId());
+        task.setStatus(TaskStatus.CANCELLED);
+        LOG.info("Handling cancel task: task_id={}", task.getTaskId());
+        return Map.of("status", "cancelled", "task_id", task.getTaskId());
     }
 
-    /**
-     * handleDefaultResponse.
-     * 
-     * @param event event
-     * @param intent intent
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Map<String, Object> handleDefaultResponse(Event event, Intent intent, Session session) {
-        String defaultText = intent != null && intent.getMetadata() != null
-                ? String.valueOf(intent.getMetadata().getOrDefault("default_response_text", ""))
-                : "";
-        if (session instanceof AgentSessionApi agentSessionApi) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("response", defaultText);
-            payload.put("output", Map.of());
-            agentSessionApi.writeStream(new OutputSchema("workflow_final", 0, payload));
+    protected Map<String, Object> handleDefaultResponse(Event event, Intent intent, Object session) {
+        String defaultText = "";
+        if (intent != null && intent.getMetadata() != null) {
+            defaultText = String.valueOf(intent.getMetadata().getOrDefault("default_response_text", ""));
         }
-        return Map.of("status", "default_response", "output", Map.of("answer", defaultText), "result_type", "answer");
+        LOG.info("Returning default response: {}", defaultText);
+
+        Map<String, Object> finalPayload = new LinkedHashMap<>();
+        finalPayload.put("response", defaultText);
+        finalPayload.put("output", Map.of());
+        if (session instanceof AgentSessionApi agentSessionApi) {
+            agentSessionApi.writeStream(new OutputSchema("workflow_final", 0, finalPayload));
+        }
+
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("answer", defaultText);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "default_response");
+        result.put("output", output);
+        result.put("result_type", "answer");
+        return result;
+    }
+
+    protected Map<String, Object> handleUnknownIntent(Event event, Intent intent, Object session) {
+        LOG.warn("Unknown intent type: {}", intent == null ? null : intent.getIntentType());
+        return Map.of(
+                "status", "error",
+                "message", "Unknown intent type: " + (intent == null ? null : intent.getIntentType())
+        );
+    }
+
+    protected abstract Intent intentDetection(Event event, Object session);
+
+    protected abstract Map<String, Object> execTask(Event.EventContent messageContent, Task task, Object session);
+
+    protected abstract Map<String, Object> interruptTask(Task task, Object session);
+
+    private void addUserMessage(Event event, Object session) {
+        if (event == null || contextEngine == null || session == null) {
+            return;
+        }
+        ModelContext context = contextEngine.getContext(
+                ContextEngine.DEFAULT_CONTEXT_ID,
+                resolveSessionId(session)
+        );
+        if (context == null) {
+            return;
+        }
+        MessageUtils.addUserMessage(
+                event.getDisplayContent(),
+                new ContextEngineMessagePort(contextEngine),
+                new SessionMessagePort(resolveSessionId(session))
+        ).toCompletableFuture().join();
+    }
+
+    private static String conversationId(Event event) {
+        if (event == null || event.getSource() == null
+                || event.getSource().getConversationId() == null) {
+            return "default_session";
+        }
+        return event.getSource().getConversationId();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object interruptedComponentId(Object session, String workflowId) {
+        Object state = null;
+        if (session instanceof AgentSessionApi agentSessionApi) {
+            state = agentSessionApi.getState("workflow_controller");
+        } else {
+            state = invoke(session, "getState", "workflow_controller");
+            if (state == null) {
+                state = invoke(session, "get_state", "workflow_controller");
+            }
+        }
+        Object targetComponentId = "questioner";
+        if (state instanceof Map<?, ?> stateMap && workflowId != null) {
+            String stateKey = workflowId.replace('.', '_');
+            Object interruptedTasks = ((Map<String, Object>) stateMap).get("interrupted_tasks");
+            if (interruptedTasks instanceof Map<?, ?> interruptedTasksMap) {
+                Object interruptedInfo = ((Map<String, Object>) interruptedTasksMap).get(stateKey);
+                if (interruptedInfo instanceof Map<?, ?> interruptedInfoMap) {
+                    Object componentId = ((Map<String, Object>) interruptedInfoMap).get("component_id");
+                    if (componentId != null) {
+                        targetComponentId = componentId;
+                    }
+                }
+            }
+        }
+        return targetComponentId;
+    }
+
+    private static InteractiveInput resolveInteractiveInput(Event.EventContent content, List<String> targetIds) {
+        if (content != null && content.getInteractiveInput() != null) {
+            InteractiveInput providedInput = content.getInteractiveInput();
+            Map<String, Object> userInputs = providedInput.getUserInputs();
+            if (userInputs != null && !userInputs.isEmpty()) {
+                boolean matches = userInputs.keySet().stream().anyMatch(targetIds::contains);
+                if (!matches) {
+                    Object userValue = userInputs.values().iterator().next();
+                    InteractiveInput remappedInput = new InteractiveInput();
+                    remappedInput.update(targetIds.get(0), userValue);
+                    return remappedInput;
+                }
+            }
+            return providedInput;
+        }
+
+        InteractiveInput interactiveInput = new InteractiveInput();
+        String queryText = content == null ? "" : content.getQueryText();
+        interactiveInput.update(targetIds.get(0), queryText);
+        return interactiveInput;
+    }
+
+    private static List<String> normalizeTargetIds(Object value) {
+        if (value instanceof Iterable<?> values) {
+            List<String> result = new ArrayList<>();
+            for (Object item : values) {
+                result.add(String.valueOf(item));
+            }
+            return result.isEmpty() ? List.of("questioner") : result;
+        }
+        return List.of(value == null ? "questioner" : String.valueOf(value));
+    }
+
+    private static String resolveSessionId(Object session) {
+        if (session instanceof AgentSessionApi agentSessionApi) {
+            return agentSessionApi.getSessionId();
+        }
+        Object value = invoke(session, "getSessionId");
+        if (value == null) {
+            value = invoke(session, "get_session_id");
+        }
+        return value == null ? ContextEngine.DEFAULT_SESSION_ID : String.valueOf(value);
+    }
+
+    private static Object invoke(Object target, String methodName, Object... arguments) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Class<?>[] types = new Class<?>[arguments.length];
+            for (int index = 0; index < arguments.length; index++) {
+                types[index] = arguments[index] == null ? Object.class : arguments[index].getClass();
+            }
+            Method method = findCompatibleMethod(target.getClass(), methodName, arguments.length);
+            return method.invoke(target, arguments);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Method findCompatibleMethod(Class<?> type, String methodName, int parameterCount)
+            throws NoSuchMethodException {
+        for (Method method : type.getMethods()) {
+            if (method.getName().equals(methodName)
+                    && method.getParameterCount() == parameterCount) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(methodName);
     }
 
     /**
-     * handleUnknownIntent.
-     * 
-     * @param event event
-     * @param intent intent
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected Map<String, Object> handleUnknownIntent(Event event, Intent intent, Session session) {
-        return Map.of("status", "error", "message", "Unknown intent type");
-    }
-
-    /**
-     * intentDetection.
-     * 
-     * @param event event
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected abstract Intent intentDetection(Event event, Session session);
-
-    /**
-     * execTask.
-     * 
-     * @param messageContent messageContent
-     * @param task task
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected abstract Map<String, Object> execTask(Event.EventContent messageContent, Task task, Session session);
-
-    /**
-     * interruptTask.
-     * 
-     * @param task task
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    protected abstract Map<String, Object> interruptTask(Task task, Session session);
-
-    /**
-     * IntentType.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code IntentType} in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.
      */
     public enum IntentType {
-        EXEC_NEW_TASK,
-        RESUME_TASK,
-        CANCEL_TASK,
-        DEFAULT_RESPONSE,
-        UNKNOWN
+        EXEC_NEW_TASK("exec_new_task"),
+        RESUME_TASK("resume_task"),
+        CANCEL_TASK("cancel_task"),
+        DEFAULT_RESPONSE("default_response"),
+        UNKNOWN("unknown");
+
+        private final String value;
+
+        IntentType(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
     }
 
     /**
-     * Intent.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code Intent} in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.
      */
     @Data
     @Builder
@@ -338,97 +377,138 @@ public abstract class IntentDetectionController extends BaseController {
     public static class Intent {
         @Builder.Default
         private IntentType intentType = IntentType.UNKNOWN;
+
         private Task task;
+
         private Object workflow;
+
         @Builder.Default
-        /**
-         * LinkedHashMap<>.
-         * 
-         * @since 0.1.7
-         */
         private Map<String, Object> metadata = new LinkedHashMap<>();
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+        }
     }
 
     /**
-     * TaskQueue.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code RunningTaskInfo} in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RunningTaskInfo {
+        private Task task;
+        private Future<?> future;
+        private String targetId;
+        private Instant startTime;
+    }
+
+    /**
+     * Mirrors Python's {@code TaskQueue} in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.
      */
     public static class TaskQueue {
         private final Map<String, RunningTaskInfo> runningTasks = new ConcurrentHashMap<>();
 
-        /**
-         * registerTask.
-         * 
-         * @param conversationId conversationId
-         * @param task task
-         * @param future future
-         * @param targetId targetId
-         * @since 0.1.7
-         */
         public void registerTask(String conversationId, Task task, Future<?> future, String targetId) {
-            runningTasks.put(conversationId, new RunningTaskInfo(task, future, targetId, System.currentTimeMillis()));
+            runningTasks.put(
+                    conversationId,
+                    new RunningTaskInfo(task, future, targetId, Instant.now())
+            );
+            LOG.info("TaskQueue: Registered task for {}, target={}", conversationId, targetId);
         }
 
-        /**
-         * cancelRunningTask.
-         * 
-         * @param conversationId conversationId
-         * @return the result
-         * @since 0.1.7
-         */
         public boolean cancelRunningTask(String conversationId) {
             RunningTaskInfo info = runningTasks.get(conversationId);
-            if (info == null || info.getFuture() == null) {
+            if (info == null) {
                 return false;
             }
-            return info.getFuture().cancel(true);
+            Future<?> future = info.getFuture();
+            if (future != null && !future.isDone()) {
+                LOG.info("TaskQueue: Cancelling task for {}, target={}", conversationId, info.getTargetId());
+                return future.cancel(true);
+            }
+            return false;
         }
 
-        /**
-         * unregisterTask.
-         * 
-         * @param conversationId conversationId
-         * @since 0.1.7
-         */
         public void unregisterTask(String conversationId) {
-            runningTasks.remove(conversationId);
+            if (runningTasks.remove(conversationId) != null) {
+                LOG.info("TaskQueue: Unregistered task for {}", conversationId);
+            }
         }
 
-        /**
-         * findTask.
-         * 
-         * @param conversationId conversationId
-         * @return the result
-         * @since 0.1.7
-         */
         public RunningTaskInfo findTask(String conversationId) {
             return runningTasks.get(conversationId);
         }
 
-        /**
-         * hasRunningTask.
-         * 
-         * @param conversationId conversationId
-         * @return the result
-         * @since 0.1.7
-         */
         public boolean hasRunningTask(String conversationId) {
             return runningTasks.containsKey(conversationId);
         }
     }
 
     /**
-     * RunningTaskInfo.
-     * 
-     * @since 0.1.7
+     * Session adapter used by message history persistence.
+     *
+     * <p>Mirrors Python's session dependency in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.</p>
      */
-    @Data
-    @AllArgsConstructor
-    public static class RunningTaskInfo {
-        private Task task;
-        private Future<?> future;
-        private String targetId;
-        private long startTime;
+    private record SessionMessagePort(String sessionId) implements MessageUtils.SessionPort {
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
+    }
+
+    /**
+     * Context-engine adapter used by message history persistence.
+     *
+     * <p>Mirrors Python's context-engine dependency in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.</p>
+     */
+    private record ContextEngineMessagePort(ContextEngine engine) implements MessageUtils.ContextEnginePort {
+        @Override
+        public MessageUtils.AgentContextPort getContext(String sessionId) {
+            return new ModelContextMessagePort(engine.getContext(ContextEngine.DEFAULT_CONTEXT_ID, sessionId));
+        }
+
+        @Override
+        public MessageUtils.AgentContextPort getContext(String contextId, String sessionId) {
+            return new ModelContextMessagePort(engine.getContext(contextId, sessionId));
+        }
+    }
+
+    /**
+     * Model-context adapter used by message history persistence.
+     *
+     * <p>Mirrors Python's agent context dependency in
+     * {@code openjiuwen/core/controller/legacy/intent_detection_controller.py}.</p>
+     */
+    private record ModelContextMessagePort(ModelContext context) implements MessageUtils.AgentContextPort {
+        @Override
+        public List<BaseMessage> getMessages() {
+            return context == null ? List.of() : context.getMessages(null, true);
+        }
+
+        @Override
+        public List<BaseMessage> getMessages(int size) {
+            return context == null ? List.of() : context.getMessages(size, true);
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void> addMessages(BaseMessage message) {
+            if (context == null) {
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            return context.addMessages(message).thenApply(ignored -> null);
+        }
+    }
+
+    protected Object getSession() {
+        return session;
+    }
+
+    protected Map<String, Thread> getProcessingHandlers() {
+        return processingHandlers;
     }
 }

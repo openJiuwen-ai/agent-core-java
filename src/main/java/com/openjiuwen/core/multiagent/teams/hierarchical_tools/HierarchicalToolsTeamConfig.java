@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.multiagent.teams.hierarchical_tools;
 
-import com.openjiuwen.core.multiagent.TeamConfig;
+import com.openjiuwen.core.multiagent.config.TeamConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import lombok.Data;

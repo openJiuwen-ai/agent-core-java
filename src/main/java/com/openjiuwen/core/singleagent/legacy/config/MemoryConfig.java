@@ -4,38 +4,44 @@
 
 package com.openjiuwen.core.singleagent.legacy.config;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Legacy memory configuration.
- * <p>
- * Mirrors Python's {@code MemoryConfig} in {@code single_agent/legacy/config.py}.
- * </p>
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code MemoryConfig} in
+ * {@code openjiuwen/core/single_agent/legacy/config.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class MemoryConfig {
-    @Builder.Default
     private boolean enabled = true;
-
-    @Builder.Default
     private String scope = "";
-
-    @Builder.Default
-    /**
-     * LinkedHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private Map<String, Object> config = new LinkedHashMap<>();
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getScope() {
+        return scope;
+    }
+
+    public void setScope(String scope) {
+        this.scope = scope == null ? "" : scope;
+    }
+
+    public Map<String, Object> getConfig() {
+        return config;
+    }
+
+    public void setConfig(Map<String, Object> config) {
+        this.config = config == null ? new LinkedHashMap<>() : new LinkedHashMap<>(config);
+    }
 }

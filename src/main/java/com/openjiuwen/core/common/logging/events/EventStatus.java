@@ -6,8 +6,9 @@ package com.openjiuwen.core.common.logging.events;
 
 /**
  * Event status enumeration.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code EventStatus} in
+ * {@code openjiuwen/core/common/logging/events.py}.</p>
  */
 public enum EventStatus {
     SUCCESS("success"),
@@ -22,13 +23,9 @@ public enum EventStatus {
         this.value = value;
     }
 
-    /**
-     * getValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getValue() {
         return value;
     }
 }
+
+

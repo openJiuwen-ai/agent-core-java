@@ -8,73 +8,66 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Manages scope-user mapping records in the SQL database.
- * 
- * @since 0.1.7
+ * Manages scope-user mapping rows in the SQL database.
+ *
+ * <p>Mirrors Python's {@code ScopeUserMappingManager} in
+ * {@code openjiuwen/core/memory/manage/mem_model/scope_user_mapping_manager.py}.</p>
  */
 public class ScopeUserMappingManager {
-    private final SqlDbStore sqlDb;
+
     private static final String META_TABLE = "scope_user_mapping";
 
-    /**
-     * ScopeUserMappingManager.
-     * 
-     * @param sqlDb sqlDb
-     * @since 0.1.7
-     */
+    private final SqlDbStore sqlDb;
+
     public ScopeUserMappingManager(SqlDbStore sqlDb) {
         this.sqlDb = sqlDb;
     }
 
-    /**
-     * add.
-     * 
-     * @param userId userId
-     * @param scopeId scopeId
-     * @since 0.1.7
-     */
-    public void add(String userId, String scopeId) {
+    public CompletableFuture<Void> add(String userId, String scopeId) {
+        return add(userId, scopeId, Map.of());
+    }
+
+    public CompletableFuture<Void> add(String userId, String scopeId, Map<String, Object> kwargs) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("user_id", userId != null ? userId : "");
-        data.put("scope_id", scopeId != null ? scopeId : "");
+        data.put("user_id", emptyIfMissing(userId));
+        data.put("scope_id", emptyIfMissing(scopeId));
 
         Map<String, Object> conditions = new LinkedHashMap<>();
         conditions.put("user_id", data.get("user_id"));
         conditions.put("scope_id", data.get("scope_id"));
 
-        boolean exists = sqlDb.exist(META_TABLE, conditions);
-        if (exists) {
-            return;
-        }
-        sqlDb.write(META_TABLE, data);
+        return sqlDb.exist(META_TABLE, conditions).thenCompose(exists -> {
+            if (Boolean.TRUE.equals(exists)) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return sqlDb.write(META_TABLE, data).thenApply(ignored -> null);
+        });
     }
 
-    /**
-     * deleteByScopeId.
-     * 
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean deleteByScopeId(String scopeId) {
+    public CompletableFuture<Boolean> deleteByScopeId(String scopeId) {
         Map<String, Object> conditions = new LinkedHashMap<>();
         conditions.put("scope_id", scopeId);
         return sqlDb.delete(META_TABLE, conditions);
     }
 
-    /**
-     * getByScopeId.
-     * 
-     * @param scopeId scopeId
-     * @return the result
-     * @since 0.1.7
-     */
-    public List<Map<String, Object>> getByScopeId(String scopeId) {
+    public CompletableFuture<List<Map<String, Object>>> getByScopeId(String scopeId) {
         Map<String, List<Object>> conditions = new LinkedHashMap<>();
-        conditions.put("scope_id", new ArrayList<>(List.of(scopeId)));
-        List<Map<String, Object>> results = sqlDb.conditionGet(META_TABLE, conditions, null);
-        return (results != null && !results.isEmpty()) ? results : null;
+        List<Object> scopeIds = new ArrayList<>(1);
+        scopeIds.add(scopeId);
+        conditions.put("scope_id", scopeIds);
+
+        return sqlDb.conditionGet(META_TABLE, conditions, null).thenApply(results -> {
+            if (results == null || results.isEmpty()) {
+                return null;
+            }
+            return results;
+        });
+    }
+
+    private static String emptyIfMissing(String value) {
+        return value == null || value.isEmpty() ? "" : value;
     }
 }

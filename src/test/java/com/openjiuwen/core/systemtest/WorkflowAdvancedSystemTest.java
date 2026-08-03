@@ -178,7 +178,7 @@ class WorkflowAdvancedSystemTest {
         @Test
         @DisplayName("Empty DrawableGraph")
         void testEmptyDrawableGraph() {
-            DrawableGraph graph = new DrawableGraph();
+            DrawableGraph graph = new DrawableGraph(Map.of(), List.of(), List.of(), List.of(), List.of());
             assertNotNull(graph);
         }
     }

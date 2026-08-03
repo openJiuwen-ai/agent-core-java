@@ -1,299 +1,328 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.core.retrieval.indexing.processor.splitter;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+
+import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Sentence-aware splitter with lightweight language detection and tokenizer-aware windows.
- * 
- * @since 0.1.7
+ * Sentence-level splitter with token-aware packing.
+ *
+ * <p>Mirrors Python's {@code SentenceSplitter} in
+ * {@code openjiuwen/core/retrieval/indexing/processor/splitter/splitter.py}.</p>
  */
 public class SentenceSplitter extends Splitter {
-    private static final Pattern SENTENCE_PATTERN = Pattern.compile("[^.!?。！？]+[.!?。！？]*", Pattern.MULTILINE);
 
-    private final Function<String, List<String>> tokenizer;
-    private final Function<List<String>, String> tokenizerDecoder;
-    private final String defaultLanguage;
+    private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
 
-    /**
-     * SentenceSplitter.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @since 0.1.7
-     */
-    public SentenceSplitter(int chunkSize, int chunkOverlap) {
-        this(chunkSize, chunkOverlap, null, "auto");
+    private final String defaultLan;
+    private final Function<List<?>, String> sentenceTokenizerDec;
+    private final SentenceSegmenterFactory segmenterFactory;
+    private SentenceSegmenter segmenter;
+
+    public SentenceSplitter(Object tokenizer, int chunkSize, int chunkOverlap) {
+        this(tokenizer, chunkSize, chunkOverlap, "auto", null);
     }
 
-    /**
-     * SentenceSplitter.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param tokenizer tokenizer
-     * @param language language
-     * @since 0.1.7
-     */
-    public SentenceSplitter(int chunkSize, int chunkOverlap, Function<String, List<String>> tokenizer,
-            String language) {
-        this(chunkSize, chunkOverlap, tokenizer, language, null);
+    public SentenceSplitter(Object tokenizer, int chunkSize, int chunkOverlap, String lan) {
+        this(tokenizer, chunkSize, chunkOverlap, lan, null);
     }
 
-    /**
-     * SentenceSplitter.
-     * 
-     * @param chunkSize chunkSize
-     * @param chunkOverlap chunkOverlap
-     * @param tokenizer tokenizer
-     * @param language language
-     * @param tokenizerDecoder tokenizerDecoder
-     * @since 0.1.7
-     */
-    public SentenceSplitter(int chunkSize, int chunkOverlap, Function<String, List<String>> tokenizer, String language,
-            Function<List<String>, String> tokenizerDecoder) {
-        super(chunkSize, chunkOverlap);
-        this.tokenizer = tokenizer;
-        this.tokenizerDecoder = tokenizerDecoder;
-        this.defaultLanguage = language == null ? "auto" : language;
+    public SentenceSplitter(Object tokenizer,
+                            int chunkSize,
+                            int chunkOverlap,
+                            String lan,
+                            Function<List<?>, String> tokenizerDec) {
+        this(tokenizer, chunkSize, chunkOverlap, lan, tokenizerDec, DefaultSentenceSegmenter::new);
     }
 
-    /**
-     * splitText.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
+    SentenceSplitter(Object tokenizer,
+                     int chunkSize,
+                     int chunkOverlap,
+                     String lan,
+                     Function<List<?>, String> tokenizerDec,
+                     SentenceSegmenterFactory segmenterFactory) {
+        super(tokenizer, chunkSize, chunkOverlap);
+        this.defaultLan = "auto".equals(lan) || lan == null ? "" : lan;
+        this.sentenceTokenizerDec = tokenizerDec;
+        this.segmenterFactory = segmenterFactory;
+        this.segmenter = null;
+    }
+
+    public String getDefaultLan() {
+        return defaultLan;
+    }
+
+    public SentenceSegmenter getSegmenter() {
+        return segmenter;
+    }
+
+    public Object getTokenizer() {
+        return tokenizer;
+    }
+
+    public int getChunkSize() {
+        return chunkSize;
+    }
+
+    public int getChunkOverlap() {
+        return chunkOverlap;
+    }
+
     @Override
-    public List<String> splitText(String text) {
-        return splitSpans(text).stream().map(SplitSpan::text).toList();
-    }
-
-    /**
-     * splitSpans.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public List<SplitSpan> splitSpans(String text) {
-        if (text == null || text.isBlank()) {
+    public List<SplitChunk> split(String doc) {
+        if (doc == null || doc.isBlank()) {
             return List.of();
         }
-        String language = "auto".equalsIgnoreCase(defaultLanguage) ? detectLanguage(text) : defaultLanguage;
-        String separator = "zh".equalsIgnoreCase(language) ? "" : " ";
-        List<SentenceSpan> sentences = sentenceSpans(text, language);
-        List<SplitSpan> result = new ArrayList<>();
-        List<SentenceSpan> window = new ArrayList<>();
-        int tokenCount = 0;
-        for (SentenceSpan sentence : sentences) {
-            int sentenceTokens = tokenCount(sentence.text());
-            if (sentenceTokens > chunkSize) {
-                flushWindow(result, window, separator);
-                window = new ArrayList<>();
-                tokenCount = 0;
-                if (tokenizerDecoder != null) {
-                    result.addAll(splitLongSegment(sentence));
+
+        String detectedLan = defaultLan.isEmpty() ? detectChinese(doc) : defaultLan;
+        segmenter = segmenterFactory.create(detectedLan);
+        List<SentenceSpan> sentencesWithSpans = sentencesWithSpans(doc);
+        List<SplitChunk> chunks = new ArrayList<>();
+        List<SentenceSpan> currentSentences = new ArrayList<>();
+
+        for (SentenceSpan sentence : sentencesWithSpans) {
+            if (sentence.text().isBlank()) {
+                continue;
+            }
+            if (sentence.tokenLength() > chunkSize) {
+                FlushResult flushed = flush(doc, chunks, currentSentences);
+                chunks = flushed.chunks();
+                currentSentences = flushed.nextSentences();
+                if (sentenceTokenizerDec != null) {
+                    chunks.addAll(splitLongSegment(sentence));
                 } else {
-                    result.add(new SplitSpan(sentence.text(), sentence.start(), sentence.end()));
+                    chunks.add(new SplitChunk(sentence.text(), sentence.start(), sentence.end()));
                 }
                 continue;
             }
-            if (!window.isEmpty() && tokenCount + sentenceTokens > chunkSize) {
-                flushWindow(result, window, separator);
-                List<SentenceSpan> overlapWindow = new ArrayList<>();
-                int overlapTokens = 0;
-                for (int i = window.size() - 1; i >= 0; i--) {
-                    SentenceSpan item = window.get(i);
-                    int itemTokens = tokenCount(item.text());
-                    if (overlapTokens + itemTokens > chunkOverlap) {
-                        break;
-                    }
-                    overlapWindow.add(0, item);
-                    overlapTokens += itemTokens;
-                }
-                window = overlapWindow;
-                tokenCount = overlapTokens;
+
+            int currentTokenCount = currentSentences.stream().mapToInt(SentenceSpan::tokenLength).sum();
+            if (currentTokenCount + sentence.tokenLength() <= chunkSize) {
+                currentSentences.add(sentence);
+            } else {
+                FlushResult flushed = flush(doc, chunks, currentSentences);
+                chunks = flushed.chunks();
+                currentSentences = flushed.nextSentences();
+                currentSentences.add(sentence);
             }
-            window.add(sentence);
-            tokenCount += sentenceTokens;
         }
-        if (!window.isEmpty()) {
-            flushWindow(result, window, separator);
+
+        FlushResult flushed = flush(doc, chunks, currentSentences);
+        LOGGER.info("Computed the following sentence-level chunks: {} chunks", flushed.chunks().size());
+        return flushed.chunks();
+    }
+
+    public static String detectChinese(String text) {
+        return detectChinese(text, 0.1d);
+    }
+
+    public static String detectChinese(String text, double threshold) {
+        if (text == null || text.isEmpty()) {
+            return "en";
+        }
+        int totalChars = text.codePointCount(0, text.length());
+        int thresholdValue = (int) (threshold * totalChars);
+        int chineseCount = 0;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            if (codePoint >= 0x4E00 && codePoint <= 0x9FFF) {
+                chineseCount++;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        boolean isChinese = chineseCount >= thresholdValue;
+        if (!isChinese) {
+            isChinese = count(text, '\uFF1F') > count(text, '?')
+                    && count(text, '\uFF01') > count(text, '!');
+        }
+        return isChinese ? "zh" : "en";
+    }
+
+    private List<SentenceSpan> sentencesWithSpans(String text) {
+        List<String> sentences = segmenter.segment(text);
+        Set<String> usedSpans = new HashSet<>();
+        List<SentenceSpan> spans = new ArrayList<>();
+        for (String sentence : sentences) {
+            if (sentence == null || sentence.isBlank()) {
+                continue;
+            }
+            int sentenceTokens = getTokenCount(sentence);
+            int index = 0;
+            while (true) {
+                index = text.indexOf(sentence, index);
+                if (index == -1) {
+                    LOGGER.warning("Span recovery failed for: {}...", sentence.substring(0, Math.min(30, sentence.length())));
+                    break;
+                }
+                int end = index + sentence.length();
+                String key = index + ":" + end;
+                if (!usedSpans.contains(key)) {
+                    usedSpans.add(key);
+                    spans.add(new SentenceSpan(sentence, index, end, sentenceTokens));
+                    break;
+                }
+                index++;
+            }
+        }
+        return spans;
+    }
+
+    private List<SplitChunk> splitLongSegment(SentenceSpan sentence) {
+        List<?> ids = encodeTokens(sentence.text());
+        if (ids.isEmpty()) {
+            return List.of(new SplitChunk(sentence.text(), sentence.start(), sentence.end()));
+        }
+        int step = Math.max(1, chunkSize - chunkOverlap);
+        List<SplitChunk> result = new ArrayList<>();
+        for (int windowStart = 0; windowStart < ids.size(); windowStart += step) {
+            int windowEnd = Math.min(ids.size(), windowStart + chunkSize);
+            List<?> window = ids.subList(windowStart, windowEnd);
+            if (window.isEmpty()) {
+                break;
+            }
+            String text = sentenceTokenizerDec.apply(window);
+            if (text != null && !text.isBlank()) {
+                result.add(new SplitChunk(text, sentence.start(), sentence.end()));
+            }
+        }
+        if (result.isEmpty()) {
+            return List.of(new SplitChunk(sentence.text(), sentence.start(), sentence.end()));
         }
         return result;
     }
 
-    /**
-     * tokenCount.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    private int tokenCount(String text) {
-        String trimmed = text == null ? "" : text.trim();
-        if (trimmed.isEmpty()) {
-            return 0;
+    private FlushResult flush(String sourceText, List<SplitChunk> chunks, List<SentenceSpan> currentSentences) {
+        if (currentSentences.isEmpty()) {
+            return new FlushResult(chunks, new ArrayList<>());
         }
-        if (tokenizer != null) {
-            List<String> tokens = tokenizer.apply(trimmed);
-            return tokens == null || tokens.isEmpty() ? 0 : tokens.size();
-        }
-        return trimmed.length();
-    }
 
-    /**
-     * detectLanguage.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    public static String detectLanguage(String text) {
-        if (text == null || text.isBlank()) {
-            return "en";
-        }
-        int chinese = 0;
-        for (int i = 0; i < text.length(); i++) {
-            if (Character.UnicodeScript.of(text.charAt(i)) == Character.UnicodeScript.HAN) {
-                chinese++;
+        int start = currentSentences.get(0).start();
+        int end = currentSentences.get(currentSentences.size() - 1).end();
+        chunks.add(new SplitChunk(
+                sourceText.substring(start, end),
+                start,
+                end
+        ));
+
+        List<SentenceSpan> nextSentences = new ArrayList<>();
+        if (chunkOverlap > 0 && currentSentences.size() > 1) {
+            int overlapTokens = 0;
+            for (int index = currentSentences.size() - 1; index >= 0; index--) {
+                SentenceSpan sentence = currentSentences.get(index);
+                if (overlapTokens + sentence.tokenLength() <= chunkOverlap) {
+                    nextSentences.add(0, sentence);
+                    overlapTokens += sentence.tokenLength();
+                } else {
+                    break;
+                }
             }
         }
-        int threshold = (int) (text.length() * 0.1);
-        if (chinese >= threshold) {
-            return "zh";
-        }
-        boolean hasChinesePunctuation = count(text, '？') > count(text, '?') && count(text, '！') > count(text, '!');
-        return hasChinesePunctuation ? "zh" : "en";
+
+        return new FlushResult(chunks, nextSentences);
     }
 
-    /**
-     * sentenceSpans.
-     * 
-     * @param text text
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<SentenceSpan> sentenceSpans(String text, String language) {
-        List<SentenceSpan> sentences = new ArrayList<>();
-        Matcher matcher = SENTENCE_PATTERN.matcher(text);
-        while (matcher.find()) {
-            String sentence = matcher.group().trim();
-            if (!sentence.isEmpty()) {
-                int leading = matcher.group().indexOf(sentence);
-                int start = matcher.start() + Math.max(leading, 0);
-                sentences.add(new SentenceSpan(sentence, start, start + sentence.length()));
+    private List<?> encodeTokens(String text) {
+        if (tokenizerEnc == null) {
+            List<String> chars = new ArrayList<>();
+            for (int index = 0; index < text.length(); index++) {
+                chars.add(String.valueOf(text.charAt(index)));
+            }
+            return chars;
+        }
+        Object tokens = tokenizerEnc.apply(text);
+        if (tokens instanceof List<?> list) {
+            return list;
+        }
+        if (tokens instanceof Iterable<?> iterable) {
+            List<Object> values = new ArrayList<>();
+            for (Object token : iterable) {
+                values.add(token);
+            }
+            return values;
+        }
+        if (tokens != null && tokens.getClass().isArray()) {
+            int length = Array.getLength(tokens);
+            List<Object> values = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                values.add(Array.get(tokens, index));
+            }
+            return values;
+        }
+        return List.of(String.valueOf(tokens));
+    }
+
+    private static int count(String text, char target) {
+        int value = 0;
+        for (int index = 0; index < text.length(); index++) {
+            if (text.charAt(index) == target) {
+                value++;
             }
         }
-        if (sentences.isEmpty()) {
-            return Collections.singletonList(new SentenceSpan(text, 0, text.length()));
-        }
-        if ("zh".equalsIgnoreCase(language)) {
-            return sentences;
-        }
-        return sentences.stream().map(sentence -> new SentenceSpan(sentence.text().replaceAll("\\s+", " ").trim(),
-                sentence.start(), sentence.end())).toList();
+        return value;
     }
 
-    /**
-     * splitLongSegment.
-     * 
-     * @param sentence sentence
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<SplitSpan> splitLongSegment(SentenceSpan sentence) {
-        List<String> tokens = tokens(sentence.text());
-        if (tokens.isEmpty()) {
-            return List.of(new SplitSpan(sentence.text(), sentence.start(), sentence.end()));
+    public interface SentenceSegmenter {
+        List<String> segment(String text);
+    }
+
+    interface SentenceSegmenterFactory {
+        SentenceSegmenter create(String language);
+    }
+
+    private record SentenceSpan(String text, int start, int end, int tokenLength) {
+    }
+
+    private record FlushResult(List<SplitChunk> chunks, List<SentenceSpan> nextSentences) {
+    }
+
+    private static final class DefaultSentenceSegmenter implements SentenceSegmenter {
+
+        private DefaultSentenceSegmenter(String language) {
         }
-        int step = Math.max(1, chunkSize - chunkOverlap);
-        List<SplitSpan> out = new ArrayList<>();
-        for (int start = 0; start < tokens.size(); start += step) {
-            int end = Math.min(tokens.size(), start + chunkSize);
-            List<String> window = tokens.subList(start, end);
-            String chunk = tokenizerDecoder.apply(window);
-            if (chunk != null && !chunk.isBlank()) {
-                out.add(new SplitSpan(chunk, sentence.start(), sentence.end()));
+
+        @Override
+        public List<String> segment(String text) {
+            if (text == null || text.isBlank()) {
+                return List.of();
             }
-            if (end >= tokens.size()) {
-                break;
+            List<String> sentences = new ArrayList<>();
+            int start = 0;
+            for (int index = 0; index < text.length(); index++) {
+                char value = text.charAt(index);
+                if (isSentenceEnd(value)) {
+                    String sentence = text.substring(start, index + 1).trim();
+                    if (!sentence.isEmpty()) {
+                        sentences.add(sentence);
+                    }
+                    start = index + 1;
+                    while (start < text.length() && Character.isWhitespace(text.charAt(start))) {
+                        start++;
+                    }
+                    index = start - 1;
+                }
             }
-        }
-        return out.isEmpty() ? List.of(new SplitSpan(sentence.text(), sentence.start(), sentence.end())) : out;
-    }
-
-    /**
-     * tokens.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> tokens(String text) {
-        if (tokenizer != null) {
-            List<String> tokens = tokenizer.apply(text);
-            return tokens == null ? List.of() : tokens;
-        }
-        String trimmed = text == null ? "" : text.trim();
-        return trimmed.isEmpty() ? List.of() : List.of(trimmed.split("\\s+"));
-    }
-
-    /**
-     * flushWindow.
-     * 
-     * @param result result
-     * @param window window
-     * @param separator separator
-     * @since 0.1.7
-     */
-    private static void flushWindow(List<SplitSpan> result, List<SentenceSpan> window, String separator) {
-        if (window.isEmpty()) {
-            return;
-        }
-        String text =
-            window.stream().map(SentenceSpan::text).collect(java.util.stream.Collectors.joining(separator)).trim();
-        result.add(new SplitSpan(text, window.get(0).start(), window.get(window.size() - 1).end()));
-    }
-
-    /**
-     * count.
-     * 
-     * @param text text
-     * @param needle needle
-     * @return the result
-     * @since 0.1.7
-     */
-    private static int count(String text, char needle) {
-        int total = 0;
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == needle) {
-                total++;
+            if (start < text.length()) {
+                String sentence = text.substring(start).trim();
+                if (!sentence.isEmpty()) {
+                    sentences.add(sentence);
+                }
             }
+            return sentences.isEmpty() ? List.of(text.trim()) : sentences;
         }
-        return total;
-    }
 
-    /**
-     * SentenceSpan.
-     * 
-     * @param text text
-     * @param start start
-     * @param end end
-     * @since 0.1.7
-     */
-    private record SentenceSpan(String text, int start, int end) {
+        private static boolean isSentenceEnd(char value) {
+            return value == '.' || value == '!' || value == '?'
+                    || value == '\u3002' || value == '\uFF01' || value == '\uFF1F';
+        }
     }
 }

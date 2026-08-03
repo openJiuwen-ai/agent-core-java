@@ -5,9 +5,12 @@
 package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
- * Public row model matching the memory scope_user_mapping table.
- * 
- * @since 0.1.7
+ * Memory SQL row that maps scopes to users.
+ *
+ * <p>Mirrors Python's {@code ScopeUserMapping} in
+ * {@code openjiuwen/core/memory/manage/mem_model/db_model.py}.</p>
  */
-public record ScopeUserMapping(String userId, String scopeId) {
+public class ScopeUserMapping extends ScopeUserMixin {
+
+    public static final String TABLE_NAME = "scope_user_mapping";
 }

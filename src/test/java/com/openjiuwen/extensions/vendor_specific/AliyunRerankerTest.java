@@ -1,84 +1,44 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.extensions.vendor_specific;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
-import com.openjiuwen.core.retrieval.common.RerankerConfig;
-
+import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
+import com.openjiuwen.core.retrieval.reranker.DashscopeReranker;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Mirrors Python's deprecated reranker alias in
+ * {@code openjiuwen/extensions/vendor_specific/aliyun_reranker.py}.
+ */
 class AliyunRerankerTest {
-    @Test
-    void buildRequestPayloadMatchesPythonShapeAndDefaultTopN() {
-        InspectableAliyunReranker reranker = new InspectableAliyunReranker(config());
-
-        Map<String, Object> payload =
-            reranker.inspectPayload("which document matches best", List.of("doc-1", "doc-2"), null, Map.of());
-
-        assertEquals("aliyun-reranker", payload.get("model"));
-        assertEquals(List.of("model", "input", "parameters"), List.copyOf(payload.keySet()));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (Map<String, Object>) payload.get("input");
-        assertEquals("which document matches best", input.get("query"));
-        assertEquals(List.of("doc-1", "doc-2"), input.get("documents"));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> parameters = (Map<String, Object>) payload.get("parameters");
-        assertEquals(false, parameters.get("return_documents"));
-        assertEquals(2, parameters.get("top_n"));
-        assertFalse(parameters.containsKey("instruct"));
-    }
 
     @Test
-    void buildRequestPayloadPassesThroughStringInstructAndExplicitTopN() {
-        InspectableAliyunReranker reranker = new InspectableAliyunReranker(config());
-        Map<String, Object> options = new LinkedHashMap<>();
-        options.put("top_n", 1);
+    @SuppressWarnings("deprecation")
+    void exposesDeprecatedAliasForDashscopeReranker() {
+        AliyunReranker reranker = new AliyunReranker(baseConfig());
 
-        Map<String, Object> payload = reranker.inspectPayload("query", List.of("doc-1", "doc-2"), "   ", options);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> parameters = (Map<String, Object>) payload.get("parameters");
-        assertEquals(1, parameters.get("top_n"));
-        assertEquals("   ", parameters.get("instruct"));
+        assertThat(AliyunReranker.PYTHON_MODULE)
+                .isEqualTo("openjiuwen/extensions/vendor_specific/aliyun_reranker.py");
+        assertThat(AliyunReranker.EXPORTED_SYMBOLS).isEqualTo(List.of("AliyunReranker"));
+        assertThat(AliyunReranker.ALIAS_TARGET).isEqualTo(DashscopeReranker.class);
+        assertThat(reranker).isInstanceOf(DashscopeReranker.class);
+        assertThat(reranker.getApiUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
+        assertThat(AliyunReranker.DEPRECATION_MESSAGE)
+                .contains("deprecated")
+                .contains("DashscopeReranker");
     }
 
-    @Test
-    void endpointMatchesAliyunTextRerankApi() {
-        InspectableAliyunReranker reranker = new InspectableAliyunReranker(config());
-
-        assertEquals("/services/rerank/text-rerank/text-rerank", reranker.inspectEndpoint());
-    }
-
-    private static RerankerConfig config() {
-        RerankerConfig config = new RerankerConfig();
-        config.setApiBase("https://api.example.com/v1");
-        config.setApiKey("test-key");
-        config.setModelName("aliyun-reranker");
-        return config;
-    }
-
-    private static final class InspectableAliyunReranker extends AliyunReranker {
-        private InspectableAliyunReranker(RerankerConfig config) {
-            super(config);
-        }
-
-        private Map<String, Object> inspectPayload(String query, List<String> documents, Object instruct,
-                Map<String, Object> options) {
-            return buildRequestPayload(query, documents, instruct, options);
-        }
-
-        private String inspectEndpoint() {
-            return endpoint();
-        }
+    private static RerankerConfig baseConfig() {
+        return RerankerConfig.builder()
+                .modelName("qwen3-rerank")
+                .apiKey("test-api-key")
+                .apiBase("https://dashscope.aliyuncs.com/api/v1")
+                .build();
     }
 }

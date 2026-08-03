@@ -20,8 +20,8 @@ class ChunkerRegistryTest {
         Chunker chunker = ChunkerRegistry.getChunker("char", Map.of("chunk_size", 256, "chunk_overlap", 30));
 
         assertThat(chunker).isInstanceOf(CharChunker.class);
-        assertThat(chunker.chunkSize).isEqualTo(256);
-        assertThat(chunker.chunkOverlap).isEqualTo(30);
+        assertThat(chunker.getChunkSize()).isEqualTo(256);
+        assertThat(chunker.getChunkOverlap()).isEqualTo(30);
     }
 
     @Test
@@ -31,10 +31,10 @@ class ChunkerRegistryTest {
         Chunker customHybrid = ChunkerRegistry.getChunker("hybrid", Map.of("inner_chunker", inner));
 
         assertThat(defaultHybrid).isInstanceOf(HybridChunker.class);
-        assertThat(defaultHybrid.chunkSize).isEqualTo(128);
-        assertThat(defaultHybrid.chunkOverlap).isEqualTo(20);
+        assertThat(defaultHybrid.getChunkSize()).isEqualTo(128);
+        assertThat(defaultHybrid.getChunkOverlap()).isEqualTo(20);
         assertThat(customHybrid).isInstanceOf(HybridChunker.class);
-        assertThat(customHybrid.chunkSize).isEqualTo(64);
+        assertThat(customHybrid.getChunkSize()).isEqualTo(64);
     }
 
     @Test
@@ -70,7 +70,7 @@ class ChunkerRegistryTest {
             assertThatThrownBy(() -> ChunkerRegistry.registerChunker(name, kwargs -> new CharChunker(30, 0)))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already registered");
             ChunkerRegistry.registerChunker(name, kwargs -> new CharChunker(30, 0), true);
-            assertThat(ChunkerRegistry.getChunker(name).chunkSize).isEqualTo(30);
+            assertThat(ChunkerRegistry.getChunker(name).getChunkSize()).isEqualTo(30);
         } finally {
             ChunkerRegistry.unregisterChunker(name);
         }
