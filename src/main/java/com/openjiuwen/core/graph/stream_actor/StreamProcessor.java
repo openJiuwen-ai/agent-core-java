@@ -75,6 +75,7 @@ public class StreamProcessor {
      */
     private final Set<String> sources;
     private final Set<String> completedSources = ConcurrentHashMap.newKeySet();
+    private final Set<BlockingQueue<Object>> closedProcessorQueues = ConcurrentHashMap.newKeySet();
 
     private final long timeoutSeconds;
 
@@ -120,54 +121,53 @@ public class StreamProcessor {
         Set<String> handleMap = new HashSet<>(completedSources);
         // source_path_map[producer_id] = set of schema paths this source produced.
         Map<String, Set<String>> sourcePathMap = new HashMap<>();
-        for (String completedSource : completedSources) {
-            closeQueuesForSource(producerIdFromSourceKey(completedSource));
-        }
-        if (allSourceGroupsFinished(handleMap)) {
-            closeAllQueues("");
-            return;
-        }
-
-        while (true) {
-            StreamPayload payload;
-            try {
-                payload = queue.take();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+        try {
+            for (String completedSource : completedSources) {
+                closeQueuesForSource(producerIdFromSourceKey(completedSource));
+            }
+            if (allSourceGroupsFinished(handleMap)) {
+                return;
             }
 
-            Object message = payload.getMessage();
-            ComponentAbility sourceAbility = payload.getSourceAbility();
-            String sourceKey = getUniqueSourceKey(payload);
-
-            if (isEndMessage(message)) {
-                String sourceId = getProducerId(message);
-                handleMap.add(sourceKey);
-                closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
-
-                if (allSourceGroupsFinished(handleMap)) {
-                    closeAllQueues(sourceId);
+            while (true) {
+                StreamPayload payload;
+                try {
+                    payload = queue.take();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
                 }
-            } else {
-                closeInactiveGroupSources(sourceKey);
-                for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-                    String path = SessionUtils.extractOriginKey(entry.getKey());
-                    Object value = (message instanceof Map<?, ?> messageMap)
-                            ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
-                            : null;
-                    if (value != null) {
-                        sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
-                        for (BlockingQueue<Object> q : entry.getValue()) {
-                            q.offer(value);
+
+                Object message = payload.getMessage();
+                ComponentAbility sourceAbility = payload.getSourceAbility();
+                String sourceKey = getUniqueSourceKey(payload);
+
+                if (isEndMessage(message)) {
+                    String sourceId = getProducerId(message);
+                    handleMap.add(sourceKey);
+                    closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+                } else {
+                    closeInactiveGroupSources(sourceKey);
+                    for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+                        String path = SessionUtils.extractOriginKey(entry.getKey());
+                        Object value = (message instanceof Map<?, ?> messageMap)
+                                ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
+                                : null;
+                        if (value != null) {
+                            sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
+                            for (BlockingQueue<Object> q : entry.getValue()) {
+                                q.offer(value);
+                            }
                         }
                     }
                 }
-            }
 
-            if (allSourceGroupsFinished(handleMap)) {
-                break;
+                if (allSourceGroupsFinished(handleMap)) {
+                    break;
+                }
             }
+        } finally {
+            closeAllQueues();
         }
     }
 
@@ -239,7 +239,7 @@ public class StreamProcessor {
         }
         for (String path : handledPaths) {
             for (BlockingQueue<Object> q : processorQueues.getOrDefault(path, List.of())) {
-                q.offer(END_SENTINEL);
+                closeQueue(q);
             }
         }
     }
@@ -256,7 +256,7 @@ public class StreamProcessor {
             String path = SessionUtils.extractOriginKey(entry.getKey());
             if (isValueFromSource(path, sourceId)) {
                 for (BlockingQueue<Object> q : entry.getValue()) {
-                    q.offer(END_SENTINEL);
+                    closeQueue(q);
                 }
             }
         }
@@ -266,14 +266,19 @@ public class StreamProcessor {
      * Offer END_SENTINEL to every processor queue.
      * Mirrors Python {@code StreamProcessor._close_all_queues}.
      *
-     * @param sourceId sourceId
      * @since 0.1.7
      */
-    private void closeAllQueues(String sourceId) {
+    private void closeAllQueues() {
         for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
             for (BlockingQueue<Object> q : queues) {
-                q.offer(END_SENTINEL);
+                closeQueue(q);
             }
+        }
+    }
+
+    private void closeQueue(BlockingQueue<Object> processorQueue) {
+        if (closedProcessorQueues.add(processorQueue)) {
+            processorQueue.offer(END_SENTINEL);
         }
     }
 

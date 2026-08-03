@@ -21,7 +21,7 @@ import com.openjiuwen.core.session.internal.WorkflowSession;
  * 
  * @since 0.1.7
  */
-public abstract class Checkpointer {
+public abstract class Checkpointer implements AutoCloseable {
     /**
      * SESSION_NAMESPACE_AGENT.
      * 
@@ -132,6 +132,18 @@ public abstract class Checkpointer {
      * @since 0.1.7
      */
     public abstract Store graphStore();
+
+    /**
+     * Close resources owned by this checkpointer.
+     *
+     * <p>In-memory implementations do not need to override this method.
+     *
+     * @since 0.1.14
+     */
+    @Override
+    public void close() {
+        // Default no-op for checkpointers without external resources.
+    }
 
     // ---- Utility ----
 

@@ -589,7 +589,7 @@ public class RedisStore extends BaseKVStore {
         }
 
         InvocationOutcome outcome =
-            tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+            tryInvoke(redisClient, new String[]{"delete", "del"}, keys.toArray());
         if (!outcome.handled()) {
             outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, keys);
         }
@@ -650,15 +650,30 @@ public class RedisStore extends BaseKVStore {
         }
 
         Object pipeline = outcome.value();
-        for (String key : keys) {
-            InvocationOutcome expireOutcome = tryInvoke(pipeline, new String[]{"expire"}, key, ttlSeconds);
-            if (!expireOutcome.handled()) {
-                return false;
+        try {
+            for (String key : keys) {
+                InvocationOutcome expireOutcome = tryInvoke(pipeline, new String[]{"expire"}, key, ttlSeconds);
+                if (!expireOutcome.handled()) {
+                    return false;
+                }
             }
-        }
 
-        InvocationOutcome executeOutcome = tryInvoke(pipeline, new String[]{"execute", "exec", "sync"});
-        return executeOutcome.handled();
+            InvocationOutcome executeOutcome = tryInvoke(pipeline, new String[]{"execute", "exec", "sync"});
+            return executeOutcome.handled();
+        } finally {
+            closePipeline(pipeline);
+        }
+    }
+
+    private void closePipeline(Object pipeline) {
+        try {
+            InvocationOutcome outcome = tryInvoke(pipeline, new String[]{"close"});
+            if (!outcome.handled()) {
+                logger.debug("Redis pipeline {} does not expose a close method", pipeline.getClass().getName());
+            }
+        } catch (ReflectiveOperationException | IllegalStateException e) {
+            logger.warn("Failed to close Redis pipeline: {}", e.getMessage());
+        }
     }
 
     /**

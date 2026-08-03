@@ -21,13 +21,19 @@ import com.openjiuwen.extensions.checkpointer.redis.storage.GraphStore;
 import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.JedisPooled;
+import redis.clients.jedis.exceptions.JedisException;
+import redis.clients.jedis.util.JedisURIHelper;
+
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.OptionalInt;
+import java.util.Set;
 
 /**
  * Redis-based checkpointer implementation.
@@ -263,11 +269,23 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
+     * Close the Redis client and release its connection pool.
+     *
+     * @since 0.1.14
+     */
+    @Override
+    public void close() {
+        redisStore.close();
+    }
+
+    /**
      * Provider for creating Redis checkpointers from the Python-compatible configuration map.
      * 
      * @since 0.1.7
      */
     public static final class Provider implements CheckpointerProvider {
+        private static final int MILLIS_PER_SECOND = 1000;
+
         /**
          * typeName.
          * 
@@ -301,17 +319,88 @@ public class RedisCheckpointer extends Checkpointer {
             RedisConnectionConfig connection = config.getConnection();
             Object redisClient = connection.getRedisClient();
             if (redisClient == null) {
-                String connectionUrl = connection.getConnectionUrl();
-                if (connectionUrl == null) {
-                    throw new IllegalArgumentException(
-                            "Either 'redis_client' or 'url' must be provided in connection configuration");
-                }
-                redisClient = connection.isClusterMode()
-                        ? new UrlBackedRedisClusterClient(connectionUrl, connection.getConnectionArgs())
-                        : new UrlBackedRedisClient(connectionUrl, connection.getConnectionArgs());
+                redisClient = createUrlClient(connection);
             }
 
             return new RedisCheckpointer(new RedisStore(redisClient), config.getTtlMap());
+        }
+
+        private Object createUrlClient(RedisConnectionConfig connection) {
+            String connectionUrl = connection.getConnectionUrl();
+            if (connectionUrl == null) {
+                throw new IllegalArgumentException(
+                        "Either 'redis_client' or 'url' must be provided in connection configuration");
+            }
+
+            try {
+                URI uri = URI.create(connectionUrl);
+                HostAndPort endpoint = JedisURIHelper.getHostAndPort(uri);
+                DefaultJedisClientConfig clientConfig = buildClientConfig(uri, connection.getConnectionArgs());
+                if (connection.isClusterMode()) {
+                    int attempts = clusterAttempts(connection.getConnectionArgs());
+                    return new JedisCluster(Set.of(endpoint), clientConfig, attempts);
+                }
+                return new JedisPooled(endpoint, clientConfig);
+            } catch (IllegalArgumentException | JedisException e) {
+                throw new IllegalArgumentException("Failed to create Redis client. URL: " + connectionUrl
+                        + ", cluster mode: " + connection.isClusterMode(), e);
+            }
+        }
+
+        private DefaultJedisClientConfig buildClientConfig(URI uri, Map<String, Object> connectionArgs) {
+            DefaultJedisClientConfig.Builder builder = DefaultJedisClientConfig.builder()
+                    .database(JedisURIHelper.getDBIndex(uri))
+                    .ssl(JedisURIHelper.isRedisSSLScheme(uri));
+
+            String user = JedisURIHelper.getUser(uri);
+            if (user != null && !user.isBlank()) {
+                builder.user(user);
+            }
+            String password = JedisURIHelper.getPassword(uri);
+            if (password != null && !password.isBlank()) {
+                builder.password(password);
+            }
+
+            OptionalInt connectionTimeout = timeoutMillis(connectionArgs, "socket_connect_timeout");
+            if (connectionTimeout.isPresent()) {
+                builder.connectionTimeoutMillis(connectionTimeout.getAsInt());
+            }
+            OptionalInt socketTimeout = timeoutMillis(connectionArgs, "socket_timeout");
+            if (socketTimeout.isPresent()) {
+                builder.socketTimeoutMillis(socketTimeout.getAsInt());
+            }
+            return builder.build();
+        }
+
+        private OptionalInt timeoutMillis(Map<String, Object> connectionArgs, String key) {
+            Object rawValue = connectionArgs.get(key);
+            if (rawValue == null) {
+                return OptionalInt.empty();
+            }
+            if (!(rawValue instanceof Number number) || number.doubleValue() <= 0) {
+                throw new IllegalArgumentException(key + " must be a positive number of seconds");
+            }
+
+            double timeout = number.doubleValue() * (double) MILLIS_PER_SECOND;
+            if (timeout > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(key + " is too large");
+            }
+            return OptionalInt.of((int) Math.ceil(timeout));
+        }
+
+        private int clusterAttempts(Map<String, Object> connectionArgs) {
+            Object retryConfig = connectionArgs.get("retry");
+            if (!(retryConfig instanceof Map<?, ?> retry)) {
+                return JedisCluster.DEFAULT_MAX_ATTEMPTS;
+            }
+            Object attempts = retry.get("attempts");
+            if (attempts == null) {
+                return JedisCluster.DEFAULT_MAX_ATTEMPTS;
+            }
+            if (!(attempts instanceof Number number) || number.intValue() <= 0) {
+                throw new IllegalArgumentException("retry.attempts must be a positive integer");
+            }
+            return number.intValue();
         }
     }
 
@@ -371,269 +460,4 @@ public class RedisCheckpointer extends Checkpointer {
         }
     }
 
-    private static class UrlBackedRedisClient {
-        private final String url;
-        private final Map<String, Object> connectionArgs;
-
-        /**
-         * ConcurrentHashMap<>.
-         * 
-         * @since 0.1.7
-         */
-        private final Map<String, Object> values = new ConcurrentHashMap<>();
-
-        /**
-         * ConcurrentHashMap<>.
-         * 
-         * @since 0.1.7
-         */
-        private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();
-
-        /**
-         * UrlBackedRedisClient.
-         * 
-         * @param url url
-         * @param connectionArgs connectionArgs
-         * @since 0.1.7
-         */
-        private UrlBackedRedisClient(String url, Map<String, Object> connectionArgs) {
-            this.url = url;
-            this.connectionArgs = new LinkedHashMap<>(connectionArgs);
-        }
-
-        /**
-         * Get the Redis connection URL.
-         * 
-         * @return The connection URL string
-         * @since 0.1.7
-         */
-        public String getUrl() {
-            return url;
-        }
-
-        /**
-         * Get the connection arguments map.
-         * 
-         * @return An unmodifiable copy of the connection arguments
-         * @since 0.1.7
-         */
-        public Map<String, Object> getConnectionArgs() {
-            return Map.copyOf(connectionArgs);
-        }
-
-        /**
-         * Set a key-value pair without expiration.
-         * 
-         * @param key The key to set
-         * @param value The value to associate with the key
-         * @since 0.1.7
-         */
-        public void set(String key, Object value) {
-            cleanup(key);
-            values.put(key, value);
-            expiryAt.remove(key);
-        }
-
-        /**
-         * Set a key-value pair with optional NX condition and expiration.
-         * 
-         * @param key The key to set
-         * @param value The value to associate with the key
-         * @param nx If true, only set when the key does not already exist
-         * @param expiry Optional expiration time in seconds, or null for no expiration
-         * @return {@code true} if the key was set, {@code false} if NX condition prevented it
-         * @since 0.1.7
-         */
-        public boolean set(String key, Object value, boolean nx, Integer expiry) {
-            cleanup(key);
-            if (nx && values.containsKey(key)) {
-                return false;
-            }
-            values.put(key, value);
-            if (expiry != null && expiry > 0) {
-                expiryAt.put(key, System.currentTimeMillis() + Duration.ofSeconds(expiry).toMillis());
-            } else {
-                expiryAt.remove(key);
-            }
-            return true;
-        }
-
-        /**
-         * Get the value associated with the given key.
-         * 
-         * @param key The key to look up
-         * @return The value associated with the key, or null if not found or expired
-         * @since 0.1.7
-         */
-        public Object get(String key) {
-            cleanup(key);
-            return values.get(key);
-        }
-
-        /**
-         * Check if a key exists and is not expired.
-         * 
-         * @param key The key to check
-         * @return 1 if the key exists, 0 otherwise
-         * @since 0.1.7
-         */
-        public long isExists(String key) {
-            cleanup(key);
-            return values.containsKey(key) ? 1L : 0L;
-        }
-
-        /**
-         * Delete one or more keys from the store.
-         * 
-         * @param keys The keys to delete
-         * @return The number of keys that were actually removed
-         * @since 0.1.7
-         */
-        public long delete(String... keys) {
-            long deleted = 0L;
-            for (String key : keys) {
-                cleanup(key);
-                if (values.remove(key) != null) {
-                    expiryAt.remove(key);
-                    deleted++;
-                }
-            }
-            return deleted;
-        }
-
-        /**
-         * Get multiple values by their keys.
-         * 
-         * @param keys The keys to look up
-         * @return A list of values in the same order as the provided keys; null for missing keys
-         * @since 0.1.7
-         */
-        public List<Object> mget(String... keys) {
-            List<Object> results = new ArrayList<>(keys.length);
-            for (String key : keys) {
-                results.add(get(key));
-            }
-            return results;
-        }
-
-        /**
-         * Scan keys matching the given pattern (supports trailing wildcard only).
-         * 
-         * @param pattern The key pattern, typically ending with "*"
-         * @return A sorted list of matching keys
-         * @since 0.1.7
-         */
-        public List<String> scanIter(String pattern) {
-            String prefix = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
-            List<String> keys = new ArrayList<>();
-            for (String key : new ArrayList<>(values.keySet())) {
-                cleanup(key);
-                if (values.containsKey(key) && key.startsWith(prefix)) {
-                    keys.add(key);
-                }
-            }
-            keys.sort(String::compareTo);
-            return keys;
-        }
-
-        /**
-         * Set an expiration time on an existing key.
-         * 
-         * @param key The key to set expiration on
-         * @param ttlSeconds The time-to-live in seconds
-         * @return {@code true} if the expiration was set, {@code false} if the key does not exist
-         * @since 0.1.7
-         */
-        public boolean expire(String key, int ttlSeconds) {
-            cleanup(key);
-            if (!values.containsKey(key)) {
-                return false;
-            }
-            expiryAt.put(key, System.currentTimeMillis() + Duration.ofSeconds(ttlSeconds).toMillis());
-            return true;
-        }
-
-        /**
-         * Create a new pipeline for batching Redis operations.
-         * 
-         * @return A new UrlBackedRedisPipeline instance
-         * @since 0.1.7
-         */
-        public UrlBackedRedisPipeline pipeline() {
-            return new UrlBackedRedisPipeline(this);
-        }
-
-        /**
-         * cleanup.
-         * 
-         * @param key key
-         * @since 0.1.7
-         */
-        private void cleanup(String key) {
-            Long expiresAt = expiryAt.get(key);
-            if (expiresAt != null && expiresAt <= System.currentTimeMillis()) {
-                values.remove(key);
-                expiryAt.remove(key);
-            }
-        }
-    }
-
-    private static final class UrlBackedRedisClusterClient extends UrlBackedRedisClient {
-        /**
-         * UrlBackedRedisClusterClient.
-         * 
-         * @param url url
-         * @param connectionArgs connectionArgs
-         * @since 0.1.7
-         */
-        private UrlBackedRedisClusterClient(String url, Map<String, Object> connectionArgs) {
-            super(url, connectionArgs);
-        }
-    }
-
-    private static class UrlBackedRedisPipeline {
-        private final UrlBackedRedisClient client;
-
-        /**
-         * ArrayList<>.
-         * 
-         * @since 0.1.7
-         */
-        private final List<Runnable> operations = new ArrayList<>();
-
-        /**
-         * UrlBackedRedisPipeline.
-         * 
-         * @param client client
-         * @since 0.1.7
-         */
-        private UrlBackedRedisPipeline(UrlBackedRedisClient client) {
-            this.client = client;
-        }
-
-        /**
-         * Queue an expiration operation in the pipeline.
-         * 
-         * @param key The key to set expiration on
-         * @param ttlSeconds The time-to-live in seconds
-         * @return This pipeline instance for method chaining
-         * @since 0.1.7
-         */
-        public UrlBackedRedisPipeline expire(String key, int ttlSeconds) {
-            operations.add(() -> client.expire(key, ttlSeconds));
-            return this;
-        }
-
-        /**
-         * Execute all queued operations in the pipeline and clear the queue.
-         * 
-         * @return An empty list (pipeline results are not collected)
-         * @since 0.1.7
-         */
-        public List<Object> execute() {
-            operations.forEach(Runnable::run);
-            operations.clear();
-            return List.of();
-        }
-    }
 }
