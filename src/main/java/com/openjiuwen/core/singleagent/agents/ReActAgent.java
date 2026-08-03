@@ -1516,33 +1516,30 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * writeStreamError.
-     * 
-     * @param agentSession agentSession
-     * @param exception exception
+     * Write a stream error chunk for a checked/unchecked Exception.
+     *
+     * @param agentSession session to write to; ignored when null
+     * @param exception stream failure
      * @since 0.1.7
      */
     private void writeStreamError(AgentSessionApi agentSession, Exception exception) {
-        Loggers.AGENT.error("ReActAgent stream error: " + exception.getMessage());
-        if (agentSession == null) {
-            return;
-        }
-        Map<String, Object> errorResult = new HashMap<String, Object>();
-        errorResult.put("output", exception.getMessage());
-        errorResult.put("result_type", "error");
-        agentSession.writeStream(new OutputSchema("error", 0, errorResult));
+        writeStreamThrowable(agentSession, exception);
     }
 
     /**
-     * writeStreamThrowable.
-     * 
-     * @param agentSession agentSession
-     * @param throwable throwable
+     * Write a stream error chunk for any Throwable (including Error from worker threads).
+     *
+     * @param agentSession session to write to; ignored when null
+     * @param throwable stream failure
      * @since 0.1.7
      */
     private void writeStreamThrowable(AgentSessionApi agentSession, Throwable throwable) {
-        String message = throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
-        Loggers.AGENT.error("ReActAgent stream error: " + message);
+        String message = describeStreamThrowable(throwable);
+        if (throwable == null) {
+            Loggers.AGENT.error("ReActAgent stream error: " + message);
+        } else {
+            Loggers.AGENT.exception("ReActAgent stream error: " + message, throwable);
+        }
         if (agentSession == null) {
             return;
         }
@@ -1550,6 +1547,26 @@ public class ReActAgent extends BaseAgent {
         errorResult.put("output", message);
         errorResult.put("result_type", "error");
         agentSession.writeStream(new OutputSchema("error", 0, errorResult));
+    }
+
+    /**
+     * Build a non-null stream error description. Exceptions such as
+     * {@link java.util.ConcurrentModificationException} often have a null {@code getMessage()};
+     * logging that as bare {@code "null"} hides the real failure under load.
+     *
+     * @param throwable throwable
+     * @return human-readable error text for logs and stream payloads
+     * @since 0.1.14
+     */
+    static String describeStreamThrowable(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown";
+        }
+        String msg = throwable.getMessage();
+        if (msg == null || msg.isBlank()) {
+            return throwable.getClass().getName();
+        }
+        return throwable.getClass().getSimpleName() + ": " + msg;
     }
 
     /**

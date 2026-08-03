@@ -235,7 +235,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object>
                 ((WorkflowStateCollection) nodeSession.parent().state()).update(postBodyReset);
             }
             Map<String, Object> outputReset = new java.util.HashMap<>();
-            outputReset.put(Constant.INDEX, 0);
+            outputReset.put(Constant.INDEX, null);
             state.setOutputs(outputReset);
         }
 
