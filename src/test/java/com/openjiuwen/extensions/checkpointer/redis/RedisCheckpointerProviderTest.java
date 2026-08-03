@@ -89,6 +89,19 @@ class RedisCheckpointerProviderTest {
         assertTrue(error.getMessage().contains("connection"));
     }
 
+    @Test
+    void invalidUrlClientArgumentsRaiseHelpfulError() {
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        Map<String, Object> config = Map.of("connection", Map.of(
+                "url", "redis://127.0.0.1:6379",
+                "connection_args", Map.of("socket_connect_timeout", 0)));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> provider.create(config));
+
+        assertTrue(error.getMessage().contains("Failed to create Redis client"));
+        assertInstanceOf(IllegalArgumentException.class, error.getCause());
+    }
+
     private static Object readField(Object target, String fieldName) throws Exception {
         Field field = target.getClass().getSuperclass().getDeclaredField(fieldName);
         field.setAccessible(true);

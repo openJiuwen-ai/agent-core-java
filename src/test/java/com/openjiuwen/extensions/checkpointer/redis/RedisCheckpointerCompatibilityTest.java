@@ -1,20 +1,26 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.extensions.checkpointer.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.Mockito.mockConstruction;
 
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
-import com.openjiuwen.extensions.store.kv.RedisStore;
+
+import redis.clients.jedis.JedisCluster;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
 
-import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 class RedisCheckpointerCompatibilityTest {
     @Test
-    void helperStyleClusterModeInsideConnectionArgsSelectsClusterClient() throws Exception {
+    void helperStyleClusterModeInsideConnectionArgsSelectsClusterClient() {
         Map<String, Object> connectionArgs = new LinkedHashMap<>();
         connectionArgs.put("cluster_mode", true);
 
@@ -25,15 +31,11 @@ class RedisCheckpointerCompatibilityTest {
         Map<String, Object> conf = new LinkedHashMap<>();
         conf.put("connection", connection);
 
-        RedisCheckpointer checkpointer = (RedisCheckpointer) CheckpointerFactory.create("redis", conf);
-        Object redisClient = readRedisClient(checkpointer.getRedisStore());
-
-        assertThat(redisClient.getClass().getSimpleName()).contains("Cluster");
-    }
-
-    private static Object readRedisClient(RedisStore redisStore) throws Exception {
-        Field redisClientField = RedisStore.class.getDeclaredField("redisClient");
-        redisClientField.setAccessible(true);
-        return redisClientField.get(redisStore);
+        try (MockedConstruction<JedisCluster> clusterClientConstruction = mockConstruction(JedisCluster.class);
+                RedisCheckpointer checkpointer = assertInstanceOf(RedisCheckpointer.class,
+                        CheckpointerFactory.create("redis", conf))) {
+            assertThat(clusterClientConstruction.constructed()).hasSize(1);
+            assertThat(checkpointer.getRedisStore().isCluster()).isTrue();
+        }
     }
 }

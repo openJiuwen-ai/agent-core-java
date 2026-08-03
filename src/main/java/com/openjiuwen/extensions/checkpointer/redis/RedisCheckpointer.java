@@ -25,12 +25,14 @@ import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.JedisPooled;
+import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.jedis.util.JedisURIHelper;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -339,7 +341,7 @@ public class RedisCheckpointer extends Checkpointer {
                     return new JedisCluster(Set.of(endpoint), clientConfig, attempts);
                 }
                 return new JedisPooled(endpoint, clientConfig);
-            } catch (RuntimeException e) {
+            } catch (IllegalArgumentException | JedisException e) {
                 throw new IllegalArgumentException("Failed to create Redis client. URL: " + connectionUrl
                         + ", cluster mode: " + connection.isClusterMode(), e);
             }
@@ -359,31 +361,31 @@ public class RedisCheckpointer extends Checkpointer {
                 builder.password(password);
             }
 
-            Integer connectionTimeout = timeoutMillis(connectionArgs, "socket_connect_timeout");
-            if (connectionTimeout != null) {
-                builder.connectionTimeoutMillis(connectionTimeout);
+            OptionalInt connectionTimeout = timeoutMillis(connectionArgs, "socket_connect_timeout");
+            if (connectionTimeout.isPresent()) {
+                builder.connectionTimeoutMillis(connectionTimeout.getAsInt());
             }
-            Integer socketTimeout = timeoutMillis(connectionArgs, "socket_timeout");
-            if (socketTimeout != null) {
-                builder.socketTimeoutMillis(socketTimeout);
+            OptionalInt socketTimeout = timeoutMillis(connectionArgs, "socket_timeout");
+            if (socketTimeout.isPresent()) {
+                builder.socketTimeoutMillis(socketTimeout.getAsInt());
             }
             return builder.build();
         }
 
-        private Integer timeoutMillis(Map<String, Object> connectionArgs, String key) {
+        private OptionalInt timeoutMillis(Map<String, Object> connectionArgs, String key) {
             Object rawValue = connectionArgs.get(key);
             if (rawValue == null) {
-                return null;
+                return OptionalInt.empty();
             }
             if (!(rawValue instanceof Number number) || number.doubleValue() <= 0) {
                 throw new IllegalArgumentException(key + " must be a positive number of seconds");
             }
 
-            double timeout = number.doubleValue() * MILLIS_PER_SECOND;
+            double timeout = number.doubleValue() * (double) MILLIS_PER_SECOND;
             if (timeout > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException(key + " is too large");
             }
-            return (int) Math.ceil(timeout);
+            return OptionalInt.of((int) Math.ceil(timeout));
         }
 
         private int clusterAttempts(Map<String, Object> connectionArgs) {
