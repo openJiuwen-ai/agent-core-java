@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.OkHttpProxySupport;
 import com.openjiuwen.core.common.security.SslUtils;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -23,6 +24,8 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
 import okhttp3.Call;
+import okhttp3.ConnectionPool;
+import okhttp3.Dispatcher;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -71,7 +74,32 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
     /** Default per-call cap (seconds) when caller does not specify one. */
     private static final float DEFAULT_CALL_TIMEOUT_SECONDS = 180f;
 
+    /** Override OkHttp Dispatcher.maxRequests (default OkHttp=64). */
+    private static final String MAX_REQUESTS_PROPERTY = "openjiuwen.llm.http.max-requests";
+
+    /**
+     * Override OkHttp Dispatcher.maxRequestsPerHost. OkHttp default is 5, which
+     * serializes DeepAgent multi-session load against one LLM host.
+     */
+    private static final String MAX_REQUESTS_PER_HOST_PROPERTY = "openjiuwen.llm.http.max-requests-per-host";
+
+    /** Override OkHttp ConnectionPool max idle connections (default OkHttp=5). */
+    private static final String MAX_IDLE_CONNECTIONS_PROPERTY = "openjiuwen.llm.http.max-idle-connections";
+
+    /** Override OkHttp ConnectionPool keep-alive seconds (default OkHttp=300). */
+    private static final String KEEP_ALIVE_SECONDS_PROPERTY = "openjiuwen.llm.http.keep-alive-seconds";
+
+    private static final int DEFAULT_MAX_REQUESTS = 64;
+    private static final int DEFAULT_MAX_REQUESTS_PER_HOST = 32;
+    private static final int DEFAULT_MAX_IDLE_CONNECTIONS = 32;
+    private static final long DEFAULT_KEEP_ALIVE_SECONDS = 30L;
+
+    /** Cap connect timeout so refused backends fail fast without waiting full read timeout. */
+    private static final String CONNECT_TIMEOUT_SECONDS_PROPERTY = "openjiuwen.llm.http.connect-timeout-seconds";
+    private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
+
     private final OkHttpClient httpClient;
+    private final ModelCircuitBreaker circuitBreaker = new ModelCircuitBreaker();
 
     /**
      * OpenAiCompatibleModelClient.
@@ -141,13 +169,16 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);
-        try (Response response = call.execute()) {
+        try (Response response = executeCall(call)) {
             String responseBody = responseBody(response);
             ensureSuccess(response.code(), responseBody);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> responseMap = MAPPER.readValue(responseBody, Map.class);
-            return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+            AssistantMessage result =
+                parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+            circuitBreaker.onSuccess();
+            return result;
         }
     }
 
@@ -179,15 +210,20 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);
-        Response response = call.execute();
-        ensureSuccess(response.code(), responseBodyOrNull(response));
-
-        ResponseBody body = response.body();
-        if (body == null) {
+        Response response = executeCall(call);
+        try {
+            ensureSuccess(response.code(), responseBodyOrNull(response));
+            ResponseBody body = response.body();
+            if (body == null) {
+                response.close();
+                throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg", "No response body");
+            }
+            circuitBreaker.onSuccess();
+            return new StreamingChunkIterator(body.byteStream(), resolveModelName(model, null), outputParser);
+        } catch (RuntimeException | Error e) {
             response.close();
-            throw new RuntimeException("No response body");
+            throw e;
         }
-        return new StreamingChunkIterator(body.byteStream(), resolveModelName(model, null), outputParser);
     }
 
     /**
@@ -276,19 +312,111 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     /**
      * Builds an OkHttp client with connect/read/write timeouts, optional proxy, and SSL from model client config.
+     * <p>
+     * Explicitly raises per-host concurrency and shortens keep-alive so multi-session DeepAgent
+     * load is not capped by OkHttp defaults (maxRequestsPerHost=5, keepAlive=5min).
      *
      * @param timeoutSeconds timeout applied to connect/read/write
      * @return configured {@link OkHttpClient}
      * @since 0.1.7
      */
     private OkHttpClient buildOkHttpClient(double timeoutSeconds) {
-        Duration timeout = resolveTimeout(timeoutSeconds);
-        OkHttpClient.Builder builder =
-            new OkHttpClient.Builder().connectTimeout(timeout).readTimeout(timeout).writeTimeout(timeout);
+        Duration readWriteTimeout = resolveTimeout(timeoutSeconds);
+        Duration connectTimeout = resolveConnectTimeout(timeoutSeconds);
+        Dispatcher dispatcher = new Dispatcher();
+        dispatcher.setMaxRequests(resolvePositiveInt(MAX_REQUESTS_PROPERTY, DEFAULT_MAX_REQUESTS));
+        dispatcher.setMaxRequestsPerHost(
+                resolvePositiveInt(MAX_REQUESTS_PER_HOST_PROPERTY, DEFAULT_MAX_REQUESTS_PER_HOST));
+        ConnectionPool connectionPool = new ConnectionPool(
+                resolvePositiveInt(MAX_IDLE_CONNECTIONS_PROPERTY, DEFAULT_MAX_IDLE_CONNECTIONS),
+                resolvePositiveLong(KEEP_ALIVE_SECONDS_PROPERTY, DEFAULT_KEEP_ALIVE_SECONDS), TimeUnit.SECONDS);
+        OkHttpClient.Builder builder = new OkHttpClient.Builder().connectTimeout(connectTimeout)
+                .readTimeout(readWriteTimeout).writeTimeout(readWriteTimeout).dispatcher(dispatcher)
+                .connectionPool(connectionPool);
         OkHttpProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
         SslUtils.configureOkHttpClientSsl(builder, modelClientConfig.getApiBase(), modelClientConfig.isVerifySsl(),
                 modelClientConfig.getSslCert());
         return builder.build();
+    }
+
+    /**
+     * Execute an OkHttp call under the model circuit breaker. On connect-level failure,
+     * evict the idle pool so subsequent requests do not reuse a poisoned keep-alive connection.
+     *
+     * @param call call
+     * @return response
+     * @throws IOException IOException
+     * @since 0.1.14
+     */
+    private Response executeCall(Call call) throws IOException {
+        circuitBreaker.beforeCall();
+        try {
+            return call.execute();
+        } catch (IOException e) {
+            circuitBreaker.onFailure(e);
+            if (ModelCircuitBreaker.isConnectFailure(e)) {
+                httpClient.connectionPool().evictAll();
+                LOG.warn("Evicted OkHttp connection pool after connect failure: {}", e.toString());
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Connect timeout is capped so a refused LLM host fails fast; read/write keep the full model timeout
+     * for long generations / SSE stalls (OkHttp interrupts {@code readLine()} via socket readTimeout).
+     *
+     * @param timeoutSeconds configured model timeout
+     * @return connect timeout duration
+     * @since 0.1.14
+     */
+    private static Duration resolveConnectTimeout(double timeoutSeconds) {
+        long configuredCap =
+            resolvePositiveLong(CONNECT_TIMEOUT_SECONDS_PROPERTY, DEFAULT_CONNECT_TIMEOUT_SECONDS);
+        long seconds = Math.max(1L, Math.min(configuredCap, Math.round(Math.max(1.0, timeoutSeconds))));
+        return Duration.ofSeconds(seconds);
+    }
+
+    /**
+     * Resolve a positive int from a system property, falling back to {@code defaultValue}.
+     *
+     * @param propertyName system property key
+     * @param defaultValue fallback when missing or invalid
+     * @return parsed positive int, or {@code defaultValue}
+     * @since 0.1.14
+     */
+    private static int resolvePositiveInt(String propertyName, int defaultValue) {
+        String raw = System.getProperty(propertyName);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(raw.trim()));
+        } catch (NumberFormatException ex) {
+            // Invalid override — keep the hard-coded default.
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Resolve a positive long from a system property, falling back to {@code defaultValue}.
+     *
+     * @param propertyName system property key
+     * @param defaultValue fallback when missing or invalid
+     * @return parsed positive long, or {@code defaultValue}
+     * @since 0.1.14
+     */
+    private static long resolvePositiveLong(String propertyName, long defaultValue) {
+        String raw = System.getProperty(propertyName);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Math.max(1L, Long.parseLong(raw.trim()));
+        } catch (NumberFormatException ex) {
+            // Invalid override — keep the hard-coded default.
+            return defaultValue;
+        }
     }
 
     /**
@@ -766,8 +894,13 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                     }
                 }
                 return null;
+            } catch (java.net.SocketTimeoutException e) {
+                // OkHttp readTimeout interrupts blocked readLine(); surface a clear SSE stall message.
+                throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, null, null, e,
+                        Map.of("error_msg", "SSE stream read timeout (no data within OkHttp readTimeout)"));
             } catch (IOException e) {
-                throw new RuntimeException("Failed to read streaming response", e);
+                throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, null, null, e,
+                        Map.of("error_msg", "Failed to read streaming response"));
             }
         }
 

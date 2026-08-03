@@ -15,6 +15,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -300,7 +301,7 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
      * @return the result
      * @since 0.1.7
      */
-    private static List<ControllerOutputChunk> processingChunks(Map<String, Object> result, String taskId) {
+    static List<ControllerOutputChunk> processingChunks(Map<String, Object> result, String taskId) {
         if (result == null) {
             return List.of();
         }
@@ -308,12 +309,25 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         if (!(raw instanceof Iterable<?> iterable)) {
             return List.of();
         }
-        List<ControllerOutputChunk> chunks = new java.util.ArrayList<>();
+        List<ControllerOutputChunk> chunks = new ArrayList<>();
+        List<DataFrame> interactionFrames = new ArrayList<>();
         for (Object item : iterable) {
+            if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema
+                    && "__interaction__".equals(outputSchema.getType())) {
+                interactionFrames.add(new DataFrame.JsonDataFrame(
+                        Map.of("type", outputSchema.getType(), "payload", outputSchema.getPayload())));
+                continue;
+            }
             ControllerOutputChunk chunk = toProcessingChunk(item, chunks.size(), taskId);
             if (chunk != null) {
                 chunks.add(chunk);
             }
+        }
+        if (!interactionFrames.isEmpty()) {
+            chunks.add(new ControllerOutputChunk(chunks.size(),
+                    new ControllerOutputPayload(EventType.TASK_INTERACTION.getValue(), interactionFrames,
+                            Map.of("task_id", taskId, "stream_kind", "inner_agent")),
+                    false));
         }
         return chunks;
     }
@@ -351,21 +365,22 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             chunk.setLastChunk(false);
             return chunk;
         }
-        if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema
-                && "__interaction__".equals(outputSchema.getType())) {
-            return new ControllerOutputChunk(index,
-                    new ControllerOutputPayload(EventType.TASK_INTERACTION.getValue(),
-                            List.of(new DataFrame.JsonDataFrame(
-                                    Map.of("type", outputSchema.getType(), "payload", outputSchema.getPayload()))),
-                            Map.of("task_id", taskId, "stream_kind", "inner_agent")),
-                    false);
-        }
         Map<String, Object> metadata = Map.of("task_id", taskId, "stream_kind", "inner_agent");
         List<DataFrame> data;
         if (item instanceof DataFrame frame) {
             data = List.of(frame);
         } else if (item instanceof Map<?, ?> map) {
             data = List.of(new DataFrame.JsonDataFrame(castMap(map)));
+        } else if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema) {
+            // Processing frame (interactions are batched above).
+            Object payload = outputSchema.getPayload();
+            if (payload instanceof Map<?, ?> map) {
+                data = List.of(new DataFrame.JsonDataFrame(castMap(map)));
+            } else if (payload != null) {
+                data = List.of(new DataFrame.TextDataFrame(String.valueOf(payload)));
+            } else {
+                data = List.of(new DataFrame.JsonDataFrame(Map.of("type", outputSchema.getType())));
+            }
         } else if (item != null) {
             data = List.of(new DataFrame.TextDataFrame(String.valueOf(item)));
         } else {
