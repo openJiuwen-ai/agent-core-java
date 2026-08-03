@@ -26,10 +26,14 @@ import java.util.concurrent.CancellationException;
  */
 public class NodeTask implements Callable<Object> {
     private static final LoggerProtocol logger = Loggers.GRAPH;
+    private static final Runnable NO_OP_INVOCATION_COMPLETED_HANDLER = () -> {
+        // Standalone NodeTask execution has no executor lifecycle to notify.
+    };
 
     private final PregelNode node;
     private final PregelConfig config;
     private final int version;
+    private final Runnable invocationCompletedHandler;
 
     /**
      * NodeTask.
@@ -40,9 +44,22 @@ public class NodeTask implements Callable<Object> {
      * @since 0.1.7
      */
     public NodeTask(PregelNode node, PregelConfig config, int version) {
+        this(node, config, version, NO_OP_INVOCATION_COMPLETED_HANDLER);
+    }
+
+    /**
+     * Creates a node task with an invocation lifecycle callback.
+     *
+     * @param node node to execute
+     * @param config Pregel configuration
+     * @param version node version
+     * @param invocationCompletedHandler callback invoked after the node function returns normally
+     */
+    NodeTask(PregelNode node, PregelConfig config, int version, Runnable invocationCompletedHandler) {
         this.node = node;
         this.config = config;
         this.version = version;
+        this.invocationCompletedHandler = invocationCompletedHandler;
     }
 
     /**
@@ -79,6 +96,7 @@ public class NodeTask implements Callable<Object> {
 
             // Invoke the node function
             invokeFunc(func, kwargs);
+            invocationCompletedHandler.run();
             throwIfInterrupted();
 
             // Route messages

@@ -4,7 +4,12 @@
 
 package com.openjiuwen.core.graph.pregel;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -71,11 +77,73 @@ class TaskExecutorPoolTest {
             assertTrue(pool.getFailed().containsKey("B"));
             assertEquals("__error__", pool.getFailed().get("B").getStatus());
 
+            // A propagates interruption and remains pending for recovery.
+            assertTrue(pool.getFailed().containsKey("A"));
+
             // C succeeds
             assertFalse(pool.getFailed().containsKey("C"));
             // C's messages should be collected
             boolean cMessageFound = pool.getSucceedMessages().stream().anyMatch(m -> "C".equals(m.getSender()));
             assertTrue(cMessageFound, "C's success messages should be collected");
+        }
+
+        @Test
+        @DisplayName("Sibling failure preserves a node invocation that returns normally")
+        void testSiblingFailurePreservesNormallyReturnedInvocation() throws Exception {
+            CountDownLatch invocationStarted = new CountDownLatch(1);
+            CountDownLatch invocationBlocker = new CountDownLatch(1);
+            AtomicBoolean invocationInterrupted = new AtomicBoolean(false);
+            AtomicBoolean routerSawInterruption = new AtomicBoolean(false);
+            AtomicInteger invocationCount = new AtomicInteger(0);
+            AtomicInteger routingCount = new AtomicInteger(0);
+            Callable<Object> successfulTask = () -> {
+                int currentInvocation = invocationCount.incrementAndGet();
+                if (currentInvocation == 1) {
+                    invocationStarted.countDown();
+                    try {
+                        if (invocationBlocker.await(5L, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Invocation blocker was released unexpectedly");
+                        }
+                    } catch (InterruptedException exception) {
+                        invocationInterrupted.set(true);
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return null;
+            };
+            Callable<Object> failingTask = () -> {
+                if (!invocationStarted.await(1L, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Successful sibling did not start");
+                }
+                throw new IllegalStateException("Sibling failed");
+            };
+            IRouter router = sourceNode -> {
+                routingCount.incrementAndGet();
+                routerSawInterruption.set(Thread.currentThread().isInterrupted());
+                return List.of(new TriggerMessage(sourceNode, "target"));
+            };
+            PregelNode successfulNode = new PregelNode(
+                    "successful",
+                    successfulTask,
+                    List.of(router));
+            PregelNode failingNode = new PregelNode("failing", failingTask, List.of());
+            TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig());
+            pool.submit(successfulNode, 1);
+            pool.submit(failingNode, 1);
+
+            IllegalStateException exception = assertThrows(IllegalStateException.class, pool::waitAll);
+            if (pool.getFailed().containsKey("successful")) {
+                new NodeTask(successfulNode, new PregelConfig(), 1).call();
+            }
+
+            assertEquals("Sibling failed", exception.getMessage());
+            assertTrue(invocationInterrupted.get());
+            assertFalse(routerSawInterruption.get(), "A sibling-failure interrupt must not leak into routing");
+            assertEquals(1, invocationCount.get(), "A normally returned invocation must not execute again");
+            assertEquals(1, routingCount.get());
+            assertFalse(pool.getFailed().containsKey("successful"));
+            assertTrue(pool.getSucceedMessages().stream()
+                    .anyMatch(message -> "successful".equals(message.getSender())));
         }
 
         @Test
@@ -188,6 +256,38 @@ class TaskExecutorPoolTest {
             pool.cancelAll();
 
             assertTrue(interrupted.await(1, TimeUnit.SECONDS));
+        }
+
+        @Test
+        @DisplayName("cancelAll interrupts routing after the node invocation returns")
+        void testCancelAllInterruptsRouting() throws Exception {
+            CountDownLatch routingStarted = new CountDownLatch(1);
+            CountDownLatch routingBlocker = new CountDownLatch(1);
+            CountDownLatch routingInterrupted = new CountDownLatch(1);
+            AtomicInteger invocationCount = new AtomicInteger(0);
+            IRouter blockingRouter = sourceNode -> {
+                routingStarted.countDown();
+                try {
+                    routingBlocker.await();
+                } catch (InterruptedException exception) {
+                    routingInterrupted.countDown();
+                    Thread.currentThread().interrupt();
+                }
+                return List.of(new TriggerMessage(sourceNode, "target"));
+            };
+            PregelNode node = new PregelNode(
+                    "routing",
+                    (Runnable) invocationCount::incrementAndGet,
+                    List.of(blockingRouter));
+            TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig());
+            pool.submit(node, 1);
+
+            assertTrue(routingStarted.await(1L, TimeUnit.SECONDS));
+            pool.cancelAll();
+
+            assertEquals(1, invocationCount.get());
+            assertTrue(routingInterrupted.await(1L, TimeUnit.SECONDS));
+            assertTrue(pool.getFailed().containsKey("routing"));
         }
     }
 

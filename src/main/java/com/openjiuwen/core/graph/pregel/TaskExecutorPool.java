@@ -81,10 +81,11 @@ public class TaskExecutorPool {
         RunningTask runningTask = new RunningTask(node);
         TaskFuture execution = new TaskFuture(() -> {
             if (!runningTask.tryStart()) {
+                runningTask.complete();
                 throw new CancellationException("Pregel node task cancelled before execution");
             }
             try {
-                return new NodeTask(node, config, version).call();
+                return new NodeTask(node, config, version, runningTask::markInvocationCompleted).call();
             } finally {
                 runningTask.complete();
             }
@@ -127,6 +128,7 @@ public class TaskExecutorPool {
         } catch (InterruptedException e) {
             cancelPendingFutures(futures);
             awaitActualCompletion(futures);
+            Thread.currentThread().interrupt();
             throw new CancellationException("Pregel task execution cancelled");
         } catch (ExecutionException | CancellationException ignored) {
             // Individual errors will be handled below
@@ -139,8 +141,14 @@ public class TaskExecutorPool {
             }
         }
         if (!pendingFutures.isEmpty() && !allDone.isDone()) {
-            cancelPendingFutures(pendingFutures);
-            awaitActualCompletion(pendingFutures);
+            try {
+                settlePendingTasksAfterFailure(pendingFutures);
+            } catch (InterruptedException exception) {
+                cancelPendingFutures(pendingFutures);
+                awaitActualCompletion(pendingFutures);
+                Thread.currentThread().interrupt();
+                throw new CancellationException("Pregel task settlement interrupted");
+            }
         }
 
         // Check if the first failure is only a GraphInterrupt (not a real exception).
@@ -318,6 +326,38 @@ public class TaskExecutorPool {
     }
 
     /**
+     * Requests cooperative cancellation after a sibling failure and waits until every affected task settles.
+     *
+     * @param pendingFutures unfinished sibling futures
+     * @throws InterruptedException if the caller is interrupted while waiting
+     * @since 0.1.7
+     */
+    private void settlePendingTasksAfterFailure(List<CompletableFuture<Object>> pendingFutures)
+            throws InterruptedException {
+        List<CompletableFuture<Void>> settlements = new ArrayList<>();
+        for (CompletableFuture<Object> future : pendingFutures) {
+            if (future.isDone()) {
+                continue;
+            }
+            RunningTask runningTask = runningTasks.get(future);
+            if (runningTask == null) {
+                future.cancel(false);
+                settlements.add(future.handle((value, throwable) -> null));
+                continue;
+            }
+            settlements.add(runningTask.cancelForSiblingFailure(future));
+        }
+        if (settlements.isEmpty()) {
+            return;
+        }
+        try {
+            CompletableFuture.allOf(settlements.toArray(new CompletableFuture[0])).get();
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException("Failed to settle graph tasks after a sibling failure", exception);
+        }
+    }
+
+    /**
      * Request cancellation of an executor-managed task.
      *
      * @param future task future
@@ -384,8 +424,9 @@ public class TaskExecutorPool {
         private final ReentrantLock lifecycleLock = new ReentrantLock();
 
         private FutureTask<Object> execution;
-        private boolean hasStarted;
-        private boolean isCancellationRequested;
+        private Thread executionThread;
+        private TaskPhase phase = TaskPhase.NOT_STARTED;
+        private TaskCancellation cancellation = TaskCancellation.NONE;
 
         private RunningTask(PregelNode node) {
             this.node = node;
@@ -395,8 +436,12 @@ public class TaskExecutorPool {
             lifecycleLock.lock();
             try {
                 execution = taskExecution;
-                if (isCancellationRequested) {
+                if (cancellation == TaskCancellation.FORCED) {
                     execution.cancel(true);
+                } else if (cancellation == TaskCancellation.SIBLING_FAILURE
+                        && phase == TaskPhase.NOT_STARTED
+                        && execution.cancel(false)) {
+                    completion.complete(null);
                 }
             } finally {
                 lifecycleLock.unlock();
@@ -406,10 +451,11 @@ public class TaskExecutorPool {
         private boolean tryStart() {
             lifecycleLock.lock();
             try {
-                if (isCancellationRequested) {
+                if (cancellation != TaskCancellation.NONE) {
                     return false;
                 }
-                hasStarted = true;
+                phase = TaskPhase.INVOKING;
+                executionThread = Thread.currentThread();
                 return true;
             } finally {
                 lifecycleLock.unlock();
@@ -419,9 +465,50 @@ public class TaskExecutorPool {
         private void cancel() {
             lifecycleLock.lock();
             try {
-                isCancellationRequested = true;
-                if (execution != null && execution.cancel(true) && !hasStarted) {
+                cancellation = TaskCancellation.FORCED;
+                if (execution != null && execution.cancel(true) && phase == TaskPhase.NOT_STARTED) {
                     completion.complete(null);
+                }
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private CompletableFuture<Void> cancelForSiblingFailure(CompletableFuture<Object> result) {
+            lifecycleLock.lock();
+            try {
+                if (phase == TaskPhase.NOT_STARTED && cancellation != TaskCancellation.FORCED) {
+                    cancellation = TaskCancellation.SIBLING_FAILURE;
+                    if (execution == null) {
+                        result.cancel(false);
+                        completion.complete(null);
+                    } else if (execution.cancel(false)) {
+                        completion.complete(null);
+                    }
+                } else if (phase == TaskPhase.INVOKING && cancellation != TaskCancellation.FORCED) {
+                    cancellation = TaskCancellation.SIBLING_FAILURE;
+                    if (executionThread != null) {
+                        executionThread.interrupt();
+                    }
+                }
+                CompletableFuture<Void> resultCompletion = result.handle((value, throwable) -> null);
+                return CompletableFuture.allOf(completion, resultCompletion);
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void markInvocationCompleted() {
+            lifecycleLock.lock();
+            try {
+                if (phase != TaskPhase.INVOKING) {
+                    return;
+                }
+                phase = TaskPhase.ROUTING;
+                if (cancellation == TaskCancellation.SIBLING_FAILURE
+                        && executionThread == Thread.currentThread()) {
+                    // Clear only the cooperative sibling-failure signal before routing starts.
+                    Thread.interrupted();
                 }
             } finally {
                 lifecycleLock.unlock();
@@ -437,8 +524,28 @@ public class TaskExecutorPool {
         }
 
         private void complete() {
+            lifecycleLock.lock();
+            try {
+                phase = TaskPhase.COMPLETED;
+                executionThread = null;
+            } finally {
+                lifecycleLock.unlock();
+            }
             completion.complete(null);
         }
+    }
+
+    private enum TaskPhase {
+        NOT_STARTED,
+        INVOKING,
+        ROUTING,
+        COMPLETED
+    }
+
+    private enum TaskCancellation {
+        NONE,
+        SIBLING_FAILURE,
+        FORCED
     }
 
     /**
