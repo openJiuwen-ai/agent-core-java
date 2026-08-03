@@ -5,6 +5,7 @@
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -38,7 +39,7 @@ class PDFParserTest {
             pdfDocument.save(file.toFile());
         }
 
-        PDFParser parser = new PDFParser();
+        PDFParser parser = new PDFParser(tempDir);
         var docs = parser.parse(file.toString(), "pdf-1", null, Map.of());
 
         assertEquals(1, docs.size());
@@ -47,8 +48,22 @@ class PDFParserTest {
 
     @Test
     void parseMissingPdfReturnsEmpty() {
-        PDFParser parser = new PDFParser();
+        PDFParser parser = new PDFParser(tempDir);
 
         assertTrue(parser.parse(tempDir.resolve("missing.pdf").toString(), "pdf-1", null, Map.of()).isEmpty());
+    }
+
+    @Test
+    void rejectsPdfPathsOutsideAllowedDirectory() throws IOException {
+        Path allowedDir = java.nio.file.Files.createDirectories(tempDir.resolve("allowed"));
+        Path outsideFile = tempDir.resolve("outside.pdf");
+        java.nio.file.Files.writeString(outsideFile, "outside");
+        PDFParser parser = new PDFParser(allowedDir);
+
+        assertThrows(SecurityException.class, () -> parser.resolveSafeDocument("../outside.pdf"));
+        assertThrows(SecurityException.class, () -> parser.resolveSafeDocument(outsideFile.toString()));
+
+        java.nio.file.Files.createSymbolicLink(allowedDir.resolve("linked.pdf"), outsideFile);
+        assertThrows(SecurityException.class, () -> parser.resolveSafeDocument("linked.pdf"));
     }
 }

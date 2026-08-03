@@ -32,6 +32,30 @@ import javax.imageio.ImageIO;
  * @since 0.1.7
  */
 public class PDFParser extends Parser {
+    private final Path allowedDocDir;
+
+    /**
+     * Create a parser restricted to documents under the current working directory.
+     *
+     * @since 0.1.7
+     */
+    public PDFParser() {
+        this(Path.of(""));
+    }
+
+    /**
+     * Create a parser restricted to an allowed document directory.
+     *
+     * @param allowedDocDir trusted document directory
+     * @since 0.1.13
+     */
+    public PDFParser(Path allowedDocDir) {
+        if (allowedDocDir == null) {
+            throw new IllegalArgumentException("Allowed document directory must not be null.");
+        }
+        this.allowedDocDir = allowedDocDir.toAbsolutePath().normalize();
+    }
+
     /**
      * parse.
      * 
@@ -50,6 +74,8 @@ public class PDFParser extends Parser {
                 return List.of();
             }
             return List.of(new Document(docId, content, Map.of()));
+        } catch (SecurityException ex) {
+            throw ex;
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -66,35 +92,54 @@ public class PDFParser extends Parser {
      */
     @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
-        Path path = Path.of(doc);
-        if (!Files.exists(path)) {
-            return null;
-        }
-        try (PDDocument pdf = PDDocument.load(path.toFile())) {
-            List<String> content = new ArrayList<>();
-            String text = new PDFTextStripper().getText(pdf).trim();
-            if (!text.isBlank()) {
-                content.add(text);
-            }
-            List<String> images = new ArrayList<>();
-            int pageNum = 1;
-            for (PDPage page : pdf.getPages()) {
-                extractImages(page.getResources(), pageNum, path.getFileName().toString(), images);
-                pageNum++;
-            }
-            if (llmClient != null && !images.isEmpty()) {
-                List<String> captions = new ImageCaptioner(llmClient).captionImages(images);
-                for (String caption : captions) {
-                    if (caption != null && !caption.isBlank()) {
-                        content.add(caption);
+        try {
+            Path path = resolveSafeDocument(doc);
+            try (PDDocument pdf = PDDocument.load(path.toFile())) {
+                List<String> content = new ArrayList<>();
+                String text = new PDFTextStripper().getText(pdf).trim();
+                if (!text.isBlank()) {
+                    content.add(text);
+                }
+                List<String> images = new ArrayList<>();
+                int pageNum = 1;
+                for (PDPage page : pdf.getPages()) {
+                    extractImages(page.getResources(), pageNum, path.getFileName().toString(), images);
+                    pageNum++;
+                }
+                if (llmClient != null && !images.isEmpty()) {
+                    List<String> captions = new ImageCaptioner(llmClient).captionImages(images);
+                    for (String caption : captions) {
+                        if (caption != null && !caption.isBlank()) {
+                            content.add(caption);
+                        }
                     }
                 }
+                String result = String.join("\n", content).trim();
+                return result.isBlank() ? null : result;
             }
-            String result = String.join("\n", content).trim();
-            return result.isBlank() ? null : result;
         } catch (IOException ex) {
             return null;
         }
+    }
+
+    Path resolveSafeDocument(String doc) throws IOException {
+        Path realAllowedDir = allowedDocDir.toRealPath();
+        Path requestedPath = Path.of(doc);
+        Path documentPath = requestedPath.isAbsolute()
+                ? requestedPath.toAbsolutePath().normalize()
+                : allowedDocDir.resolve(requestedPath).normalize();
+        if (!documentPath.startsWith(allowedDocDir)) {
+            throw new SecurityException("PDF path is outside the allowed document directory.");
+        }
+
+        Path realDocumentPath = documentPath.toRealPath();
+        if (!realDocumentPath.startsWith(realAllowedDir)) {
+            throw new SecurityException("PDF path is outside the allowed document directory.");
+        }
+        if (!Files.isRegularFile(realDocumentPath)) {
+            throw new IOException("PDF path is not a regular file: " + doc);
+        }
+        return realDocumentPath;
     }
 
     /**

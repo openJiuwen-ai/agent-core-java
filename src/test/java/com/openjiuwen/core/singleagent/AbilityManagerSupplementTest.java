@@ -19,6 +19,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
@@ -694,6 +695,45 @@ class AbilityManagerSupplementTest {
         } finally {
             removeTool(failingToolId);
             removeTool(okToolId);
+        }
+    }
+
+    @Test
+    void toolErrorForceFinishesWhenFailTaskOnToolErrorEnabled() {
+        String failingToolId = "fail-task-on-error-" + UUID.randomUUID();
+        LocalFunction failingTool = new LocalFunction(
+                ToolCard.builder().id(failingToolId).name(failingToolId).description("fail").build(),
+                inputs -> {
+                    throw new IllegalStateException("sandbox unavailable");
+                }
+        );
+
+        Runner.resourceMgr().addTool(failingTool, null);
+        manager.add(failingTool.getCard());
+        try {
+            ReActAgentConfig config = ReActAgentConfig.builder().shouldFailTaskOnToolError(true).build();
+            AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    ToolCall.builder().id("tc-fail-task").name(failingToolId).arguments("{}").build(),
+                    null,
+                    null
+            );
+
+            assertThat(results).hasSize(1);
+            assertThat(ctx.hasForceFinishRequest()).isTrue();
+            Map<String, Object> finish = ctx.consumeForceFinish().getResult();
+            assertThat(finish.get("result_type")).isEqualTo("error");
+            assertThat(finish.get("output").toString()).contains("sandbox unavailable");
+            assertThat(finish.get("tool_outcomes")).isInstanceOf(List.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> outcomes = (List<Map<String, Object>>) finish.get("tool_outcomes");
+            assertThat(outcomes).hasSize(1);
+            assertThat(outcomes.get(0).get("status")).isEqualTo("failed");
+            assertThat(outcomes.get(0).get("tool_name")).isEqualTo(failingToolId);
+        } finally {
+            removeTool(failingToolId);
         }
     }
 

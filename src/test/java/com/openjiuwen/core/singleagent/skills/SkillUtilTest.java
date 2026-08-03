@@ -4,15 +4,27 @@ package com.openjiuwen.core.singleagent.skills;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.sysop.cwd.CwdContext;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Unit tests for {@link SkillUtil} and {@link GitHubTree}.
  */
 class SkillUtilTest {
+    @AfterEach
+    void tearDown() {
+        CwdContext.reset();
+    }
+
     // ========== SkillUtil ==========
     @Test
-    void testSkillUtilInitialState() {
+    void skillUtilStartsWithoutSkills() {
         SkillUtil util = new SkillUtil("sysop-1");
         assertThat(util.hasSkill()).isFalse();
         assertThat(util.getSkillManager()).isNotNull();
@@ -20,7 +32,7 @@ class SkillUtilTest {
     }
 
     @Test
-    void testSetSysOperationId() {
+    void setSysOperationIdPropagatesToManagers() {
         SkillUtil util = new SkillUtil("old");
         util.setSysOperationId("new");
         assertThat(util.getSkillManager().getSysOperationId()).isEqualTo("new");
@@ -28,27 +40,71 @@ class SkillUtilTest {
     }
 
     @Test
-    void testHasSkillWhenEmpty() {
+    void hasSkillIsFalseWhenEmpty() {
         SkillUtil util = new SkillUtil(null);
         assertThat(util.hasSkill()).isFalse();
     }
 
     @Test
-    void testGetSkillPromptFormat() {
-        SkillUtil util = new SkillUtil("test");
-        // Register a skill programmatically via the skill manager
-        Skill skill = Skill.builder().name("testSkill").description("A test skill").directory("/skills/test").build();
-        util.getSkillManager().getAll(); // Just verify it's accessible
+    void promptIncludesRelativeSkillMdWhenInsideWorkspace(@TempDir Path workspace) throws Exception {
+        Path skillDir = workspace.resolve("hotel_ranking");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\nname: hotel_ranking\ndescription: Rank hotels\n---\n# Skill\n");
 
-        // The prompt should be generated even without skills
+        CwdContext.setWorkspace(workspace.toString());
+        SkillUtil util = new SkillUtil("test");
+        util.registerSkills(skillDir.toString(), null);
+
         String prompt = util.getSkillPrompt();
-        assertThat(prompt).contains("skill");
+        assertThat(prompt).contains("Skill directory: hotel_ranking/SKILL.md");
+        assertThat(prompt).doesNotContain(workspace.toString().replace('\\', '/'));
+        assertThat(prompt).doesNotContain(workspace.toAbsolutePath().toString());
+    }
+
+    @Test
+    void promptOmitsPathWhenSkillOutsideLocalFsBase(@TempDir Path outside) throws Exception {
+        Path skillDir = outside.resolve("remote_skill");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\nname: remote_skill\ndescription: Outside skill\n---\n# Skill\n");
+
+        Path workspace = Files.createTempDirectory("skill-ws-inside");
+        try {
+            CwdContext.setWorkspace(workspace.toString());
+            CwdContext.setCwd(workspace.toString());
+            CwdContext.setProjectRoot(workspace.toString());
+
+            SkillUtil util = new SkillUtil("test");
+            util.registerSkills(skillDir.toString(), null);
+
+            String prompt = util.getSkillPrompt();
+            assertThat(prompt).contains("Skill name: remote_skill");
+            assertThat(prompt).doesNotContain("Skill directory:");
+            assertThat(prompt).doesNotContain(outside.toAbsolutePath().toString());
+            assertThat(prompt).doesNotContain(skillDir.toAbsolutePath().toString());
+        } finally {
+            Files.walk(workspace)
+                    .sorted((a, b) -> b.compareTo(a))
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (Exception ignored) {
+                            // best-effort cleanup
+                        }
+                    });
+        }
+    }
+
+    @Test
+    void resolveSkillMdPathReturnsNullOutsideBases() {
+        assertThat(SkillUtil.resolveSkillMdPathForPrompt("/tmp/travel-hotel-skills-123/hotel_ranking")).isNull();
     }
 
     // ========== GitHubTree ==========
 
     @Test
-    void testGitHubTreeConstructor() {
+    void gitHubTreeDefaultConstructorValues() {
         GitHubTree tree = new GitHubTree("owner", "repo");
         assertThat(tree.getRepoOwner()).isEqualTo("owner");
         assertThat(tree.getRepoName()).isEqualTo("repo");
@@ -57,7 +113,7 @@ class SkillUtilTest {
     }
 
     @Test
-    void testGitHubTreeFullConstructor() {
+    void gitHubTreeFullConstructorValues() {
         GitHubTree tree = new GitHubTree("owner", "repo", "main", "src/skills");
         assertThat(tree.getRepoOwner()).isEqualTo("owner");
         assertThat(tree.getRepoName()).isEqualTo("repo");
@@ -66,7 +122,7 @@ class SkillUtilTest {
     }
 
     @Test
-    void testGitHubTreeCopy() {
+    void gitHubTreeCopyPreservesFields() {
         GitHubTree original = new GitHubTree("o", "r", "v1", "dir");
         GitHubTree copy = original.copy();
 
@@ -78,7 +134,7 @@ class SkillUtilTest {
     }
 
     @Test
-    void testGitHubTreeSetters() {
+    void gitHubTreeSettersUpdateFields() {
         GitHubTree tree = new GitHubTree();
         tree.setRepoOwner("newOwner");
         tree.setRepoName("newRepo");

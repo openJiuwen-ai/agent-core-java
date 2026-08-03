@@ -24,6 +24,7 @@ import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.core.memory.manage.index.SummaryManager;
 import com.openjiuwen.core.memory.manage.index.VariableManager;
 import com.openjiuwen.core.memory.manage.index.WriteManager;
+import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
 import com.openjiuwen.core.memory.manage.mem_model.DbModel;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
@@ -33,7 +34,6 @@ import com.openjiuwen.core.memory.manage.mem_model.ScopeUserMappingManager;
 import com.openjiuwen.core.memory.manage.mem_model.SemanticStore;
 import com.openjiuwen.core.memory.manage.mem_model.SqlDbStore;
 import com.openjiuwen.core.memory.manage.mem_model.UserMemStore;
-import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.search.SearchManager;
 import com.openjiuwen.core.memory.manage.search.SearchParams;
 import com.openjiuwen.core.memory.migration.RunMigrations;
@@ -390,6 +390,7 @@ public class LongTermMemory {
     public void addMessages(List<BaseMessage> messages, AgentMemoryConfig agentConfig, String userId, String scopeId,
             String sessionId, OffsetDateTime timestamp, boolean genMem, int genMemWithHistoryMsgNum) {
         if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
+            MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_STORE);
             return;
         }
         String msgId = "-1";
@@ -612,6 +613,7 @@ public class LongTermMemory {
      */
     public Map<String, String> getVariables(Object names, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_RETRIEVE);
             return Map.of();
         }
         if (searchManager == null) {
@@ -809,6 +811,7 @@ public class LongTermMemory {
     public List<MemInfo> getUserMemByPage(String userId, String scopeId, int pageSize, int pageIdx,
             MemoryType memoryType) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
+            MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_RETRIEVE);
             return List.of();
         }
         if (searchManager == null) {

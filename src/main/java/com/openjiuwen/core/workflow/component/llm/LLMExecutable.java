@@ -83,6 +83,7 @@ public class LLMExecutable extends ComponentExecutable {
         this.session = session;
         this.context = context;
         List<BaseMessage> modelInputs = prepareModelInputs(inputs);
+        writeUserMessageToContext(modelInputs);
 
         String response;
         try {
@@ -93,6 +94,7 @@ public class LLMExecutable extends ComponentExecutable {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg", e.getMessage());
         }
 
+        writeAssistantMessageToContext(response);
         return createOutput(response);
     }
 
@@ -310,6 +312,41 @@ public class LLMExecutable extends ComponentExecutable {
         }
         result.addAll(userPrompt);
         return result;
+    }
+
+    /**
+     * Write the current user message to workflow context when history is enabled.
+     *
+     * @param modelInputs model inputs
+     * @since 0.1.7
+     */
+    private void writeUserMessageToContext(List<BaseMessage> modelInputs) {
+        if (!config.isEnableHistory() || context == null) {
+            return;
+        }
+        for (int index = modelInputs.size() - 1; index >= 0; index--) {
+            BaseMessage message = modelInputs.get(index);
+            if (!MessageRole.USER.getValue().equals(message.getRole())) {
+                continue;
+            }
+            Object content = message.getContent();
+            if (content != null && !content.toString().isEmpty()) {
+                context.addMessages(UserMessage.builder().content(content).build());
+            }
+            return;
+        }
+    }
+
+    /**
+     * Write the current assistant message to workflow context when history is enabled.
+     *
+     * @param content assistant response content
+     * @since 0.1.7
+     */
+    private void writeAssistantMessageToContext(String content) {
+        if (config.isEnableHistory() && context != null && content != null && !content.isEmpty()) {
+            context.addMessages(new AssistantMessage(content));
+        }
     }
 
     /**

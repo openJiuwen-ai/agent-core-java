@@ -290,6 +290,55 @@ public class LlmAgent extends ControllerAgent {
     }
 
     /**
+     * Add workflows to this agent at runtime, mirroring Python's
+     * {@code LLMAgent.add_workflows(workflows)} public instance binding API.
+     *
+     * @param workflows workflows to bind
+     * @since 0.1.7
+     */
+    public void addWorkflows(List<Workflow> workflows) {
+        if (workflows == null || workflows.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        for (Workflow workflow : workflows) {
+            if (workflow == null || workflow.getCard() == null) {
+                continue;
+            }
+            registerWorkflowSchema(agentConfig, workflow.getCard());
+            getAbilityManager().add(workflow.getCard());
+            WorkflowCard card = workflow.getCard();
+            String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
+            WorkflowCard resourceCard =
+                WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
+                        .description(card.getDescription()).inputParams(card.getInputParams()).build();
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, tag);
+        }
+    }
+
+    /**
+     * Add tools to this agent at runtime, mirroring Python's
+     * {@code LLMAgent.add_tools(tools)} public instance binding API.
+     *
+     * @param tools tools to bind
+     * @since 0.1.7
+     */
+    public void addTools(List<Tool> tools) {
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        String tag = agentConfig != null ? agentConfig.getId() : null;
+        for (Tool tool : tools) {
+            if (tool == null || tool.getCard() == null) {
+                continue;
+            }
+            registerPluginSchema(agentConfig, tool.getCard());
+            getAbilityManager().add(tool.getCard());
+            Runner.resourceMgr().addTool(tool, tag);
+        }
+    }
+
+    /**
      * registerWorkflowSchema.
      * 
      * @param agentConfig agentConfig

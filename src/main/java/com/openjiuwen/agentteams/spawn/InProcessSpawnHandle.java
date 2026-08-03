@@ -19,7 +19,14 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Lightweight in-process spawn handle mirroring the first Python lifecycle surface.
- * 
+ *
+ * <p>Health-check semantics: a teammate that has terminated is only considered
+ * unhealthy if it terminated abnormally (task threw an exception) or was asked
+ * to shut down but failed to do so cleanly. A teammate that finished normally
+ * (idle in-process loop returning after {@code shutdown_member} or
+ * {@code clean_team}) must not trigger {@code markUnhealthy} — otherwise the
+ * framework would restart idle members in an infinite 50-second loop.</p>
+ *
  * @since 0.1.7
  */
 @Getter
@@ -36,7 +43,7 @@ public class InProcessSpawnHandle implements SpawnHandle {
 
     /**
      * isAlive.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -47,18 +54,44 @@ public class InProcessSpawnHandle implements SpawnHandle {
 
     /**
      * isHealthy.
-     * 
+     *
+     * <p>Terminated tasks are healthy as long as they did not throw and no
+     * shutdown was forced: a normally finished in-process teammate is still
+     * considered healthy until the caller explicitly restarts or removes it.
+     * Only an abnormal completion (task threw) flips a finished task to
+     * unhealthy.</p>
+     *
      * @return the result
      * @since 0.1.7
      */
     @Override
     public boolean isHealthy() {
-        return isAlive() && !isShutdownRequested;
+        if (isShutdownRequested) {
+            return false;
+        }
+        if (task == null) {
+            return false;
+        }
+        if (!task.isDone()) {
+            return true;
+        }
+        // Task finished. Healthy only if it finished without an exception.
+        try {
+            task.get();
+            return true;
+        } catch (ExecutionException | CancellationException e) {
+            // ExecutionException: the wrapped callable threw — abnormal.
+            // CancellationException: task was cancelled — treat as abnormal.
+            return false;
+        } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10)
+            return false;
+        }
     }
 
     /**
      * startHealthCheck.
-     * 
+     *
      * @param intervalMillis intervalMillis
      * @since 0.1.7
      */
@@ -75,6 +108,14 @@ public class InProcessSpawnHandle implements SpawnHandle {
             if (!isHealthy()) {
                 stopHealthCheck();
                 markUnhealthy();
+                return;
+            }
+            if (task != null && task.isDone()) {
+                // Task finished cleanly — stop polling. Do NOT call markUnhealthy,
+                // because a normal completion (idle loop exiting after
+                // shutdown_member/clean_team) is not a crash and must not trigger
+                // a respawn.
+                stopHealthCheck();
             }
         }, safeInterval, safeInterval, TimeUnit.MILLISECONDS);
     }

@@ -71,8 +71,6 @@ public class WorkflowStorage extends BaseRedisStorage {
                 pipeline.set(dumpTypeKey, stateBlob.type(), ttlSeconds);
                 pipeline.set(blobKey, stateBlob.data(), ttlSeconds);
                 hasOperations = true;
-            } else {
-                log.warn("Failed to serialize workflow state for workflow {}, session {}", workflowId, sessionId);
             }
 
             if (baseSession.state() instanceof WorkflowCommitState workflowState) {

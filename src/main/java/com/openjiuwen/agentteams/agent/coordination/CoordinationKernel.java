@@ -224,28 +224,6 @@ public class CoordinationKernel {
         eventBus.resumePolls();
     }
 
-    /**
-     * Return the event bus instance.
-     *
-     * @return the EventBus used by this kernel
-     */
-    public EventBus getEventBus() {
-        return eventBus;
-    }
-
-    /**
-     * Rearm the team-completion rising-edge guard so the next completion
-     * re-emits. Called on every start (cold start / resume / recover) so
-     * each run cycle evaluates team completion independently.
-     */
-    public void rearmCompletion() {
-        for (BaseCoordinationHandler h : handlers) {
-            if (h instanceof TeamCompletionHandler tch) {
-                tch.rearm();
-            }
-        }
-    }
-
     private static boolean isHumanAgentAllowedTransportEvent(String type) {
         return TeamEvent.CLEANED.equals(type)
                 || TeamEvent.MEMBER_SHUTDOWN.equals(type)

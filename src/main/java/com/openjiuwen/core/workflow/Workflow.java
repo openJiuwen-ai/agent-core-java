@@ -39,22 +39,28 @@ import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.internal.LegacyWorkflowComponentSupport;
 
-import java.util.ArrayList;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -67,8 +73,10 @@ import java.util.function.Function;
  */
 public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
+    private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;
@@ -77,7 +85,7 @@ public class Workflow {
 
     /**
      * Workflow.
-     * 
+     *
      * @param card card
      * @since 0.1.7
      */
@@ -681,7 +689,10 @@ public class Workflow {
                     }
                     List<Object> outputChunks = collectOutputChunks(workflowSession);
                     if (isInterrupted(executionResult, outputChunks)) {
-                        return new WorkflowOutput(resolveInterruptedOutputChunks(executionResult, outputChunks),
+                        List<Object> interruptedChunks = new ArrayList<>(
+                                resolveInterruptedOutputChunks(executionResult, outputChunks));
+                        appendPartialWorkflowFinal(workflowSession, interruptedChunks);
+                        return new WorkflowOutput(interruptedChunks,
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result = isStreaming
@@ -778,9 +789,16 @@ public class Workflow {
         AsyncStreamQueue streamQueue = workflowSession.streamWriterManager() != null
                 ? workflowSession.streamWriterManager().getStreamEmitter().getStreamQueue()
                 : null;
+        WorkflowExecutionControl executionControl = new WorkflowExecutionControl();
 
-        CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
+        Future<?> executionFuture = STREAM_EXECUTOR.submit(() -> {
+            if (!executionControl.tryStart()) {
+                return;
+            }
             try {
+                if (terminated.get()) {
+                    return;
+                }
                 traceWorkflowStart(workflowSession, validatedInputs);
                 Object graphResult = executeCompiledGraph(validatedInputs, workflowSession, context, null);
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
@@ -794,9 +812,11 @@ public class Workflow {
                     closeStreamEmitter(workflowSession);
                     resetGraphExecutionState();
                     workflowSession.close();
+                    executionControl.complete();
                 }
             }
-        }, STREAM_EXECUTOR);
+        });
+        executionControl.attach(executionFuture);
 
         return new Iterator<>() {
             private boolean finalChunkEmitted = false;
@@ -917,7 +937,7 @@ public class Workflow {
                         && baseError.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
                     executionTimedOut.set(true);
                 }
-                executionFuture.cancel(true);
+                executionControl.cancelAndAwait();
                 closeStreamEmitter(workflowSession);
                 workflowSession.close();
             }
@@ -935,6 +955,7 @@ public class Workflow {
                     }
                     throw wrapWorkflowException(new Exception(e));
                 } catch (InterruptedException e) {
+                    terminateStream(wrapWorkflowException(e));
                     Thread.currentThread().interrupt();
                     throw wrapWorkflowException(e);
                 } catch (ExecutionException e) {
@@ -958,6 +979,73 @@ public class Workflow {
                 streamQueue.close();
             }
         };
+    }
+
+    /**
+     * Tracks the thread and actual completion of an asynchronous workflow execution.
+     *
+     * @since 0.1.7
+     */
+    private static final class WorkflowExecutionControl {
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final ReentrantLock lifecycleLock = new ReentrantLock();
+
+        private Future<?> execution;
+        private boolean hasStarted;
+        private boolean isCancellationRequested;
+
+        private void attach(Future<?> workflowExecution) {
+            lifecycleLock.lock();
+            try {
+                execution = workflowExecution;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private boolean tryStart() {
+            lifecycleLock.lock();
+            try {
+                if (isCancellationRequested) {
+                    return false;
+                }
+                hasStarted = true;
+                return true;
+            } finally {
+                lifecycleLock.unlock();
+            }
+        }
+
+        private void complete() {
+            completion.complete(null);
+        }
+
+        private void cancelAndAwait() {
+            lifecycleLock.lock();
+            try {
+                isCancellationRequested = true;
+                cancelExecutionIfRequested();
+            } finally {
+                lifecycleLock.unlock();
+            }
+
+            try {
+                completion.orTimeout(CANCEL_GRACE_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
+            } catch (CompletionException exception) {
+                if (exception.getCause() instanceof TimeoutException) {
+                    Loggers.WORKFLOW.warning("Timed out waiting for cancelled workflow to stop");
+                } else {
+                    Loggers.WORKFLOW.warning("Cancelled workflow finished with cleanup error", exception);
+                }
+            }
+        }
+
+        private void cancelExecutionIfRequested() {
+            if (isCancellationRequested && execution != null && execution.cancel(true) && !hasStarted) {
+                completion.complete(null);
+            }
+        }
     }
 
     /**
@@ -1103,7 +1191,15 @@ public class Workflow {
             Object graphResult = executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, config);
             finishStreamActorsAfterGraph(subSession, graphResult);
             if (isStreaming) {
-                return drainSubWorkflowStream(subSession);
+                List<Object> messages = drainSubWorkflowStream(subSession);
+                // Mirrors Python _sub_invoke: return dict(stream=messages) and let the
+                // parent vertex _post_invoke -> set_outputs deep-merge into io_state
+                // via the nested "sub_flow.<node>" keys. Avoid direct replacement of
+                // io_state[subNodeId] so the sub-workflow node outputs accumulated by
+                // deep-merge (start/custom1/...) are preserved alongside "stream".
+                return messages != null && !messages.isEmpty()
+                        ? new LinkedHashMap<>(Map.of("stream", messages))
+                        : new LinkedHashMap<>(Map.of("stream", List.of()));
             }
             NodeSession nodeSession = new NodeSession(subSession, endCompId);
             if (nodeSession.state() instanceof WorkflowStateCollection) {
@@ -1145,9 +1241,11 @@ public class Workflow {
     public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context,
             Object config) {
         Object results = invokeSubWorkflow(inputs, session, context, config);
-        if (results instanceof List<?> list) {
-            List<WorkflowChunk> chunks = (List<WorkflowChunk>) (List<?>) list;
-            return chunks.iterator();
+        if (results instanceof Map<?, ?> map) {
+            Object streamObj = map.get("stream");
+            if (streamObj instanceof List<?> list) {
+                return ((List<WorkflowChunk>) (List<?>) list).iterator();
+            }
         }
         return Collections.emptyIterator();
     }
@@ -1235,10 +1333,14 @@ public class Workflow {
             workflowSession.setStreamWriterManager(new StreamWriterManager(new StreamEmitter(), streamModes));
         }
         workflowSession.setActorManager(buildActorManager(workflowSession, false));
-        if (workflowSession.tracer() == null && (streamModes == null || streamModes.contains(StreamMode.TRACE))) {
+        if (workflowSession.tracer() == null && (streamModes == null
+                || streamModes.contains(StreamMode.TRACE))) {
             Tracer tracer = new Tracer();
             tracer.init(workflowSession.streamWriterManager(), workflowSession.callbackManager());
             workflowSession.setTracer(tracer);
+        }
+        if (workflowSession.tracer() instanceof Tracer existingTracer) {
+            existingTracer.updateStreamWriterManager(workflowSession.streamWriterManager());
         }
         return workflowSession;
     }
@@ -1269,12 +1371,13 @@ public class Workflow {
      * buildActorManager.
      * 
      * @param session session
-     * @param subGraph subGraph
+     * @param isSubGraph subGraph
      * @return the result
      * @since 0.1.7
      */
-    private ActorManager buildActorManager(BaseSession session, boolean subGraph) {
-        return new ActorManager(internal.getConfig().getSpec().getStreamEdges(), internal.getStreamActor(), subGraph,
+    private ActorManager buildActorManager(BaseSession session, boolean isSubGraph) {
+        return new ActorManager(internal.getConfig().getSpec().getStreamEdges(),
+                internal.getConfig().getSpec().getStreamSourceGroups(), internal.getStreamActor(), isSubGraph,
                 session, compId -> {
                     if (internal.getConfig().getSpec().getCompConfigs().containsKey(compId)) {
                         List<ComponentAbility> abilities =
@@ -1342,14 +1445,115 @@ public class Workflow {
         if (subSession.actorManager() == null || subSession.actorManager().subWorkflowStream() == null) {
             return messages;
         }
-        while (true) {
-            Object frame = subSession.actorManager().subWorkflowStream().poll();
-            if (frame == null || StreamEmitter.END_FRAME.equals(frame)) {
+        // Count stream abilities (STREAM + TRANSFORM) on the End component,
+        // mirroring Python _sub_invoke / _sub_stream which expects one END_FRAME per stream ability.
+        int streamAbilityCount = countEndStreamAbilities();
+        if (streamAbilityCount == 0) {
+            streamAbilityCount = 1;
+        }
+
+        // Mirrors Python _sub_invoke: await sub_workflow_stream().receive(WORKFLOW_EXECUTE_TIMEOUT)
+        // — block on the queue with timeout so sub End STREAM frames produced after
+        // executeCompiledGraph returns (but before END_FRAME) are not lost to a non-blocking poll.
+        long timeoutMillis = resolveSubWorkflowTimeoutMillis(subSession);
+        long deadlineMs = timeoutMillis > 0 ? System.currentTimeMillis() + timeoutMillis : 0L;
+        while (streamAbilityCount > 0) {
+            Object frame;
+            try {
+                if (timeoutMillis > 0) {
+                    long remaining = deadlineMs - System.currentTimeMillis();
+                    if (remaining <= 0) {
+                        break;
+                    }
+                    frame = subSession.actorManager().subWorkflowStream().poll(remaining, TimeUnit.MILLISECONDS);
+                } else {
+                    frame = subSession.actorManager().subWorkflowStream().take();
+                }
+            } catch (InterruptedException ie) {
+                // do not self-interrupt (G.CON.10); abandon sub-workflow stream drain
                 break;
+            }
+            if (frame == null) {
+                continue;
+            }
+            if (StreamEmitter.END_FRAME.equals(frame)) {
+                streamAbilityCount--;
+                continue;
             }
             messages.add(frame);
         }
         return messages;
+    }
+
+    /**
+     * Resolve WORKFLOW_EXECUTE_TIMEOUT millis from a SubWorkflowSession without
+     * requiring a WorkflowSession reference (SubWorkflowSession extends NodeSession).
+     * Mirrors Python {@code session.get_env(WORKFLOW_EXECUTE_TIMEOUT)}.
+     *
+     * @param subSession subSession
+     * @return the result
+     * @since 0.1.7
+     */
+    private long resolveSubWorkflowTimeoutMillis(SubWorkflowSession subSession) {
+        if (subSession == null || subSession.config() == null) {
+            return -1L;
+        }
+        Object raw = subSession.config().getEnv(SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
+        if (raw == null) {
+            // Fallback to builtin default 60s mirroring Config builtinConfigs.
+            return 60_000L;
+        }
+        Optional<BigDecimal> seconds = toSeconds(raw);
+        if (seconds.isEmpty()) {
+            return 60_000L;
+        }
+        BigDecimal value = seconds.get();
+        return value.signum() >= 0
+                ? value.multiply(MILLIS_PER_SECOND).setScale(0, RoundingMode.HALF_UP).longValue()
+                : -1L;
+    }
+
+    /**
+     * toSeconds.
+     *
+     * @param raw raw
+     * @return the result, or {@link Optional#empty()} if not a number
+     */
+    private static Optional<BigDecimal> toSeconds(Object raw) {
+        if (raw instanceof Number n) {
+            return Optional.of(BigDecimal.valueOf(n.doubleValue()));
+        }
+        try {
+            return Optional.of(new BigDecimal(raw.toString()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Count STREAM + TRANSFORM abilities on the End component, mirroring
+     * Python {@code _sub_invoke} / {@code _sub_stream} which expects one
+     * END_FRAME per stream ability.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    private int countEndStreamAbilities() {
+        if (!internal.getConfig().getSpec().getCompConfigs().containsKey(endCompId)) {
+            return 0;
+        }
+        List<ComponentAbility> abilities =
+            internal.getConfig().getSpec().getCompConfigs().get(endCompId).getAbilities();
+        if (abilities == null) {
+            return 0;
+        }
+        int count = 0;
+        for (ComponentAbility ability : abilities) {
+            if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -1568,6 +1772,30 @@ public class Workflow {
             }
         }
         return outputChunks;
+    }
+
+    /**
+     * Append the partial End output produced before another branch interrupted.
+     *
+     * @param workflowSession workflowSession
+     * @param outputChunks outputChunks
+     * @since 0.1.7
+     */
+    private void appendPartialWorkflowFinal(WorkflowSession workflowSession, List<Object> outputChunks) {
+        if (!(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
+            return;
+        }
+        Object partialOutput = stateCollection.getOutputs(endCompId);
+        if (partialOutput == null) {
+            return;
+        }
+        for (Object chunk : outputChunks) {
+            if (chunk instanceof OutputSchema outputSchema
+                    && "workflow_final".equals(outputSchema.getType())) {
+                return;
+            }
+        }
+        outputChunks.add(new OutputSchema("workflow_final", 0, partialOutput));
     }
 
     /**

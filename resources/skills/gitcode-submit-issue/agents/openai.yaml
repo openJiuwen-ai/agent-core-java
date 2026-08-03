@@ -1,0 +1,6 @@
+interface:
+  display_name: "GitCode Compliant Issue Submission"
+  short_description: "Draft, validate, and submit Evolver-ready bug Issues"
+  default_prompt: "Use $gitcode-submit-issue to draft and validate an Evolver-ready GitCode bug Issue, then submit it only after I approve."
+policy:
+  allow_implicit_invocation: false

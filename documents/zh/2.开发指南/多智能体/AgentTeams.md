@@ -127,8 +127,7 @@ LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder()
         .leaderDisplayName("投资组长")
         .leaderPersona("资深的投资分析专家，擅长拆解复杂问题并指派合适成员")
         .language("cn")
-        .build()
-        .build(); // 第一个 build() 组装 spec，第二个 build() 创建 TeamAgent
+        .build(); // 组装 spec；首次运行时惰性创建 TeamAgent
 
 // 触发一次任务分发
 Map<String, Object> result = team.dispatchTask("分析 600519 的最新财报");
@@ -152,7 +151,6 @@ LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder()
                 .description("技术面分析师")
                 .modelName("technical_model")
                 .build())
-        .build()
         .build();
 ```
 
@@ -181,7 +179,7 @@ LeaderTeammateAgentTeam team = LeaderTeammateAgentTeam.builder()
 
 几个需要显式记住的细节：
 
-- `LeaderTeammateAgentTeam.Builder` 的第一个 `build()` 只生成 `TeamAgentSpec`；必须再调用 `LeaderTeammateAgentTeam.build()` 才会真正通过 `TeamFactory.createAgentTeam(...)` 创建 `TeamAgent`。两次 `build()` 的语义不同，缺一不可。
+- `LeaderTeammateAgentTeam.Builder.build()` 生成持有 `TeamAgentSpec` 的 façade。首次调用 `stream`、`dispatchTask`、`interact` 等运行方法时，会惰性创建并复用 `TeamAgent`；也可以提前调用 `LeaderTeammateAgentTeam.build()` 完成创建。
 - 如果没有显式声明 leader，`TeamAgentSpec.ensureLeader()` 会自动追加一个名为 `team_leader` 的默认 leader。
 - `spawnMode=inprocess` 时 `transport` 默认为 `inprocess`，成员共享同一个 JVM；`process` 模式下成员以独立进程运行，需要配 `pyzmq` 传输。
 - `TeamRail` 会在 leader 的 prompt 里注入团队角色、工作流程、生命周期、人设、团队信息、成员关系等 prompt 段；当 `teamMode=predefined` 时，会从团队工具里排除 `spawn_member`。
@@ -199,11 +197,42 @@ Map<String, Object> result = team.dispatchTask("汇总本周投资观点");
 如果需要流式输出（典型场景：leader 自己 ReAct 一轮）：
 
 ```java
-Iterator<Object> chunks = team.agent().stream(Map.of("query", query), sessionApi);
+Iterator<Object> chunks = team.stream(Map.of("query", query), sessionApi);
 while (chunks.hasNext()) {
     Object chunk = chunks.next();
     // 处理流式片段
 }
+```
+
+如果希望由 `Runner` 统一管理流结束后的团队生命周期，可使用 Agent Team 专用入口：
+
+```java
+import com.openjiuwen.core.runner.Runner;
+
+Iterator<Object> chunks = Runner.runAgentTeamStreaming(
+        team,
+        Map.of("query", "分析 600519 的最新财报"),
+        "investment-session");
+while (chunks.hasNext()) {
+    Object chunk = chunks.next();
+    // 处理流式片段
+}
+```
+
+首次运行可以传 `TeamAgentSpec`、`LeaderTeammateAgentTeam` 或 `TeamAgent`。流正常结束、异常或显式关闭后，
+`temporary` 团队会停止并从 Runner 中移除；`persistent` 团队会暂停并保留注册信息，之后可以在同一
+session 中按名称恢复：
+
+```java
+Iterator<Object> continued = Runner.runAgentTeamStreaming(
+        "investment_analysis",
+        Map.of("query", "继续分析现金流"),
+        "investment-session");
+continued.forEachRemaining(chunk -> {
+    // 处理恢复后的流式片段
+});
+
+Runner.destroyAgentTeam("investment_analysis", true);
 ```
 
 ### 方式 2：与用户持续交互

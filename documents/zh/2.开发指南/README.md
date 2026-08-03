@@ -1,4 +1,4 @@
-# 开发指南
+﻿# 开发指南
 
 本章节汇总 openJiuwen Java 版本的叙事式开发指南与按源码包结构组织的 API 文档，方便先按主题理解能力，再按包结构下钻到模块 README、子包页和类型页。
 
@@ -14,7 +14,7 @@
 
 | 栏目 | 适合什么问题 | 主要依据 |
 | --- | --- | --- |
-| [基础功能](基础功能/README.md) | 如何接入模型、组织提示词模板、注册工具 | `foundation` API、`examples/reac_agent` |
+| [基础功能](基础功能/README.md) | 如何接入模型、组织提示词模板、注册工具 | `foundation` API、`examples/react_agent` |
 | [多智能体](多智能体/README.md) | 如何理解 Java 侧 group、多 agent 协作与能力暴露 | `multiagent` API、`examples/groups` |
 | [工作流](工作流/README.md) | 如何搭建工作流、理解组件与执行路径 | `workflow` API、`examples/workflow_agent` |
 | [高阶用法](高阶用法/README.md) | 如何使用检索、记忆、上下文、Session、skills、runner 等高级能力 | `retrieval`、`memory`、`context`、`session`、`runner`、`singleagent`、`sysop` |

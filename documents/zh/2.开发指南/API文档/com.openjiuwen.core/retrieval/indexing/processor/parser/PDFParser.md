@@ -8,6 +8,8 @@ public class PDFParser extends Parser
 
 `PDFParser` 使用 PDFBox 提取 PDF 文本，并在提供 `BaseModelClient` 时，为嵌入图片追加 caption 文本。
 
+无参构造方法只允许读取当前工作目录内的 PDF；也可以使用 `PDFParser(Path allowedDocDir)` 显式指定受信文档目录。加载前会解析真实路径并拒绝目录穿越和指向目录外的符号链接。
+
 ## 公开方法
 
 - `parse(...)`：解析失败或内容为空时返回空列表。

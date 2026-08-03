@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ public class ImageCaptioner {
     private static final String SAVED_IMAGES_ENV = "OPENJIUWEN_SAVED_IMAGES_DIR";
 
     private final BaseModelClient llmClient;
+    private final Path allowedBaseDir;
 
     /**
      * ImageCaptioner.
@@ -48,7 +50,22 @@ public class ImageCaptioner {
      * @since 0.1.7
      */
     public ImageCaptioner(BaseModelClient llmClient) {
+        this(llmClient, Path.of(""));
+    }
+
+    /**
+     * ImageCaptioner with an explicit trusted image-cache root.
+     *
+     * @param llmClient llmClient
+     * @param allowedBaseDir trusted base directory for copied images
+     * @since 0.1.13
+     */
+    public ImageCaptioner(BaseModelClient llmClient, Path allowedBaseDir) {
+        if (allowedBaseDir == null) {
+            throw new IllegalArgumentException("Allowed image base directory must not be null.");
+        }
         this.llmClient = llmClient;
+        this.allowedBaseDir = allowedBaseDir.toAbsolutePath().normalize();
     }
 
     /**
@@ -63,7 +80,7 @@ public class ImageCaptioner {
         if (targetDir == null || targetDir.isBlank()) {
             targetDir = SAVED_IMAGE_DIR;
         }
-        return cpImage(imageLoc, targetDir);
+        return cpImage(imageLoc, targetDir, allowedBaseDir);
     }
 
     /**
@@ -75,22 +92,80 @@ public class ImageCaptioner {
      * @since 0.1.7
      */
     public static String cpImage(String imageLoc, String targetDir) {
-        Path source = Path.of(imageLoc);
-        if (!Files.exists(source)) {
-            throw new IllegalArgumentException("Image not found at: " + imageLoc);
-        }
+        return cpImage(imageLoc, targetDir, Path.of(""));
+    }
+
+    /**
+     * Copy an image only to a directory within a trusted base directory.
+     *
+     * @param imageLoc source image path
+     * @param targetDir target directory, absolute or relative to allowedBaseDir
+     * @param allowedBaseDir trusted target-directory root
+     * @return copied image path
+     * @since 0.1.13
+     */
+    public static String cpImage(String imageLoc, String targetDir, Path allowedBaseDir) {
         try {
-            Path directory = Path.of(targetDir);
-            Files.createDirectories(directory);
-            Path destination = directory.resolve(source.getFileName().toString());
-            if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
+            Path source = resolveSafeSourcePath(imageLoc);
+            Path directory = resolveSafeTargetDirectory(targetDir, allowedBaseDir);
+            Path destination = directory.resolve(source.getFileName()).normalize();
+            if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+                Path realDestination = destination.toRealPath();
+                if (!realDestination.startsWith(allowedBaseDir.toRealPath())) {
+                    throw new SecurityException("Image destination is outside the allowed base directory.");
+                }
+                destination = realDestination;
+            }
+            if (!source.equals(destination)) {
                 Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.COPY_ATTRIBUTES);
             }
             return destination.toString();
         } catch (IOException ex) {
-            return source.toString();
+            throw new IllegalArgumentException("Unable to copy image from: " + imageLoc, ex);
         }
+    }
+
+    static Path resolveSafeSourcePath(String imageLoc) throws IOException {
+        if (imageLoc == null || imageLoc.isBlank()) {
+            throw new IllegalArgumentException("Image path must not be blank.");
+        }
+        Path source = Path.of(imageLoc).toRealPath();
+        if (!Files.isRegularFile(source)) {
+            throw new IllegalArgumentException("Image path is not a regular file: " + imageLoc);
+        }
+        return source;
+    }
+
+    static Path resolveSafeTargetDirectory(String targetDir, Path allowedBaseDir) throws IOException {
+        if (targetDir == null || targetDir.isBlank() || allowedBaseDir == null) {
+            throw new IllegalArgumentException("Target directory and allowed base directory must not be blank.");
+        }
+        Files.createDirectories(allowedBaseDir);
+        Path normalizedBaseDir = allowedBaseDir.toAbsolutePath().normalize();
+        Path requestedDirectory = Path.of(targetDir);
+        Path targetDirectory = requestedDirectory.isAbsolute()
+                ? requestedDirectory.toAbsolutePath().normalize()
+                : normalizedBaseDir.resolve(requestedDirectory).normalize();
+        if (!targetDirectory.startsWith(normalizedBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+
+        Path existingAncestor = targetDirectory;
+        while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            existingAncestor = existingAncestor.getParent();
+        }
+        Path realBaseDir = normalizedBaseDir.toRealPath();
+        if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+
+        Files.createDirectories(targetDirectory);
+        Path realTargetDirectory = targetDirectory.toRealPath();
+        if (!realTargetDirectory.startsWith(realBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+        return realTargetDirectory;
     }
 
     /**
@@ -106,11 +181,11 @@ public class ImageCaptioner {
             return captions;
         }
         for (String imageLoc : imageLocs) {
-            if (imageLoc == null || !Files.exists(Path.of(imageLoc))) {
+            try {
+                captions.add(llmCall(resolveSafeSourcePath(imageLoc)));
+            } catch (IOException | IllegalArgumentException ex) {
                 captions.add("");
-                continue;
             }
-            captions.add(llmCall(imageLoc));
         }
         return captions;
     }
@@ -123,12 +198,20 @@ public class ImageCaptioner {
      * @since 0.1.7
      */
     protected String llmCall(String imageLoc) {
+        try {
+            return llmCall(resolveSafeSourcePath(imageLoc));
+        } catch (IOException | IllegalArgumentException ex) {
+            return "";
+        }
+    }
+
+    private String llmCall(Path imagePath) {
         if (llmClient == null) {
             return "";
         }
         try {
-            String mimeType = probeMimeType(Path.of(imageLoc));
-            String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(Path.of(imageLoc)));
+            String mimeType = probeMimeType(imagePath);
+            String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(imagePath));
             String imageUrl = "data:" + mimeType + ";base64," + base64;
 
             List<Map<String, Object>> content = new ArrayList<>();

@@ -226,6 +226,31 @@ class WorktreeCompatibilityTest {
     }
 
     @Test
+    void remoteHandlerShouldRejectExistsPathsOutsideAllowedRoot() throws Exception {
+        Path allowedRoot = Files.createDirectories(tempDir.resolve("allowed-worktrees"));
+        Path safeWorktree = Files.createDirectories(allowedRoot.resolve("safe"));
+        Path outsideWorktree = Files.createDirectories(tempDir.resolve("outside-worktree"));
+        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().baseDir(allowedRoot.toString()).build());
+        WorktreeRemoteHandler handler = new WorktreeRemoteHandler(manager, allowedRoot);
+
+        WorktreeRemoteResponse safe = handler.handle(
+                WorktreeRemoteRequest.builder().action("exists").worktreePath(safeWorktree.toString()).build());
+        WorktreeRemoteResponse traversal = handler.handle(
+                WorktreeRemoteRequest.builder().action("exists").worktreePath("../outside-worktree").build());
+        WorktreeRemoteResponse absoluteOutside = handler.handle(
+                WorktreeRemoteRequest.builder().action("exists").worktreePath(outsideWorktree.toString()).build());
+
+        assertThat(safe.isExists()).isTrue();
+        assertThat(traversal.isSuccess()).isFalse();
+        assertThat(absoluteOutside.isSuccess()).isFalse();
+
+        Files.createSymbolicLink(allowedRoot.resolve("linked"), outsideWorktree);
+        WorktreeRemoteResponse linked = handler.handle(
+                WorktreeRemoteRequest.builder().action("exists").worktreePath("linked").build());
+        assertThat(linked.isSuccess()).isFalse();
+    }
+
+    @Test
     void ephemeralSlugShouldMatchPythonCleanupPatterns() {
         assertThat(WorktreeManager.isEphemeralSlug("teammate-a1b2c3d4")).isTrue();
         assertThat(WorktreeManager.isEphemeralSlug("agent-1234567")).isTrue();

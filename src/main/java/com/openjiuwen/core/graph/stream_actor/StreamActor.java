@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -48,6 +49,7 @@ public class StreamActor {
     private CompletableFuture<Void> taskError;
     private final StreamConsumer vertex;
     private final String nodeId;
+    private boolean hasSeededCompletedSources;
 
     /**
      * ArrayList<>.
@@ -58,20 +60,20 @@ public class StreamActor {
 
     /**
      * StreamActor.
-     * 
+     *
      * @param nodeId nodeId
      * @param vertex vertex
      * @param abilities abilities
-     * @param sources sources
+     * @param sourceGroups source groups (CNF OR-groups) consumed by this vertex
      * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
      * @since 0.1.7
      */
-    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities, List<String> sources,
-            long streamGeneratorTimeoutSeconds) {
+    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities,
+            List<Set<String>> sourceGroups, long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
         this.vertex = vertex;
         for (ComponentAbility ability : abilities) {
-            processors.put(ability, new StreamProcessor(nodeId, sources, streamGeneratorTimeoutSeconds));
+            processors.put(ability, new StreamProcessor(nodeId, sourceGroups, streamGeneratorTimeoutSeconds));
         }
     }
 
@@ -152,6 +154,22 @@ public class StreamActor {
         for (StreamProcessor processor : processors.values()) {
             processor.receive(payload);
         }
+    }
+
+    /**
+     * Seed source completions restored from a previous interrupted invocation.
+     *
+     * @param completedSources completed producer-ability keys
+     * @since 0.1.7
+     */
+    public synchronized void seedCompletedSources(Set<String> completedSources) {
+        if (hasSeededCompletedSources || completedSources == null || completedSources.isEmpty()) {
+            return;
+        }
+        for (StreamProcessor processor : processors.values()) {
+            processor.seedCompletedSources(completedSources);
+        }
+        hasSeededCompletedSources = true;
     }
 
     /**

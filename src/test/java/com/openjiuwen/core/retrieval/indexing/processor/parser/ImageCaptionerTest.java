@@ -5,6 +5,7 @@
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.retrieval.TestModelClient;
@@ -26,10 +27,46 @@ class ImageCaptionerTest {
         Path image = tempDir.resolve("sample.png");
         Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
 
-        String copied = ImageCaptioner.cpImage(image.toString(), tempDir.resolve("images").toString());
+        String copied = ImageCaptioner.cpImage(image.toString(), "images", tempDir);
 
         assertTrue(Files.exists(Path.of(copied)));
         assertEquals(Files.readAllBytes(image).length, Files.readAllBytes(Path.of(copied)).length);
+    }
+
+    @Test
+    void cpImageRejectsTargetsOutsideAllowedBaseDirectory() throws IOException {
+        Path image = tempDir.resolve("sample.png");
+        Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G'});
+        Path allowedBaseDir = Files.createDirectories(tempDir.resolve("allowed"));
+        Path outsideDir = Files.createDirectories(tempDir.resolve("outside"));
+
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), "../outside", allowedBaseDir));
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), outsideDir.toString(), allowedBaseDir));
+
+        Files.createSymbolicLink(allowedBaseDir.resolve("linked"), outsideDir);
+        assertThrows(SecurityException.class,
+                () -> ImageCaptioner.cpImage(image.toString(), "linked", allowedBaseDir));
+    }
+
+    @Test
+    void cpImageRejectsInvalidSourcePath() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.cpImage(tempDir.resolve("missing.png").toString(), "images", tempDir));
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.cpImage(tempDir.toString(), "images", tempDir));
+    }
+
+    @Test
+    void sourceResolverRequiresARealRegularFile() throws Exception {
+        Path image = tempDir.resolve("source.png");
+        Files.write(image, new byte[] {1, 2, 3});
+
+        assertEquals(image.toRealPath(), ImageCaptioner.resolveSafeSourcePath(image.toString()));
+        assertThrows(IllegalArgumentException.class, () -> ImageCaptioner.resolveSafeSourcePath(" "));
+        assertThrows(IllegalArgumentException.class,
+                () -> ImageCaptioner.resolveSafeSourcePath(tempDir.toString()));
     }
 
     @Test

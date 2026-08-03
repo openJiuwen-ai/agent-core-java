@@ -1,0 +1,46 @@
+[Unit]
+Description=GitCode Issue Evolver
+Documentation=file:/opt/gitcode-issue-evolver/repo/examples/gitcode_issue_evolver/deploy/README-linux.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=gitcode-evolver
+Group=gitcode-evolver
+WorkingDirectory=/opt/gitcode-issue-evolver/repo
+
+Environment=LOG_HOME=/var/log/gitcode-issue-evolver
+Environment=GIT_TERMINAL_PROMPT=0
+
+ExecStartPre=/usr/bin/bash /opt/gitcode-issue-evolver/repo/examples/gitcode_issue_evolver/scripts/run-service.sh --config /etc/gitcode-issue-evolver/evolver-config.json --secrets /etc/gitcode-issue-evolver/evolver-secrets.json --llm-config /etc/gitcode-issue-evolver/apiconfig.json --check
+ExecStart=/usr/bin/bash /opt/gitcode-issue-evolver/repo/examples/gitcode_issue_evolver/scripts/run-service.sh --config /etc/gitcode-issue-evolver/evolver-config.json --secrets /etc/gitcode-issue-evolver/evolver-secrets.json --llm-config /etc/gitcode-issue-evolver/apiconfig.json
+
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30s
+UMask=0077
+
+StateDirectory=gitcode-issue-evolver
+StateDirectoryMode=0700
+LogsDirectory=gitcode-issue-evolver
+LogsDirectoryMode=0700
+ConfigurationDirectory=gitcode-issue-evolver
+ConfigurationDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/gitcode-issue-evolver/repo
+ReadWritePaths=/var/lib/gitcode-issue-evolver
+ReadWritePaths=/var/log/gitcode-issue-evolver
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 
 /**
  * Tests for {@link CompiledGraph}.
@@ -64,6 +65,22 @@ class CompiledGraphTest {
         assertSame(inputs, checkpointer.preWorkflowInputs);
         assertInstanceOf(IllegalStateException.class, checkpointer.postException);
         assertNull(session.state().getGlobal("resume"));
+    }
+
+    @Test
+    @DisplayName("cancelled execution clears workflow checkpoints")
+    void testCancelledExecutionClearsWorkflowCheckpoints() {
+        RecordingPregel pregel = new RecordingPregel(null, new CancellationException("cancelled"));
+        RecordingCheckpointer checkpointer = new RecordingCheckpointer(false);
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
+
+        assertThrows(CancellationException.class,
+                () -> graph.invoke(Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")), session));
+
+        assertEquals(List.of("pre", "post"), checkpointer.calls);
+        assertEquals(Map.of(), checkpointer.postResult);
+        assertNull(checkpointer.postException);
     }
 
     private static final class RecordingPregel extends Pregel {

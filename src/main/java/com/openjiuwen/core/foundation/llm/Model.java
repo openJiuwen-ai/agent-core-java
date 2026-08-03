@@ -7,8 +7,8 @@ package com.openjiuwen.core.foundation.llm;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
-import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
+import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.concurrent.Callable;
 
 /**
  * Unified LLM invocation entry point.
@@ -115,6 +116,33 @@ public class Model {
         this.modelClientConfig = modelClientConfig;
         this.modelConfig = modelConfig;
         this.client = createModelClient(modelClientConfig);
+    }
+
+    /**
+     * Construct a Model wrapper that shares the source model client.
+     *
+     * @param source source model
+     * @since 0.1.13
+     */
+    protected Model(Model source) {
+        this.modelClientConfig = source.modelClientConfig;
+        this.modelConfig = source.modelConfig;
+        this.client = source.client;
+    }
+
+    /**
+     * Run a request with tracing scoped to this model client.
+     *
+     * @param callback request trace callback
+     * @param request model request
+     * @param <T> request result type
+     * @return model request result
+     * @throws Exception model request failure
+     * @since 0.1.13
+     */
+    protected final <T> T withRequestTraceCallback(BaseModelClient.ModelRequestTraceCallback callback,
+            Callable<T> request) throws Exception {
+        return client.withRequestTraceCallback(callback, request);
     }
 
     /**

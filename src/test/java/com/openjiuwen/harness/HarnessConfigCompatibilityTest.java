@@ -3,6 +3,9 @@ package com.openjiuwen.harness;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.harness_config.HarnessConfig;
@@ -31,6 +34,7 @@ import com.openjiuwen.harness.rails.VerificationRail;
 import com.openjiuwen.harness.tools.BashTool;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -40,6 +44,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 class HarnessConfigCompatibilityTest {
     @TempDir
@@ -80,8 +85,13 @@ class HarnessConfigCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void builderShouldCreateAgentAndWriteWorkspaceFiles() throws Exception {
         Path configPath = tempDir.resolve("agent.yaml");
+        // Use in-repo stdio MCP fixture; uvx is not guaranteed on CI/Windows.
+        String javaBinName = System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
+        String javaBin = Path.of(System.getProperty("java.home"), "bin", javaBinName).toString();
+        String classpath = System.getProperty("java.class.path");
         Files.writeString(configPath, """
                 schema_version: harness_config.v0.1
                 id: build-agent
@@ -145,45 +155,60 @@ class HarnessConfigCompatibilityTest {
                     mode: auto_list
                   mcps:
                     - type: stdio
-                      command: uvx
-                      args: [mcp-server]
+                      command: %s
+                      args:
+                        - "-cp"
+                        - %s
+                        - com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer
                       env:
                         MODE: demo
                 language: cn
                 max_iterations: 9
-                """);
+                """.formatted(yamlDoubleQuoted(javaBin), yamlDoubleQuoted(classpath)));
 
         DeepAgent agent = HarnessConfigBuilder.build(HarnessConfigLoader.load(configPath));
-        agent.ensureInitialized();
+        try {
+            agent.ensureInitialized();
 
-        assertThat(agent.getCard().getName()).isEqualTo("Build Agent");
-        assertThat(agent.getConfig().getMaxIterations()).isEqualTo(9);
-        assertThat(agent.getRegisteredTools().stream().map(tool -> tool.getClass().getSimpleName()).toList())
-                .contains("FilesystemTool", "BashTool");
-        assertThat(
-                agent.getRegisteredTools().stream().filter(com.openjiuwen.core.foundation.tool.Tool.class::isInstance)
-                        .map(tool -> ((com.openjiuwen.core.foundation.tool.Tool) tool).getCard().getName()).toList())
-                .contains("todo_create", "todo_list", "todo_get", "todo_modify", "list_skill", "skill_tool", "lsp",
-                        "list_mcp_resources", "read_mcp_resource", "search_tools", "load_tools", "memory_search",
-                        "read_memory", "write_memory", "edit_memory", "coding_memory_read", "coding_memory_write",
-                        "coding_memory_edit", "ltm_search", "ltm_search_summary");
-        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList()).contains(
-                "SecurityRail", "TaskPlanningRail", "HeartbeatRail", "LspRail", "McpRail", "ProgressiveToolRail",
-                "TaskCompletionRail", "ContextAssembleRail", "ContextProcessorRail", "MemoryRail", "CodingMemoryRail",
-                "ExternalMemoryRail", "VerificationContractRail", "VerificationRail", "SkillCreateRail",
-                "TeamSkillCreateRail", "TeamSkillRail");
-        assertThat(agent.getRegisteredMcps()).hasSize(1);
-        assertThat(agent.getConfig().getSkillDirectories()).hasSize(1);
-        assertThat(agent.getConfig().getSkillMode()).isEqualTo("auto_list");
-        ExternalMemoryRail externalMemory = findRail(agent.getRegisteredRails(), ExternalMemoryRail.class);
-        assertThat(externalMemory.toolNames()).containsExactly("ltm_search", "ltm_search_summary");
-        externalMemory
-                .beforeInvoke(com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder()
-                        .inputs(com.openjiuwen.core.singleagent.rail.InvokeInputs.builder().query("remember config")
-                                .conversationId("session-from-config").build())
-                        .extra(new java.util.LinkedHashMap<>()).build());
-        assertThat(externalMemory.isInitialized()).isTrue();
-        assertThat(Files.readString(tempDir.resolve("workspace/notes/RUNBOOK.md"))).isEqualTo("使用工作区");
+            assertThat(agent.getCard().getName()).isEqualTo("Build Agent");
+            assertThat(agent.getConfig().getMaxIterations()).isEqualTo(9);
+            assertThat(agent.getRegisteredTools().stream().map(tool -> tool.getClass().getSimpleName()).toList())
+                    .contains("FilesystemTool", "BashTool");
+            assertThat(agent.getRegisteredTools().stream()
+                    .filter(com.openjiuwen.core.foundation.tool.Tool.class::isInstance)
+                    .map(tool -> ((com.openjiuwen.core.foundation.tool.Tool) tool).getCard().getName()).toList())
+                            .contains("todo_create", "todo_list", "todo_get", "todo_modify", "list_skill", "skill_tool",
+                                    "lsp", "list_mcp_resources", "read_mcp_resource", "search_tools", "load_tools",
+                                    "memory_search", "read_memory", "write_memory", "edit_memory", "coding_memory_read",
+                                    "coding_memory_write", "coding_memory_edit", "ltm_search", "ltm_search_summary");
+            assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
+                    .contains("SecurityRail", "TaskPlanningRail", "HeartbeatRail", "LspRail", "McpRail",
+                            "ProgressiveToolRail", "TaskCompletionRail", "ContextAssembleRail", "ContextProcessorRail",
+                            "MemoryRail", "CodingMemoryRail", "ExternalMemoryRail", "VerificationContractRail",
+                            "VerificationRail", "SkillCreateRail", "TeamSkillCreateRail", "TeamSkillRail");
+            assertThat(agent.getRegisteredMcps()).hasSize(1);
+            McpServerConfig mcp = agent.getRegisteredMcps().get(0);
+            assertThat(mcp.getParams().get("command")).isEqualTo(javaBin);
+            assertThat(mcp.getParams().get("args")).isInstanceOf(List.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> env = (Map<String, Object>) mcp.getParams().get("env");
+            assertThat(env).containsEntry("MODE", "demo");
+            assertThat(agent.getConfig().getSkillDirectories()).hasSize(1);
+            assertThat(agent.getConfig().getSkillMode()).isEqualTo("auto_list");
+            ExternalMemoryRail externalMemory = findRail(agent.getRegisteredRails(), ExternalMemoryRail.class);
+            assertThat(externalMemory.toolNames()).containsExactly("ltm_search", "ltm_search_summary");
+            externalMemory.beforeInvoke(com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder()
+                    .inputs(com.openjiuwen.core.singleagent.rail.InvokeInputs.builder().query("remember config")
+                            .conversationId("session-from-config").build())
+                    .extra(new java.util.LinkedHashMap<>()).build());
+            assertThat(externalMemory.isInitialized()).isTrue();
+            assertThat(Files.readString(tempDir.resolve("workspace/notes/RUNBOOK.md"))).isEqualTo("使用工作区");
+        } finally {
+            for (McpServerConfig registered : agent.getRegisteredMcps()) {
+                Runner.resourceMgr().removeMcpServer(registered.getServerId(), null, null, TagMatchStrategy.ALL, true);
+            }
+            agent.close();
+        }
     }
 
     @Test
@@ -479,5 +504,9 @@ class HarnessConfigCompatibilityTest {
 
     private static <T> T findRail(List<Object> rails, Class<T> type) {
         return rails.stream().filter(type::isInstance).map(type::cast).findFirst().orElseThrow();
+    }
+
+    private static String yamlDoubleQuoted(String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 }

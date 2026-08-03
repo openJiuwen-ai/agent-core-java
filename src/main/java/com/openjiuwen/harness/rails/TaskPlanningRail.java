@@ -14,6 +14,8 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
@@ -856,13 +858,32 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * sessionId.
-     * 
+     * Resolve the session id for todo operations.
+     * <p>
+     * Priority:
+     * <ol>
+     *   <li>Session bound to the current thread via {@link SessionContextHolder} — set by
+     *       {@code LocalFunction.invokeFunction} before tool lambda runs, contains the real
+     *       conversation sessionId from the active agent execution.</li>
+     *   <li>Explicit {@code session_id} field in tool inputs — for callers that pass it manually.</li>
+     *   <li>{@code "default"} — last-resort fallback when neither is available (e.g. ad-hoc
+     *       tool invocation outside an agent run).</li>
+     * </ol>
+     * Resolving from the thread-bound session is critical: LLM tool calls do not pass
+     * {@code session_id} in arguments, so without this the todo would be stored under
+     * {@code {tenantId}:default:todo} while the task loop reads {@code {tenantId}:{conversationId}:todo},
+     * causing todo data to leak across sessions.
+     *
      * @param inputs inputs
-     * @return the result
+     * @return the resolved session id
      * @since 0.1.7
      */
     private static String sessionId(Map<String, Object> inputs) {
+        Session currentSession = SessionContextHolder.getCurrentSession();
+        if (currentSession != null && currentSession.getSessionId() != null
+                && !currentSession.getSessionId().isBlank()) {
+            return currentSession.getSessionId();
+        }
         Object value = inputs.get("session_id");
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : "default";
     }

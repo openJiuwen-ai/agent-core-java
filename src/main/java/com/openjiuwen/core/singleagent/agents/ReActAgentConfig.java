@@ -47,11 +47,6 @@ public class ReActAgentConfig {
     private String promptTemplateName = "";
 
     @Builder.Default
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private List<Map<String, String>> promptTemplate = new ArrayList<>();
 
     @Builder.Default
@@ -61,6 +56,9 @@ public class ReActAgentConfig {
 
     @Builder.Default
     private int maxIterations = 5;
+
+    @Builder.Default
+    private boolean shouldFailTaskOnToolError = false;
 
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfigObj;

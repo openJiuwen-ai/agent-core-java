@@ -274,21 +274,6 @@ public class InMemoryTeamDatabase {
             return "human_agent".equals(record.getRole());
         }
 
-        /**
-         * Snapshot of every human-agent member name in the team.
-         *
-         * <p>Mirrors Python {@code member_dao.list_human_agent_names}.</p>
-         *
-         * @param teamName team identifier
-         * @return list of human-agent member names, or empty list if none
-         */
-        public java.util.List<String> listHumanAgentNames(String teamName) {
-            return members.values().stream()
-                    .filter(m -> teamName.equals(m.getTeamName()))
-                    .filter(m -> m.getRole() != null && "human_agent".equals(m.getRole()))
-                    .map(MemberRecord::getMemberName)
-                    .collect(Collectors.toList());
-        }
     }
 
     /** Data access object for task records. */

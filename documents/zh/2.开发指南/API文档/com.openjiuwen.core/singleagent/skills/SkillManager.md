@@ -21,6 +21,7 @@ public class SkillManager
 | `public void setSysOperationId(String sysOperationId)` | 更新当前 `sysOperationId`。 |
 | `public String getSysOperationId()` | 返回当前 `sysOperationId`。 |
 | `public void register(String skillPath, String sessionId, boolean overwrite)` | 从字符串路径注册技能；空路径会直接返回，内部异常只记录告警。 |
+| `public void register(String skillPath, Path skillsRoot, String sessionId, boolean overwrite)` | 仅当 `skillPath.toRealPath()` 位于受信 `skillsRoot` 内时注册。 |
 | `public void register(String skillPath)` | 以默认 `sessionId = null`、`overwrite = false` 注册单个路径。 |
 | `public void register(Path skillPath, String sessionId, boolean overwrite)` | `Path` 版本的注册入口，最终会转为字符串路径处理。 |
 | `public void register(Path skillPath)` | `Path` 版本的简化重载。 |
@@ -40,5 +41,6 @@ public class SkillManager
 ## 说明
 
 - `registerRoot(...)` 会优先把传入路径本身当作技能文件解析；若解析失败且路径是目录，则扫描其直接子目录中的 `Skill.md` 或 `SKILL.md`。
+- 对配置或外部输入产生的路径应使用带 `skillsRoot` 的注册方法，阻止目录穿越和符号链接逃逸。
 - `loadDescription(...)` 只从 YAML front matter 的 `description:` 字段提取技能描述。
 - `SkillManagerTest` 验证了 `SKILL.md`/`Skill.md` 注册、重复注册保留原条目、注销和计数逻辑。

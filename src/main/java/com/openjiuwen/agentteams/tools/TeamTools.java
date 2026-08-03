@@ -629,6 +629,8 @@ public final class TeamTools {
             if (memberName.isBlank()) {
                 return error("'member_name' is required");
             }
+            Loggers.TOOL.info("SpawnMemberTool: enter member={} thread={}",
+                    memberName, Thread.currentThread().getName());
             String modelName = stringValue(safeInputs.get("model_name"), null);
             Allocation allocation = modelConfigAllocator.apply(modelName);
             boolean isSuccess = backend.spawnMember(TeamBackend.SpawnMemberParams.builder()
@@ -642,6 +644,8 @@ public final class TeamTools {
                     .prompt(stringValue(safeInputs.get("prompt"), null))
                     .allocation(allocation)
                     .build()).join();
+            Loggers.TOOL.info("SpawnMemberTool: exit member={} isSuccess={}",
+                    memberName, isSuccess);
             if (!isSuccess) {
                 return error("Failed to spawn member");
             }
@@ -682,6 +686,12 @@ public final class TeamTools {
         /**
          * Invokes the shutdown_member tool to shut down a team member.
          *
+         * <p>Guard: refuse to shut down a member that still has non-terminal tasks
+         * assigned, unless the caller passes {@code force=true}. Shutting down a
+         * member with in-flight tasks would orphan those tasks and stall the
+         * team DAG without an explicit recovery path. {@code force=true} keeps
+         * the existing escape hatch for legitimate administrative resets.</p>
+         *
          * @param inputs positional input map containing member_name and optional force flag
          * @param kwargs keyword input map
          * @return tool execution result with shutdown status
@@ -694,8 +704,33 @@ public final class TeamTools {
             if (memberName.isBlank()) {
                 return error("'member_name' is required");
             }
+            boolean isForceEnabled = booleanValue(safeInputs.get("force"), false);
+            // Guard: refuse to shutdown a member that still owns non-terminal
+            // tasks. Doing so would orphan claimed/in-flight tasks and stall
+            // the team DAG. force=true overrides for administrative resets.
+            if (!isForceEnabled) {
+                var ownedIncomplete = backend.getTaskManager().list().stream()
+                        .filter(t -> memberName.equals(t.getAssignee()))
+                        .filter(t -> {
+                            String status = t.getStatus();
+                            return status != null
+                                    && !"completed".equals(status)
+                                    && !"cancelled".equals(status);
+                        })
+                        .toList();
+                if (!ownedIncomplete.isEmpty()) {
+                    List<String> titles = ownedIncomplete.stream()
+                            .map(t -> "[" + t.getTaskId() + "] " + t.getTitle()
+                                    + " (" + t.getStatus() + ")")
+                            .toList();
+                    return error("Cannot shutdown member=" + memberName + " while "
+                            + ownedIncomplete.size() + " task(s) it owns are not terminal. "
+                            + "Complete, reassign, or cancel them first; or pass force=true "
+                            + "for an administrative reset. Tasks: " + titles);
+                }
+            }
             MemberOpResult result =
-                    backend.shutdownMember(memberName, booleanValue(safeInputs.get("force"), false)).join();
+                    backend.shutdownMember(memberName, isForceEnabled).join();
             if (!result.isOk()) {
                 return error(result.getReason());
             }
@@ -1371,10 +1406,15 @@ public final class TeamTools {
             // lazily starts UNSTARTED members before delivery. Message
             // delivery itself stays on the mailbox — no content is folded
             // into the spawn prompt.
+            Loggers.TOOL.info("send_message: before auto-start thread={} to={}",
+                    Thread.currentThread().getName(), to);
             List<String> started = backend.startupAllUnstarted();
             if (!started.isEmpty()) {
                 Loggers.TOOL.info("send_message auto-started {} unstarted member(s): {}",
                         started.size(), started);
+            } else {
+                Loggers.TOOL.info("send_message: no members auto-started (none UNSTARTED or CAS failed)",
+                        new Object[0]);
             }
             String messageId = "*".equals(to)
                     ? backend.getMessageManager().broadcastMessage(content).join()

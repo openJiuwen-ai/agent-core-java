@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Public class TeamDatabase used by the Java parity implementation.
@@ -36,9 +37,16 @@ public class TeamDatabase {
     private static final String MESSAGE_READ_STATUS_PREFIX = "message_read_status_";
 
     private final DatabaseConfig config;
-    private final Map<String, TeamRecord> teams = new LinkedHashMap<>();
-    private final Map<String, MemberRecord> members = new LinkedHashMap<>();
-    private final Map<String, SessionTables> sessions = new LinkedHashMap<>();
+
+    // X.CON.05: shared mutable maps must be thread-safe — concurrent
+    // spawn_member tool calls hit createMember + getTeamMembers in
+    // parallel; a LinkedHashMap here can lose an entry or corrupt the
+    // internal hash chain under concurrent put, after which
+    // getTeamMembers(UNSTARTED) silently drops a member and startup()
+    // never auto-launches it (member stuck UNSTARTED, task never runs).
+    private final Map<String, TeamRecord> teams = new ConcurrentHashMap<>();
+    private final Map<String, MemberRecord> members = new ConcurrentHashMap<>();
+    private final Map<String, SessionTables> sessions = new ConcurrentHashMap<>();
     private final Set<String> droppedSessionIds = new HashSet<>();
     private Connection sqliteConnection;
     private boolean isInitialized;
@@ -939,9 +947,10 @@ public class TeamDatabase {
     }
 
     private static final class SessionTables {
-        private final Map<String, MessageRecord> messages = new LinkedHashMap<>();
-        private final Map<String, Long> broadcastReadAt = new LinkedHashMap<>();
-        private final Map<String, TaskRecord> tasks = new LinkedHashMap<>();
+        // X.CON.05: same concurrent-access reason as the outer maps.
+        private final Map<String, MessageRecord> messages = new ConcurrentHashMap<>();
+        private final Map<String, Long> broadcastReadAt = new ConcurrentHashMap<>();
+        private final Map<String, TaskRecord> tasks = new ConcurrentHashMap<>();
     }
 
     /**
@@ -2161,17 +2170,6 @@ public class TeamDatabase {
          */
         public List<TaskRecord> getTasksByAssignee(String teamName, String assignee) {
             return getTasksByAssignee(teamName, assignee, null);
-        }
-
-        /**
-         * Removes all tasks for a team in the current session.
-         *
-         * @param teamName team identifier
-         * @throws IllegalStateException if the database is not initialized
-         */
-        public void clearTeamTasks(String teamName) {
-            ensureInitialized();
-            currentSessionTables().tasks.entrySet().removeIf(entry -> teamName.equals(entry.getValue().getTeamName()));
         }
 
         /**

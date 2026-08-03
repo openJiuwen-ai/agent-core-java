@@ -278,7 +278,7 @@ public class LegacyReActAgent extends BaseAgent {
 
             ModelClientConfig modelClientConfig =
                 ModelClientConfig.builder().clientId(HashUtil.generateKey(apiKey, apiBase, provider))
-                        .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(false).build();
+                        .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(true).build();
 
             ModelRequestConfig modelRequestConfig = ModelRequestConfig.builder().modelName(modelInfo.getModelName())
                     .temperature(modelInfo.getTemperature()).topP(modelInfo.getTopP())
@@ -326,7 +326,7 @@ public class LegacyReActAgent extends BaseAgent {
             config.setApiBase(modelInfo.getApiBase());
             config.setModelClientConfig(
                     ModelClientConfig.builder().clientId(HashUtil.generateKey(apiKey, apiBase, provider))
-                            .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(false).build());
+                            .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(true).build());
             config.setModelConfigObj(ModelRequestConfig.builder().modelName(modelInfo.getModelName())
                     .temperature(modelInfo.getTemperature()).topP(modelInfo.getTopP())
                     .extraFields(modelInfo.getExtraFields() != null

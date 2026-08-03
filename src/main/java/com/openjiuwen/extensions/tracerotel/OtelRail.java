@@ -4,16 +4,27 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.tracer.TraceAgentSpan;
 import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.session.tracer.TracerHandlerName;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,8 +48,19 @@ import java.util.Optional;
  * @since 0.1.7
  */
 public class OtelRail extends AgentRail {
+    private static final Logger LOG = LoggerFactory.getLogger(OtelRail.class);
+
+    /** Shared Jackson mapper for serializing opaque response objects to JSON. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Rate-limit flag for tracer retrieval failure logging. */
+    private static volatile boolean hasTracerFailureLogged = false;
+
     /** Buffered LLM child spans (one per in-flight model call). */
     private final List<TraceAgentSpan> llmSpans = new ArrayList<>();
+
+    /** Buffered tool (plugin) child spans (one per in-flight tool call). */
+    private final List<TraceAgentSpan> toolSpans = new ArrayList<>();
 
     /** Root agent span created in beforeInvoke, finalized in afterInvoke. */
     private TraceAgentSpan rootSpan;
@@ -124,7 +146,9 @@ public class OtelRail extends AgentRail {
         Map<String, Object> inputsDict = new HashMap<>();
         if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs
                 && modelCallInputs.getMessages() != null) {
-            inputsDict.put("messages", String.valueOf(modelCallInputs.getMessages()));
+            // Pass the raw messages list; the downstream OtelAgentHandler
+            // serializes it to JSON via normalizeLlmPayload() (Jackson).
+            inputsDict.put("messages", modelCallInputs.getMessages());
         }
 
         Map<String, Object> kwargs = new HashMap<>();
@@ -147,16 +171,27 @@ public class OtelRail extends AgentRail {
         if (tracerOpt.isEmpty()) {
             return;
         }
-        Tracer tracer = tracerOpt.get();
-        TraceAgentSpan llmSpan = llmSpans.remove(llmSpans.size() - 1);
         Map<String, Object> outputsDict = new HashMap<>();
-        if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs
-                && modelCallInputs.getResponse() != null) {
-            outputsDict.put("outputs", String.valueOf(modelCallInputs.getResponse()));
+        if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs) {
+            Object rawResponse = modelCallInputs.getResponse();
+            if (rawResponse != null) {
+                // Preserve the raw response object so the handler can extract
+                // usage_metadata, finish_reason, model_name, etc.
+                outputsDict.put("outputs", rawResponse);
+                try {
+                    outputsDict.put("response_string", MAPPER.writeValueAsString(rawResponse));
+                } catch (JsonProcessingException e) {
+                    LOG.warn("otel rail: failed to serialize model response to JSON, "
+                            + "falling back to toString()", e);
+                    outputsDict.put("response_string", String.valueOf(rawResponse));
+                }
+            }
         }
+        TraceAgentSpan llmSpan = llmSpans.remove(llmSpans.size() - 1);
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("span", llmSpan);
         kwargs.put("outputs", outputsDict);
+        Tracer tracer = tracerOpt.get();
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_end", kwargs);
     }
 
@@ -178,16 +213,102 @@ public class OtelRail extends AgentRail {
     }
 
     // ------------------------------------------------------------------
-    // Reflection helpers (mirror TracerDecorator's pattern)
+    // Tool (plugin) child spans (BEFORE_TOOL_CALL / AFTER_TOOL_CALL / ON_TOOL_EXCEPTION)
+    // ------------------------------------------------------------------
+
+    @Override
+    public void beforeToolCall(AgentCallbackContext ctx) {
+        Optional<Tracer> tracerOpt = getTracer(ctx);
+        if (tracerOpt.isEmpty()) {
+            return;
+        }
+        Tracer tracer = tracerOpt.get();
+        TraceAgentSpan toolSpan = tracer.getTracerAgentSpanManager().createAgentSpan(rootSpan);
+        toolSpans.add(toolSpan);
+
+        String toolName = "";
+        Object toolInputs = null;
+        if (ctx.getInputs() instanceof ToolCallInputs toolCallInputs) {
+            toolName = toolCallInputs.getToolName() != null ? toolCallInputs.getToolName() : "";
+            toolInputs = toolCallInputs.getToolArgs();
+        }
+
+        Map<String, Object> instanceInfo = new HashMap<>();
+        instanceInfo.put("class_name", toolName);
+        instanceInfo.put("type", "plugin");
+
+        Map<String, Object> inputsDict = new HashMap<>();
+        if (toolInputs != null) {
+            inputsDict.put("inputs", toolInputs);
+        }
+
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("span", toolSpan);
+        kwargs.put("inputs", inputsDict);
+        kwargs.put("instance_info", instanceInfo);
+        tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_start", kwargs);
+    }
+
+    @Override
+    public void afterToolCall(AgentCallbackContext ctx) {
+        // When exception is set, the error path (onToolException) consumes the span.
+        if (ctx.getException() != null) {
+            return;
+        }
+        if (toolSpans.isEmpty()) {
+            return;
+        }
+        Optional<Tracer> tracerOpt = getTracer(ctx);
+        if (tracerOpt.isEmpty()) {
+            return;
+        }
+        Tracer tracer = tracerOpt.get();
+        TraceAgentSpan toolSpan = toolSpans.remove(toolSpans.size() - 1);
+        Map<String, Object> outputsDict = new HashMap<>();
+        if (ctx.getInputs() instanceof ToolCallInputs toolCallInputs
+                && toolCallInputs.getToolResult() != null) {
+            outputsDict.put("outputs", toolCallInputs.getToolResult());
+        }
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("span", toolSpan);
+        kwargs.put("outputs", outputsDict);
+        tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_end", kwargs);
+    }
+
+    @Override
+    public void onToolException(AgentCallbackContext ctx) {
+        if (toolSpans.isEmpty()) {
+            return;
+        }
+        TraceAgentSpan toolSpan = toolSpans.remove(toolSpans.size() - 1);
+        Optional<Tracer> tracerOpt = getTracer(ctx);
+        if (tracerOpt.isEmpty()) {
+            return;
+        }
+        Tracer tracer = tracerOpt.get();
+        Map<String, Object> kwargs = new HashMap<>();
+        kwargs.put("span", toolSpan);
+        kwargs.put("error", ctx.getException());
+        tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_error", kwargs);
+    }
+
+    // ------------------------------------------------------------------
+    // Tracer and name resolution helpers
     // ------------------------------------------------------------------
 
     /**
      * Resolve the {@link Tracer} from the callback context's session.
      *
+     * <p>First attempts direct {@code session.tracer()}. If the session is an
+     * {@code AgentSessionApi} wrapper (which does not expose {@code tracer()}),
+     * unwraps via {@code getInner()} and retries on the internal
+     * {@code AgentSession}. All failures are logged once (rate-limited) to
+     * avoid spamming the log on every callback.</p>
+     *
      * @param ctx the agent callback context providing access to the session
      * @return an {@link Optional} containing the resolved {@link Tracer},
      *         or {@link Optional#empty()} if the session is null or the tracer
-     *         cannot be resolved via reflection
+     *         cannot be resolved
      * @since 0.1.7
      */
     private static Optional<Tracer> getTracer(AgentCallbackContext ctx) {
@@ -195,14 +316,62 @@ public class OtelRail extends AgentRail {
         if (session == null) {
             return Optional.empty();
         }
-        try {
-            Method tracerMethod = session.getClass().getMethod("tracer");
-            Object result = tracerMethod.invoke(session);
-            return result instanceof Tracer ? Optional.of((Tracer) result) : Optional.empty();
-        } catch (IllegalAccessException | IllegalArgumentException
-                | InvocationTargetException | NoSuchMethodException e) {
-            return Optional.empty();
+
+        // Attempt 1: direct tracer() on the session object
+        Optional<Tracer> direct = tryGetTracer(session);
+        if (direct.isPresent()) {
+            return direct;
         }
+
+        // Attempt 2: unwrap AgentSessionApi.getInner() and retry
+        Optional<Tracer> unwrapped = tryUnwrapAndGetTracer(session);
+        if (unwrapped.isPresent()) {
+            return unwrapped;
+        }
+
+        // Both attempts failed — log once (rate-limited)
+        if (!hasTracerFailureLogged) {
+            hasTracerFailureLogged = true;
+            LOG.warn(
+                    "otel rail: unable to retrieve Tracer from session (type={}). "
+                            + "AgentSessionApi wrappers require getInner().tracer() unwrapping. "
+                            + "This message will not repeat.",
+                    session.getClass().getName());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Try to invoke {@code tracer()} directly on the given session object.
+     *
+     * @param session the session object
+     * @return an {@link Optional} containing the {@link Tracer}, or empty
+     */
+    private static Optional<Tracer> tryGetTracer(Object session) {
+        if (session instanceof BaseSession baseSession) {
+            Object result = baseSession.tracer();
+            return result instanceof Tracer ? Optional.of((Tracer) result) : Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Unwrap {@code AgentSessionApi}-like wrappers via {@code getInner()} and
+     * retrieve the Tracer from the underlying internal session.
+     *
+     * @param session the potentially-wrapped session
+     * @return an {@link Optional} containing the {@link Tracer}, or empty
+     */
+    private static Optional<Tracer> tryUnwrapAndGetTracer(Object session) {
+        if (session instanceof AgentSessionApi api) {
+            AgentSession innerSession = api.getInner();
+            if (innerSession == null) {
+                return Optional.empty();
+            }
+            Object result = innerSession.tracer();
+            return result instanceof Tracer ? Optional.of((Tracer) result) : Optional.empty();
+        }
+        return Optional.empty();
     }
 
     /**
@@ -217,19 +386,14 @@ public class OtelRail extends AgentRail {
         if (agent == null) {
             return "unknown";
         }
-        try {
-            Method cardMethod = agent.getClass().getMethod("getCard");
-            Object card = cardMethod.invoke(agent);
+        if (agent instanceof BaseAgent baseAgent) {
+            AgentCard card = baseAgent.getCard();
             if (card != null) {
-                Method nameMethod = card.getClass().getMethod("getName");
-                Object name = nameMethod.invoke(card);
+                String name = card.getName();
                 if (name != null) {
-                    return name.toString();
+                    return name;
                 }
             }
-        } catch (IllegalAccessException | IllegalArgumentException
-                | InvocationTargetException | NoSuchMethodException ignored) {
-            // fall through
         }
         return agent.getClass().getSimpleName();
     }
@@ -246,39 +410,32 @@ public class OtelRail extends AgentRail {
         if (agent == null) {
             return "LLM";
         }
-        try {
-            Method configMethod = agent.getClass().getMethod("getConfig");
-            Object config = configMethod.invoke(agent);
-            if (config != null) {
-                // Try config.getModelConfig().getModelName()
-                try {
-                    Method modelConfigMethod = config.getClass().getMethod("getModelConfig");
-                    Object modelConfig = modelConfigMethod.invoke(config);
-                    if (modelConfig != null) {
-                        Method nameMethod = modelConfig.getClass().getMethod("getModelName");
-                        Object name = nameMethod.invoke(modelConfig);
-                        if (name != null && !name.toString().isEmpty()) {
-                            return name.toString();
-                        }
-                    }
-                } catch (NoSuchMethodException ignored) {
-                    // try model_config_obj
-                }
-                // Try config.model_name directly
-                try {
-                    Method nameMethod = config.getClass().getMethod("getModelName");
-                    Object name = nameMethod.invoke(config);
-                    if (name != null && !name.toString().isEmpty()) {
-                        return name.toString();
-                    }
-                } catch (NoSuchMethodException ignored) {
-                    // fall through
-                }
+        if (agent instanceof BaseAgent baseAgent) {
+            Optional<String> name = extractModelNameFromConfig(baseAgent.getConfig());
+            if (name.isPresent()) {
+                return name.get();
             }
-        } catch (IllegalAccessException | IllegalArgumentException
-                | InvocationTargetException | NoSuchMethodException ignored) {
-            // fall through
         }
         return "LLM";
+    }
+
+    /**
+     * Extract model name from agent config object.
+     *
+     * @param config the agent config object (may be {@code null})
+     * @return an {@link Optional} containing the model name, or empty if not found
+     * @since 0.1.7
+     */
+    private static Optional<String> extractModelNameFromConfig(Object config) {
+        if (config == null) {
+            return Optional.empty();
+        }
+        if (config instanceof ReActAgentConfig reactConfig) {
+            String name = reactConfig.getModelName();
+            if (name != null && !name.isEmpty()) {
+                return Optional.of(name);
+            }
+        }
+        return Optional.empty();
     }
 }

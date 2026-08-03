@@ -26,22 +26,6 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class PromptTemplate {
-    /**
-     * PromptTemplate.
-     * 
-     * @param name name
-     * @param content content
-     * @param placeholderPrefix placeholderPrefix
-     * @param placeholderSuffix placeholderSuffix
-     * @since 0.1.7
-     */
-    public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
-        this.name = name;
-        this.content = content;
-        this.placeholderPrefix = placeholderPrefix;
-        this.placeholderSuffix = placeholderSuffix;
-    }
-
     /** Template name. */
     private String name = "";
 
@@ -53,6 +37,55 @@ public class PromptTemplate {
 
     /** Right delimiter for placeholders. */
     private String placeholderSuffix = "}}";
+
+    /**
+     * PromptTemplate.
+     *
+     * @param name name
+     * @param content content
+     * @param placeholderPrefix placeholderPrefix
+     * @param placeholderSuffix placeholderSuffix
+     * @since 0.1.7
+     */
+    public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
+        this.name = name;
+        this.content = validateContent(content);
+        this.placeholderPrefix = placeholderPrefix;
+        this.placeholderSuffix = placeholderSuffix;
+    }
+
+    /**
+     * Validate content type at construction time, mirroring Python's pydantic
+     * {@code Union[str, List[BaseMessage]]} field validation. A list whose items
+     * are not {@code BaseMessage} instances raises a {@code ValidationError}
+     * carrying {@code "Input should be a valid string"} (the pydantic fallback
+     * message produced when a list[str] cannot be coerced to either union arm).
+     *
+     * @param content content
+     * @return the validated content
+     * @since 0.1.7
+     */
+    private static Object validateContent(Object content) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof String) {
+            return content;
+        }
+        if (content instanceof List<?> list) {
+            for (Object item : list) {
+                if (item != null && !(item instanceof BaseMessage)) {
+                    // Python pydantic emits "Input should be a valid string" when a list[str]
+                    // fails the Union[str, List[BaseMessage]] coercion. Mirror that here.
+                    throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
+                            "Input should be a valid string");
+                }
+            }
+            return content;
+        }
+        throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
+                "Input should be a valid string");
+    }
 
     /**
      * getName.

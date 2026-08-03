@@ -63,7 +63,7 @@ public final class SkillEvaluateExample {
         System.setProperty("OUTPUT_DIR", outputDir.toString());
         System.setProperty(
                 "SKILLS_DIR",
-                Path.of("src", "main", "resources", "openjiuwen", "dev_tools", "skill_evaluator", "skills")
+                Path.of("examples", "skill_use", "skills")
                         .toAbsolutePath()
                         .normalize()
                         .toString()
@@ -72,8 +72,8 @@ public final class SkillEvaluateExample {
 
     private static Path resolveTargetSkill(String[] args) {
         if (args.length > 0 && args[0] != null && !args[0].isBlank()) {
-            return Path.of(args[0]).toAbsolutePath().normalize();
+            return Path.of(args[0]);
         }
-        return Path.of("examples", "skill_use", "skills", "image_resizer").toAbsolutePath().normalize();
+        return Path.of("image_resizer");
     }
 }

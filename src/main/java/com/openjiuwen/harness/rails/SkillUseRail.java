@@ -442,16 +442,9 @@ public class SkillUseRail extends DeepAgentRail {
         if (skillsRoot != null && Files.isDirectory(skillsRoot)) {
             roots.add(skillsRoot);
         }
-        // Include tenant skill root when tenant context is available
-        if (overlaySkillManager != null && railWorkspaceResolver != null) {
-            TenantContext ctx = TenantContextHolder.getCurrentTenant();
-            if (ctx != null && ctx.isTenantAware()) {
-                Path tenantSkillRoot = railWorkspaceResolver.resolveSkillRoot(ctx);
-                if (tenantSkillRoot != null && Files.isDirectory(tenantSkillRoot)) {
-                    roots.add(tenantSkillRoot);
-                }
-            }
-        }
+        // 注意：租户技能根目录不再纳入公共 skillManager 的刷新范围。
+        // 租户技能由 OverlaySkillManager 按租户缓存独立加载（getOrRefreshTenantSkillManager），
+        // 若在此混入公共 skillManager，并发多租户请求时会互相污染公共技能列表。
         return new ArrayList<>(roots);
     }
 

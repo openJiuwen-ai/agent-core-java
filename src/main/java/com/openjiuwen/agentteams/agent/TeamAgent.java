@@ -5,32 +5,35 @@
 package com.openjiuwen.agentteams.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.openjiuwen.agentteams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agentteams.agent.coordination.DispatcherHost;
 import com.openjiuwen.agentteams.agent.coordination.TeamAgentBlueprint;
 import com.openjiuwen.agentteams.agent.coordination.TeamInfra;
-import com.openjiuwen.agentteams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.messager.MessagerFactory;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
+import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntries;
-import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.agentteams.tools.TeamBackend;
-import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.agentteams.tools.TeamMessage;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
+import com.openjiuwen.agentteams.tools.database.DatabaseConfig;
+import com.openjiuwen.agentteams.tools.database.DatabaseType;
+import com.openjiuwen.agentteams.tools.database.MemberRecord;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.memory.team.PromptMode;
 import com.openjiuwen.core.memory.team.TeamLanguage;
 import com.openjiuwen.core.memory.team.TeamMemoryConfig;
@@ -41,6 +44,7 @@ import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentKind;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
@@ -48,6 +52,8 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+import com.openjiuwen.harness.tools.FilesystemTool;
+import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import lombok.Getter;
@@ -56,12 +62,12 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -316,6 +322,7 @@ public class TeamAgent implements DispatcherHost {
         pendingUserQuery = rawQuery != null ? String.valueOf(rawQuery) : "";
         context.getMetadata().put("last_query", pendingUserQuery);
         context.getMetadata().put("last_dispatch_at", Instant.now().toString());
+        context.getMetadata().put("last_route", "stream_round");
         context.getMetadata().put("streaming_coordination", true);
         if (session instanceof com.openjiuwen.core.session.AgentSessionApi sessionApi) {
             this.agentSession = sessionApi;
@@ -884,119 +891,144 @@ public class TeamAgent implements DispatcherHost {
     }
 
     private void bootstrapCoordinationHost() {
-        String leaderName = resolveLeaderMemberName();
         String localMemberName = resolveLocalMemberName();
+        Messager messager = buildMessager(localMemberName);
+        initializeTeamBackend(localMemberName, messager);
+        initializeCoordinationManagers();
+        teamBackend.setOnAutoLaunch(this::launchTeamMember);
+        initializeAgentSession();
+        initializeStreamController();
+        configureTeamLifecycleCallbacks();
+        initializeCoordinationKernel(messager);
+    }
 
-        // Use localMemberName (not leaderName) as nodeId so each member gets a
-        // unique subscription key in the messager's topic map. Previously all
-        // members shared "team_leader", causing the last subscriber to overwrite
-        // earlier ones — the leader never received "message" events from analysts.
-        Messager messager = MessagerFactory.createMessager(MessagerTransportConfig.builder()
-                .teamName(context.getTeamId())
-                .nodeId(localMemberName)
-                .build());
-
-        // Use resolveLocalMemberName() so spawned members get their own memberName
-        // (not the leader's name) in TeamBackend / TeamTaskManager. Pin the team-level
-        // session id at construction so every topic publish/subscribe rides the same
-        // session even when the leader's ReAct stream swaps SpawnContext mid-flight.
+    private void initializeTeamBackend(String localMemberName, Messager messager) {
         this.teamBackend = new TeamBackend(
-                context.getTeamId(), localMemberName, true, messager, context.getSessionId());
+                resolveDatabaseConfig(),
+                context.getTeamId(),
+                localMemberName,
+                context.getRole() == TeamRole.LEADER,
+                messager);
+        this.teamBackend.setTeamSessionId(context.getSessionId());
         this.teamBackend.syncMembers(spec.getMembers());
         this.messageManager = teamBackend.getMessageManager();
+    }
+
+    private void initializeCoordinationManagers() {
         this.coordinationManager = new CoordinationManager(this, teamBackend, messageManager, leaderInbox::add);
+        String leaderName = resolveLeaderMemberName();
         this.recoveryManager = new RecoveryManager(teamBackend, leaderName);
         this.spawnManager = new SpawnManager(this, teamBackend, recoveryManager, () -> context.getSessionId());
         this.recoveryManager.setSpawnManager(spawnManager);
-        this.teamBackend.setOnAutoLaunch((memberName, broadcastContent) -> {
-            TeamRuntimeContext ctx = spawnManager.buildContextFromBackend(memberName);
-            if (ctx != null) {
-                com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
+    }
 
-                // Priority: member-specific prompt > broadcast with identity prefix > fallback
-                String prompt = member != null ? member.getPrompt() : null;
-                final String initialMessage;
-                if (prompt != null && !prompt.isBlank()) {
-                    initialMessage = prompt;
-                } else if (broadcastContent != null && !broadcastContent.isBlank()) {
-                    // Tag the broadcast with member identity so the LLM knows which
-                    // specific task it should claim from the broadcast.
-                    String displayName = member != null && member.getDisplayName() != null
-                            ? member.getDisplayName() : memberName;
-                    initialMessage = "你是 " + displayName + "（" + memberName + "）。"
-                            + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
-                            + " 不要认领其他成员的任务。\n\n" + broadcastContent;
-                } else {
-                    initialMessage = "Join the team and wait for your first assignment.";
-                }
-                Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
-                        initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
-                spawnManager.spawnTeammate(ctx, initialMessage);
-            }
-        });
-        this.agentSession = com.openjiuwen.core.session.AgentSessionApi.create(context.getSessionId(), null, null);
-
-        // Sync thread-local SpawnContext so DB operations on leader thread use the correct session
-        String sid = this.agentSession.getSessionId();
-        if (sid != null && !sid.isBlank()) {
-            context.setSessionId(sid);
-            com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sid);
-
-            // Latch the resolved session id on the backend (and its message/task
-            // managers) so topic builds route to the same topic members subscribe
-            // on. The backend was constructed earlier (before the session existed)
-            // with an empty teamSessionId; this closes the gap.
-            this.teamBackend.setTeamSessionId(sid);
+    private void launchTeamMember(String memberName, String broadcastContent) {
+        Loggers.AGENT.info("onAutoLaunch: enter member={} broadcastLen={} thread={}",
+                memberName,
+                broadcastContent != null ? broadcastContent.length() : 0,
+                Thread.currentThread().getName());
+        TeamRuntimeContext memberContext = spawnManager.buildContextFromBackend(memberName);
+        if (memberContext == null) {
+            Loggers.AGENT.warn("onAutoLaunch: ctx null for member={}, getMember returned null"
+                    + " (in-memory list out of sync with DB?); skipping spawnTeammate", memberName);
+            return;
         }
+        com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
+        Loggers.AGENT.info("onAutoLaunch: ctx ok member={}, inMemoryMember={}", memberName, member != null);
+        String initialMessage = resolveInitialMemberMessage(member, memberName, broadcastContent);
+        Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
+                summarizeInitialMessage(initialMessage));
+        spawnManager.spawnTeammate(memberContext, initialMessage);
+    }
+
+    private String resolveInitialMemberMessage(
+            com.openjiuwen.agentteams.tools.TeamMember member,
+            String memberName,
+            String broadcastContent) {
+        String prompt = member != null ? member.getPrompt() : null;
+        if (prompt != null && !prompt.isBlank()) {
+            return prompt;
+        }
+        if (broadcastContent == null || broadcastContent.isBlank()) {
+            return "Join the team and wait for your first assignment.";
+        }
+        String displayName = member != null && member.getDisplayName() != null
+                ? member.getDisplayName() : memberName;
+        return "你是 " + displayName + "（" + memberName + "）。"
+                + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
+                + " 不要认领其他成员的任务。\n\n" + broadcastContent;
+    }
+
+    private String summarizeInitialMessage(String initialMessage) {
+        if (initialMessage.length() <= 60) {
+            return initialMessage;
+        }
+        return initialMessage.substring(0, 60) + "...";
+    }
+
+    private void initializeAgentSession() {
+        this.agentSession = com.openjiuwen.core.session.AgentSessionApi.create(context.getSessionId(), null, null);
+        String sessionId = this.agentSession.getSessionId();
+        if (sessionId != null && !sessionId.isBlank()) {
+            context.setSessionId(sessionId);
+            com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sessionId);
+            this.teamBackend.setTeamSessionId(sessionId);
+        }
+    }
+
+    private void initializeStreamController() {
         this.streamController = new StreamController(
                 () -> deepAgent,
                 this::resolveLocalMemberName,
                 status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status),
-                ignored -> {},
-                () -> agentSession,
-                () -> {
-                    // Enqueue a POLL_MAILBOX inner event so the handler-based system
-                    // processes unread messages through the normal dispatch path.
-                    // This replaces the old direct call to
-                    // dispatcher.processUnreadMessages() + tryAutoCompleteMemberTasks().
-                    if (coordinationKernel != null) {
-                        coordinationKernel.enqueuePollMailbox();
-                    }
-                },
                 null,
-                this::resolveMemberStatusFromDb
-        );
+                () -> agentSession,
+                this::pollTeamMailbox,
+                null,
+                this::resolveMemberStatusFromDb);
+    }
 
-        // Bind onTeamCleaned so that a successful clean_team latches the
-        // StreamController into team-terminated state. Without this, the leader
-        // keeps waking on stale mailbox content and re-entering ReAct rounds
-        // after the team DB row is gone (clean_team -> deleteTeam returned true
-        // path). The callback is best-effort: the DB delete is the source of
-        // truth, this only short-circuits the leader stream.
-        this.teamBackend.setOnTeamCleaned(() -> {
-            Loggers.AGENT.info("[{}] team cleaned: marking stream as terminated",
-                    resolveLocalMemberName());
-            if (this.streamController != null) {
-                this.streamController.markTeamTerminated();
-                this.streamController.closeStream();
-            }
-        });
+    private void pollTeamMailbox() {
+        if (coordinationKernel != null
+                && teamBackend != null
+                && !teamBackend.isAnyMemberShuttingDown()) {
+            coordinationKernel.enqueuePollMailbox();
+        }
+    }
 
-        // Reset the team-terminated latch when a new team is built on the
-        // same TeamAgent instance. Without this, a clean_team -> build_team
-        // cycle in one process leaves streamController.teamTerminated=true,
-        // and the leader refuses to start any new round on the rebuilt team.
-        this.teamBackend.setOnTeamBuilt(() -> {
-            Loggers.AGENT.info("[{}] team built: resetting team-terminated latch",
-                    resolveLocalMemberName());
-            if (this.streamController != null) {
-                this.streamController.resetTeamTerminated();
-            }
-        });
+    private void configureTeamLifecycleCallbacks() {
+        this.teamBackend.setOnTeamCleaned(this::handleTeamCleaned);
+        this.teamBackend.setOnTeamBuilt(this::handleTeamBuilt);
+    }
+
+    private void handleTeamCleaned() {
+        Loggers.AGENT.info("[{}] team cleaned: marking stream as terminated", resolveLocalMemberName());
+        if (this.streamController != null) {
+            this.streamController.markTeamTerminated();
+            this.streamController.closeStream();
+        }
+    }
+
+    private void handleTeamBuilt() {
+        Loggers.AGENT.info("[{}] team built: resetting team-terminated latch", resolveLocalMemberName());
+        if (this.streamController != null) {
+            this.streamController.resetTeamTerminated();
+        }
+    }
+
+    private void initializeCoordinationKernel(Messager messager) {
         TeamAgentBlueprint blueprint = new TeamAgentBlueprint(spec, context);
         TeamInfra infra = new TeamInfra(messager, teamBackend,
                 teamBackend.getTaskManager(), messageManager);
         this.coordinationKernel = new CoordinationKernel(this, blueprint, infra);
+    }
+
+    private Messager buildMessager(String localMemberName) {
+        return MessagerFactory.createMessager(MessagerTransportConfig.builder()
+                .backend(resolveTransport())
+                .teamName(context.getTeamId())
+                .nodeId(localMemberName)
+                .build());
     }
 
     private void setupAgent() {
@@ -1005,78 +1037,101 @@ public class TeamAgent implements DispatcherHost {
                 .findFirst()
                 .orElse(null);
         String leaderName = leader != null ? leader.getName() : resolveLeaderMemberName();
-        Workspace workspace = Workspace.builder()
-                .rootPath(resolveWorkspaceRoot().toString())
-                .language(resolveLanguage())
-                .build();
-        SysOperation sysOperation = new SysOperation(SysOperationCard.builder()
-                .id(context.getTeamId() + "." + leaderName + ".sys_operation")
-                .mode(OperationMode.LOCAL)
-                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build())
-                .build());
-
-        // Register team tools before creating DeepAgent
-        List<Tool> teamTools = registerTeamTools();
-        for (Tool tool : teamTools) {
-            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, context.getTeamId() + "." + leaderName);
-        }
-
-        // Register standard harness tools (file I/O, shell) for team agents.
-        // Team agents only get team tools by default, but they also need
-        // file_io (read/write files within workspace sandbox).
-        String workspaceRoot = workspace.root().toString();
-        var fsBackend = new com.openjiuwen.harness.tools.FilesystemTool(workspaceRoot);
-        Tool fileIoTool = new com.openjiuwen.core.foundation.tool.function.LocalFunction(
-                com.openjiuwen.core.foundation.tool.ToolCard.builder()
-                        .id("team.file_io")
-                        .name("file_io")
-                        .description("Read or write files within the team workspace. "
-                                + "Use action='read' to read a file, action='write' to write content to a file.")
-                        .inputParams(Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "action", Map.of("type", "string", "enum", List.of("read", "write"),
-                                                "description",
-                                                "Action: 'read' to read a file, 'write' to create/overwrite a file"),
-                                        "file_path", Map.of("type", "string", "description",
-                                                "Absolute path to the file within the workspace"),
-                                        "content", Map.of("type", "string", "description",
-                                                "Content to write (required for action='write')")),
-                                "required", List.of("action", "file_path")))
-                        .build(),
-                inputs -> {
-                    String action = inputs.get("action") instanceof String s ? s : "";
-                    String filePath = inputs.get("file_path") instanceof String s ? s : "";
-                    if (filePath.isBlank()) {
-                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                                .success(false).error("file_path is required").build());
-                    }
-                    if ("read".equals(action)) {
-                        return java.util.List.of(fsBackend.readFile(filePath));
-                    }
-                    if ("write".equals(action)) {
-                        String content = inputs.get("content") instanceof String s ? s : "";
-                        if (content.isBlank()) {
-                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                                    .success(false).error("content is required for write action").build());
-                        }
-                        return java.util.List.of(fsBackend.writeFile(filePath, content));
-                    }
-                    return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                            .success(false).error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
-                });
-        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool,
-                context.getTeamId() + "." + leaderName);
-        teamTools.add(fileIoTool);
-
+        Workspace workspace = createTeamWorkspace();
+        SysOperation sysOperation = createSysOperation(workspace, leaderName);
+        List<Tool> teamTools = registerAgentTools(workspace, leaderName);
         Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}",
                 resolveLocalMemberName(),
                 context.getMemberName(),
                 context.getRole());
+        this.deepAgent = createTeamDeepAgent(leader, workspace, sysOperation, teamTools);
+        this.deepAgent.ensureInitialized();
+        configureMemoryManager(workspace, sysOperation, leaderName);
+    }
 
+    private Workspace createTeamWorkspace() {
+        return Workspace.builder()
+                .rootPath(resolveWorkspaceRoot().toString())
+                .language(resolveLanguage())
+                .build();
+    }
+
+    private SysOperation createSysOperation(Workspace workspace, String leaderName) {
+        return new SysOperation(SysOperationCard.builder()
+                .id(context.getTeamId() + "." + leaderName + ".sys_operation")
+                .mode(OperationMode.LOCAL)
+                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build())
+                .build());
+    }
+
+    private List<Tool> registerAgentTools(Workspace workspace, String leaderName) {
+        List<Tool> teamTools = registerTeamTools();
+        String resourcePrefix = context.getTeamId() + "." + leaderName;
+        for (Tool tool : teamTools) {
+            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, resourcePrefix);
+        }
+        Tool fileIoTool = createFileIoTool(workspace.root().toString());
+        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool, resourcePrefix);
+        teamTools.add(fileIoTool);
+        return teamTools;
+    }
+
+    private Tool createFileIoTool(String workspaceRoot) {
+        FilesystemTool filesystem = new FilesystemTool(workspaceRoot);
+        return new LocalFunction(createFileIoToolCard(), inputs -> executeFileOperation(filesystem, inputs));
+    }
+
+    private ToolCard createFileIoToolCard() {
+        return ToolCard.builder()
+                .id("team.file_io")
+                .name("file_io")
+                .description("Read or write files within the team workspace. "
+                        + "Use action='read' to read a file, action='write' to write content to a file.")
+                .inputParams(Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "action", Map.of("type", "string", "enum", List.of("read", "write"),
+                                        "description",
+                                        "Action: 'read' to read a file, 'write' to create/overwrite a file"),
+                                "file_path", Map.of("type", "string", "description",
+                                        "Absolute path to the file within the workspace"),
+                                "content", Map.of("type", "string", "description",
+                                        "Content to write (required for action='write')")),
+                        "required", List.of("action", "file_path")))
+                .build();
+    }
+
+    private List<ToolOutput> executeFileOperation(FilesystemTool filesystem, Map<String, Object> inputs) {
+        String action = inputs.get("action") instanceof String value ? value : "";
+        String filePath = inputs.get("file_path") instanceof String value ? value : "";
+        if (filePath.isBlank()) {
+            return fileOperationError("file_path is required");
+        }
+        if ("read".equals(action)) {
+            return List.of(filesystem.readFile(filePath));
+        }
+        if ("write".equals(action)) {
+            String content = inputs.get("content") instanceof String value ? value : "";
+            if (content.isBlank()) {
+                return fileOperationError("content is required for write action");
+            }
+            return List.of(filesystem.writeFile(filePath, content));
+        }
+        return fileOperationError("Unknown action '" + action + "'. Use 'read' or 'write'.");
+    }
+
+    private List<ToolOutput> fileOperationError(String message) {
+        return List.of(ToolOutput.builder().success(false).error(message).build());
+    }
+
+    private DeepAgent createTeamDeepAgent(
+            TeamMemberSpec leader,
+            Workspace workspace,
+            SysOperation sysOperation,
+            List<Tool> teamTools) {
         String localName = resolveLocalMemberName();
-        this.deepAgent = HarnessFactory.createDeepAgent(
-                com.openjiuwen.core.singleagent.schema.AgentCard.builder()
+        return HarnessFactory.createDeepAgent(
+                AgentCard.builder()
                         .id(context.getTeamId() + "." + localName)
                         .name(localName)
                         .description(leader != null ? leader.getDescription() : "")
@@ -1101,7 +1156,7 @@ public class TeamAgent implements DispatcherHost {
                                 resolvePersona(leader),
                                 resolveLocalMemberName(),
                                 spec.getLifecycle(),
-                                "build_mode",
+                                resolveTeammateMode(),
                                 resolveLanguage(),
                                 "default",
                                 null,
@@ -1111,9 +1166,10 @@ public class TeamAgent implements DispatcherHost {
                                 teamBackend
                         )))
                         .build(),
-                workspace
-        );
-        this.deepAgent.ensureInitialized();
+                workspace);
+    }
+
+    private void configureMemoryManager(Workspace workspace, SysOperation sysOperation, String leaderName) {
         this.memoryManager = buildMemoryManager(workspace, sysOperation, leaderName);
         Object configuredModel = this.deepAgent.getConfig().getModel();
         if (this.memoryManager != null && configuredModel instanceof com.openjiuwen.core.foundation.llm.Model model) {
@@ -1168,13 +1224,41 @@ public class TeamAgent implements DispatcherHost {
     }
 
     private String resolveTeammateMode() {
+        if (spec != null && spec.getTeammateMode() != null && !spec.getTeammateMode().isBlank()) {
+            return spec.getTeammateMode();
+        }
         if (context != null && context.getMetadata() != null) {
             Object mode = context.getMetadata().get("teammate_mode");
-            if (mode != null) {
+            if (mode != null && !String.valueOf(mode).isBlank()) {
                 return String.valueOf(mode);
             }
         }
         return "build_mode";
+    }
+
+    private String resolveTransport() {
+        if (spec == null || spec.getTransport() == null || spec.getTransport().isBlank()) {
+            return "inprocess";
+        }
+        return spec.getTransport().trim().toLowerCase(Locale.ROOT);
+    }
+
+    private DatabaseConfig resolveDatabaseConfig() {
+        String normalizedStorage = "sqlite";
+        String connectionString = "";
+        if (spec != null) {
+            if (spec.getStorage() != null && !spec.getStorage().isBlank()) {
+                normalizedStorage = spec.getStorage().trim().toLowerCase(Locale.ROOT);
+            }
+            if (spec.getConnectionString() != null) {
+                connectionString = spec.getConnectionString();
+            }
+        }
+        DatabaseType databaseType = DatabaseType.valueOf(normalizedStorage.toUpperCase(Locale.ROOT));
+        return DatabaseConfig.builder()
+                .dbType(databaseType)
+                .connectionString(connectionString)
+                .build();
     }
 
     private String resolveTeamMode() {
@@ -1658,6 +1742,17 @@ public class TeamAgent implements DispatcherHost {
             return context.getMemberName();
         }
         return resolveLeaderMemberName();
+    }
+
+    /**
+     * Expose the stream controller so coordination handlers can reset the
+     * team-terminated latch when USER_INPUT arrives after clean_team.
+     *
+     * @return the stream controller, or {@code null} if not yet configured
+     * @since 0.1.15
+     */
+    public StreamController getStreamController() {
+        return streamController;
     }
 
     private Path resolveWorkspaceRoot() {

@@ -36,6 +36,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
@@ -47,6 +48,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -347,7 +349,7 @@ public class LlmEventHandler extends EventHandler {
         }
 
         Loggers.CONTROLLER.warning("Exceeded max iteration {}, stopping ReAct loop", maxIteration);
-        Map<String, Object> result = sendFinalStream("Maximum iteration reached", session);
+        Map<String, Object> result = sendAnswerStream("Maximum iteration reached", session);
         return unwrapResult(result);
     }
 
@@ -412,7 +414,9 @@ public class LlmEventHandler extends EventHandler {
         task.setStatus(TaskStatus.WORKING);
 
         Object inputs = getTaskArguments(task);
-        Object result = Runner.runWorkflow(workflow, inputs, session, context);
+        WorkflowSessionApi workflowSession = session.createWorkflowSession();
+        ModelContext workflowContext = appContextEngine.createContext(workflowId, session.getInner());
+        Object result = Runner.runWorkflow(workflow, inputs, workflowSession, workflowContext);
 
         boolean isInterrupted = isWorkflowInterrupted(result);
         Loggers.CONTROLLER.info("Workflow result: interrupted={}", isInterrupted);
@@ -490,7 +494,7 @@ public class LlmEventHandler extends EventHandler {
         List<Object> streamData = List.of(new OutputSchema("plugin_final", 0, payload));
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("tool_name", toolName);
-        metadata.put("tool_message", executionEntry.toolMessage());
+        metadata.put("tool_message", new ToolMessage(toPythonLiteral(streamData), task.getTaskId()));
         return new TaskExecutionResult(TaskStatus.COMPLETED, streamData, null, metadata);
     }
 
@@ -506,9 +510,12 @@ public class LlmEventHandler extends EventHandler {
     private Map<String, Object> handleTaskInterrupted(TaskInterruptionState interruptionState) {
         interruptTask(interruptionState);
 
-        // Add mock tool message to context
-        ToolMessage mockToolMsg =
-            new ToolMessage("[INTERRUPTED - Waiting for user input]", interruptionState.getTask().getTaskId());
+        ToolMessage mockToolMsg = new ToolMessage("[INTERRUPTED - Waiting for user input]",
+                interruptionState.getTask().getTaskId());
+        ModelContext context = appContextEngine.getContext(null, interruptionState.getSession().getSessionId());
+        if (context != null) {
+            context.addMessages(mockToolMsg);
+        }
         Loggers.CONTROLLER.info("Task interrupted, saved state for later resumption");
 
         List<Object> firstInterrupt = getFirstInterrupt(interruptionState.getInteractionData());
@@ -654,6 +661,10 @@ public class LlmEventHandler extends EventHandler {
         }
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
+        }
+        if (value instanceof OutputSchema output) {
+            return "OutputSchema(type=" + toPythonLiteral(output.getType()) + ", index=" + output.getIndex()
+                    + ", payload=" + toPythonLiteral(output.getPayload()) + ")";
         }
         if (value instanceof Map<?, ?> map) {
             StringBuilder sb = new StringBuilder("{");
@@ -925,6 +936,18 @@ public class LlmEventHandler extends EventHandler {
         Loggers.CONTROLLER.info("sendFinalStream called with content length={}, content='{}'",
                 content != null ? content.length() : -1, content);
         writeLlmOutputChunks(content, session);
+        return sendAnswerStream(content, session);
+    }
+
+    /**
+     * Send one aggregate answer frame.
+     *
+     * @param content content
+     * @param session session
+     * @return answer payload
+     * @since 0.1.13
+     */
+    private Map<String, Object> sendAnswerStream(String content, AgentSessionApi session) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("output", content);
         payload.put("result_type", "answer");
@@ -934,8 +957,8 @@ public class LlmEventHandler extends EventHandler {
     }
 
     /**
-     * writeLlmOutputChunks.
-     * 
+     * Write Unicode code points as LLM output frames.
+     *
      * @param content content
      * @param session session
      * @since 0.1.7
@@ -954,11 +977,9 @@ public class LlmEventHandler extends EventHandler {
             payload.put("output", chunk);
             payload.put("result_type", "answer");
             session.writeStream(new OutputSchema(LLM_OUTPUT, index, payload));
-            Loggers.CONTROLLER.info("Wrote llm_output chunk index={}, char='{}'", index, chunk);
             index++;
             offset += Character.charCount(codePoint);
         }
-        Loggers.CONTROLLER.info("writeLlmOutputChunks completed, total chunks={}", index);
     }
 
     /**
@@ -1268,32 +1289,35 @@ public class LlmEventHandler extends EventHandler {
 
         for (Object item : interactionData) {
             if (item instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
-                Object payload = os.getPayload();
-                if (payload != null) {
-                    if (payload instanceof Map<?, ?> map) {
-                        Object id = map.get("id");
-                        if (id instanceof String s && !s.isBlank()) {
-                            componentIds.add(s);
-                            continue;
-                        }
-                    }
-                    try {
-                        var method = payload.getClass().getMethod("getId");
-                        Object id = method.invoke(payload);
-                        if (id instanceof String s && !s.isBlank()) {
-                            componentIds.add(s);
-                        }
-                    } catch (Exception e) {
-                        Loggers.CONTROLLER.warning("Failed to extract component_id: {}", e.getMessage());
-                    }
-                }
+                extractInteractionComponentId(os.getPayload()).ifPresent(componentIds::add);
             }
         }
 
         if (componentIds.isEmpty()) {
             componentIds.add("questioner");
+        } else {
+            prioritizeNonQuestioner(componentIds);
         }
         return componentIds;
+    }
+
+    /**
+     * prioritizeNonQuestioner.
+     *
+     * @param componentIds componentIds
+     * @since 0.1.7
+     */
+    private static void prioritizeNonQuestioner(List<String> componentIds) {
+        if (componentIds.size() < 2 || !"questioner".equals(componentIds.get(0))) {
+            return;
+        }
+        for (int index = 1; index < componentIds.size(); index++) {
+            if (!"questioner".equals(componentIds.get(index))) {
+                String componentId = componentIds.remove(index);
+                componentIds.add(0, componentId);
+                return;
+            }
+        }
     }
 
     /**
@@ -1308,20 +1332,77 @@ public class LlmEventHandler extends EventHandler {
             return List.of();
         }
 
-        boolean firstFound = false;
+        Object selectedInteraction = selectInteraction(interactionData);
         List<Object> result = new ArrayList<>();
         for (Object chunk : interactionData) {
             if (chunk instanceof OutputSchema os && INTERACTION.equals(os.getType())) {
-                if (!firstFound) {
+                if (chunk == selectedInteraction) {
                     result.add(chunk);
-                    firstFound = true;
                 }
-                // Skip additional interrupts
             } else {
                 result.add(chunk);
             }
         }
         return result;
+    }
+
+    /**
+     * selectInteraction.
+     *
+     * @param interactionData interactionData
+     * @return the selected interaction
+     * @since 0.1.7
+     */
+    private static Object selectInteraction(List<Object> interactionData) {
+        Object firstInteraction = null;
+        for (Object chunk : interactionData) {
+            if (!(chunk instanceof OutputSchema os) || !INTERACTION.equals(os.getType())) {
+                continue;
+            }
+            if (firstInteraction == null) {
+                firstInteraction = chunk;
+            }
+            Optional<String> componentId = extractInteractionComponentId(os.getPayload());
+            if (componentId.filter(value -> !"questioner".equals(value)).isPresent()) {
+                return chunk;
+            }
+        }
+        return firstInteraction;
+    }
+
+    /**
+     * extractInteractionComponentId.
+     *
+     * @param payload payload
+     * @return the optional component ID
+     * @since 0.1.7
+     */
+    private static Optional<String> extractInteractionComponentId(Object payload) {
+        if (payload instanceof Map<?, ?> map) {
+            Object id = map.get("id");
+            return toComponentId(id);
+        }
+        if (payload == null) {
+            return Optional.empty();
+        }
+        try {
+            Object id = payload.getClass().getMethod("getId").invoke(payload);
+            return toComponentId(id);
+        } catch (ReflectiveOperationException exception) {
+            Loggers.CONTROLLER.warning("Failed to extract component_id: {}", exception.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Convert an interaction identifier to a non-blank component ID.
+     *
+     * @param id interaction identifier
+     * @return the optional component ID
+     * @since 0.1.7
+     */
+    private static Optional<String> toComponentId(Object id) {
+        return id instanceof String value && !value.isBlank() ? Optional.of(value) : Optional.empty();
     }
 
     /**
@@ -1663,9 +1744,7 @@ public class LlmEventHandler extends EventHandler {
     private InteractiveInput buildResumeInteractiveInput(String query, List<String> componentIds) {
         if (componentIds != null && !componentIds.isEmpty()) {
             InteractiveInput interactiveInput = new InteractiveInput();
-            for (String componentId : componentIds) {
-                interactiveInput.update(componentId, query);
-            }
+            interactiveInput.update(componentIds.get(0), query);
             return interactiveInput;
         }
         return new InteractiveInput(query);

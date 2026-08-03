@@ -92,6 +92,7 @@ public abstract class BaseRedisStorage {
      * 
      * @param state state
      * @return the result
+     * @throws RuntimeException if the state cannot be serialized
      * @since 0.1.7
      */
     protected Serializer.TypedBytes serializeState(Object state) {
@@ -103,7 +104,7 @@ public abstract class BaseRedisStorage {
         } catch (RuntimeException e) {
             log.warn("Failed to serialize Redis state: {}", rootCauseMessage(e));
             log.warn("Redis state diagnostic: {}", describeState(state));
-            return null;
+            throw e;
         }
     }
 

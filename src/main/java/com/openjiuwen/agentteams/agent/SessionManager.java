@@ -21,7 +21,6 @@ public class SessionManager {
     private final RecoveryManager recoveryManager;
 
     private String sessionId;
-    private Object teamSession;
 
     /**
      * SessionManager.
@@ -53,26 +52,6 @@ public class SessionManager {
      */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
-    }
-
-    /**
-     * getTeamSession.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public Object getTeamSession() {
-        return teamSession;
-    }
-
-    /**
-     * setTeamSession.
-     * 
-     * @param teamSession teamSession
-     * @since 0.1.7
-     */
-    public void setTeamSession(Object teamSession) {
-        this.teamSession = teamSession;
     }
 
     /**

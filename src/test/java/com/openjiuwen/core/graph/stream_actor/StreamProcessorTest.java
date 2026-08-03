@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -25,7 +26,8 @@ class StreamProcessorTest {
     @Test
     @DisplayName("generator routes stream chunks to schema iterators and ends cleanly")
     void testGeneratorRoutesChunks() throws Exception {
-        StreamProcessor processor = new StreamProcessor("collector", List.of("producer-STREAM"), 1);
+        StreamProcessor processor =
+                new StreamProcessor("collector", List.of(Set.of("producer-STREAM")), 1);
         List<Object> callbacks = new CopyOnWriteArrayList<>();
 
         Map<String, Object> generated = processor.generator(
@@ -54,6 +56,33 @@ class StreamProcessorTest {
 
         assertFalse(valueIterator.hasNext());
         assertFalse(otherIterator.hasNext());
+        runner.get(5, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("restored source completion closes its iterator while resumed sibling continues")
+    void restoredSourceCompletionClosesIterator() throws Exception {
+        StreamProcessor processor = new StreamProcessor("collector",
+                List.of(Set.of("producer1-STREAM"), Set.of("producer2-STREAM")), 1);
+        processor.seedCompletedSources(Set.of("producer1-STREAM"));
+
+        Map<String, Object> generated = processor.generator(
+                Map.of("value1", "${producer1.value}", "value2", "${producer2.value}"), null);
+        @SuppressWarnings("unchecked")
+        Iterator<Object> value1 = (Iterator<Object>) generated.get("value1");
+        @SuppressWarnings("unchecked")
+        Iterator<Object> value2 = (Iterator<Object>) generated.get("value2");
+
+        CompletableFuture<Void> runner = CompletableFuture.runAsync(() -> processor.run(ComponentAbility.TRANSFORM));
+        processor.receive(
+                new StreamPayload(Map.of("producer2", Map.of("value", "resumed")), ComponentAbility.STREAM));
+
+        assertFalse(value1.hasNext());
+        assertTrue(value2.hasNext());
+        assertEquals("resumed", value2.next());
+
+        processor.receive(new StreamPayload(Map.of("producer2", "END_STREAM"), ComponentAbility.STREAM));
+        assertFalse(value2.hasNext());
         runner.get(5, TimeUnit.SECONDS);
     }
 

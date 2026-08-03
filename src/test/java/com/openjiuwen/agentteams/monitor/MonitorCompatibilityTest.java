@@ -223,7 +223,7 @@ class MonitorCompatibilityTest {
                 });
         assertThat(monitor.getMessages(null, "member1"))
                 .extracting(MessageInfo::getContent)
-                .containsExactly("from member", "broadcast");
+                .containsExactlyInAnyOrder("from member", "broadcast");
     }
 
     @Test

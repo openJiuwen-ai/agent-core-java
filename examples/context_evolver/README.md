@@ -36,6 +36,8 @@
 - JVM 参数 `-Dopenjiuwen.example.contextEvolver.outputDir=...`
 - 环境变量 `CONTEXT_EVOLVER_OUTPUT_DIR`
 
+覆盖值必须是 `examples/context_evolver` 目录下的相对路径，不能包含 `..`，也不能经过符号链接。
+
 如果你想修改 HotpotQA 的并行轮数，可以通过以下方式覆盖默认值 `3`：
 
 - JVM 参数 `-Dopenjiuwen.example.contextEvolver.mattsK=2`

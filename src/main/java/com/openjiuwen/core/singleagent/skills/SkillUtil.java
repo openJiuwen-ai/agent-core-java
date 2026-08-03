@@ -5,7 +5,12 @@
 package com.openjiuwen.core.singleagent.skills;
 
 import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
 
+import java.io.IOException;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -90,6 +95,28 @@ public class SkillUtil {
     }
 
     /**
+     * Register skills after checking each real path against a trusted root.
+     *
+     * @param skillPath path or list of paths to register
+     * @param skillsRoot trusted root containing loadable skills
+     * @param agent agent instance (for compatibility)
+     * @since 0.1.13
+     */
+    public void registerSkills(Object skillPath, Path skillsRoot, BaseAgent agent) {
+        if (skillPath instanceof String path) {
+            skillManager.register(path, skillsRoot, null, false);
+        } else if (skillPath instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof String path) {
+                    skillManager.register(path, skillsRoot, null, false);
+                }
+            }
+        } else {
+            // no-op
+        }
+    }
+
+    /**
      * Register remote skills from GitHub.
      * 
      * @param skillsDir local skills directory
@@ -113,25 +140,129 @@ public class SkillUtil {
 
     /**
      * Generate a formatted prompt string with information about all registered skills.
-     * 
-     * @return the result
+     * <p>
+     * SKILL.md paths are only emitted when the skill directory lies inside the LOCAL FS
+     * bases (workspace / cwd / projectRoot). Paths outside those roots are omitted so the
+     * model is not steered to invent relative paths or copy long absolute temp paths.
+     * </p>
+     *
+     * @return system + skills prompt text for the agent
      * @since 0.1.7
      */
     public String getSkillPrompt() {
-        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
-                + "Before attempting any task, read the relevant skill document (SKILL.md) "
-                + "using readFile and follow its workflow.\n";
-
         List<Skill> skills = skillManager.getAll();
         StringBuilder skillsInfo = new StringBuilder();
         for (int i = 0; i < skills.size(); i++) {
             Skill skill = skills.get(i);
             skillsInfo.append(i).append(".Skill name: ").append(skill.getName()).append("; Skill description: ")
-                    .append(skill.getDescription()).append("; Skill directory file path: ").append(skill.getDirectory())
-                    .append("\n");
+                    .append(skill.getDescription());
+            String skillMdPath = resolveSkillMdPathForPrompt(skill.getDirectory());
+            if (skillMdPath != null) {
+                skillsInfo.append("; Skill directory: ").append(skillMdPath);
+            }
+            skillsInfo.append("\n");
         }
 
         String skillText = String.format(SKILL_PROMPT_CONTENT, skillsInfo.toString());
+        String systemPrompt = "You are an agent equipped with various skills to solve problems.\n"
+                + "Before attempting any task, read the relevant skill document (SKILL.md) "
+                + "using readFile and follow its workflow.\n";
         return systemPrompt + "\n" + skillText;
+    }
+
+    /**
+     * Resolves a relative {@code SKILL.md} path for prompts when the skill lies under LOCAL FS bases.
+     * <p>
+     * Skills outside workspace / cwd / projectRoot return {@code null} so no absolute temp path is emitted.
+     *
+     * @param directory skill directory absolute or relative path
+     * @return POSIX-style relative path to {@code SKILL.md}, or {@code null} when outside allowed bases
+     * @since 0.1.14
+     */
+    static String resolveSkillMdPathForPrompt(String directory) {
+        if (directory == null || directory.isBlank()) {
+            return null;
+        }
+        Path skillDir;
+        try {
+            skillDir = toNormalizedAbsolute(Path.of(directory));
+        } catch (InvalidPathException e) {
+            return null;
+        }
+        Path skillMd = skillDir.resolve("SKILL.md").normalize();
+        for (Path base : localFsBases()) {
+            if (isWithinBase(base, skillDir) || isWithinBase(base, skillMd)) {
+                Path relative = base.relativize(skillMd);
+                return relative.toString().replace('\\', '/');
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Collects normalized LOCAL FS roots used to decide whether a skill path is prompt-safe.
+     *
+     * @return ordered unique absolute bases from workspace, cwd, and projectRoot
+     * @since 0.1.7
+     */
+    private static List<Path> localFsBases() {
+        List<Path> bases = new ArrayList<>();
+        addBase(bases, CwdContext.getWorkspace());
+        addBase(bases, CwdContext.getCwd());
+        addBase(bases, CwdContext.getProjectRoot());
+        return bases;
+    }
+
+    /**
+     * Appends a usable absolute root to {@code bases} when {@code root} is non-blank and parseable.
+     *
+     * @param bases accumulator of absolute base paths
+     * @param root candidate root string; blank or unusable values are skipped
+     * @since 0.1.7
+     */
+    private static void addBase(List<Path> bases, String root) {
+        if (root == null || root.isBlank()) {
+            return;
+        }
+        try {
+            Path path = toNormalizedAbsolute(Path.of(root));
+            if (!bases.contains(path)) {
+                bases.add(path);
+            }
+        } catch (InvalidPathException ignored) {
+            // skip unusable roots
+        }
+    }
+
+    /**
+     * Absolute + normalize, preferring {@link Path#toRealPath()} so Linux {@code /tmp} symlinks
+     * match skill directories that already resolved through the real path.
+     *
+     * @param path input path
+     * @return normalized absolute path (realpath when available)
+     * @since 0.1.14
+     */
+    private static Path toNormalizedAbsolute(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        try {
+            return absolute.toRealPath().normalize();
+        } catch (IOException e) {
+            return absolute;
+        }
+    }
+
+    /**
+     * Returns whether {@code candidate} is the same as or nested under {@code base}.
+     *
+     * @param base allowed root; {@code null} yields {@code false}
+     * @param candidate path to test; {@code null} yields {@code false}
+     * @return {@code true} when candidate is within base
+     * @since 0.1.7
+     */
+    private static boolean isWithinBase(Path base, Path candidate) {
+        if (base == null || candidate == null) {
+            return false;
+        }
+        return candidate.startsWith(base);
     }
 }

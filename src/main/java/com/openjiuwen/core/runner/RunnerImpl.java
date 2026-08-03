@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner;
 
+import com.openjiuwen.agentteams.runtime.TeamRuntimeManager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -70,6 +71,7 @@ public class RunnerImpl {
     private final ResourceMgr resourceManager;
     private final LocalMessageQueue messageQueue;
     private final CallbackFramework callbackFramework;
+    private final TeamRuntimeManager teamRuntimeManager;
 
     private TenantWorkspaceResolver workspaceResolver;
 
@@ -100,6 +102,7 @@ public class RunnerImpl {
         this.resourceManager = new ResourceMgr();
         this.messageQueue = new LocalMessageQueue();
         this.callbackFramework = new CallbackFramework();
+        this.teamRuntimeManager = new TeamRuntimeManager();
 
         if (config != null) {
             RunnerConfig.setRunnerConfig(config);
@@ -242,6 +245,7 @@ public class RunnerImpl {
     public boolean stop() {
         logger.info("Begin to stop runner, runnerId={}", runnerId);
         try {
+            teamRuntimeManager.stopAll();
             if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
                 // Stop ReplyTopicSubscription and clean up collectors
                 if (systemReplySub != null) {
@@ -379,6 +383,50 @@ public class RunnerImpl {
         AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session, streamModes);
         Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context, streamModes);
         return wrapStreamingIterator(iterator, agentSession);
+    }
+
+    /**
+     * Execute an agent team with streaming output and managed lifecycle.
+     *
+     * @param agentTeam team name, team spec, facade, or runtime agent
+     * @param inputs team input
+     * @param session session identifier or session object
+     * @param context model context
+     * @param streamModes streaming modes
+     * @return iterator of team streaming chunks
+     * @since 0.1.13
+     */
+    public Iterator<Object> runAgentTeamStreaming(
+            Object agentTeam,
+            Object inputs,
+            Object session,
+            ModelContext context,
+            List<StreamMode> streamModes) {
+        String sessionId = resolveAgentSessionId(inputs, session);
+        TeamRuntimeManager.Activation activation = teamRuntimeManager.activate(agentTeam, sessionId);
+        boolean isSuccessful = false;
+        try {
+            Iterator<Object> stream = runAgentStreaming(
+                    activation.agent(), inputs, session, context, streamModes, null);
+            isSuccessful = true;
+            return wrapAgentTeamIterator(stream, activation);
+        } finally {
+            if (!isSuccessful) {
+                teamRuntimeManager.finalizeRound(activation);
+            }
+        }
+    }
+
+    /**
+     * Destroy a registered agent team.
+     *
+     * @param teamName team name
+     * @param isForceEnabled whether other members should be force-shut down
+     * @return {@code true} when the registered team was cleaned
+     * @since 0.1.13
+     */
+    public boolean destroyAgentTeam(String teamName, boolean isForceEnabled) {
+        return teamRuntimeManager.destroyTeam(teamName, isForceEnabled);
     }
 
     /**
@@ -1124,7 +1172,7 @@ public class RunnerImpl {
      */
     private Object invokeFirstCompatibleMethod(Object target, String methodName, List<Object[]> argVariants,
             String unsupportedMessage) {
-        RuntimeException lastFailure = null;
+        IllegalStateException lastFailure = null;
         for (Object[] args : argVariants) {
             Method method = findCompatibleMethod(target.getClass(), methodName, args);
             if (method == null) {
@@ -1133,19 +1181,22 @@ public class RunnerImpl {
             try {
                 return method.invoke(target, args);
             } catch (IllegalAccessException e) {
-                lastFailure = new RuntimeException("Cannot access " + methodName + " method", e);
+                lastFailure = new IllegalStateException("Cannot access " + methodName + " method", e);
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause();
                 if (cause instanceof RuntimeException runtimeException) {
                     throw runtimeException;
                 }
-                throw new RuntimeException(cause != null ? cause : e);
+                if (cause != null) {
+                    throw new IllegalStateException("Failed to invoke " + methodName + " method", cause);
+                }
+                throw new IllegalStateException("Failed to invoke " + methodName + " method", e);
             }
         }
         if (lastFailure != null) {
             throw lastFailure;
         }
-        throw new RuntimeException(unsupportedMessage);
+        throw new UnsupportedOperationException(unsupportedMessage);
     }
 
     /**
@@ -1334,6 +1385,12 @@ public class RunnerImpl {
         return new CloseableStreamingIterator();
     }
 
+    private Iterator<Object> wrapAgentTeamIterator(
+            Iterator<Object> delegate,
+            TeamRuntimeManager.Activation activation) {
+        return new AgentTeamStreamingIterator(delegate, activation);
+    }
+
     @SuppressWarnings("unchecked")
     private <T> Iterator<T> wrapTenantUnbindIterator(Iterator<T> delegate) {
         class TenantUnbindIterator implements Iterator<T>, AutoCloseable {
@@ -1384,6 +1441,69 @@ public class RunnerImpl {
             }
         }
         return new TenantUnbindIterator();
+    }
+
+    private final class AgentTeamStreamingIterator implements Iterator<Object>, AutoCloseable {
+        private final Iterator<Object> delegate;
+        private final TeamRuntimeManager.Activation activation;
+        private boolean isFinalized;
+
+        private AgentTeamStreamingIterator(
+                Iterator<Object> delegate,
+                TeamRuntimeManager.Activation activation) {
+            this.delegate = delegate;
+            this.activation = activation;
+        }
+
+        @Override
+        public boolean hasNext() {
+            boolean isSuccessful = false;
+            try {
+                boolean hasNext = delegate.hasNext();
+                isSuccessful = true;
+                if (!hasNext) {
+                    finalizeTeam();
+                }
+                return hasNext;
+            } finally {
+                if (!isSuccessful) {
+                    finalizeTeam();
+                }
+            }
+        }
+
+        @Override
+        public Object next() {
+            boolean isSuccessful = false;
+            try {
+                Object next = delegate.next();
+                isSuccessful = true;
+                return next;
+            } finally {
+                if (!isSuccessful) {
+                    finalizeTeam();
+                }
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            try {
+                if (delegate instanceof AutoCloseable closeable) {
+                    closeable.close();
+                }
+            } finally {
+                finalizeTeam();
+            }
+        }
+
+        private void finalizeTeam() {
+            if (isFinalized) {
+                return;
+            }
+            teamRuntimeManager.finalizeRound(activation);
+            isFinalized = true;
+        }
     }
 
     /**

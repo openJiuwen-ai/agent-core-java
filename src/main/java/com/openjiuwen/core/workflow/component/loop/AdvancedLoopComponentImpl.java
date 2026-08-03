@@ -225,7 +225,7 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object>
 
         if (!continueLoop) {
             Map<String, Object> stateReset = new java.util.HashMap<>();
-            stateReset.put(Constant.INDEX, 0);
+            stateReset.put(Constant.INDEX, null);
             stateReset.put(BROKEN, false);
             state.update(stateReset);
             postBody.setFinishIndex(-1);
@@ -287,18 +287,23 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object>
         }
         this.nodeSession = new NodeSession(loopSession, this.nodeId);
 
-        // Set loop ID in outputs
+        // Clean up previous state for this node, then set LOOP_ID after cleanup
+        // so it is not removed by the state snapshot cleanup.
         if (loopSession.state() instanceof WorkflowCommitState wsState) {
-            wsState.setOutputs(Map.of(Constant.LOOP_ID, this.nodeId));
             Map<String, Object> stateSnapshot = wsState.getIoState().getState();
             stateSnapshot.remove(this.nodeId);
             wsState.setOutputs(stateSnapshot);
             wsState.commit();
+            // Set LOOP_ID after cleanup so it persists for inner components.
+            wsState.setOutputs(Map.of(Constant.LOOP_ID, this.nodeId));
+            wsState.commit();
         }
 
-        // Tracer registration (if tracer is present)
+        // Tracer registration: use loopSession to match Python's loop_session.executable_id().
+        // This ensures the handler is registered as "tracer_workflow.<loopId>" which
+        // inner loop components use when triggering tracer events via parent_node_id.
         if (loopSession.tracer() != null) {
-            TracerWorkflowUtils.registerWorkflowSpanManager(this.nodeSession);
+            TracerWorkflowUtils.registerWorkflowSpanManager(loopSession);
         }
 
         Object context = kwargs.length > 0 ? kwargs[0] : null;

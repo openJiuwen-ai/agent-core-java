@@ -4,8 +4,13 @@
 
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.Result;
+import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
@@ -68,6 +73,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -133,7 +139,6 @@ public class DeepAgent implements AutoCloseable {
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
     private TmpFileCleaner tmpFileCleaner;
-    private final AtomicLong requestSeq = new AtomicLong(0);
 
     /**
      * ConcurrentHashMap<>.
@@ -355,7 +360,7 @@ public class DeepAgent implements AutoCloseable {
                 if (isResolved instanceof Model model) {
                     return model;
                 }
-            } catch (RuntimeException ignored) {
+            } catch (BaseError ignored) {
                 // A plain model name is still valid ReActAgentConfig; only resource ids resolve here.
             }
         }
@@ -540,6 +545,8 @@ public class DeepAgent implements AutoCloseable {
                 registerConfiguredTool(tool);
             }
         }
+        // Register config.mcps before rails
+        registerPendingMcps();
         if (config.getRails() != null) {
             for (Object rail : config.getRails()) {
                 if (rail instanceof AgentRail agentRail) {
@@ -554,9 +561,8 @@ public class DeepAgent implements AutoCloseable {
                 registerDeepRail(rail);
             }
         }
-        if (config.getMcps() != null) {
-            registeredMcps.addAll(config.getMcps());
-        }
+        // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
+        syncMcpServersFromResourceMgr();
         if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
             var rail = PermissionFactory.buildPermissionInterruptRail(config.getPermissions(),
                     config.getPermissionHost(), workspace.root());
@@ -567,6 +573,187 @@ public class DeepAgent implements AutoCloseable {
             ensureTaskLoopRuntime();
         }
         isInitialized = true;
+    }
+
+    /**
+     * Registers config-declared MCP servers into ResourceMgr and AbilityManager.
+     * <p>
+     * Aligns with Python {@code _register_pending_mcps}. Existing identical configs are re-tagged;
+     * conflicting configs for the same server id fail fast.
+     *
+     * @since 0.1.14
+     */
+    private void registerPendingMcps() {
+        if (config.getMcps() == null || config.getMcps().isEmpty()) {
+            return;
+        }
+        for (McpServerConfig mcpConfig : config.getMcps()) {
+            registerOnePendingMcp(mcpConfig);
+        }
+    }
+
+    /**
+     * Registers a single config-declared MCP server, or re-tags an identical existing one.
+     *
+     * @param mcpConfig MCP server config from DeepAgent configuration
+     * @since 0.1.14
+     */
+    private void registerOnePendingMcp(McpServerConfig mcpConfig) {
+        mcpConfig.normalizeServerId();
+        McpServerConfig existing = Runner.resourceMgr().getMcpServerConfig(mcpConfig.getServerId());
+        if (existing == null) {
+            addNewPendingMcp(mcpConfig);
+        } else {
+            retagExistingPendingMcp(existing, mcpConfig);
+        }
+        agent.getAbilityManager().add(mcpConfig);
+        if (!registeredMcps.contains(mcpConfig)) {
+            registeredMcps.add(mcpConfig);
+        }
+    }
+
+    /**
+     * Adds a new MCP server via ResourceMgr and fails fast on any error result.
+     *
+     * @param mcpConfig MCP server config to add
+     * @since 0.1.14
+     */
+    private void addNewPendingMcp(McpServerConfig mcpConfig) {
+        List<Result<String>> results = Runner.resourceMgr().addMcpServer(mcpConfig, card.getId(), null);
+        throwIfAddMcpFailed(results, mcpConfig);
+    }
+
+    /**
+     * Throws when any ResourceMgr addMcpServer result is an error.
+     *
+     * @param results addMcpServer results
+     * @param mcpConfig config used for error context
+     * @since 0.1.14
+     */
+    private static void throwIfAddMcpFailed(List<Result<String>> results, McpServerConfig mcpConfig) {
+        for (Result<String> result : results) {
+            if (!result.isError()) {
+                continue;
+            }
+            Exception error = result.getError();
+            if (error instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
+                    String.valueOf(mcpConfig), "reason",
+                    error != null ? error.getMessage() : "add_mcp_server failed");
+        }
+    }
+
+    /**
+     * Re-tags an already-registered MCP server when configs match; otherwise fails fast.
+     *
+     * @param existing already-registered config
+     * @param mcpConfig candidate config from DeepAgent config
+     * @since 0.1.14
+     */
+    private void retagExistingPendingMcp(McpServerConfig existing, McpServerConfig mcpConfig) {
+        if (!sameMcpServerConfig(existing, mcpConfig)) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
+                    String.valueOf(mcpConfig), "reason",
+                    "server_id '" + mcpConfig.getServerId()
+                            + "' is already registered with a different config");
+        }
+        ensureResourceTagged(mcpConfig.getServerId(), card.getId(), mcpConfig);
+        for (String toolId : Runner.resourceMgr().getMcpToolIds(mcpConfig.getServerId())) {
+            ensureResourceTagged(toolId, card.getId(), mcpConfig);
+        }
+    }
+
+    /**
+     * Ensures {@code resourceId} carries the agent tag, mapping ResourceMgr errors to MCP add failures.
+     *
+     * @param resourceId server or tool resource id
+     * @param tag agent card id (or equivalent) to attach
+     * @param mcpConfig config used only for error context
+     * @since 0.1.7
+     */
+    private void ensureResourceTagged(String resourceId, String tag, McpServerConfig mcpConfig) {
+        Result<List<String>> tagResult = Runner.resourceMgr().addResourceTag(resourceId, tag);
+        if (tagResult.isError()) {
+            Exception error = tagResult.getError();
+            if (error instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
+                    String.valueOf(mcpConfig), "reason",
+                    error != null ? error.getMessage() : "add_resource_tag failed");
+        }
+    }
+
+    /**
+     * Pulls MCP servers already present in ResourceMgr (agent + global tags) into AbilityManager / registeredMcps.
+     * <p>
+     * Skips servers whose {@code serverName} was already registered so config-declared MCPs win on name clashes.
+     *
+     * @since 0.1.7
+     */
+    private void syncMcpServersFromResourceMgr() {
+        Set<String> seenServerNames = new HashSet<>();
+        for (McpServerConfig already : registeredMcps) {
+            if (already.getServerName() != null) {
+                seenServerNames.add(already.getServerName());
+            }
+        }
+        for (Object tag : List.of(card.getId(), Tag.GLOBAL)) {
+            List<McpServerConfig> configs = Runner.resourceMgr().listMcpServers(tag);
+            for (McpServerConfig mcpConfig : configs) {
+                if (mcpConfig == null || mcpConfig.getServerName() == null || mcpConfig.getServerName().isBlank()) {
+                    continue;
+                }
+                if (!seenServerNames.add(mcpConfig.getServerName())) {
+                    continue;
+                }
+                if (agent.getAbilityManager().get(mcpConfig.getServerName()) == null) {
+                    agent.getAbilityManager().add(mcpConfig);
+                }
+                if (!registeredMcps.contains(mcpConfig)) {
+                    registeredMcps.add(mcpConfig);
+                }
+            }
+        }
+    }
+
+    /**
+     * Compares two MCP configs for "same registration" (id/name/path/client type and key transport fields).
+     *
+     * @param left already-registered config
+     * @param right candidate config from DeepAgent config
+     * @return {@code true} when they are treated as the same server registration
+     * @since 0.1.7
+     */
+    private static boolean sameMcpServerConfig(McpServerConfig left, McpServerConfig right) {
+        if (left == right) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        String leftClientType = normalizeClientType(left.getClientType());
+        String rightClientType = normalizeClientType(right.getClientType());
+        return Objects.equals(left.getServerId(), right.getServerId())
+                && Objects.equals(left.getServerName(), right.getServerName())
+                && Objects.equals(left.getServerPath(), right.getServerPath())
+                && Objects.equals(leftClientType, rightClientType);
+    }
+
+    /**
+     * Normalizes MCP client type aliases (e.g. {@code streamable-http} → {@code streamable_http}).
+     *
+     * @param clientType raw client type from config; may be null
+     * @return normalized client type, or the original value when no alias applies
+     * @since 0.1.7
+     */
+    private static String normalizeClientType(String clientType) {
+        if ("streamable-http".equals(clientType)) {
+            return "streamable_http";
+        }
+        return clientType;
     }
 
     /**
@@ -694,15 +881,24 @@ public class DeepAgent implements AutoCloseable {
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
-            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"))
-                    + "_" + requestSeq.incrementAndGet();
+            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
             AgentSessionApi effectiveSession = session != null
                     ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), card)
                     : new AgentSessionApi(requestLevelSessionId, null, card);
+            // 传播租户上下文到 effective session，确保任务线程能重新绑定（task-loop 跨线程）
+            TenantContext effectiveCtx = session != null ? session.getTenantContext() : null;
+            if (effectiveCtx == null || !effectiveCtx.isTenantAware()) {
+                effectiveCtx = TenantContextHolder.getCurrentTenant();
+            }
+            if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
+                effectiveSession.withTenantContext(effectiveCtx);
+            }
+            effectiveSession.preRun(normalized);
             if (session != null) {
                 copySessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+            effectiveSession.postRun();
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
@@ -757,8 +953,7 @@ public class DeepAgent implements AutoCloseable {
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes) {
         String requestLevelSessionId = String.valueOf(inputs.getOrDefault("conversation_id",
-        card.getName() + "_session"))
-                + "_" + requestSeq.incrementAndGet();
+        card.getName() + "_session"));
         AgentSessionApi session = new AgentSessionApi(
                 requestLevelSessionId,
                 null,
@@ -843,11 +1038,16 @@ public class DeepAgent implements AutoCloseable {
 
     private AgentSessionApi buildEffectiveStreamSession(Map<String, Object> normalized, AgentSessionApi session,
             List<StreamMode> streamModes) {
-        String baseConversationId = String.valueOf(normalized.get("conversation_id"));
-        String requestLevelSessionId = baseConversationId + "_" + requestSeq.incrementAndGet();
+        String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
         if (session != null) {
-            return new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
+            AgentSessionApi effective = new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
                     session.getInner().streamWriterManager().getEnabledModes());
+            // 传播租户上下文到流式 effective session
+            TenantContext ctx = session.getTenantContext();
+            if (ctx != null && ctx.isTenantAware()) {
+                effective.withTenantContext(ctx);
+            }
+            return effective;
         }
         return new AgentSessionApi(requestLevelSessionId, null, this.card,
                 streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes);
@@ -1535,6 +1735,19 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     private Map<String, Object> invokeInnerRoundOnce(Map<String, Object> effectiveInputs, AgentSessionApi session) {
+        // task-loop 在独立线程执行，InheritableThreadLocal 不会自动继承调用方线程的租户上下文，
+        // 这里从 session 重新绑定，保证 SkillUseRail/工具层能读到正确的租户
+        TenantContext ctx = session != null ? session.getTenantContext() : null;
+        if (ctx != null && ctx.isTenantAware()) {
+            TenantContextHolder.setCurrentTenant(ctx);
+            try {
+                bindTenantWorkspace(ctx);
+                return (Map<String, Object>) agent.invoke(effectiveInputs, session);
+            } finally {
+                TenantContextHolder.clearCurrentTenant();
+                unbindTenantWorkspace();
+            }
+        }
         return (Map<String, Object>) agent.invoke(effectiveInputs, session);
     }
 
@@ -1550,8 +1763,37 @@ public class DeepAgent implements AutoCloseable {
             AgentSessionApi session) {
         AgentSessionApi innerSession = new AgentSessionApi(String.valueOf(effectiveInputs.get("conversation_id")),
                 session != null ? session.getEnvs() : null, card, List.of(StreamMode.OUTPUT));
+        // 传播租户上下文到 inner session
+        TenantContext ctx = session != null ? session.getTenantContext() : null;
+        if (ctx != null && ctx.isTenantAware()) {
+            innerSession.withTenantContext(ctx);
+        }
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
+        // task-loop 独立线程需重新绑定租户上下文
+        if (ctx != null && ctx.isTenantAware()) {
+            TenantContextHolder.setCurrentTenant(ctx);
+            try {
+                bindTenantWorkspace(ctx);
+                return collectStreamToResult(effectiveInputs, innerSession, session);
+            } finally {
+                TenantContextHolder.clearCurrentTenant();
+                unbindTenantWorkspace();
+            }
+        }
+        return collectStreamToResult(effectiveInputs, innerSession, session);
+    }
+
+    /**
+     * collectStreamToResult.
+     *
+     * @param effectiveInputs effectiveInputs
+     * @param innerSession innerSession
+     * @param session session
+     * @return the result
+     */
+    private Map<String, Object> collectStreamToResult(Map<String, Object> effectiveInputs,
+            AgentSessionApi innerSession, AgentSessionApi session) {
         List<Object> streamItems = new ArrayList<>();
         agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT))
                 .forEachRemaining(chunk -> {
@@ -1819,6 +2061,9 @@ public class DeepAgent implements AutoCloseable {
     }
 
     private void bindTenantWorkspace(TenantContext ctx) {
+        if (!config.isEnableTenantIsolation()) {
+            return;
+        }
         if (ctx != null && ctx.isTenantAware()) {
             if (tieredWorkspaceManager != null) {
                 tieredWorkspaceManager.initializeTenantSpace(ctx);

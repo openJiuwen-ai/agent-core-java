@@ -3,8 +3,10 @@
 package com.openjiuwen.core.singleagent.skills;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -142,6 +144,35 @@ class SkillManagerTest {
     @Test
     void testRegisterEmptyPath() {
         manager.register("");
+        assertThat(manager.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("受信技能根目录内的合法技能可以正常注册")
+    void testRegisterWithinTrustedSkillsRoot(@TempDir Path tempDir) throws IOException {
+        Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
+        Path skillDir = Files.createDirectories(skillsRoot.resolve("safe-skill"));
+        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Safe skill\n---");
+
+        manager.register(skillDir.toString(), skillsRoot, null, false);
+
+        assertThat(manager.has("safe-skill")).isTrue();
+    }
+
+    @Test
+    @DisplayName("拒绝注册根目录外的技能及越界符号链接")
+    void testRejectRegisterOutsideTrustedSkillsRoot(@TempDir Path tempDir) throws IOException {
+        Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
+        Path outsideSkill = Files.createDirectories(tempDir.resolve("outside-skill"));
+        Files.writeString(outsideSkill.resolve("SKILL.md"), "---\ndescription: Outside skill\n---");
+
+        assertThatThrownBy(() -> manager.register(outsideSkill.toString(), skillsRoot, null, false))
+                .isInstanceOf(SecurityException.class);
+
+        Files.createSymbolicLink(skillsRoot.resolve("linked-skill"), outsideSkill);
+        assertThatThrownBy(() -> manager.register(
+                skillsRoot.resolve("linked-skill").toString(), skillsRoot, null, false))
+                .isInstanceOf(SecurityException.class);
         assertThat(manager.count()).isZero();
     }
 

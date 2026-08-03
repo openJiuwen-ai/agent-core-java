@@ -469,8 +469,8 @@ class HarnessRailsCompatibilityTest {
         String serverId = "stdio-fixture-" + java.util.UUID.randomUUID().toString().replace("-", "");
         McpServerConfig serverConfig = McpServerConfig.builder().serverId(serverId).serverName("stdio-fixture")
                 .clientType("stdio").serverPath(javaBin())
-                .params(Map.of("command", javaBin(), "args", List.of("-cp", System.getProperty("java.class.path"),
-                        "com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer")))
+                .params(Map.of("command", javaBin(), "args", List.of("-cp", stdioFixtureClasspath(),
+                        com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer.class.getName())))
                 .build();
         Runner.resourceMgr().addMcpServer(serverConfig, "mcp-stdio-fixture-test", null);
         try {
@@ -1670,7 +1670,21 @@ class HarnessRailsCompatibilityTest {
     }
 
     private static String javaBin() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return ProcessHandle.current().info().command()
+                .orElseThrow(() -> new IllegalStateException("Current Java executable is unavailable."));
+    }
+
+    private static String stdioFixtureClasspath() throws Exception {
+        List<String> entries = new ArrayList<>();
+        for (Class<?> type : List.of(com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer.class,
+                com.fasterxml.jackson.databind.ObjectMapper.class, com.fasterxml.jackson.core.JsonFactory.class,
+                com.fasterxml.jackson.annotation.JsonInclude.class)) {
+            String entry = Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+            if (!entries.contains(entry)) {
+                entries.add(entry);
+            }
+        }
+        return String.join(java.io.File.pathSeparator, entries);
     }
 
     private static final class RecordingLspServer {
@@ -1749,8 +1763,21 @@ class HarnessRailsCompatibilityTest {
         String method = String.valueOf(request.get("method"));
         String clientType = exchange.getRequestURI().getQuery().replace("client=", "");
         if (!clientType.equals(exchange.getRequestHeaders().getFirst("X-MCP-Test"))) {
-            writeHttpMcpResponse(exchange, Map.of("jsonrpc", "2.0", "id", id, "error",
-                    Map.of("code", -32602, "message", "missing test auth")));
+            Map<String, Object> errorBody = new java.util.LinkedHashMap<>();
+            errorBody.put("jsonrpc", "2.0");
+            if (id != null) {
+                errorBody.put("id", id);
+            }
+            errorBody.put("error", Map.of("code", -32602, "message", "missing test auth"));
+            writeHttpMcpResponse(exchange, errorBody);
+            return;
+        }
+
+        // JSON-RPC notifications (e.g. notifications/initialized) have no id; ack with empty body.
+        // Map.of(..., "id", null, ...) would NPE and break HTTP MCP connect after #40 handshake.
+        if (id == null || method.startsWith("notifications/")) {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
             return;
         }
 
