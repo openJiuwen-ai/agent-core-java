@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.tracerotel;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -434,6 +435,13 @@ public class OtelRail extends AgentRail {
             String name = reactConfig.getModelName();
             if (name != null && !name.isEmpty()) {
                 return Optional.of(name);
+            }
+            ModelRequestConfig modelConfigObj = reactConfig.getModelConfigObj();
+            if (modelConfigObj != null) {
+                String modelConfigName = modelConfigObj.getModelName();
+                if (modelConfigName != null && !modelConfigName.isEmpty()) {
+                    return Optional.of(modelConfigName);
+                }
             }
         }
         return Optional.empty();
