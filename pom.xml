@@ -20,28 +20,36 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
-        <jackson.version>2.18.9</jackson.version>
+        <jackson.version>2.22.1</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.5.37</logback.version>
+        <log4j.version>2.26.1</log4j.version>
         <lombok.version>1.18.32</lombok.version>
-        <bouncy-castle.version>1.84</bouncy-castle.version>
+        <bouncy-castle.version>1.85</bouncy-castle.version>
+        <commons-codec.version>1.20.0</commons-codec.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
-        <milvus.version>2.6.18</milvus.version>
-        <pulsar.version>4.0.9</pulsar.version>
+        <failureaccess.version>1.0.2</failureaccess.version>
+        <grpc.version>1.82.1</grpc.version>
+        <guava.version>33.0.0-jre</guava.version>
+        <jna.version>5.19.1</jna.version>
+        <jsonschema.version>4.38.0</jsonschema.version>
+        <kotlin.version>2.4.10</kotlin.version>
+        <milvus.version>2.6.22</milvus.version>
+        <protobuf.version>3.25.9</protobuf.version>
+        <pulsar.version>4.2.3</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <sqlite-jdbc.version>3.53.0.0</sqlite-jdbc.version>
+        <sqlite-jdbc.version>3.53.2.1</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
         <jedis.version>5.1.5</jedis.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
-        <pdfbox.version>2.0.31</pdfbox.version>
-        <poi.version>5.4.0</poi.version>
+        <pdfbox.version>2.0.37</pdfbox.version>
+        <poi.version>5.5.1</poi.version>
         <openai-java.version>4.32.0</openai-java.version>
         <reactor.version>3.6.2</reactor.version>
         <h2.version>2.2.224</h2.version>
-        <open-telemetry.version>1.62.0</open-telemetry.version>
+        <open-telemetry.version>1.64.0</open-telemetry.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
@@ -60,7 +68,7 @@
 
     <!--
       Pin transitive versions so pulsar / milvus / openai cannot reintroduce
-      vulnerable or split versions of Jackson, BouncyCastle, OTel, commons-lang3.
+      vulnerable or split versions of shared dependency families.
     -->
     <dependencyManagement>
         <dependencies>
@@ -75,6 +83,13 @@
                 <groupId>io.opentelemetry</groupId>
                 <artifactId>opentelemetry-bom</artifactId>
                 <version>${open-telemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-bom</artifactId>
+                <version>${kotlin.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -97,6 +112,51 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
                 <version>${commons-lang3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-codec</groupId>
+                <artifactId>commons-codec</artifactId>
+                <version>${commons-codec.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>failureaccess</artifactId>
+                <version>${failureaccess.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-generator</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-module-jackson</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-module-swagger-2</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>${log4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>${jna.version}</version>
             </dependency>
             <dependency>
                 <groupId>ch.qos.logback</groupId>
@@ -137,13 +197,6 @@
             <artifactId>okhttp</artifactId>
             <version>${okhttp3.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>mockwebserver</artifactId>
-            <version>${okhttp3.version}</version>
-            <scope>test</scope>
-        </dependency>
-
         <!-- YAML Processing: SnakeYAML -->
         <dependency>
             <groupId>org.yaml</groupId>
@@ -181,11 +234,23 @@
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
             <version>${milvus.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.jetbrains.kotlin</groupId>
+                    <artifactId>kotlin-stdlib-common</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client</artifactId>
             <version>${pulsar.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.pulsar</groupId>
+                    <artifactId>bouncy-castle-bc</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.pgvector</groupId>
@@ -272,19 +337,6 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>${sqlite-jdbc.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-        </dependency>
-
         <!-- OpenTelemetry (versions from opentelemetry-bom) -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
@@ -297,13 +349,28 @@
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
-            <!-- OTel 1.62+ pulls okhttp-jvm 5.x; keep classpath on okhttp 4.12 / okio 3.6 -->
             <exclusions>
                 <exclusion>
-                    <groupId>com.squareup.okhttp3</groupId>
-                    <artifactId>okhttp-jvm</artifactId>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-sender-jdk</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-sender-grpc-managed-channel</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
