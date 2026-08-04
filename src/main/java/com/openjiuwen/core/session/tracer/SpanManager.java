@@ -4,11 +4,10 @@
 
 package com.openjiuwen.core.session.tracer;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manages spans during a tracer session. Maintains ordered collection of spans.
@@ -22,11 +21,11 @@ public class SpanManager {
     private final String parentNodeId;
 
     /**
-     * ArrayList<>.
+     * CopyOnWriteArrayList for thread-safe ordered span tracking.
      * 
      * @since 0.1.7
      */
-    private final List<String> order = new ArrayList<>();
+    private final CopyOnWriteArrayList<String> order = new CopyOnWriteArrayList<>();
 
     /**
      * ConcurrentHashMap<>.
@@ -90,9 +89,7 @@ public class SpanManager {
      * @since 0.1.7
      */
     public void refreshSpanRecord(String invokeId, Span span) {
-        if (!order.contains(invokeId)) {
-            order.add(invokeId);
-        }
+        order.addIfAbsent(invokeId);
         sessionSpans.put(invokeId, span);
     }
 
@@ -147,10 +144,11 @@ public class SpanManager {
      * @since 0.1.7
      */
     public Span getLastSpan() {
-        if (order.isEmpty()) {
+        int size = order.size();
+        if (size == 0) {
             return null;
         }
-        String lastId = order.get(order.size() - 1);
+        String lastId = order.get(size - 1);
         return sessionSpans.get(lastId);
     }
 
