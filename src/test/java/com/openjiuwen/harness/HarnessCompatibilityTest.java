@@ -9,10 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -54,6 +56,8 @@ import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.task_loop.CustomPredicateEvaluator;
+import com.openjiuwen.harness.task_loop.TaskLoopController;
+import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import org.junit.jupiter.api.AfterEach;
@@ -751,6 +755,52 @@ class HarnessCompatibilityTest {
         }
         assertThat(agent.getEventQueue()).isNotNull();
         assertThat(agent.getTaskScheduler()).isNotNull();
+    }
+
+    @Test
+    void deepAgentTaskLoopShouldNotConvertStructuredInterruptToSteering() {
+        String sessionId = "harness-interrupt-session";
+        TaskLoopController controller = new TaskLoopController();
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(controller);
+        AgentSessionApi session = new AgentSessionApi(sessionId);
+
+        InteractionOutput payload = new InteractionOutput("ask-user-call", Map.of("question", "Continue?"));
+        int structuredRound = controller.prepareRound(sessionId, false);
+        TaskInteractionEvent structuredEvent = new TaskInteractionEvent(List.of(new DataFrame.JsonDataFrame(
+                Map.of("type", "__interaction__", "payload", payload))), null);
+        structuredEvent.setMetadata(Map.of("_handler_round_id", structuredRound));
+
+        Map<String, Object> structuredResult =
+                handler.handleTaskInteraction(new EventHandlerInput(structuredEvent, session));
+
+        assertThat(structuredResult).containsEntry("result_type", "interrupt").containsEntry("msg", "");
+        assertThat(structuredResult.get("state")).asList().singleElement().satisfies(state -> {
+            assertThat(state).isInstanceOf(OutputSchema.class);
+            assertThat(((OutputSchema) state).getPayload()).isSameAs(payload);
+        });
+        assertThat(controller.drainSteering(sessionId)).isEmpty();
+
+        int terminalRound = controller.prepareRound(sessionId, true);
+        OutputSchema interruptState = new OutputSchema("__interaction__", 0, payload);
+        TaskInteractionEvent terminalEvent = new TaskInteractionEvent(List.of(new DataFrame.JsonDataFrame(Map.of(
+                "result_type", "interrupt", "message", "approval required", "state", List.of(interruptState)))),
+                null);
+        terminalEvent.setMetadata(Map.of("_handler_round_id", terminalRound));
+
+        Map<String, Object> terminalResult =
+                handler.handleTaskInteraction(new EventHandlerInput(terminalEvent, session));
+
+        assertThat(terminalResult.get("state")).asList().containsExactly(interruptState);
+        assertThat(controller.drainSteering(sessionId)).isEmpty();
+
+        int textRound = controller.prepareRound(sessionId, true);
+        TaskInteractionEvent textEvent = new TaskInteractionEvent(
+                List.of(new DataFrame.JsonDataFrame(Map.of("message", "focus on the latest request"))), null);
+        textEvent.setMetadata(Map.of("_handler_round_id", textRound));
+
+        handler.handleTaskInteraction(new EventHandlerInput(textEvent, session));
+
+        assertThat(controller.drainSteering(sessionId)).containsExactly("focus on the latest request");
     }
 
     @Test
