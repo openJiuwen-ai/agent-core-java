@@ -173,6 +173,17 @@ public abstract class EventHandler {
     public abstract Map<String, Object> handleInput(EventHandlerInput inputs);
 
     /**
+     * Handle a steering event. Controllers that do not support steering may keep the default no-op behavior.
+     *
+     * @param inputs event handler input containing event and session information
+     * @return response data, or null
+     * @since 0.1.13
+     */
+    public Map<String, Object> handleSteering(EventHandlerInput inputs) {
+        return null;
+    }
+
+    /**
      * Handle task interaction events.
      * 
      * @param inputs event handler input containing event and session information

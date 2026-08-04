@@ -9,10 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -54,6 +56,8 @@ import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.task_loop.CustomPredicateEvaluator;
+import com.openjiuwen.harness.task_loop.TaskLoopController;
+import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import org.junit.jupiter.api.AfterEach;

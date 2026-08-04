@@ -10,6 +10,7 @@ package com.openjiuwen.core.controller.schema;
  * Defines all supported event types:
  * <ul>
  * <li>INPUT - user input event</li>
+ * <li>STEERING - steering message for a running task</li>
  * <li>TASK_INTERACTION - task interaction event</li>
  * <li>TASK_COMPLETION - task completion event</li>
  * <li>TASK_FAILED - task failed event</li>
@@ -21,6 +22,7 @@ package com.openjiuwen.core.controller.schema;
  */
 public enum EventType {
     INPUT("input"),
+    STEERING("steering"),
     TASK_INTERACTION("task_interaction"),
     TASK_COMPLETION("task_completion"),
     TASK_FAILED("task_failed");

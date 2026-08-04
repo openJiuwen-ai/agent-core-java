@@ -120,6 +120,8 @@ public class EventQueue {
     public void subscribe(String agentId, String sessionId) {
         try {
             subscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT), input -> eventHandler.handleInput(input));
+            subscribeEvent(buildTopic(agentId, sessionId, EventType.STEERING),
+                    input -> eventHandler.handleSteering(input));
             subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_INTERACTION),
                     input -> eventHandler.handleTaskInteraction(input));
             subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_COMPLETION),
@@ -141,6 +143,7 @@ public class EventQueue {
      */
     public void unsubscribe(String agentId, String sessionId) {
         unsubscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT));
+        unsubscribeEvent(buildTopic(agentId, sessionId, EventType.STEERING));
         unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_INTERACTION));
         unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_COMPLETION));
         unsubscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_FAILED));

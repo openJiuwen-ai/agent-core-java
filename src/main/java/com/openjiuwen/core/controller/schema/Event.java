@@ -14,6 +14,7 @@ import java.util.UUID;
  * Base class for all events, with specialized subclasses:
  * <ul>
  * <li>{@link InputEvent} - user input event</li>
+ * <li>{@link SteeringEvent} - steering message event</li>
  * <li>{@link TaskInteractionEvent} - task interaction event</li>
  * <li>{@link TaskCompletionEvent} - task completion event</li>
  * <li>{@link TaskFailedEvent} - task failed event</li>

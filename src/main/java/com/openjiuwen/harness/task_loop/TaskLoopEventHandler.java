@@ -8,6 +8,7 @@ import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.controller.schema.SteeringEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
 import com.openjiuwen.core.controller.schema.TaskFailedEvent;
@@ -172,6 +173,32 @@ public class TaskLoopEventHandler extends EventHandler {
     }
 
     /**
+     * handleSteering.
+     *
+     * @param inputs inputs
+     * @return steering acknowledgement
+     * @since 0.1.13
+     */
+    @Override
+    public Map<String, Object> handleSteering(EventHandlerInput inputs) {
+        SteeringEvent event = requireEvent(inputs, SteeringEvent.class, "steering");
+        String message = event.getMessage();
+        if (message == null || message.isBlank()) {
+            throw new IllegalArgumentException("Steering message must not be blank");
+        }
+        String sessionId = sessionId(inputs, null);
+        controller.enqueueSteering(sessionId, message);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "steering_enqueued");
+        result.put("message", message);
+        if (event.getTargetTaskId() != null && !event.getTargetTaskId().isBlank()) {
+            result.put("target_task_id", event.getTargetTaskId());
+        }
+        return result;
+    }
+
+    /**
      * handleTaskInteraction.
      * 
      * @param inputs inputs
@@ -181,24 +208,16 @@ public class TaskLoopEventHandler extends EventHandler {
     @Override
     public Map<String, Object> handleTaskInteraction(EventHandlerInput inputs) {
         TaskInteractionEvent event = requireEvent(inputs, TaskInteractionEvent.class, "task interaction");
-        String message = extractFirstText(event.getInteraction());
         String sessionId = sessionId(inputs, event.getTask());
-        if (!message.isBlank()) {
-            controller.enqueueSteering(sessionId, message);
-        }
         int interactionRound = resolveRoundId(sessionId, event.getMetadata(), event.getTask());
         String controllerSessionId = resolveControllerSessionId(sessionId, interactionRound);
         List<com.openjiuwen.core.session.stream.OutputSchema> interactionState =
             extractInteractionState(event.getInteraction());
 
         Map<String, Object> interruptResult = new LinkedHashMap<>();
-        interruptResult.put("status", "steer_injected");
-        interruptResult.put("msg", message);
+        interruptResult.put("status", "input_required");
         interruptResult.put("result_type", "interrupt");
         interruptResult.put("output", "");
-        if (!message.isBlank()) {
-            interruptResult.put("message", message);
-        }
         if (!interactionState.isEmpty()) {
             interruptResult.put("state", interactionState);
         }
@@ -527,36 +546,6 @@ public class TaskLoopEventHandler extends EventHandler {
             }
         }
         return Map.of("status", "completed");
-    }
-
-    /**
-     * extractFirstText.
-     * 
-     * @param frames frames
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String extractFirstText(List<DataFrame> frames) {
-        if (frames == null) {
-            return "";
-        }
-        for (DataFrame frame : frames) {
-            if (frame instanceof DataFrame.TextDataFrame textDataFrame && textDataFrame.text() != null) {
-                return textDataFrame.text();
-            }
-            if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
-                Object message = jsonDataFrame.data().get("message");
-                if (message != null) {
-                    return String.valueOf(message);
-                }
-                Object payload = jsonDataFrame.data().get("payload");
-                if (payload != null) {
-                    return String.valueOf(payload);
-                }
-                return String.valueOf(jsonDataFrame.data());
-            }
-        }
-        return "";
     }
 
     /**

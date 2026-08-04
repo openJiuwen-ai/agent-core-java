@@ -34,9 +34,8 @@ import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventQueue;
 import com.openjiuwen.core.controller.modules.TaskManager;
 import com.openjiuwen.core.controller.modules.TaskScheduler;
-import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.InputEvent;
-import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
+import com.openjiuwen.core.controller.schema.SteeringEvent;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -1185,7 +1184,7 @@ public class DeepAgent implements AutoCloseable {
             loopController.enqueueSteering(sessionId, message);
             return;
         }
-        TaskInteractionEvent event = new TaskInteractionEvent(List.of(new DataFrame.TextDataFrame(message)), null);
+        SteeringEvent event = new SteeringEvent(message);
         eventQueue.publishEvent(card.getId(), session, event);
     }
 
