@@ -4,16 +4,26 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.Map;
 
 /**
@@ -49,17 +59,28 @@ class CheckpointerFactorySpiTest {
     }
 
     @Test
+    @Tag("integration")
     @DisplayName("ServiceLoader discovers built-in persistence provider")
-    void serviceLoaderDiscoversPersistenceProvider() {
-        // Without kv_store config, persistence provider falls back to InMemoryCheckpointer
-        Checkpointer cp = CheckpointerFactory.create("persistence", Map.of());
-        assertNotNull(cp);
+    void serviceLoaderDiscoversPersistenceProvider(@TempDir Path tempDir) {
+        Map<String, Object> sqliteConfig = Map.of("db_path", tempDir.resolve("provider.db").toString());
+        try (Checkpointer sqliteCheckpointer = CheckpointerFactory.create("persistence", sqliteConfig)) {
+            assertInstanceOf(PersistenceCheckpointer.class, sqliteCheckpointer);
+        }
 
-        // With kv_store config, it creates PersistenceCheckpointer
-        com.openjiuwen.core.foundation.store.kv.InMemoryKVStore kvStore =
-            new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
-        Checkpointer cpWithStore = CheckpointerFactory.create("persistence", Map.of("kv_store", kvStore));
-        assertInstanceOf(PersistenceCheckpointer.class, cpWithStore);
+        InMemoryKVStore kvStore = new InMemoryKVStore();
+        try (Checkpointer injectedCheckpointer =
+                CheckpointerFactory.create("persistence", Map.of("kv_store", kvStore))) {
+            assertInstanceOf(PersistenceCheckpointer.class, injectedCheckpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("persistence shelve retains the legacy in-memory fallback")
+    void persistenceShelveRetainsLegacyInMemoryFallback() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", "shelve"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
     }
 
     @Test
