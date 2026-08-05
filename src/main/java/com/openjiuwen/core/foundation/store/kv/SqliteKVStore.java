@@ -11,6 +11,7 @@ import org.sqlite.SQLiteConfig;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -115,19 +117,21 @@ public final class SqliteKVStore extends BaseKVStore {
     /** {@inheritDoc} */
     @Override
     public void set(String key, Object value) {
-        executeLocked("set value", () -> set(connection, key, value, null));
+        executeLocked("set value", () -> set(connection, key, value, Optional.empty()));
     }
 
     /** {@inheritDoc} */
     @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
-        return queryLocked("set value exclusively", () -> exclusiveSet(connection, key, value, expiry));
+        return queryLocked("set value exclusively",
+                () -> exclusiveSet(connection, key, value, Optional.ofNullable(expiry)));
     }
 
     /** {@inheritDoc} */
     @Override
     public Object get(String key) {
-        return queryLocked("get value", () -> get(connection, key));
+        Object value = queryLocked("get value", () -> find(connection, key).orElse(null));
+        return value;
     }
 
     /** {@inheritDoc} */
@@ -175,7 +179,7 @@ public final class SqliteKVStore extends BaseKVStore {
     /** {@inheritDoc} */
     @Override
     public KVStorePipeline pipeline() {
-        return new KVStorePipeline(this::executePipeline);
+        return new SqlitePipeline();
     }
 
     /** {@inheritDoc} */
@@ -272,7 +276,7 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static void set(Connection targetConnection, String key, Object value, Integer expiry)
+    private static void set(Connection targetConnection, String key, Object value, Optional<Integer> expiry)
             throws SQLException {
         validateKey(key);
         StoredValue storedValue = encodeValue(value);
@@ -282,7 +286,7 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static boolean exclusiveSet(Connection targetConnection, String key, Object value, Integer expiry)
+    private static boolean exclusiveSet(Connection targetConnection, String key, Object value, Optional<Integer> expiry)
             throws SQLException {
         validateKey(key);
         StoredValue storedValue = encodeValue(value);
@@ -294,13 +298,16 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static Object get(Connection targetConnection, String key) throws SQLException {
+    private static Optional<Serializable> find(Connection targetConnection, String key) throws SQLException {
         validateKey(key);
         try (PreparedStatement statement = targetConnection.prepareStatement(GET_SQL)) {
             statement.setString(1, key);
             statement.setLong(2, System.currentTimeMillis());
             try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? decodeValue(resultSet, 1, 2) : null;
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(decodeValue(resultSet, 1, 2));
             }
         }
     }
@@ -324,9 +331,10 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static Map<String, Object> getByPrefix(Connection targetConnection, String prefix) throws SQLException {
+    private static LinkedHashMap<String, Object> getByPrefix(Connection targetConnection, String prefix)
+            throws SQLException {
         validatePrefix(prefix);
-        Map<String, Object> result = new LinkedHashMap<>();
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         try (PreparedStatement statement = targetConnection.prepareStatement(GET_BY_PREFIX_SQL)) {
             statement.setString(1, prefix);
             statement.setString(2, prefix);
@@ -349,15 +357,18 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static List<Object> mget(Connection targetConnection, List<String> keys) throws SQLException {
-        List<Object> result = new ArrayList<>(keys.size());
+    private static ArrayList<Object> mget(Connection targetConnection, List<String> keys) throws SQLException {
+        ArrayList<Object> result = new ArrayList<>(keys.size());
         try (PreparedStatement statement = targetConnection.prepareStatement(GET_SQL)) {
             for (String key : keys) {
                 validateKey(key);
                 statement.setString(1, key);
                 statement.setLong(2, System.currentTimeMillis());
                 try (ResultSet resultSet = statement.executeQuery()) {
-                    result.add(resultSet.next() ? decodeValue(resultSet, 1, 2) : null);
+                    Optional<Serializable> value = resultSet.next()
+                            ? Optional.of(decodeValue(resultSet, 1, 2))
+                            : Optional.empty();
+                    result.add(value.orElse(null));
                 }
             }
         }
@@ -376,7 +387,7 @@ public final class SqliteKVStore extends BaseKVStore {
         return deletedCount;
     }
 
-    private List<Object> executePipeline(List<Object[]> operations) {
+    private List<Object> executePipeline(List<PipelineOperation> operations) {
         connectionLock.lock();
         try {
             ensureOpen();
@@ -388,60 +399,41 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private List<Object> executeTransaction(List<Object[]> operations) throws SQLException {
-        boolean wasAutoCommitEnabled = connection.getAutoCommit();
+    private List<Object> executeTransaction(List<PipelineOperation> operations) throws SQLException {
+        boolean isAutoCommitInitiallyEnabled = connection.getAutoCommit();
         connection.setAutoCommit(false);
         List<Object> results;
         try {
             results = new ArrayList<>(operations.size());
-            for (Object[] operation : operations) {
-                results.add(executeOperation(operation));
+            for (PipelineOperation operation : operations) {
+                results.add(executeOperation(operation).orElse(null));
             }
             connection.commit();
         } catch (SQLException | IllegalArgumentException | IllegalStateException exception) {
             if (rollback(exception)) {
-                restoreAutoCommitAfterFailure(wasAutoCommitEnabled, exception);
+                restoreAutoCommitAfterFailure(isAutoCommitInitiallyEnabled, exception);
             } else {
                 invalidateConnection(exception);
             }
             throw exception;
         }
-        restoreAutoCommitAfterSuccess(wasAutoCommitEnabled);
+        restoreAutoCommitAfterSuccess(isAutoCommitInitiallyEnabled);
         return results;
     }
 
-    private Object executeOperation(Object[] operation) throws SQLException {
-        if (operation == null || operation.length < 2) {
-            throw new IllegalArgumentException("SQLite pipeline operation is incomplete");
-        }
-        if (!(operation[0] instanceof String action) || !(operation[1] instanceof String key)) {
-            throw new IllegalArgumentException("SQLite pipeline action and key must be strings");
-        }
-        return switch (action) {
-            case "set" -> executeSetOperation(operation, key);
-            case "get" -> get(connection, key);
-            case "isExists" -> isExists(connection, key);
-            default -> throw new IllegalArgumentException("Unsupported SQLite pipeline action: " + action);
+    private Optional<Serializable> executeOperation(PipelineOperation operation) throws SQLException {
+        return switch (operation.action()) {
+            case SET -> executeSetOperation(operation);
+            case GET -> find(connection, operation.key());
+            case IS_EXISTS -> Optional.of(isExists(connection, operation.key()));
         };
     }
 
-    private Object executeSetOperation(Object[] operation, String key) throws SQLException {
-        if (operation.length < 3) {
-            throw new IllegalArgumentException("SQLite pipeline set operation has no value");
-        }
-        Integer expiry = readExpiry(operation);
-        set(connection, key, operation[2], expiry);
-        return Boolean.TRUE;
-    }
-
-    private static Integer readExpiry(Object[] operation) {
-        if (operation.length < 4 || operation[3] == null) {
-            return null;
-        }
-        if (operation[3] instanceof Integer expiry) {
-            return expiry;
-        }
-        throw new IllegalArgumentException("SQLite pipeline expiry must be an integer");
+    private Optional<Serializable> executeSetOperation(PipelineOperation operation) throws SQLException {
+        Object value = operation.value()
+                .orElseThrow(() -> new IllegalArgumentException("SQLite pipeline set operation has no value"));
+        set(connection, operation.key(), value, operation.expiry());
+        return Optional.of(Boolean.TRUE);
     }
 
     private boolean rollback(Exception originalException) {
@@ -454,18 +446,18 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private void restoreAutoCommitAfterFailure(boolean wasAutoCommitEnabled, Exception originalException) {
+    private void restoreAutoCommitAfterFailure(boolean isAutoCommitInitiallyEnabled, Exception originalException) {
         try {
-            connection.setAutoCommit(wasAutoCommitEnabled);
+            connection.setAutoCommit(isAutoCommitInitiallyEnabled);
         } catch (SQLException restoreException) {
             originalException.addSuppressed(restoreException);
             invalidateConnection(originalException);
         }
     }
 
-    private void restoreAutoCommitAfterSuccess(boolean wasAutoCommitEnabled) throws SQLException {
+    private void restoreAutoCommitAfterSuccess(boolean isAutoCommitInitiallyEnabled) throws SQLException {
         try {
-            connection.setAutoCommit(wasAutoCommitEnabled);
+            connection.setAutoCommit(isAutoCommitInitiallyEnabled);
         } catch (SQLException restoreException) {
             invalidateConnection(restoreException);
             throw restoreException;
@@ -482,13 +474,14 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private static void bindValue(PreparedStatement statement, String key, StoredValue storedValue, Integer expiry,
-            long currentTime) throws SQLException {
+    private static void bindValue(PreparedStatement statement, String key, StoredValue storedValue,
+            Optional<Integer> expiry, long currentTime) throws SQLException {
         statement.setString(1, key);
         statement.setBytes(2, storedValue.value());
         statement.setInt(3, storedValue.kind());
-        if (expiry != null && expiry > 0) {
-            statement.setLong(4, currentTime + expiry.longValue() * MILLIS_PER_SECOND);
+        int expirySeconds = expiry.orElse(0);
+        if (expirySeconds > 0) {
+            statement.setLong(4, currentTime + (long) expirySeconds * MILLIS_PER_SECOND);
         } else {
             statement.setNull(4, Types.BIGINT);
         }
@@ -504,7 +497,7 @@ public final class SqliteKVStore extends BaseKVStore {
         throw new IllegalArgumentException("SQLite KV values must be strings or byte arrays");
     }
 
-    private static Object decodeValue(ResultSet resultSet, int valueIndex, int kindIndex) throws SQLException {
+    private static Serializable decodeValue(ResultSet resultSet, int valueIndex, int kindIndex) throws SQLException {
         byte[] value = resultSet.getBytes(valueIndex);
         int valueKind = resultSet.getInt(kindIndex);
         if (valueKind == VALUE_KIND_STRING) {
@@ -540,7 +533,7 @@ public final class SqliteKVStore extends BaseKVStore {
         }
     }
 
-    private <T> T queryLocked(String operation, SqlSupplier<T> supplier) {
+    private <T extends Serializable> T queryLocked(String operation, SqlSupplier<T> supplier) {
         connectionLock.lock();
         try {
             ensureOpen();
@@ -560,12 +553,88 @@ public final class SqliteKVStore extends BaseKVStore {
 
     @FunctionalInterface
     private interface SqlAction {
+        /**
+         * Executes one JDBC action.
+         *
+         * @throws SQLException if the JDBC action fails
+         */
         void execute() throws SQLException;
     }
 
     @FunctionalInterface
-    private interface SqlSupplier<T> {
+    private interface SqlSupplier<T extends Serializable> {
+        /**
+         * Executes one JDBC query and returns its result.
+         *
+         * @return query result
+         * @throws SQLException if the JDBC query fails
+         */
         T get() throws SQLException;
+    }
+
+    private final class SqlitePipeline extends KVStorePipeline {
+        private final List<PipelineOperation> operations = new ArrayList<>();
+
+        private SqlitePipeline() {
+            super(ignoredOperations -> {
+                throw new IllegalStateException("SQLite pipeline does not use the legacy array executor");
+            });
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public KVStorePipeline set(String key, Object value) {
+            return addSetOperation(key, value, Optional.empty());
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public KVStorePipeline set(String key, Object value, Integer expiry) {
+            return addSetOperation(key, value, Optional.ofNullable(expiry));
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public KVStorePipeline get(String key) {
+            operations.add(new PipelineOperation(PipelineAction.GET, key, Optional.empty(), Optional.empty()));
+            return this;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public KVStorePipeline isExists(String key) {
+            operations.add(new PipelineOperation(PipelineAction.IS_EXISTS, key, Optional.empty(), Optional.empty()));
+            return this;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public KVStorePipeline exists(String key) {
+            return isExists(key);
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public List<Object> execute() {
+            List<Object> results = executePipeline(List.copyOf(operations));
+            operations.clear();
+            return results;
+        }
+
+        private KVStorePipeline addSetOperation(String key, Object value, Optional<Integer> expiry) {
+            operations.add(new PipelineOperation(PipelineAction.SET, key, Optional.ofNullable(value), expiry));
+            return this;
+        }
+    }
+
+    private enum PipelineAction {
+        SET,
+        GET,
+        IS_EXISTS
+    }
+
+    private record PipelineOperation(PipelineAction action, String key, Optional<Object> value,
+            Optional<Integer> expiry) {
     }
 
     private record DatabaseLocation(String jdbcUrl, boolean isMemory) {

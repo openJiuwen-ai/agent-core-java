@@ -7,17 +7,20 @@ package com.openjiuwen.core.foundation.store.kv;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStoreFactory;
+import com.openjiuwen.spi.store.KVStorePipeline;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -63,6 +66,28 @@ class SqliteKVStoreTest {
                     .set("invalid", Map.of("unsupported", "value"))
                     .execute());
             assertFalse(store.isExists("first"));
+        }
+    }
+
+    @Test
+    @Tag("integration")
+    void pipelineReturnsResultsInOperationOrder(@TempDir Path tempDir) {
+        Map<String, Object> config = Map.of("db_path", tempDir.resolve("pipeline.db").toString());
+
+        try (BaseKVStore store = KVStoreFactory.create("sqlite", config)) {
+            KVStorePipeline pipeline = store.pipeline();
+            List<Object> results = pipeline
+                    .set("key", "value", 60)
+                    .get("key")
+                    .isExists("key")
+                    .get("missing")
+                    .execute();
+
+            assertEquals(Boolean.TRUE, results.get(0));
+            assertEquals("value", results.get(1));
+            assertEquals(Boolean.TRUE, results.get(2));
+            assertNull(results.get(3));
+            assertTrue(pipeline.execute().isEmpty());
         }
     }
 
