@@ -130,8 +130,7 @@ public final class SqliteKVStore extends BaseKVStore {
     /** {@inheritDoc} */
     @Override
     public Object get(String key) {
-        Object value = queryLocked("get value", () -> find(connection, key).orElse(null));
-        return value;
+        return queryLocked("get value", () -> find(connection, key).orElse(null));
     }
 
     /** {@inheritDoc} */
