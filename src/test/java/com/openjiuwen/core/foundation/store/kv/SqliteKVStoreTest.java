@@ -57,6 +57,23 @@ class SqliteKVStoreTest {
 
     @Test
     @Tag("integration")
+    void emptyPrefixMatchesAndDeletesAllValues(@TempDir Path tempDir) {
+        Map<String, Object> config = Map.of("db_path", tempDir.resolve("empty-prefix.db").toString());
+
+        try (BaseKVStore store = KVStoreFactory.create("sqlite", config)) {
+            store.set("first", "value-1");
+            store.set("second", "value-2");
+
+            assertEquals(Set.of("first", "second"), store.getByPrefix("").keySet());
+
+            store.deleteByPrefix("", null);
+            assertFalse(store.isExists("first"));
+            assertFalse(store.isExists("second"));
+        }
+    }
+
+    @Test
+    @Tag("integration")
     void pipelineRollsBackAllWritesWhenAnOperationFails(@TempDir Path tempDir) {
         Map<String, Object> config = Map.of("db_path", tempDir.resolve("rollback.db").toString());
 

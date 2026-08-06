@@ -84,6 +84,33 @@ class CheckpointerFactorySpiTest {
     }
 
     @Test
+    @DisplayName("unsupported persistence db_type retains the legacy in-memory fallback")
+    void unsupportedPersistenceTypeFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", "sqlite3"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("non-string persistence db_type retains the legacy in-memory fallback")
+    void nonStringPersistenceTypeFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("db_type", 123))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
+    @DisplayName("invalid persistence kv_store retains the legacy in-memory fallback")
+    void invalidPersistenceStoreFallsBackToInMemory() {
+        try (Checkpointer checkpointer = CheckpointerFactory.create(
+                "persistence", Map.of("kv_store", "not-a-kv-store"))) {
+            assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
+        }
+    }
+
+    @Test
     @DisplayName("redis_checkpointer_cluster is registered as alias for redis")
     void redisClusterAliasIsRegistered() {
         Checkpointer cp = CheckpointerFactory.create("redis_checkpointer_cluster",
