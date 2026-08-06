@@ -60,7 +60,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final String SUB_WORKFLOW_COMPONENT = "SubWorkflowComponent";
     private static final ExecutorService STREAM_EXECUTOR =
-            OpenJiuwenExecutors.newCachedThreadPool("vertex-stream", false);
+            OpenJiuwenExecutors.newBoundedModulePool("vertex-stream", false);
 
     private final String nodeId;
     private final Executable<Object, Object> executable;

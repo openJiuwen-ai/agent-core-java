@@ -40,7 +40,7 @@ public class MqServerAdapter {
     private final Function<Map<String, Object>, Object> invokeHandler;
     private final Function<Map<String, Object>, Iterator<Object>> streamHandler;
 
-    private final ExecutorService executor = OpenJiuwenExecutors.newCachedThreadPool("mq-server-adapter", false);
+    private final ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("mq-server-adapter", false);
 
     private final ScheduledExecutorService scheduler = OpenJiuwenExecutors.newScheduledThreadPool(
             "mq-server-adapter-scheduler", 1, false);
