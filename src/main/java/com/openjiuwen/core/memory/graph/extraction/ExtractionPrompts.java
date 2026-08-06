@@ -13,6 +13,7 @@ import com.openjiuwen.core.memory.config.graph.EpisodeType;
 import com.openjiuwen.core.memory.graph.extraction.prompts.TemplateManager;
 import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
 
+import java.math.BigInteger;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -105,8 +106,41 @@ public final class ExtractionPrompts {
         if (extras != null) {
             kwargs.putAll(extras);
         }
+        applyHumanSummaryTarget(entity, kwargs);
         return new PromptCall(kwargs, TemplateManager.getInstance().get(templateName),
                 MultilingualBaseModel.responseFormat(EntitySummary.class, language));
+    }
+
+    private static void applyHumanSummaryTarget(Entity entity, Map<String, Object> kwargs) {
+        if (!"Human".equalsIgnoreCase(entity.getObjType())) {
+            return;
+        }
+        Number doubledTarget = doubleSummaryTarget(kwargs.get("summary_target"));
+        if (doubledTarget != null) {
+            kwargs.put("summary_target", doubledTarget);
+        }
+    }
+
+    private static Number doubleSummaryTarget(Object summaryTarget) {
+        BigInteger target;
+        if (summaryTarget instanceof BigInteger bigInteger) {
+            target = bigInteger;
+        } else if (summaryTarget instanceof Number number) {
+            target = BigInteger.valueOf(number.longValue());
+        } else if (summaryTarget instanceof String value
+                && !value.isEmpty() && value.codePoints().allMatch(Character::isDigit)) {
+            target = new BigInteger(value);
+        } else {
+            return null;
+        }
+        BigInteger doubledTarget = target.shiftLeft(1);
+        if (doubledTarget.bitLength() < Integer.SIZE) {
+            return Integer.valueOf(doubledTarget.intValue());
+        }
+        if (doubledTarget.bitLength() < Long.SIZE) {
+            return Long.valueOf(doubledTarget.longValue());
+        }
+        return doubledTarget;
     }
 
     /**

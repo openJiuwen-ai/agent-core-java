@@ -3,6 +3,7 @@ package com.openjiuwen.core.memory.graph.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.memory.config.graph.AddMemStrategy;
 import com.openjiuwen.core.memory.config.graph.EpisodeType;
 import com.openjiuwen.core.memory.config.graph.GraphDefaults;
@@ -61,5 +62,22 @@ class GraphExtractionTest {
         assertThat(template).isNotNull();
         assertThat(template.toMessages()).isNotEmpty();
         assertThat(manager.contains("entity_extraction_relation_en")).isTrue();
+    }
+
+    @Test
+    void humanSummaryTargetShouldBeTwiceTheConfiguredLimit() {
+        Entity entity = new Entity();
+        entity.setName("A公司");
+        Entity human = new Entity();
+        human.setName("张明");
+        human.setObjType("Human");
+
+        ExtractionPrompts.PromptCall entityPrompt = ExtractionPrompts.extractEntityAttributes(
+                entity, "content", "", "cn", Map.of("summary_target", "110"), 2);
+        ExtractionPrompts.PromptCall humanPrompt = ExtractionPrompts.extractEntityAttributes(
+                human, "content", "", "cn", Map.of("summary_target", "110"), 2);
+
+        assertThat(entityPrompt.kwargs()).containsEntry("summary_target", "110");
+        assertThat(humanPrompt.kwargs()).containsEntry("summary_target", 220);
     }
 }
