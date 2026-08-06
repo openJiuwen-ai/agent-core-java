@@ -6,10 +6,13 @@ package com.openjiuwen.core.graph.pregel;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -22,6 +25,21 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Ported from Python's {@code test_task.py :: TestTaskExecutorPool}.
  */
 class TaskExecutorPoolTest {
+    private final Deque<TaskExecutorPool> poolsToClose = new ArrayDeque<>();
+
+    @AfterEach
+    void shutdownPools() {
+        while (!poolsToClose.isEmpty()) {
+            poolsToClose.pop().shutdown();
+        }
+    }
+
+    private TaskExecutorPool newPool(PregelConfig config) {
+        TaskExecutorPool pool = new TaskExecutorPool(config);
+        poolsToClose.add(pool);
+        return pool;
+    }
+
     // ---------- Runtime exception test ----------
     @Nested
     @DisplayName("TaskExecutorPool exception handling")
@@ -57,7 +75,7 @@ class TaskExecutorPoolTest {
             PregelNode nodeB = new PregelNode("B", taskBError, List.of(routerB));
             PregelNode nodeC = new PregelNode("C", taskCFast, List.of(routerC));
 
-            TaskExecutorPool pool = new TaskExecutorPool(config);
+            TaskExecutorPool pool = newPool(config);
             pool.submit(nodeA, 1);
             pool.submit(nodeB, 1);
             pool.submit(nodeC, 1);
@@ -115,7 +133,7 @@ class TaskExecutorPoolTest {
             PregelNode nodeB = new PregelNode("B", taskBInterrupt, List.of(routerB));
             PregelNode nodeC = new PregelNode("C", taskCFast, List.of(routerC));
 
-            TaskExecutorPool pool = new TaskExecutorPool(config);
+            TaskExecutorPool pool = newPool(config);
             pool.submit(nodeA, 1);
             pool.submit(nodeB, 1);
             pool.submit(nodeC, 1);
@@ -147,7 +165,7 @@ class TaskExecutorPoolTest {
             };
             PregelNode node = new PregelNode("A", taskSimple, List.of(new StaticRouter(List.of("B"))));
 
-            TaskExecutorPool pool = new TaskExecutorPool(config);
+            TaskExecutorPool pool = newPool(config);
             pool.submit(node, 1);
             pool.waitAll();
 
@@ -161,7 +179,7 @@ class TaskExecutorPoolTest {
         @DisplayName("waitAll with no submissions is no-op")
         void testWaitAllEmpty() throws Exception {
             PregelConfig config = new PregelConfig();
-            TaskExecutorPool pool = new TaskExecutorPool(config);
+            TaskExecutorPool pool = newPool(config);
             assertDoesNotThrow(pool::waitAll);
         }
 
@@ -181,7 +199,7 @@ class TaskExecutorPoolTest {
                 return null;
             };
             PregelNode node = new PregelNode("blocking", blockingTask, List.of());
-            TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig());
+            TaskExecutorPool pool = newPool(new PregelConfig());
             pool.submit(node, 1);
 
             assertTrue(started.await(1, TimeUnit.SECONDS));
