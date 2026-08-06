@@ -354,50 +354,57 @@ public class WorkflowAgent extends ControllerAgent {
             return result;
         }
 
+        OutputSchema terminalOutput = null;
         for (int i = outputs.size() - 1; i >= 0; i--) {
             Object output = outputs.get(i);
-            if (output instanceof OutputSchema os && "cancelled".equals(os.getType())
-                    && os.getPayload() instanceof Map<?, ?> payloadMap) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> cancellation = (Map<String, Object>) payloadMap;
-                return new ControllerOutput(result.getType(), cancellation);
-            }
-        }
-
-        List<Object> interactionOutputs =
-            outputs.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
-                    .filter(os -> "__interaction__".equals(os.getType())).map(Object.class::cast).toList();
-        if (!interactionOutputs.isEmpty()) {
-            return new ControllerOutput(result.getType(), interactionOutputs);
-        }
-
-        OutputSchema finalAnswer = null;
-        for (int i = outputs.size() - 1; i >= 0; i--) {
-            Object output = outputs.get(i);
-            if (output instanceof OutputSchema os
-                    && ("workflow_final".equals(os.getType()) || "answer".equals(os.getType()))) {
-                finalAnswer = os;
+            if (output instanceof OutputSchema outputSchema && isTerminalOutput(outputSchema)) {
+                terminalOutput = outputSchema;
                 break;
             }
         }
-        if (finalAnswer == null) {
+        if (terminalOutput == null) {
             Map<String, Object> normalized = new LinkedHashMap<>();
             normalized.put("output", new WorkflowOutput(null, WorkflowExecutionState.COMPLETED));
             normalized.put("result_type", "answer");
             return new ControllerOutput(result.getType(), normalized);
         }
 
-        Object payload = finalAnswer.getPayload();
-        if ("answer".equals(finalAnswer.getType()) && payload instanceof Map<?, ?> payloadMap) {
+        if ("cancelled".equals(terminalOutput.getType())
+                && terminalOutput.getPayload() instanceof Map<?, ?> payloadMap) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> typedPayload = (Map<String, Object>) payloadMap;
-            return new ControllerOutput(result.getType(), typedPayload);
+            Map<String, Object> cancellation = (Map<String, Object>) payloadMap;
+            return new ControllerOutput(result.getType(), cancellation);
+        }
+        if ("__interaction__".equals(terminalOutput.getType())) {
+            int terminalIndex = terminalOutput.getIndex();
+            List<Object> interactionOutputs = outputs.stream()
+                    .filter(OutputSchema.class::isInstance)
+                    .map(OutputSchema.class::cast)
+                    .filter(output -> "__interaction__".equals(output.getType())
+                            && output.getIndex() == terminalIndex)
+                    .map(Object.class::cast)
+                    .toList();
+            return new ControllerOutput(result.getType(), interactionOutputs);
+        }
+
+        Object payload = terminalOutput.getPayload();
+        if ("answer".equals(terminalOutput.getType()) && payload instanceof Map<?, ?> payloadMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> answer = (Map<String, Object>) payloadMap;
+            return new ControllerOutput(result.getType(), answer);
         }
 
         Map<String, Object> normalized = new LinkedHashMap<>();
         normalized.put("output", new WorkflowOutput(payload, WorkflowExecutionState.COMPLETED));
         normalized.put("result_type", "answer");
         return new ControllerOutput(result.getType(), normalized);
+    }
+
+    private static boolean isTerminalOutput(OutputSchema output) {
+        return "cancelled".equals(output.getType())
+                || "__interaction__".equals(output.getType())
+                || "workflow_final".equals(output.getType())
+                || "answer".equals(output.getType());
     }
 
     /**

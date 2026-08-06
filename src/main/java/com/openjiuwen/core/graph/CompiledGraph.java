@@ -63,16 +63,9 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
                 ? workflowSession.workflowId()
                 : sessionId;
         PregelConfig pregelConfig = resolvePregelConfig(config, sessionId, workflowId);
-        try {
-            prepareExecution(inputs, session, isMain);
-            GraphExecutionResult executionResult = executePregel(pregelConfig);
-            return finishExecution(session, isMain, executionResult);
-        } catch (CancellationException exception) {
-            if (isMain && checkpointer != null) {
-                checkpointer.postWorkflowExecute(session, Map.of(), null);
-            }
-            throw exception;
-        }
+        prepareExecution(inputs, session, isMain);
+        GraphExecutionResult executionResult = executePregel(pregelConfig);
+        return finishExecution(session, isMain, executionResult);
     }
 
     /**
