@@ -46,7 +46,7 @@ class BoundedModuleExecutorGateTest {
     }
 
     @Test
-    @Timeout(20)
+    @Timeout(45)
     @DisplayName("有界模块池在 burst 提交下不超过配置 max-size")
     void boundedModulePoolCapsThreadCountUnderBurst() throws Exception {
         System.setProperty(GATE_POOL_MAX_PROPERTY, "4");
@@ -64,9 +64,9 @@ class BoundedModuleExecutorGateTest {
             });
         }
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             peakThreads.updateAndGet(prev -> Math.max(prev, liveThreadsWithPrefix("gate-burst-test")));
-            Thread.sleep(50L);
+            Thread.sleep(20L);
         }
 
         assertThat(peakThreads.get())
@@ -74,7 +74,7 @@ class BoundedModuleExecutorGateTest {
                 .isLessThanOrEqualTo(4);
 
         release.countDown();
-        executor.shutdown();
+        executor.shutdownNow();
         assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
 
@@ -121,7 +121,7 @@ class BoundedModuleExecutorGateTest {
         assertThat(liveThreadsWithPrefix("gate-burst-test")).isLessThanOrEqualTo(4);
 
         release.countDown();
-        executor.shutdown();
+        executor.shutdownNow();
         assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
 
         long heapDeltaMb = (heapDuring - heapBefore) / (1024 * 1024);

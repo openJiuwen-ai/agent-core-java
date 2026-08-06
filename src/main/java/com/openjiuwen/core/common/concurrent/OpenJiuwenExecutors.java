@@ -164,7 +164,7 @@ public final class OpenJiuwenExecutors {
         int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        BlockingQueue<Runnable> workQueue = defaults.directHandoff()
+        BlockingQueue<Runnable> workQueue = defaults.isDirectHandoff()
                 ? new SynchronousQueue<>()
                 : new ArrayBlockingQueue<>(queueCapacity);
         return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
@@ -584,19 +584,19 @@ public final class OpenJiuwenExecutors {
         END_TEMPLATE_RENDER("end-template-render", 8, 128, false),
         CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
         MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
-        TASK_MANAGER_WORKER("task-manager-worker", 16, 512, false),
+        TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
         GENERIC("", 16, 256, false);
 
         private final String prefix;
         private final int maxSize;
         private final int queueCapacity;
-        private final boolean directHandoff;
+        private final boolean isDirectHandoff;
 
-        ModulePoolDefaults(String prefix, int maxSize, int queueCapacity, boolean directHandoff) {
+        ModulePoolDefaults(String prefix, int maxSize, int queueCapacity, boolean isDirectHandoff) {
             this.prefix = prefix;
             this.maxSize = maxSize;
             this.queueCapacity = queueCapacity;
-            this.directHandoff = directHandoff;
+            this.isDirectHandoff = isDirectHandoff;
         }
 
         int maxSize() {
@@ -607,8 +607,8 @@ public final class OpenJiuwenExecutors {
             return queueCapacity;
         }
 
-        boolean directHandoff() {
-            return directHandoff;
+        boolean isDirectHandoff() {
+            return isDirectHandoff;
         }
 
         static ModulePoolDefaults forPrefix(String threadNamePrefix) {
