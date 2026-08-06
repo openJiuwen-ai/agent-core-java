@@ -7,8 +7,10 @@ package com.openjiuwen.core.common.concurrent;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -129,20 +131,62 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 创建实例专用的有界模块线程池，并纳入统一资源回收。
+     *
+     * <p>最大线程数与队列容量可通过系统属性 {@code openjiuwen.executor.{模块名}.max-size} /
+     * {@code openjiuwen.executor.{模块名}.queue-size} 或对应环境变量覆盖。</p>
+     *
+     * @param threadNamePrefix 线程名称前缀（与模块名一致，如 {@code pregel-task}）
+     * @param isDaemon 是否创建守护线程
+     * @return 有界线程池
+     * @since 0.1.14
+     */
+    public static ExecutorService newBoundedModulePool(String threadNamePrefix, boolean isDaemon) {
+        ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
+        return newBoundedModulePool(threadNamePrefix, defaults.maxSize(), defaults.queueCapacity(), isDaemon);
+    }
+
+    /**
+     * 创建实例专用的有界模块线程池，并纳入统一资源回收。
+     *
+     * @param threadNamePrefix 线程名称前缀
+     * @param defaultMaxSize 默认最大线程数（可被系统属性/环境变量覆盖）
+     * @param defaultQueueCapacity 默认队列容量（可被系统属性/环境变量覆盖）
+     * @param isDaemon 是否创建守护线程
+     * @return 有界线程池
+     * @since 0.1.14
+     */
+    public static ExecutorService newBoundedModulePool(String threadNamePrefix, int defaultMaxSize,
+            int defaultQueueCapacity, boolean isDaemon) {
+        Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
+        validatePositive(defaultMaxSize, "defaultMaxSize");
+        validatePositive(defaultQueueCapacity, "defaultQueueCapacity");
+        int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
+        int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
+        ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
+        BlockingQueue<Runnable> workQueue = defaults.isDirectHandoff()
+                ? new SynchronousQueue<>()
+                : new ArrayBlockingQueue<>(queueCapacity);
+        return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
+                .poolSize(0, maxSize)
+                .keepAlive(DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS)
+                .workQueue(workQueue)
+                .isDaemon(isDaemon)
+                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                .build());
+    }
+
+    /**
      * 创建实例专用的缓存线程池，并纳入统一资源回收。
      *
      * @param threadNamePrefix 线程名称前缀
      * @param isDaemon 是否创建守护线程
-     * @return 缓存线程池
+     * @return 有界模块线程池（自 0.1.14 起不再无界）
+     * @deprecated 请使用 {@link #newBoundedModulePool(String, boolean)}
      */
+    @Deprecated(since = "0.1.14")
     public static ExecutorService newCachedThreadPool(String threadNamePrefix, boolean isDaemon) {
-        return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
-                .poolSize(0, Integer.MAX_VALUE)
-                .keepAlive(60L, TimeUnit.SECONDS)
-                .workQueue(new SynchronousQueue<>())
-                .isDaemon(isDaemon)
-                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
-                .build());
+        return newBoundedModulePool(threadNamePrefix, isDaemon);
     }
 
     /**
@@ -513,6 +557,67 @@ public final class OpenJiuwenExecutors {
         } catch (NumberFormatException e) {
             Loggers.COMMON.warning("Invalid integer for {} / {}: {}", propertyName, envName, raw);
             return defaultValue;
+        }
+    }
+
+    private static int moduleIntSetting(String modulePrefix, String suffix, int defaultValue, int minValue) {
+        String propertyName = "openjiuwen.executor." + modulePrefix + "." + suffix;
+        String envName = moduleEnvName(modulePrefix, suffix);
+        return intSetting(propertyName, envName, defaultValue, minValue);
+    }
+
+    private static String moduleEnvName(String modulePrefix, String suffix) {
+        return "OPENJIUWEN_EXECUTOR_"
+                + modulePrefix.toUpperCase(Locale.ROOT).replace('-', '_')
+                + "_"
+                + suffix.toUpperCase(Locale.ROOT).replace('-', '_');
+    }
+
+    /**
+     * 各模块线程池默认上限（维度 I-B：无界池整改）。
+     */
+    private enum ModulePoolDefaults {
+        PREGEL_TASK("pregel-task", 32, 512, true),
+        WORKFLOW_STREAM("workflow-stream", 16, 256, false),
+        VERTEX_STREAM("vertex-stream", 8, 256, true),
+        STREAM_ACTOR("stream-actor", 8, 256, true),
+        END_TEMPLATE_RENDER("end-template-render", 8, 128, false),
+        CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
+        MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
+        TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
+        GENERIC("", 16, 256, false);
+
+        private final String prefix;
+        private final int maxSize;
+        private final int queueCapacity;
+        private final boolean isDirectHandoff;
+
+        ModulePoolDefaults(String prefix, int maxSize, int queueCapacity, boolean isDirectHandoff) {
+            this.prefix = prefix;
+            this.maxSize = maxSize;
+            this.queueCapacity = queueCapacity;
+            this.isDirectHandoff = isDirectHandoff;
+        }
+
+        int maxSize() {
+            return maxSize;
+        }
+
+        int queueCapacity() {
+            return queueCapacity;
+        }
+
+        boolean isDirectHandoff() {
+            return isDirectHandoff;
+        }
+
+        static ModulePoolDefaults forPrefix(String threadNamePrefix) {
+            for (ModulePoolDefaults defaults : values()) {
+                if (defaults.prefix.equals(threadNamePrefix)) {
+                    return defaults;
+                }
+            }
+            return GENERIC;
         }
     }
 

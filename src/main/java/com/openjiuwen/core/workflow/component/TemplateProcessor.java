@@ -44,7 +44,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class TemplateProcessor {
     private static final ExecutorService RENDER_EXECUTOR =
-            OpenJiuwenExecutors.newCachedThreadPool("end-template-render", false);
+            OpenJiuwenExecutors.newBoundedModulePool("end-template-render", false);
     private static final Object END_SENTINEL = new Object();
     private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
 

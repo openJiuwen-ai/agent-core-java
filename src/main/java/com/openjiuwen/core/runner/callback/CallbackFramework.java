@@ -603,7 +603,7 @@ public class CallbackFramework {
         Object[] finalArgs = args != null ? args : new Object[0];
         Map<String, Object> finalKwargs = kwargs != null ? kwargs : new HashMap<>();
 
-        ExecutorService executor = OpenJiuwenExecutors.newCachedThreadPool("callback-parallel", false);
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("callback-parallel", false);
         List<Future<Object>> futures = new ArrayList<>();
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {

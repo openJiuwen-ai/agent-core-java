@@ -36,7 +36,7 @@ public class StreamActor {
     private static final LoggerProtocol logger = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000;
     private static final ExecutorService STREAM_EXECUTOR =
-            OpenJiuwenExecutors.newCachedThreadPool("stream-actor", false);
+            OpenJiuwenExecutors.newBoundedModulePool("stream-actor", false);
 
     /**
      * HashMap<>.

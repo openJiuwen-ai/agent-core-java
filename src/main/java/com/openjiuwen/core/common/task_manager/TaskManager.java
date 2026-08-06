@@ -25,8 +25,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.CancellationException;
@@ -56,14 +54,7 @@ public class TaskManager {
      * @since 0.1.7
      */
     private final ReentrantLock lock = new ReentrantLock();
-    private final ExecutorService executor = OpenJiuwenExecutors.newThreadPool("task-manager-worker",
-            OpenJiuwenExecutors.ThreadPoolConfig.builder()
-                    .poolSize(0, Integer.MAX_VALUE)
-                    .keepAlive(60L, TimeUnit.SECONDS)
-                    .workQueue(new SynchronousQueue<>())
-                    .isDaemon(true)
-                    .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
-                    .build());
+    private final ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("task-manager-worker", true);
 
     private final ScheduledExecutorService scheduler = OpenJiuwenExecutors.newScheduledThreadPool(
             "task-manager-scheduler", 1, true);

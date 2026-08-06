@@ -66,7 +66,7 @@ public class TaskExecutorPool {
      */
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executor = OpenJiuwenExecutors.newCachedThreadPool("pregel-task", false);
+        this.executor = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
     }
 
     /**
@@ -247,6 +247,15 @@ public class TaskExecutorPool {
         succeedMessages.clear();
         failed.clear();
         runningTasks.clear();
+    }
+
+    /**
+     * Shuts down the underlying worker executor.
+     *
+     * @since 0.1.14
+     */
+    public void shutdown() {
+        executor.shutdownNow();
     }
 
     /**

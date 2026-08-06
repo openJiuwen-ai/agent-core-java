@@ -75,7 +75,7 @@ public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final long CANCEL_GRACE_TIMEOUT_SECONDS = 5L;
     private static final ExecutorService STREAM_EXECUTOR =
-            OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
+            OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", false);
     private static final BigDecimal MILLIS_PER_SECOND = BigDecimal.valueOf(1000);
 
     private final WorkflowCard card;

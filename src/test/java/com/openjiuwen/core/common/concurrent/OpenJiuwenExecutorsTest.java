@@ -20,6 +20,23 @@ import java.util.concurrent.TimeUnit;
 
 class OpenJiuwenExecutorsTest {
     @Test
+    @DisplayName("有界模块池使用统一命名且最大线程数可配置")
+    void boundedModulePoolUsesPrefixAndRespectsMaxSize() throws Exception {
+        System.setProperty("openjiuwen.executor.executor-bounded-test.max-size", "2");
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("executor-bounded-test", 8, 16, true);
+        try {
+            String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
+            assertThat(threadName).startsWith("executor-bounded-test-");
+            assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
+            assertThat(((ThreadPoolExecutor) executor).getMaximumPoolSize()).isEqualTo(2);
+        } finally {
+            System.clearProperty("openjiuwen.executor.executor-bounded-test.max-size");
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
     @DisplayName("默认异步任务使用统一命名的后台线程池")
     void backgroundExecutorUsesDedicatedThreadPrefix() throws Exception {
         String backgroundThread = OpenJiuwenExecutors.backgroundExecutor()
