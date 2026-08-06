@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.graph;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.Pregel;
@@ -68,8 +72,8 @@ class CompiledGraphTest {
     }
 
     @Test
-    @DisplayName("cancelled execution clears workflow checkpoints")
-    void testCancelledExecutionClearsWorkflowCheckpoints() {
+    @DisplayName("cancelled execution preserves the previous workflow checkpoint")
+    void testCancelledExecutionPreservesWorkflowCheckpoint() {
         RecordingPregel pregel = new RecordingPregel(null, new CancellationException("cancelled"));
         RecordingCheckpointer checkpointer = new RecordingCheckpointer(false);
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
@@ -78,8 +82,8 @@ class CompiledGraphTest {
         assertThrows(CancellationException.class,
                 () -> graph.invoke(Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")), session));
 
-        assertEquals(List.of("pre", "post"), checkpointer.calls);
-        assertEquals(Map.of(), checkpointer.postResult);
+        assertEquals(List.of("pre"), checkpointer.calls);
+        assertNull(checkpointer.postResult);
         assertNull(checkpointer.postException);
     }
 

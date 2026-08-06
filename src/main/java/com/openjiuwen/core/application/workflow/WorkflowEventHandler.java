@@ -48,6 +48,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -104,6 +105,8 @@ public class WorkflowEventHandler extends EventHandler {
     private final WorkflowAgentConfig agentConfig;
     private final ContextEngine appContextEngine;
     private final Map<String, RunningWorkflow> runningWorkflows = new ConcurrentHashMap<>();
+    private final Map<String, Long> requestVersions = new ConcurrentHashMap<>();
+    private final Object requestLock = new Object();
 
     /**
      * WorkflowEventHandler.
@@ -195,8 +198,13 @@ public class WorkflowEventHandler extends EventHandler {
      * @since 0.1.7
      */
     private Map<String, Object> handleUserInput(Event event, AgentSessionApi session) {
+        String conversationId = session.getSessionId();
+        long requestVersion = beginRequest(conversationId);
         InteractiveInput interactiveInput = extractInteractiveInput(event);
         WorkflowIntent intent = intentDetection(event, session);
+        if (!isCurrentRequest(conversationId, requestVersion)) {
+            return writeSupersededRequestResult(session);
+        }
         if (intent == null) {
             return Map.of("output", "", "result_type", "answer");
         }
@@ -227,12 +235,12 @@ public class WorkflowEventHandler extends EventHandler {
                 Loggers.CONTROLLER.info("Resuming interrupted task for workflow {}", workflow.getName());
                 setTaskArguments(task, buildResumeArguments(interactiveInput, task, event, session));
                 task.setStatus(TaskStatus.INPUT_REQUIRED);
-                yield execTask(event, task, session, workflow);
+                yield execTask(event, task, session, workflow, requestVersion);
             }
             case EXEC_NEW_TASK -> {
                 Loggers.CONTROLLER.info("No interrupted task for workflow {}, creating new task",
                         intent.workflow().getName());
-                yield execTask(event, intent.task(), session, intent.workflow());
+                yield execTask(event, intent.task(), session, intent.workflow(), requestVersion);
             }
         };
     }
@@ -299,12 +307,21 @@ public class WorkflowEventHandler extends EventHandler {
      * @return Map<String, Object>
      */
     Map<String, Object> execTask(Event event, Task task, AgentSessionApi session, WorkflowSchema workflowSchema) {
+        long requestVersion = beginRequest(session.getSessionId());
+        return execTask(event, task, session, workflowSchema, requestVersion);
+    }
+
+    private Map<String, Object> execTask(Event event, Task task, AgentSessionApi session,
+            WorkflowSchema workflowSchema, long requestVersion) {
         String workflowId = workflowSchema.getId() + "_" + workflowSchema.getVersion();
         String conversationId = session.getSessionId();
         FutureTask<Map<String, Object>> execution =
                 new FutureTask<>(() -> executeWorkflowTask(task, session, workflowId));
-        RunningWorkflow runningWorkflow = registerWorkflow(conversationId, execution);
-        return executeRegisteredTask(task, session, workflowId, conversationId, runningWorkflow);
+        Optional<RunningWorkflow> runningWorkflow = registerWorkflow(conversationId, requestVersion, execution);
+        if (runningWorkflow.isEmpty()) {
+            return writeSupersededRequestResult(session);
+        }
+        return executeRegisteredTask(task, session, workflowId, conversationId, runningWorkflow.get());
     }
 
     /**
@@ -514,20 +531,62 @@ public class WorkflowEventHandler extends EventHandler {
     }
 
     /**
-     * Register the workflow currently serving a conversation and cancel its predecessor.
+     * Start a request generation and cancel the workflow serving the preceding request.
      *
      * @param conversationId conversation ID
-     * @param execution workflow execution
-     * @return registered workflow execution
-     * @since 0.1.7
+     * @return request generation
+     * @since 0.1.14
      */
-    private RunningWorkflow registerWorkflow(String conversationId, FutureTask<Map<String, Object>> execution) {
-        RunningWorkflow current = new RunningWorkflow(Thread.currentThread(), execution);
-        RunningWorkflow previous = runningWorkflows.put(conversationId, current);
+    private long beginRequest(String conversationId) {
+        RunningWorkflow previous;
+        long requestVersion;
+        synchronized (requestLock) {
+            requestVersion = requestVersions.merge(conversationId, 1L, Long::sum);
+            previous = runningWorkflows.get(conversationId);
+        }
         if (previous != null) {
             previous.cancelAndAwait();
         }
-        return current;
+        return requestVersion;
+    }
+
+    /**
+     * Check whether a request remains the newest request for its conversation.
+     *
+     * @param conversationId conversation ID
+     * @param requestVersion request generation
+     * @return {@code true} when the request is current
+     * @since 0.1.14
+     */
+    private boolean isCurrentRequest(String conversationId, long requestVersion) {
+        synchronized (requestLock) {
+            return requestVersions.getOrDefault(conversationId, 0L) == requestVersion;
+        }
+    }
+
+    /**
+     * Register a workflow only when its request remains current.
+     *
+     * @param conversationId conversation ID
+     * @param requestVersion request generation
+     * @param execution workflow execution
+     * @return registered workflow execution, or empty when superseded
+     * @since 0.1.14
+     */
+    private Optional<RunningWorkflow> registerWorkflow(String conversationId, long requestVersion,
+            FutureTask<Map<String, Object>> execution) {
+        RunningWorkflow current = new RunningWorkflow(Thread.currentThread(), execution);
+        RunningWorkflow previous;
+        synchronized (requestLock) {
+            if (requestVersions.getOrDefault(conversationId, 0L) != requestVersion) {
+                return Optional.empty();
+            }
+            previous = runningWorkflows.put(conversationId, current);
+        }
+        if (previous != null) {
+            previous.cancelAndAwait();
+        }
+        return Optional.of(current);
     }
 
     /**
@@ -549,6 +608,22 @@ public class WorkflowEventHandler extends EventHandler {
         session.writeStream(new OutputSchema("cancelled", 0, result));
         Loggers.CONTROLLER.info("Workflow cancelled: workflow={}, conversation={}", workflowId,
                 session.getSessionId());
+        return result;
+    }
+
+    /**
+     * Write the terminal marker for a request superseded during intent detection.
+     *
+     * @param session agent session
+     * @return cancellation result
+     * @since 0.1.14
+     */
+    private static Map<String, Object> writeSupersededRequestResult(AgentSessionApi session) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "cancelled");
+        result.put("conversation_id", session.getSessionId());
+        session.writeStream(new OutputSchema("cancelled", 0, result));
+        Loggers.CONTROLLER.info("Superseded request cancelled: conversation={}", session.getSessionId());
         return result;
     }
 
