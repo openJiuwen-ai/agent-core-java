@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Prompt building and entity extraction orchestration by episode type.
@@ -115,13 +116,11 @@ public final class ExtractionPrompts {
         if (!"Human".equalsIgnoreCase(entity.getObjType())) {
             return;
         }
-        Number doubledTarget = doubleSummaryTarget(kwargs.get("summary_target"));
-        if (doubledTarget != null) {
-            kwargs.put("summary_target", doubledTarget);
-        }
+        doubleSummaryTarget(kwargs.get("summary_target"))
+                .ifPresent(doubledTarget -> kwargs.put("summary_target", doubledTarget));
     }
 
-    private static Number doubleSummaryTarget(Object summaryTarget) {
+    private static Optional<Number> doubleSummaryTarget(Object summaryTarget) {
         BigInteger target;
         if (summaryTarget instanceof BigInteger bigInteger) {
             target = bigInteger;
@@ -131,16 +130,16 @@ public final class ExtractionPrompts {
                 && !value.isEmpty() && value.codePoints().allMatch(Character::isDigit)) {
             target = new BigInteger(value);
         } else {
-            return null;
+            return Optional.empty();
         }
         BigInteger doubledTarget = target.shiftLeft(1);
         if (doubledTarget.bitLength() < Integer.SIZE) {
-            return Integer.valueOf(doubledTarget.intValue());
+            return Optional.of(Integer.valueOf(doubledTarget.intValue()));
         }
         if (doubledTarget.bitLength() < Long.SIZE) {
-            return Long.valueOf(doubledTarget.longValue());
+            return Optional.of(Long.valueOf(doubledTarget.longValue()));
         }
-        return doubledTarget;
+        return Optional.of(doubledTarget);
     }
 
     /**
