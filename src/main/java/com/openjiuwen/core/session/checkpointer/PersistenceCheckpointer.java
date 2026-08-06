@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
+import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.BaseSession;
@@ -20,6 +21,7 @@ import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,6 +37,10 @@ import java.util.Optional;
  * @since 0.1.7
  */
 public class PersistenceCheckpointer extends Checkpointer {
+    private static final String JAVA_SERIALIZATION_TYPE = "java";
+    private static final String LEGACY_JAVA_SERIALIZATION_TYPE = "java_serialized";
+    private static final Serializer STATE_SERIALIZER = Serializer.create(JAVA_SERIALIZATION_TYPE);
+
     private final BaseKVStore kvStore;
     private final PersistenceAgentStorage agentStorage;
     private final PersistenceWorkflowStorage workflowStorage;
@@ -237,6 +243,12 @@ public class PersistenceCheckpointer extends Checkpointer {
         return graphStoreField;
     }
 
+    /** {@inheritDoc} */
+    @Override
+    public void close() {
+        kvStore.close();
+    }
+
     /**
      * Persistence-based agent state storage.
      */
@@ -260,6 +272,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         @Override
         public void save(BaseSession session) {
             Map<String, Object> state = session.state().getState();
+            Serializer.TypedBytes serializedState = serializeState(state);
             String sessionId = session.sessionId();
             String agentId = getAgentId(session);
 
@@ -269,8 +282,8 @@ public class PersistenceCheckpointer extends Checkpointer {
                 resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.set(dumpTypeKey, "java_serialized");
-            pipeline.set(blobKey, state);
+            pipeline.set(dumpTypeKey, serializedState.type());
+            pipeline.set(blobKey, serializedState.data());
             pipeline.execute();
 
             Loggers.SESSION.debug("Agent state saved, sessionId={}, agentId={}", sessionId, agentId);
@@ -304,11 +317,10 @@ public class PersistenceCheckpointer extends Checkpointer {
                 return;
             }
 
-            Object blob = results.get(1);
-            if (blob instanceof Map) {
-                session.state().setState((Map<String, Object>) blob);
+            deserializeState(results.get(0), results.get(1)).filter(Map.class::isInstance).ifPresent(state -> {
+                session.state().setState((Map<String, Object>) state);
                 Loggers.SESSION.debug("Agent state recovered, sessionId={}, agentId={}", sessionId, agentId);
-            }
+            });
         }
 
         /**
@@ -368,10 +380,14 @@ public class PersistenceCheckpointer extends Checkpointer {
          */
         private static String getAgentId(BaseSession session) {
             try {
-                return (String) session.getClass().getMethod("agentId").invoke(session);
-            } catch (Exception e) {
-                return session.sessionId();
+                Object agentId = session.getClass().getMethod("agentId").invoke(session);
+                if (agentId instanceof String text && !text.isBlank()) {
+                    return text;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Fall back to the session ID when the session does not expose agentId().
             }
+            return session.sessionId();
         }
     }
 
@@ -400,6 +416,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         @Override
         public void save(BaseSession session) {
             Map<String, Object> state = session.state().getState();
+            Serializer.TypedBytes serializedState = serializeState(state);
             String workflowId = getWorkflowId(session);
             String sessionId = session.sessionId();
 
@@ -410,19 +427,20 @@ public class PersistenceCheckpointer extends Checkpointer {
                 resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
                 resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            pipeline.set(dumpTypeKey, "java_serialized");
-            pipeline.set(blobKey, state);
+            pipeline.set(dumpTypeKey, serializedState.type());
+            pipeline.set(blobKey, serializedState.data());
 
             // Save updates if state supports commits
             if (session.state() instanceof WorkflowCommitState workflowState) {
                 Map<String, Object> updates = workflowState.getUpdates();
                 if (updates != null) {
+                    Serializer.TypedBytes serializedUpdates = serializeState(updates);
                     String updatesDumpTypeKey =
                         resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
                     String updatesBlobKey =
                         resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
-                    pipeline.set(updatesDumpTypeKey, "java_serialized");
-                    pipeline.set(updatesBlobKey, updates);
+                    pipeline.set(updatesDumpTypeKey, serializedUpdates.type());
+                    pipeline.set(updatesBlobKey, serializedUpdates.data());
                 }
             }
 
@@ -466,10 +484,8 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
 
             // Recover state
-            Object stateBlob = results.get(1);
-            if (stateBlob instanceof Map) {
-                session.state().setState((Map<String, Object>) stateBlob);
-            }
+            deserializeState(results.get(0), results.get(1)).filter(Map.class::isInstance)
+                    .ifPresent(state -> session.state().setState((Map<String, Object>) state));
 
             // Process interactive inputs
             if (inputs != null) {
@@ -477,10 +493,11 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
 
             // Recover updates
-            Object updatesBlob = results.get(3);
-            if (updatesBlob instanceof Map && session.state() instanceof WorkflowCommitState workflowState) {
-                workflowState.setUpdates((Map<String, Object>) updatesBlob);
-                workflowState.commit();
+            if (session.state() instanceof WorkflowCommitState workflowState) {
+                deserializeState(results.get(2), results.get(3)).filter(Map.class::isInstance).ifPresent(updates -> {
+                    workflowState.setUpdates((Map<String, Object>) updates);
+                    workflowState.commit();
+                });
             }
         }
 
@@ -629,16 +646,8 @@ public class PersistenceCheckpointer extends Checkpointer {
                 return Optional.empty();
             }
 
-            Object typeVal = results.get(0);
-            Object valueVal = results.get(1);
-            if (typeVal == null || valueVal == null) {
-                return Optional.empty();
-            }
-
-            if (valueVal instanceof GraphStoreState gs) {
-                return Optional.of(gs);
-            }
-            return Optional.empty();
+            return deserializeState(results.get(0), results.get(1)).filter(GraphStoreState.class::isInstance)
+                    .map(GraphStoreState.class::cast);
         }
 
         /**
@@ -651,14 +660,15 @@ public class PersistenceCheckpointer extends Checkpointer {
          */
         @Override
         public void save(String sessionId, String ns, GraphStoreState state) {
+            Serializer.TypedBytes serializedState = serializeState(state);
             String keyType =
                 resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
                 resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = kvStore.pipeline();
-            pipeline.set(keyType, "java_serialized");
-            pipeline.set(keyValue, state);
+            pipeline.set(keyType, serializedState.type());
+            pipeline.set(keyValue, serializedState.data());
             pipeline.execute();
 
             Loggers.SESSION.debug("Graph state saved, sessionId={}, ns={}", sessionId, ns);
@@ -683,5 +693,39 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
             Loggers.SESSION.debug("Graph checkpoint cleared, sessionId={}, ns={}", sessionId, ns);
         }
+    }
+
+    private static Serializer.TypedBytes serializeState(Object state) {
+        return STATE_SERIALIZER.dumpsTyped(state);
+    }
+
+    private static Optional<Object> deserializeState(Object dumpType, Object blob) {
+        if (dumpType == null || blob == null) {
+            return Optional.empty();
+        }
+        String dumpTypeText = decodeDumpType(dumpType);
+        if (!(blob instanceof byte[] bytes)) {
+            return LEGACY_JAVA_SERIALIZATION_TYPE.equals(dumpTypeText) ? Optional.of(blob) : Optional.empty();
+        }
+        String serializerType = LEGACY_JAVA_SERIALIZATION_TYPE.equals(dumpTypeText)
+                ? JAVA_SERIALIZATION_TYPE
+                : dumpTypeText;
+        if (!JAVA_SERIALIZATION_TYPE.equals(serializerType)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(STATE_SERIALIZER.loadsTyped(new Serializer.TypedBytes(serializerType, bytes)));
+        } catch (Serializer.SerializationException exception) {
+            Loggers.SESSION.warning("Failed to deserialize persistence state, dumpType={}, reason={}",
+                    dumpTypeText, exception.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static String decodeDumpType(Object dumpType) {
+        if (dumpType instanceof byte[] bytes) {
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return String.valueOf(dumpType);
     }
 }

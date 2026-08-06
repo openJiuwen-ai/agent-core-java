@@ -48,6 +48,26 @@ public abstract class Serializer {
     }
 
     /**
+     * Signals that an object could not be serialized or deserialized.
+     *
+     * @since 0.1.14
+     */
+    public static class SerializationException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * Creates a serialization failure with its original cause.
+         *
+         * @param message failure description
+         * @param cause original serialization failure
+         * @since 0.1.14
+         */
+        public SerializationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /**
      * Create a serializer of the given type.
      * 
      * @param typeName serializer type name ("json" or "java")
@@ -85,7 +105,7 @@ public abstract class Serializer {
                 byte[] bytes = MAPPER.writeValueAsBytes(obj);
                 return new TypedBytes("json", bytes);
             } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to serialize object to JSON", e);
+                throw new SerializationException("Failed to serialize object to JSON", e);
             }
         }
 
@@ -107,7 +127,7 @@ public abstract class Serializer {
             try {
                 return MAPPER.readValue(data.data(), Object.class);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to deserialize JSON", e);
+                throw new SerializationException("Failed to deserialize JSON", e);
             }
         }
     }
@@ -138,7 +158,7 @@ public abstract class Serializer {
                 oos.flush();
                 return new TypedBytes("java", bos.toByteArray());
             } catch (IOException e) {
-                throw new RuntimeException("Failed to serialize object with Java native serialization", e);
+                throw new SerializationException("Failed to serialize object with Java native serialization", e);
             }
         }
 
@@ -161,7 +181,7 @@ public abstract class Serializer {
                     ObjectInputStream ois = new ObjectInputStream(bis)) {
                 return ois.readObject();
             } catch (IOException | ClassNotFoundException e) {
-                throw new RuntimeException("Failed to deserialize object with Java native serialization", e);
+                throw new SerializationException("Failed to deserialize object with Java native serialization", e);
             }
         }
     }
