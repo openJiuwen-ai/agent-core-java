@@ -7,7 +7,7 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.14</version>
+    <version>0.1.14.post1</version>
     <packaging>jar</packaging>
 
     <name>agent-core-java</name>
@@ -19,32 +19,44 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Dependency versions (aligned with tech-stack-mapping) -->
-        <jackson.version>2.17.0</jackson.version>
+        <!-- Dependency versions -->
+        <jackson.version>2.18.8</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
-        <logback.version>1.5.3</logback.version>
+        <logback.version>1.5.37</logback.version>
+        <log4j.version>2.26.1</log4j.version>
         <lombok.version>1.18.32</lombok.version>
-        <bouncy-castle.version>1.77</bouncy-castle.version>
-        <milvus.version>2.6.13</milvus.version>
-        <pulsar.version>4.0.9</pulsar.version>
+        <bouncy-castle.version>1.85</bouncy-castle.version>
+        <commons-codec.version>1.20.0</commons-codec.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <failureaccess.version>1.0.2</failureaccess.version>
+        <grpc.version>1.82.1</grpc.version>
+        <guava.version>33.0.0-jre</guava.version>
+        <jna.version>5.19.1</jna.version>
+        <jsonschema.version>4.38.0</jsonschema.version>
+        <kotlin.version>2.4.10</kotlin.version>
+        <milvus.version>2.6.22</milvus.version>
+        <protobuf.version>3.25.9</protobuf.version>
+        <pulsar.version>4.2.3</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
-        <postgresql.version>42.7.7</postgresql.version>
-        <sqlite-jdbc.version>3.53.0.0</sqlite-jdbc.version>
+        <postgresql.version>42.7.12</postgresql.version>
+        <sqlite-jdbc.version>3.53.2.1</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
-        <pdfbox.version>2.0.31</pdfbox.version>
-        <poi.version>5.3.0</poi.version>
+        <jedis.version>5.1.5</jedis.version>
+        <pdfbox.version>2.0.37</pdfbox.version>
+        <poi.version>5.5.1</poi.version>
         <openai-java.version>4.32.0</openai-java.version>
         <reactor.version>3.6.2</reactor.version>
         <h2.version>2.2.224</h2.version>
-        <open-telemetry.version>1.38.0</open-telemetry.version>
+        <open-telemetry.version>1.64.0</open-telemetry.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
-        <mockito.version>5.2.0</mockito.version>
-        <assertj.version>3.25.3</assertj.version>
+        <!-- 5.2.0 pulls ByteBuddy 1.14.x (Java <=20 only); JDK21 CI needs 5.11+ -->
+        <mockito.version>5.14.2</mockito.version>
+        <byte-buddy.version>1.15.11</byte-buddy.version>
+        <assertj.version>3.27.7</assertj.version>
         <jacoco.version>0.8.11</jacoco.version>
         <surefire.groups></surefire.groups>
         <surefire.excludedGroups>system-test</surefire.excludedGroups>
@@ -54,17 +66,130 @@
         <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
     </properties>
 
+    <!--
+      Pin transitive versions so pulsar / milvus / openai cannot reintroduce
+      vulnerable or split versions of shared dependency families.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${open-telemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-bom</artifactId>
+                <version>${kotlin.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcutil-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons-lang3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-codec</groupId>
+                <artifactId>commons-codec</artifactId>
+                <version>${commons-codec.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>failureaccess</artifactId>
+                <version>${failureaccess.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-generator</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-module-jackson</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-module-swagger-2</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>${log4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>${jna.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <!-- JSON Processing: Jackson -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <!-- HTTP Client: OkHttp -->
         <dependency>
@@ -72,13 +197,6 @@
             <artifactId>okhttp</artifactId>
             <version>${okhttp3.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>mockwebserver</artifactId>
-            <version>${okhttp3.version}</version>
-            <scope>test</scope>
-        </dependency>
-
         <!-- YAML Processing: SnakeYAML -->
         <dependency>
             <groupId>org.yaml</groupId>
@@ -95,7 +213,6 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
         </dependency>
 
         <!-- Lombok -->
@@ -106,11 +223,10 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Bouncy Castle (Encryption) -->
+        <!-- Bouncy Castle (Encryption); version pinned in dependencyManagement -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
-            <version>${bouncy-castle.version}</version>
         </dependency>
 
         <!-- Vector Database: Milvus -->
@@ -118,11 +234,23 @@
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
             <version>${milvus.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.jetbrains.kotlin</groupId>
+                    <artifactId>kotlin-stdlib-common</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client</artifactId>
             <version>${pulsar.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.pulsar</groupId>
+                    <artifactId>bouncy-castle-bc</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.pgvector</groupId>
@@ -153,6 +281,13 @@
             <groupId>com.alibaba</groupId>
             <artifactId>dashscope-sdk-java</artifactId>
             <version>${dashscope.version}</version>
+            <exclusions>
+                <!-- Choose logback-classic; avoid dual SLF4J providers at runtime. -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-simple</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- Reactive Programming: Project Reactor -->
         <dependency>
@@ -167,11 +302,10 @@
             <scope>test</scope>
         </dependency>
 
-        
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
-            <version>5.1.5</version>
+            <version>${jedis.version}</version>
         </dependency>
         <!-- Test Dependencies -->
         <dependency>
@@ -183,12 +317,6 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-inline</artifactId>
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
@@ -209,56 +337,48 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>${sqlite-jdbc.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
-            <version>3.6.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>mockwebserver</artifactId>
-            <version>4.12.0</version>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- OpenTelemetry -->
+        <!-- OpenTelemetry (versions from opentelemetry-bom) -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
-            <version>${open-telemetry.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-sender-jdk</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-sender-grpc-managed-channel</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-logging</artifactId>
-            <version>${open-telemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-testing</artifactId>
-            <version>${open-telemetry.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -284,10 +404,24 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
                 <configuration>
-                    <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                    <!-- JDK21: load Mockito as a Java agent (self-attach is restricted / deprecated) -->
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}
+                        -Xshare:off -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                     <!-- Prevent a single hung test from blocking the whole suite forever (e.g. MCP stdio). -->

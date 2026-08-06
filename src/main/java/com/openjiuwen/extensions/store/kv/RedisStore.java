@@ -7,6 +7,13 @@ package com.openjiuwen.extensions.store.kv;
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
+import redis.clients.jedis.ConnectionPool;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
+import redis.clients.jedis.util.JedisClusterCRC16;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,10 +41,11 @@ import java.util.Optional;
  * backed by Redis. Supports both standalone Redis and Redis Cluster modes.
  * <p>
  * Mirrors Python's {@code openjiuwen.extensions.store.kv.redis_store.RedisStore}.
- * 
+ *
  * @since 0.1.7
  */
 public class RedisStore extends BaseKVStore {
+    private static final int CLUSTER_SCAN_COUNT = 1000;
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
     private final Object redisClient;
@@ -45,7 +53,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Initialize RedisStore with a Redis client (standalone or cluster).
-     * 
+     *
      * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
      * @since 0.1.7
      */
@@ -56,7 +64,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * set.
-     * 
+     *
      * @param key key
      * @param value value
      * @since 0.1.7
@@ -68,7 +76,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * exclusiveSet.
-     * 
+     *
      * @param key key
      * @param value value
      * @param expiry expiry
@@ -113,7 +121,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * get.
-     * 
+     *
      * @param key key
      * @return the result
      * @since 0.1.7
@@ -133,7 +141,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * isExists.
-     * 
+     *
      * @param key key
      * @return the result
      * @since 0.1.7
@@ -152,7 +160,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * exists.
-     * 
+     *
      * @param key key
      * @return the result
      * @since 0.1.7
@@ -163,7 +171,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * delete.
-     * 
+     *
      * @param key key
      * @since 0.1.7
      */
@@ -181,7 +189,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * getByPrefix.
-     * 
+     *
      * @param prefix prefix
      * @return the result
      * @since 0.1.7
@@ -207,7 +215,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * deleteByPrefix.
-     * 
+     *
      * @param prefix prefix
      * @param batchSize batchSize
      * @since 0.1.7
@@ -229,7 +237,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * mget.
-     * 
+     *
      * @param keys keys
      * @return the result
      * @since 0.1.7
@@ -252,7 +260,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * batchDelete.
-     * 
+     *
      * @param keys keys
      * @param batchSize batchSize
      * @return the result
@@ -282,7 +290,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * pipeline.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -310,7 +318,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Refresh TTL (Time To Live) for given keys.
-     * 
+     *
      * @param keys a list of keys to refresh TTL for
      * @param ttlSeconds the TTL value in seconds
      * @since 0.1.7
@@ -334,7 +342,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Check if the Redis client is in cluster mode.
-     * 
+     *
      * @return true if cluster mode, otherwise false
      * @since 0.1.7
      */
@@ -371,7 +379,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * detectClusterMode.
-     * 
+     *
      * @param client client
      * @return the result
      * @since 0.1.7
@@ -382,7 +390,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * setInternal.
-     * 
+     *
      * @param key key
      * @param value value
      * @param expiry expiry
@@ -425,7 +433,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * setBinaryValue.
-     * 
+     *
      * @param key key
      * @param value value
      * @param expiry expiry
@@ -463,7 +471,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * requireKey.
-     * 
+     *
      * @param key key
      * @since 0.1.7
      */
@@ -474,7 +482,7 @@ public class RedisStore extends BaseKVStore {
     /**
      * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
      * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
-     * 
+     *
      * @param key key
      * @return the result
      * @throws Exception Exception
@@ -510,7 +518,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * preferBinaryOverString.
-     * 
+     *
      * @param bytes bytes
      * @param text text
      * @return the result
@@ -528,7 +536,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * extractExpiry.
-     * 
+     *
      * @param operation operation
      * @return the result
      * @since 0.1.7
@@ -546,7 +554,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * tryMget.
-     * 
+     *
      * @param keys keys
      * @return the result
      * @throws Exception Exception
@@ -577,7 +585,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * deleteChunk.
-     * 
+     *
      * @param keys keys
      * @return the result
      * @throws Exception Exception
@@ -586,6 +594,9 @@ public class RedisStore extends BaseKVStore {
     private int deleteChunk(List<String> keys) throws Exception {
         if (keys.isEmpty()) {
             return 0;
+        }
+        if (redisClient instanceof JedisCluster cluster) {
+            return deleteClusterKeys(cluster, keys);
         }
 
         InvocationOutcome outcome =
@@ -609,14 +620,40 @@ public class RedisStore extends BaseKVStore {
     }
 
     /**
+     * Delete cluster keys in hash-slot groups to avoid cross-slot commands.
+     *
+     * @param cluster Redis cluster client
+     * @param keys keys to delete
+     * @return number of deleted keys
+     * @since 0.1.14
+     */
+    private int deleteClusterKeys(JedisCluster cluster, List<String> keys) {
+        Map<Integer, List<String>> keysBySlot = new LinkedHashMap<>();
+        for (String key : keys) {
+            int slot = JedisClusterCRC16.getSlot(key);
+            keysBySlot.computeIfAbsent(slot, ignored -> new ArrayList<>()).add(key);
+        }
+
+        long deleted = 0L;
+        for (List<String> sameSlotKeys : keysBySlot.values()) {
+            deleted += cluster.del(sameSlotKeys.toArray(String[]::new));
+        }
+        return Math.toIntExact(deleted);
+    }
+
+    /**
      * scanKeys.
-     * 
+     *
      * @param prefix prefix
      * @return the result
      * @throws Exception Exception
      * @since 0.1.7
      */
     private List<String> scanKeys(String prefix) throws Exception {
+        if (redisClient instanceof JedisCluster cluster) {
+            return scanClusterKeys(cluster, prefix);
+        }
+
         String pattern = prefix + "*";
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
         if (!outcome.handled()) {
@@ -635,8 +672,51 @@ public class RedisStore extends BaseKVStore {
     }
 
     /**
+     * Scan matching keys from every node known to the cluster client.
+     *
+     * @param cluster Redis cluster client
+     * @param prefix literal key prefix
+     * @return matching keys without duplicates
+     * @since 0.1.14
+     */
+    private List<String> scanClusterKeys(JedisCluster cluster, String prefix) {
+        ScanParams params = new ScanParams().match(prefix + "*").count(CLUSTER_SCAN_COUNT);
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        List<ConnectionPool> nodePools = new ArrayList<>(cluster.getClusterNodes().values());
+
+        for (ConnectionPool nodePool : nodePools) {
+            try (Jedis node = new Jedis(nodePool.getResource())) {
+                scanClusterNode(node, params, prefix, keys);
+            }
+        }
+        return new ArrayList<>(keys);
+    }
+
+    /**
+     * Scan all cursor pages from one cluster node.
+     *
+     * @param node node-scoped Jedis client
+     * @param params scan parameters
+     * @param prefix literal key prefix
+     * @param keys destination collection
+     * @since 0.1.14
+     */
+    private void scanClusterNode(Jedis node, ScanParams params, String prefix, Collection<String> keys) {
+        String cursor = ScanParams.SCAN_POINTER_START;
+        do {
+            ScanResult<String> page = node.scan(cursor, params);
+            for (String key : page.getResult()) {
+                if (key.startsWith(prefix)) {
+                    keys.add(key);
+                }
+            }
+            cursor = page.getCursor();
+        } while (!ScanParams.SCAN_POINTER_START.equals(cursor));
+    }
+
+    /**
      * refreshTtlViaClientPipeline.
-     * 
+     *
      * @param keys keys
      * @param ttlSeconds ttlSeconds
      * @return the result
@@ -678,7 +758,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * expireKey.
-     * 
+     *
      * @param key key
      * @param ttlSeconds ttlSeconds
      * @throws Exception Exception
@@ -693,7 +773,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * normalizeBulkValues.
-     * 
+     *
      * @param rawValues rawValues
      * @param requestedKeys requestedKeys
      * @return the result
@@ -722,7 +802,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * extractKeys.
-     * 
+     *
      * @param rawKeys rawKeys
      * @param prefix prefix
      * @return the result
@@ -741,7 +821,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * toObjectList.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7
@@ -788,7 +868,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * normalizeKey.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7
@@ -808,7 +888,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * normalizeValue.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7
@@ -846,7 +926,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * asBoolean.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7
@@ -871,7 +951,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * asDeleteCount.
-     * 
+     *
      * @param value value
      * @param fallbackCount fallbackCount
      * @return the result
@@ -889,7 +969,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * invokeRequired.
-     * 
+     *
      * @param target target
      * @param methodNames methodNames
      * @param args args
@@ -908,7 +988,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * tryInvoke.
-     * 
+     *
      * @param target target
      * @param methodNames methodNames
      * @param args args
@@ -923,7 +1003,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * tryInvoke.
-     * 
+     *
      * @param target target
      * @param methodNames methodNames
      * @param requiredFirstParamType requiredFirstParamType
@@ -980,7 +1060,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * prepareMethodMatch.
-     * 
+     *
      * @param method method
      * @param args args
      * @param namePreference namePreference
@@ -1055,7 +1135,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * convertArgument.
-     * 
+     *
      * @param argument argument
      * @param targetType targetType
      * @return the result
@@ -1124,7 +1204,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * isAssignable.
-     * 
+     *
      * @param targetType targetType
      * @param candidateType candidateType
      * @return the result
@@ -1136,7 +1216,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * boxType.
-     * 
+     *
      * @param type type
      * @return the result
      * @since 0.1.7
@@ -1160,7 +1240,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * InvocationOutcome.
-     * 
+     *
      * @param handled handled
      * @param value value
      * @since 0.1.7
@@ -1173,7 +1253,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * MethodMatch.
-     * 
+     *
      * @param method method
      * @param arguments arguments
      * @param score score
@@ -1184,7 +1264,7 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * ArgumentMatch.
-     * 
+     *
      * @param value value
      * @param score score
      * @since 0.1.7

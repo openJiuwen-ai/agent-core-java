@@ -25,7 +25,7 @@ class RedisCheckpointerCompatibilityTest {
         connectionArgs.put("cluster_mode", true);
 
         Map<String, Object> connection = new LinkedHashMap<>();
-        connection.put("url", "redis://127.0.0.1:7001");
+        connection.put("url", "redis://cluster.example.invalid:7001");
         connection.put("connection_args", connectionArgs);
 
         Map<String, Object> conf = new LinkedHashMap<>();

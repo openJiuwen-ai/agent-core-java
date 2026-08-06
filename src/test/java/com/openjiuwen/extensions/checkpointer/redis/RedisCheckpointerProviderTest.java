@@ -4,13 +4,17 @@ package com.openjiuwen.extensions.checkpointer.redis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+
+import redis.clients.jedis.util.JedisClusterCRC16;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -66,15 +70,48 @@ class RedisCheckpointerProviderTest {
     }
 
     @Test
+    @Tag("integration")
+    void clusterSessionExistsAndReleaseWorkAcrossHashSlots() {
+        String clusterUrl = System.getenv("REDIS_CLUSTER_URL");
+        assumeTrue(clusterUrl != null && !clusterUrl.isBlank(), "Missing required env: REDIS_CLUSTER_URL");
+
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        Map<String, Object> config = Map.of(
+                "connection", Map.of("url", clusterUrl, "cluster_mode", true));
+        RedisCheckpointer checkpointer = assertInstanceOf(RedisCheckpointer.class, provider.create(config));
+        String sessionId = "redis-cluster-provider-" + UUID.randomUUID();
+        String firstKey = sessionId + ":{core-slot-a}:workflow";
+        String secondKey = sessionId + ":{core-slot-b}:agent";
+        assertNotEquals(JedisClusterCRC16.getSlot(firstKey), JedisClusterCRC16.getSlot(secondKey));
+
+        try {
+            checkpointer.getRedisStore().set(firstKey, "first");
+            checkpointer.getRedisStore().set(secondKey, "second");
+
+            assertTrue(checkpointer.sessionExists(sessionId));
+            checkpointer.release(sessionId);
+
+            assertFalse(checkpointer.sessionExists(sessionId));
+            assertNull(checkpointer.getRedisStore().get(firstKey));
+            assertNull(checkpointer.getRedisStore().get(secondKey));
+        } finally {
+            checkpointer.getRedisStore().delete(firstKey);
+            checkpointer.getRedisStore().delete(secondKey);
+            checkpointer.close();
+        }
+    }
+
+    @Test
     void clusterUrlsNormalizeAndFactoryUsesRedisProvider() {
         RedisConnectionConfig connection =
-            RedisConnectionConfig.fromMap(Map.of("url", "redis+cluster://127.0.0.1:7000"));
+            RedisConnectionConfig.fromMap(Map.of("url", "redis+cluster://cluster.example.invalid:7000"));
 
         assertTrue(connection.isClusterMode());
-        assertEquals("redis://127.0.0.1:7000", connection.getConnectionUrl());
+        assertEquals("redis://cluster.example.invalid:7000", connection.getConnectionUrl());
 
-        Checkpointer checkpointer =
-            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
+        FakeRedisClient redisClient = new FakeRedisClient();
+        Checkpointer checkpointer = CheckpointerFactory.create(
+                "redis", Map.of("connection", Map.of("redis_client", redisClient)));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertNotNull(redisCheckpointer.graphStore());

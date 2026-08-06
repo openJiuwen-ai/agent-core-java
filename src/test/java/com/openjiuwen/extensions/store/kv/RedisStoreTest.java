@@ -5,16 +5,33 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.spi.store.KVStorePipeline;
 
+import redis.clients.jedis.Connection;
+import redis.clients.jedis.ConnectionPool;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
+import redis.clients.jedis.util.JedisClusterCRC16;
+
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -118,6 +135,69 @@ class RedisStoreTest {
         store.set("blob-key", serialized);
 
         assertArrayEquals(serialized, (byte[]) store.get("blob-key"));
+    }
+
+    @Test
+    void clusterScanAggregatesAllNodePagesAndDeduplicatesKeys() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        ConnectionPool firstPool = mock(ConnectionPool.class);
+        ConnectionPool secondPool = mock(ConnectionPool.class);
+        Connection firstConnection = mock(Connection.class);
+        Connection secondConnection = mock(Connection.class);
+        when(firstPool.getResource()).thenReturn(firstConnection);
+        when(secondPool.getResource()).thenReturn(secondConnection);
+        Map<String, ConnectionPool> nodePools = new LinkedHashMap<>();
+        nodePools.put("first", firstPool);
+        nodePools.put("second", secondPool);
+        when(cluster.getClusterNodes()).thenReturn(nodePools);
+        when(cluster.get("session:first")).thenReturn("first-value");
+        when(cluster.get("session:second")).thenReturn("second-value");
+        when(cluster.get("session:third")).thenReturn("third-value");
+
+        try (MockedConstruction<Jedis> nodes = mockConstruction(Jedis.class, (node, context) -> {
+            Connection connection = (Connection) context.arguments().get(0);
+            if (connection == firstConnection) {
+                when(node.scan(eq("0"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("17", List.of("session:first", "other:key")));
+                when(node.scan(eq("17"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("0", List.of("session:second")));
+            } else {
+                when(node.scan(eq("0"), any(ScanParams.class)))
+                        .thenReturn(new ScanResult<>("0", List.of("session:second", "session:third")));
+            }
+        })) {
+            RedisStore store = new RedisStore(cluster);
+
+            Map<String, Object> result = store.getByPrefix("session:");
+
+            assertEquals(Map.of(
+                    "session:first", "first-value",
+                    "session:second", "second-value",
+                    "session:third", "third-value"), result);
+            assertEquals(2, nodes.constructed().size());
+            nodes.constructed().forEach(node -> verify(node).close());
+        }
+    }
+
+    @Test
+    void clusterBatchDeleteGroupsKeysByHashSlot() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        List<List<String>> deleteBatches = new ArrayList<>();
+        when(cluster.del(any(String[].class))).thenAnswer(invocation -> {
+            List<String> batch = Arrays.stream(invocation.getArguments()).map(String.class::cast).toList();
+            deleteBatches.add(batch);
+            return (long) batch.size();
+        });
+        RedisStore store = new RedisStore(cluster);
+        String firstKey = "{slot-a}:first";
+        String secondKey = "{slot-a}:second";
+        String thirdKey = "{slot-b}:third";
+        assertNotEquals(JedisClusterCRC16.getSlot(firstKey), JedisClusterCRC16.getSlot(thirdKey));
+
+        int deleted = store.batchDelete(List.of(firstKey, secondKey, thirdKey), null);
+
+        assertEquals(3, deleted);
+        assertEquals(List.of(List.of(firstKey, secondKey), List.of(thirdKey)), deleteBatches);
     }
 
     static class FakeRedisClient {

@@ -26,9 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -57,11 +55,11 @@ public class OtelRail extends AgentRail {
     /** Rate-limit flag for tracer retrieval failure logging. */
     private static volatile boolean hasTracerFailureLogged = false;
 
-    /** Buffered LLM child spans (one per in-flight model call). */
-    private final List<TraceAgentSpan> llmSpans = new ArrayList<>();
+    /** Extra-map key for storing the in-flight LLM child span per context. */
+    private static final String OTEL_LLM_SPAN_KEY = "_otel_llm_span";
 
-    /** Buffered tool (plugin) child spans (one per in-flight tool call). */
-    private final List<TraceAgentSpan> toolSpans = new ArrayList<>();
+    /** Extra-map key for storing the in-flight tool child span per context. */
+    private static final String OTEL_TOOL_SPAN_KEY = "_otel_tool_span";
 
     /** Root agent span created in beforeInvoke, finalized in afterInvoke. */
     private TraceAgentSpan rootSpan;
@@ -138,7 +136,7 @@ public class OtelRail extends AgentRail {
         }
         Tracer tracer = tracerOpt.get();
         TraceAgentSpan llmSpan = tracer.getTracerAgentSpanManager().createAgentSpan(rootSpan);
-        llmSpans.add(llmSpan);
+        ctx.getExtra().put(OTEL_LLM_SPAN_KEY, llmSpan);
 
         Map<String, Object> instanceInfo = new HashMap<>();
         instanceInfo.put("class_name", getModelName(ctx));
@@ -165,7 +163,8 @@ public class OtelRail extends AgentRail {
         if (ctx.getException() != null) {
             return;
         }
-        if (llmSpans.isEmpty()) {
+        Object spanObj = ctx.getExtra().remove(OTEL_LLM_SPAN_KEY);
+        if (!(spanObj instanceof TraceAgentSpan llmSpan)) {
             return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
@@ -188,7 +187,6 @@ public class OtelRail extends AgentRail {
                 }
             }
         }
-        TraceAgentSpan llmSpan = llmSpans.remove(llmSpans.size() - 1);
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("span", llmSpan);
         kwargs.put("outputs", outputsDict);
@@ -198,10 +196,10 @@ public class OtelRail extends AgentRail {
 
     @Override
     public void onModelException(AgentCallbackContext ctx) {
-        if (llmSpans.isEmpty()) {
+        Object spanObj = ctx.getExtra().remove(OTEL_LLM_SPAN_KEY);
+        if (!(spanObj instanceof TraceAgentSpan llmSpan)) {
             return;
         }
-        TraceAgentSpan llmSpan = llmSpans.remove(llmSpans.size() - 1);
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
             return;
@@ -225,7 +223,7 @@ public class OtelRail extends AgentRail {
         }
         Tracer tracer = tracerOpt.get();
         TraceAgentSpan toolSpan = tracer.getTracerAgentSpanManager().createAgentSpan(rootSpan);
-        toolSpans.add(toolSpan);
+        ctx.getExtra().put(OTEL_TOOL_SPAN_KEY, toolSpan);
 
         String toolName = "";
         Object toolInputs = null;
@@ -256,7 +254,8 @@ public class OtelRail extends AgentRail {
         if (ctx.getException() != null) {
             return;
         }
-        if (toolSpans.isEmpty()) {
+        Object spanObj = ctx.getExtra().remove(OTEL_TOOL_SPAN_KEY);
+        if (!(spanObj instanceof TraceAgentSpan toolSpan)) {
             return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
@@ -264,7 +263,6 @@ public class OtelRail extends AgentRail {
             return;
         }
         Tracer tracer = tracerOpt.get();
-        TraceAgentSpan toolSpan = toolSpans.remove(toolSpans.size() - 1);
         Map<String, Object> outputsDict = new HashMap<>();
         if (ctx.getInputs() instanceof ToolCallInputs toolCallInputs
                 && toolCallInputs.getToolResult() != null) {
@@ -278,10 +276,10 @@ public class OtelRail extends AgentRail {
 
     @Override
     public void onToolException(AgentCallbackContext ctx) {
-        if (toolSpans.isEmpty()) {
+        Object spanObj = ctx.getExtra().remove(OTEL_TOOL_SPAN_KEY);
+        if (!(spanObj instanceof TraceAgentSpan toolSpan)) {
             return;
         }
-        TraceAgentSpan toolSpan = toolSpans.remove(toolSpans.size() - 1);
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
             return;
