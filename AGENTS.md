@@ -232,6 +232,98 @@ Before declaring a Java change complete or creating a commit:
    cloud CodeArts passed; the final report must explicitly say whether the
    cloud service was run and list any unavailable check.
 
+### JiuwenTestJava Smoke Gate
+
+Before creating a commit that changes `src/main/java`, `pom.xml`, or runtime
+resources, run the smoke suite in `/home/jiayang/workspace/jiuwen-test-java`
+against the JAR built from the current `core-java-repo` worktree. Documentation-
+only changes do not require this external smoke gate.
+
+1. Preserve unrelated changes in both repositories. Inspect `git status` in
+   `core-java-repo` and `jiuwen-test-java`; never clean, reset, or include
+   sibling-repository changes merely to run this gate.
+2. Export the Redis address and verify that Redis is listening before testing:
+
+   ```bash
+   export REDIS_IP='127.0.0.1'
+   ss -ltn | grep -E ':(6379)([[:space:]]|$)'
+   ```
+
+3. Verify that all five mock services are listening on ports `8000`, `8088`,
+   `8188`, `8189`, and `8190`. Reuse healthy processes; do not start duplicate
+   instances on occupied ports:
+
+   ```bash
+   ss -ltn | grep -E ':(8000|8088|8188|8189|8190)([[:space:]]|$)'
+   ```
+
+   If a service is missing, start it from `jiuwen-test-java` with the shared
+   `openjiuwen` Python environment. The five services may run in the same
+   terminal because each command is backgrounded:
+
+   ```bash
+   JIUWEN_TEST_REPO=/home/jiayang/workspace/jiuwen-test-java
+   MOCK_PYTHON=/home/jiayang/workspace/miniconda3/envs/openjiuwen/bin/python
+   cd "$JIUWEN_TEST_REPO"
+   mkdir -p logs/mcp
+   nohup "$MOCK_PYTHON" mock_service/mock_http/weather_reporter.py \
+     > logs/mock_http.log 2>&1 < /dev/null &
+   nohup "$MOCK_PYTHON" mock_service/mockllm/main.py \
+     > logs/mockllm.log 2>&1 < /dev/null &
+   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server.py \
+     --log logs/mcp/mock_mcp_sse.log \
+     > logs/mock_mcp_8188.out 2>&1 < /dev/null &
+   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server2.py \
+     --log logs/mcp/mock_mcp_sse2.log \
+     > logs/mock_mcp_8189.out 2>&1 < /dev/null &
+   nohup "$MOCK_PYTHON" mock_service/mock_mcp/mcp_sse_server3.py \
+     --log logs/mcp/mock_mcp_sse3.log \
+     > logs/mock_mcp_8190.out 2>&1 < /dev/null &
+   ```
+
+   After startup, recheck all five ports and reset the mock LLM state:
+
+   ```bash
+   ss -ltn | grep -E ':(8000|8088|8188|8189|8190)([[:space:]]|$)'
+   curl -fsS -X POST http://127.0.0.1:8088/reset_all
+   ```
+
+4. Build and install the current core worktree, and capture its Maven version.
+   Do not rely on a previously installed JAR:
+
+   ```bash
+   CORE_REPO=/home/jiayang/workspace/core-java-repo
+   cd "$CORE_REPO"
+   CORE_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+   mvn clean install -DskipTests
+   ```
+
+5. Run the complete smoke group from `jiuwen-test-java`, explicitly overriding
+   its dependency version so it resolves the JAR installed in step 4. Keep
+   `pipefail` enabled when saving a log so `tee` cannot hide a Maven failure:
+
+   ```bash
+   CORE_REPO=/home/jiayang/workspace/core-java-repo
+   JIUWEN_TEST_REPO=/home/jiayang/workspace/jiuwen-test-java
+   TEST_ARTIFACTS=/home/jiayang/workspace/test-artifacts
+   CORE_VERSION=$(mvn -f "$CORE_REPO/pom.xml" help:evaluate \
+     -Dexpression=project.version -q -DforceStdout)
+   mkdir -p "$TEST_ARTIFACTS"
+   cd "$JIUWEN_TEST_REPO"
+   set -o pipefail
+   mvn clean test -Dgroups='smoke' -Dagent-core-java.version="$CORE_VERSION" \
+     2>&1 | tee "$TEST_ARTIFACTS/jiuwen-test-java-smoke.log"
+   ```
+
+6. The gate passes only when Maven reports `BUILD SUCCESS` with zero failures
+   and zero errors. Record the total passed, failed, errored, and skipped counts
+   in the final report. Investigate every new or unexpected skip; do not treat
+   it as a pass merely because Maven exited successfully.
+
+Do not commit or push a runtime change while this gate is failing or its
+environment is incomplete. Report the exact failing cases or missing service
+instead of bypassing, disabling, or weakening the smoke suite.
+
 If any gate fails, fix the issue or report the concrete blocker; do not mark
 the task complete, commit, or push while silently leaving a failed gate.
 
