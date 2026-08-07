@@ -20,6 +20,34 @@ import java.util.concurrent.TimeUnit;
 
 class OpenJiuwenExecutorsTest {
     @Test
+    @DisplayName("DeepAgent stream 模块池默认 max(16, CPU×4) 且可配置")
+    void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
+        int expectedDefault = OpenJiuwenExecutors.defaultDeepAgentStreamMaxSize();
+        assertThat(expectedDefault).isEqualTo(Math.max(16, Runtime.getRuntime().availableProcessors() * 4));
+
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+        try {
+            assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
+            assertThat(((ThreadPoolExecutor) executor).getMaximumPoolSize()).isEqualTo(expectedDefault);
+            String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
+            assertThat(threadName).startsWith("deep-agent-stream-");
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue();
+        }
+
+        System.setProperty("openjiuwen.executor.deep-agent-stream.max-size", "5");
+        ExecutorService overridden = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+        try {
+            assertThat(((ThreadPoolExecutor) overridden).getMaximumPoolSize()).isEqualTo(5);
+        } finally {
+            System.clearProperty("openjiuwen.executor.deep-agent-stream.max-size");
+            overridden.shutdownNow();
+            assertThat(overridden.awaitTermination(2, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
     @DisplayName("有界模块池使用统一命名且最大线程数可配置")
     void boundedModulePoolUsesPrefixAndRespectsMaxSize() throws Exception {
         System.setProperty("openjiuwen.executor.executor-bounded-test.max-size", "2");
