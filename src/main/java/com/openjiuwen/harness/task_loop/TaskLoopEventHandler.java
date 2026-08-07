@@ -194,7 +194,10 @@ public class TaskLoopEventHandler extends EventHandler {
         String message = "";
         Event event = inputs == null ? null : inputs.getEvent();
         if (event instanceof TaskInteractionEvent interactionEvent && !interactionEvent.getInteraction().isEmpty()) {
-            message = frameText(interactionEvent.getInteraction().get(0));
+            DataFrame frame = interactionEvent.getInteraction().get(0);
+            if (!isStructuredInterrupt(frame)) {
+                message = frameText(frame);
+            }
         }
         if (!message.isBlank() && interactionQueues != null) {
             interactionQueues.pushSteer(message);
@@ -323,6 +326,15 @@ public class TaskLoopEventHandler extends EventHandler {
             }
         }
         return "";
+    }
+
+    private static boolean isStructuredInterrupt(DataFrame frame) {
+        if (!(frame instanceof DataFrame.JsonDataFrame jsonDataFrame) || jsonDataFrame.data() == null) {
+            return false;
+        }
+        Map<String, Object> data = jsonDataFrame.data();
+        return Constant.INTERACTION.equals(String.valueOf(data.get("type")))
+                || "interrupt".equals(String.valueOf(data.get("result_type")));
     }
 
     private static String frameText(DataFrame frame) {

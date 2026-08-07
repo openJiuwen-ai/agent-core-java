@@ -6,6 +6,7 @@ package com.openjiuwen.harness.task_loop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.TaskManager;
@@ -17,6 +18,7 @@ import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 
@@ -91,6 +93,49 @@ class TaskLoopEventHandlerTest {
         assertThat(result).containsEntry("status", "steer_injected")
                 .containsEntry("msg", "change plan");
         assertThat(queues.drainSteering()).containsExactly("change plan");
+    }
+
+    @Test
+    void structuredInteractionShouldNotEnterSteering() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(makeAgent());
+        LoopQueues queues = new LoopQueues();
+        handler.setInteractionQueues(queues);
+        InteractionOutput payload = new InteractionOutput("ask-user-call", Map.of("question", "Continue?"));
+        TaskInteractionEvent event = new TaskInteractionEvent(
+                List.of(new DataFrame.JsonDataFrame(Map.of(
+                        "type", Constant.INTERACTION,
+                        "payload", payload
+                ))),
+                null
+        );
+
+        Map<String, Object> result = handler.handleTaskInteraction(
+                new EventHandlerInput(event, new FakeSession("s1"))
+        );
+
+        assertThat(result).containsEntry("msg", "");
+        assertThat(queues.drainSteering()).isEmpty();
+    }
+
+    @Test
+    void interruptResultShouldNotEnterSteering() {
+        TaskLoopEventHandler handler = new TaskLoopEventHandler(makeAgent());
+        LoopQueues queues = new LoopQueues();
+        handler.setInteractionQueues(queues);
+        TaskInteractionEvent event = new TaskInteractionEvent(
+                List.of(new DataFrame.JsonDataFrame(Map.of(
+                        "result_type", "interrupt",
+                        "message", "approval required"
+                ))),
+                null
+        );
+
+        Map<String, Object> result = handler.handleTaskInteraction(
+                new EventHandlerInput(event, new FakeSession("s1"))
+        );
+
+        assertThat(result).containsEntry("msg", "");
+        assertThat(queues.drainSteering()).isEmpty();
     }
 
     @Test
