@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+service_account="gitcode-feature-evolver"
+service_group="gitcode-feature-evolver"
+service_home="/var/lib/gitcode-feature-evolver"
+runtime_dir="/run/gitcode-feature-evolver"
+repository_dir="/opt/gitcode-feature-evolver/repo"
+config_file="/etc/gitcode-feature-evolver/feature-config.json"
+secrets_file="/etc/gitcode-feature-evolver/feature-secrets.json"
+model_file="/etc/gitcode-feature-evolver/apiconfig.json"
+runner="$repository_dir/examples/gitcode_feature_evolver/scripts/run-service.sh"
+test_script="$repository_dir/examples/gitcode_feature_evolver/scripts/test-demo.sh"
+gate_stamp="/etc/gitcode-feature-evolver/deployment-gate"
+validation_worktree=""
+prefetch_worktree=""
+test_worktree=""
+
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+(($# == 0)) || fail "run-feature-evolver-test does not accept arguments"
+((EUID == 0)) || fail "This command must run as root"
+
+for required_command in awk bash cp find git id install jq mkdir mktemp podman readlink \
+    rm runuser sha256sum stat systemctl; do
+    command -v "$required_command" >/dev/null 2>&1 ||
+        fail "Required command is unavailable: $required_command"
+done
+id "$service_account" >/dev/null 2>&1 || fail "Run the provision helper first"
+systemctl is-active --quiet gitcode-feature-evolver.service &&
+    fail "Stop the existing feature service before running its deployment gate"
+
+service_uid="$(id -u "$service_account")"
+service_gid="$(id -g "$service_account")"
+((service_uid > 0 && service_gid > 0)) || fail "The service account must not be root"
+
+[[ -d "$repository_dir" && ! -L "$repository_dir" ]] ||
+    fail "$repository_dir must be a real directory"
+[[ "$(readlink -f -- "$repository_dir")" == "$repository_dir" ]] ||
+    fail "Repository path must resolve exactly to $repository_dir"
+[[ -d "$repository_dir/.git" ]] || fail "$repository_dir must be a primary Git checkout"
+[[ -x "$runner" && -x "$test_script" ]] || fail "Feature service scripts are unavailable"
+
+secure_external_file() {
+    local file="$1"
+    [[ -f "$file" && ! -L "$file" ]] || fail "External file is unavailable: $file"
+    [[ "$(stat -c '%u' "$file")" == "0" ]] || fail "$file must be owned by root"
+    [[ "$(stat -c '%g' "$file")" == "$service_gid" ]] ||
+        fail "$file must be grouped to $service_group"
+    local mode="$(stat -c '%a' "$file")"
+    [[ "$mode" == "640" || "$mode" == "440" ]] ||
+        fail "$file permissions must be 0640 or 0440"
+}
+
+secure_external_file "$config_file"
+secure_external_file "$secrets_file"
+secure_external_file "$model_file"
+install -d -o "$service_account" -g "$service_group" -m 0700 "$runtime_dir"
+
+run_as_service() {
+    runuser --user "$service_account" -- env -i \
+        HOME="$service_home" USER="$service_account" LOGNAME="$service_account" \
+        XDG_RUNTIME_DIR="$runtime_dir" PATH=/usr/local/bin:/usr/bin:/bin \
+        GIT_TERMINAL_PROMPT=0 "$@"
+}
+
+json_string() {
+    jq -er --arg field "$1" '.[$field] | select(type == "string" and length > 0)' \
+        "$config_file"
+}
+
+[[ "$(json_string localRepository)" == "$repository_dir" ]] ||
+    fail "localRepository must be $repository_dir"
+[[ "$(json_string dataDir)" == "$service_home/data" ]] ||
+    fail "dataDir must be $service_home/data"
+[[ "$(json_string worktreeRoot)" == "$service_home/worktrees" ]] ||
+    fail "worktreeRoot must be $service_home/worktrees"
+maven_cache="$(json_string containerMavenCache)"
+[[ "$maven_cache" == "$service_home/m2" ]] ||
+    fail "containerMavenCache must be $service_home/m2"
+container_user="$(json_string containerUser)"
+[[ "$container_user" == "$service_uid:$service_gid" ]] ||
+    fail "containerUser must be $service_uid:$service_gid"
+container_image="$(json_string containerImage)"
+[[ "$container_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-fA-F]{64}$ ]] ||
+    fail "containerImage must be pinned by sha256 digest"
+
+memory_mb="$(jq -er '.containerMemoryMb | numbers' "$config_file")"
+cpus="$(json_string containerCpus)"
+pids_limit="$(jq -er '.containerPidsLimit | numbers' "$config_file")"
+[[ "$memory_mb" =~ ^[0-9]+$ && "$pids_limit" =~ ^[0-9]+$ ]] ||
+    fail "Container numeric limits are invalid"
+[[ "$cpus" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "containerCpus is invalid"
+
+cleanup() {
+    if [[ -n "$validation_worktree" && -d "$validation_worktree" ]]; then
+        run_as_service git -C "$repository_dir" worktree remove --force \
+            "$validation_worktree" || true
+    fi
+    if [[ -n "$prefetch_worktree" && -d "$prefetch_worktree" ]]; then
+        run_as_service git -C "$repository_dir" worktree remove --force \
+            "$prefetch_worktree" || true
+    fi
+    if [[ -n "$test_worktree" && -d "$test_worktree" ]]; then
+        run_as_service git -C "$repository_dir" worktree remove --force \
+            "$test_worktree" || true
+    fi
+}
+trap cleanup EXIT
+
+require_clean_worktree() {
+    local worktree="$1"
+    local label="$2"
+    local dirty
+    dirty="$(run_as_service git -C "$worktree" status --porcelain --untracked-files=no)"
+    [[ -z "$dirty" ]] || fail "$label contains tracked modifications"
+}
+
+copy_runtime_output() {
+    local relative="$1"
+    local source="$validation_worktree/$relative"
+    local destination="$repository_dir/$relative"
+    [[ -d "$source" && ! -L "$source" ]] ||
+        fail "Validated runtime output is unavailable: $relative"
+    [[ -z "$(find "$source" -type l -print -quit)" ]] ||
+        fail "Validated runtime output contains a symbolic link: $relative"
+    run_as_service rm -rf -- "$destination"
+    run_as_service mkdir -p -- "${destination%/*}"
+    run_as_service cp -a -- "$source" "$destination"
+}
+
+new_worktree_path() {
+    local path
+    path="$(run_as_service mktemp -d "$service_home/.feature-gate.XXXXXX")"
+    run_as_service rmdir "$path"
+    printf '%s\n' "$path"
+}
+
+require_clean_worktree "$repository_dir" "Deployment repository"
+
+validation_worktree="$(new_worktree_path)"
+run_as_service git -C "$repository_dir" worktree add --detach "$validation_worktree" HEAD
+
+common_container_arguments=(
+    run --rm --pull=never --http-proxy=false --read-only=true --cap-drop=ALL
+    --security-opt=no-new-privileges --pids-limit="$pids_limit"
+    --memory="${memory_mb}m" --cpus="$cpus"
+    --userns="keep-id:uid=$service_uid,gid=$service_gid"
+    --user="$container_user" --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m
+    --mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true
+    --env=HOME=/tmp --workdir=/workspace
+)
+
+run_as_service podman "${common_container_arguments[@]}" \
+    --network=slirp4netns:allow_host_loopback=false \
+    --env="MAVEN_OPTS=-Dmaven.repo.local=$maven_cache" \
+    --volume="$maven_cache:$maven_cache:rw,Z" \
+    --volume="$validation_worktree:/workspace:rw,Z" "$container_image" \
+    bash examples/gitcode_feature_evolver/scripts/test-demo.sh
+require_clean_worktree "$validation_worktree" "Credential-free validation Worktree"
+copy_runtime_output "target/classes"
+copy_runtime_output "examples/gitcode_issue_evolver/.runtime"
+copy_runtime_output "examples/gitcode_feature_evolver/.runtime"
+run_as_service git -C "$repository_dir" worktree remove --force "$validation_worktree"
+validation_worktree=""
+
+run_as_service bash "$runner" --config "$config_file" --secrets "$secrets_file" \
+    --llm-config "$model_file" --check
+
+prefetch_worktree="$(new_worktree_path)"
+run_as_service git -C "$repository_dir" worktree add --detach "$prefetch_worktree" HEAD
+run_as_service podman "${common_container_arguments[@]}" \
+    --network=slirp4netns:allow_host_loopback=false \
+    --volume="$maven_cache:/m2:rw,Z" \
+    --volume="$prefetch_worktree:/workspace:rw,Z" "$container_image" \
+    mvn -B -ntp -Dmaven.repo.local=/m2 verify
+run_as_service git -C "$repository_dir" worktree remove --force "$prefetch_worktree"
+prefetch_worktree=""
+
+test_worktree="$(new_worktree_path)"
+run_as_service git -C "$repository_dir" worktree add --detach "$test_worktree" HEAD
+run_as_service bash "$runner" --config "$config_file" --secrets "$secrets_file" \
+    --llm-config "$model_file" --container-test-worktree "$test_worktree"
+run_as_service git -C "$repository_dir" worktree remove --force "$test_worktree"
+test_worktree=""
+
+require_clean_worktree "$repository_dir" "Deployment repository"
+
+current_commit="$(run_as_service git -C "$repository_dir" rev-parse HEAD)"
+config_digest="$(sha256sum "$config_file" | awk '{print $1}')"
+secrets_digest="$(sha256sum "$secrets_file" | awk '{print $1}')"
+model_digest="$(sha256sum "$model_file" | awk '{print $1}')"
+temporary_stamp="$(mktemp "/etc/gitcode-feature-evolver/.deployment-gate.XXXXXX")"
+printf '%s\n%s\n%s\n%s\n%s\n' "$current_commit" "$config_digest" \
+    "$secrets_digest" "$model_digest" "$container_image" > "$temporary_stamp"
+chown root:root "$temporary_stamp"
+chmod 0600 "$temporary_stamp"
+mv -f "$temporary_stamp" "$gate_stamp"
+printf 'Deployment gate passed for commit %s.\n' "$current_commit"
+printf 'Run provision-gitcode-feature-evolver --activate to start the service.\n'

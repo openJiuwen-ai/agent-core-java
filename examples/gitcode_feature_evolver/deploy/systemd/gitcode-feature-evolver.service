@@ -1,0 +1,62 @@
+[Unit]
+Description=GitCode Feature Evolver
+Documentation=file:/opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/deploy/README-linux.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=gitcode-feature-evolver
+Group=gitcode-feature-evolver
+WorkingDirectory=/opt/gitcode-feature-evolver/repo
+
+Environment=HOME=/var/lib/gitcode-feature-evolver
+Environment=XDG_RUNTIME_DIR=/run/gitcode-feature-evolver
+Environment=LOG_HOME=/var/log/gitcode-feature-evolver
+Environment=GIT_TERMINAL_PROMPT=0
+
+ExecStartPre=/usr/bin/bash \
+  /opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/scripts/run-service.sh \
+  --config /etc/gitcode-feature-evolver/feature-config.json \
+  --secrets /etc/gitcode-feature-evolver/feature-secrets.json \
+  --llm-config /etc/gitcode-feature-evolver/apiconfig.json \
+  --check
+ExecStart=/usr/bin/bash \
+  /opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/scripts/run-service.sh \
+  --config /etc/gitcode-feature-evolver/feature-config.json \
+  --secrets /etc/gitcode-feature-evolver/feature-secrets.json \
+  --llm-config /etc/gitcode-feature-evolver/apiconfig.json
+
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStartSec=45s
+TimeoutStopSec=45s
+UMask=0077
+Delegate=yes
+
+StateDirectory=gitcode-feature-evolver
+StateDirectoryMode=0700
+RuntimeDirectory=gitcode-feature-evolver
+RuntimeDirectoryMode=0700
+LogsDirectory=gitcode-feature-evolver
+LogsDirectoryMode=0700
+ConfigurationDirectory=gitcode-feature-evolver
+ConfigurationDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/gitcode-feature-evolver/repo
+ReadWritePaths=/var/lib/gitcode-feature-evolver
+ReadWritePaths=/var/log/gitcode-feature-evolver
+ReadWritePaths=/run/gitcode-feature-evolver
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
