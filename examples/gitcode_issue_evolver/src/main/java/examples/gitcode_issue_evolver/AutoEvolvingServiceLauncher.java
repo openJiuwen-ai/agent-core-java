@@ -10,6 +10,7 @@ import examples.gitcode_issue_evolver.gitcode.GitCodeClient;
 import examples.gitcode_issue_evolver.gitcode.HttpGitCodeClient;
 import examples.gitcode_issue_evolver.job.EvolutionJobStore;
 import examples.gitcode_issue_evolver.job.SqliteEvolutionJobStore;
+import examples.gitcode_issue_evolver.polling.IssuePollingCoordinator;
 import examples.gitcode_issue_evolver.profile.AgentCoreJavaRepositoryProfile;
 import examples.gitcode_issue_evolver.profile.RepositoryProfile;
 import examples.gitcode_issue_evolver.publish.GitCodeForkPushGateway;
@@ -65,17 +66,21 @@ public final class AutoEvolvingServiceLauncher {
             ExampleIssueTaskExecutor executor = new ExampleIssueTaskExecutor(
                     requiredConfig, profile, publisher, trustedSkillsRoot);
             AutoEvolvingWorker worker = new AutoEvolvingWorker(store, gitCode, executor);
-            runService(requiredConfig, store, profile, worker);
+            Optional<IssuePollingCoordinator> polling = requiredConfig.getTriggerMode().usesPolling()
+                    ? Optional.of(new IssuePollingCoordinator(requiredConfig, store, gitCode, profile))
+                    : Optional.empty();
+            runService(requiredConfig, store, profile, worker, polling);
         } finally {
             Runner.stop();
         }
     }
 
     private static void runService(AutoEvolvingConfig config, EvolutionJobStore store,
-                                   RepositoryProfile profile, AutoEvolvingWorker worker)
+                                   RepositoryProfile profile, AutoEvolvingWorker worker,
+                                   Optional<IssuePollingCoordinator> polling)
             throws IOException, InterruptedException {
         try (AutoEvolvingService service = new AutoEvolvingService(
-                config, store, profile, Optional.of(worker))) {
+                config, store, profile, Optional.of(worker), polling)) {
             Thread shutdownHook = new AutoEvolvingThreadFactory("auto-evolving-shutdown")
                     .newThread(service::close);
             Runtime runtime = Runtime.getRuntime();

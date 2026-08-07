@@ -165,11 +165,24 @@ public final class GitCodeWebhookHandler implements HttpHandler {
         Optional<EvolutionJobState> terminalState = event.terminalState();
         Optional<EvolutionJob> job = store.findByPullRequest(event.repository(), event.number());
         if (terminalState.isPresent() && job.isPresent()) {
-            EvolutionJob updated = store.transition(
-                    job.get().id(), job.get().version(), terminalState.get(), "PR webhook");
-            LOGGER.debug("Updated evolution job {} from PR webhook", updated.id());
+            transitionTerminal(job.get(), terminalState.get());
         }
         respond(exchange, 202, job.isPresent() ? "updated" : "unknown_pr");
+    }
+
+    private void transitionTerminal(EvolutionJob job, EvolutionJobState terminalState) {
+        try {
+            EvolutionJob updated = store.transition(
+                    job.id(), job.version(), terminalState, "PR webhook");
+            LOGGER.debug("Updated evolution job {} from PR webhook", updated.id());
+        } catch (IllegalStateException ex) {
+            Optional<EvolutionJob> latest = store.findById(job.id());
+            if (latest.isPresent() && !latest.get().state().isActive()) {
+                LOGGER.debug("PR webhook observed a concurrent terminal transition for job {}", job.id());
+                return;
+            }
+            throw ex;
+        }
     }
 
     private void recordIgnoredDelivery(String deliveryId, String eventType, String hash) {

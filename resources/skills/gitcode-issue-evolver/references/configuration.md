@@ -16,7 +16,7 @@ Install these tools before invoking the Skill:
 - JDK 17 with `java` and `javac` on `PATH`
 - Maven with `mvn.cmd` on `PATH`
 - Git
-- cloudflared
+- cloudflared for `webhook` or `both`; polling-only does not need it
 
 The Skill checks these tools but does not install or upgrade them.
 
@@ -61,6 +61,14 @@ template. It contains no credentials.
 - `baseBranch`: existing target branch used to prepare Worktrees and as the PR base, such as `730`.
 - `assignees`: one or more GitCode usernames assigned to created PRs for human review.
 - `workerConcurrency`: must remain `1` for the SQLite demo.
+- `triggerMode`: `polling`, `webhook`, or `both`. Old files without this field default to
+  `webhook`; the new template uses `polling`.
+- `triggerLabel`: one case-sensitive GitCode label. The default is `bug`.
+- `issueScanWindowHours`: polling accepts only Issues created within this frozen lookback window.
+  The default is `24`.
+- `pollIntervalMinutes`: fixed delay after one polling cycle finishes. The default is `15`.
+- `maxIssueScanPages`: maximum 100-item pages processed in one cycle before persisting a resume
+  checkpoint. The default is `10`.
 - `gitUserName`: non-secret Git author name used by the controlled committer.
 - `gitUserEmail`: non-secret Git author email used by the controlled committer.
 
@@ -80,6 +88,11 @@ Use this sanitized structure and replace only the non-secret placeholders:
   "baseBranch": "730",
   "assignees": ["gitcode-reviewer"],
   "workerConcurrency": 1,
+  "triggerMode": "polling",
+  "triggerLabel": "bug",
+  "issueScanWindowHours": 24,
+  "pollIntervalMinutes": 15,
+  "maxIssueScanPages": 10,
   "gitUserName": "gitcode-issue-evolver",
   "gitUserEmail": "gitcode-issue-evolver@localhost"
 }
@@ -90,19 +103,19 @@ Use this sanitized structure and replace only the non-secret placeholders:
 Create `examples/gitcode_issue_evolver/config/evolver-secrets.local.json` from the committed secrets
 template and edit it manually outside the Agent interaction.
 
-- `gitCodeToken`: GitCode personal access token used only by the non-Agent API client and Publisher.
+- `gitCodeToken`: Evolver Bot GitCode token used only by the non-Agent API client and Publisher.
   Grant the minimum permissions needed to read Issues and PRs, comment and create PRs in the target
   repository, and push branches to the publish repository. Do not grant merge or repository
-  administration capability.
-- `webhookSecret`: random shared secret used to verify GitCode Webhook HMAC signatures. It must
-  contain at least 32 UTF-8 bytes and exactly match the Secret entered manually in GitCode.
+  administration capability. This is separate from any personal PAT used to submit an Issue.
+- `webhookSecret`: for `webhook` or `both`, use a random shared secret with at least 32 UTF-8 bytes
+  that exactly matches the Secret entered manually in GitCode. Leave it empty for polling-only.
 
 Show only this placeholder structure. Do not generate, request, validate, or echo the real values:
 
 ```json
 {
   "gitCodeToken": "REPLACE_WITH_MINIMUM_PERMISSION_GITCODE_TOKEN",
-  "webhookSecret": "REPLACE_WITH_RANDOM_SECRET_OF_AT_LEAST_32_UTF8_BYTES"
+  "webhookSecret": ""
 }
 ```
 
@@ -111,8 +124,16 @@ verify their paths are ignored without printing their contents.
 
 ## Manual GitCode work
 
-After Start succeeds, manually configure the returned `/webhooks/gitcode` URL for Issue and Pull Request events. Use the same local Webhook Secret without pasting it into the Agent conversation.
+For polling-only, no public address or GitCode Webhook configuration is required. The service starts
+an immediate scan and then waits the configured fixed delay.
 
-Create the `bug` label if needed. The demo accepts only an Issue update whose label change explicitly adds `bug`. Review and merge remain manual; the service never exposes a merge operation.
+For `webhook` or `both`, after Start succeeds, manually configure the returned `/webhooks/gitcode`
+URL for Issue and Pull Request events. Use the same local Webhook Secret without pasting it into the
+Agent conversation.
+
+Create the configured trigger label if needed. Polling accepts only open Issues created inside the
+configured window with an exact case-sensitive label match. Webhook admission requires an update
+that explicitly adds the configured label. Review and merge remain manual; the service never exposes
+a merge operation.
 
 Quick Tunnel URLs are temporary. Repeat Start or Status after a restart and update GitCode manually when the URL changes.

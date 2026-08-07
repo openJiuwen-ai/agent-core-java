@@ -1,20 +1,21 @@
 # GitCode Issue Evolver on Linux
 
-This deployment keeps the Java service on the loopback interface, runs it as
-a foreground systemd service, and exposes only the GitCode webhook and
-readiness endpoint through an HTTPS reverse proxy.
+This deployment keeps the Java service on the loopback interface and runs it
+as a foreground systemd service. The default polling configuration needs no
+public inbound endpoint. Webhook and both modes can additionally expose the
+GitCode webhook and readiness endpoint through an HTTPS reverse proxy.
 
 The Quick Tunnel script remains available for an interactive demo. It is not
 part of the long-running deployment.
 
 ## Prerequisites
 
-- A Linux host with a stable public address
-- A DNS name pointing to the host
+- A Linux host; a stable public address and DNS name are needed only for
+  `webhook` or `both`
 - JDK 17, Maven, Git, Bash, curl, and Nginx
 - Outbound access to GitCode, the configured model endpoint, and Maven
   repositories
-- An HTTPS certificate trusted by GitCode
+- An HTTPS certificate trusted by GitCode for `webhook` or `both`
 
 Use a fresh Linux clone. Do not copy a Windows detached Worktree because its
 `.git` file can point to a Windows-only path.
@@ -155,7 +156,10 @@ Logback also writes rotating files below
 code, tool output, and model messages; restrict access to the service
 operator.
 
-## Nginx and HTTPS
+## Nginx and HTTPS (webhook or both only)
+
+Skip this section when `triggerMode` is `polling`. Polling uses outbound
+GitCode REST API calls and requires no public inbound route.
 
 Replace the sample hostname and certificate paths before installing the
 configuration:

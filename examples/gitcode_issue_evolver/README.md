@@ -1,6 +1,6 @@
 # GitCode Issue Evolver Example
 
-这是一个面向演示的 GitCode Issue 自动修复服务。它接收签名 Webhook，在独立 sparse Worktree 中运行受限 ReAct Agent，执行 Java 编译 Gate，再由非 Agent 组件提交、推送分支、创建 PR，并在原 Issue 中回复 PR 地址。系统没有 Merge 能力，Review 与 Merge 始终由人工完成。
+这是一个面向演示的 GitCode Issue 自动修复服务。它可以定时轮询 GitCode Issue，也可以接收签名 Webhook；之后在独立 sparse Worktree 中运行受限 ReAct Agent，执行 Java 编译 Gate，再由非 Agent 组件提交、推送分支、创建 PR，并在原 Issue 中回复 PR 地址。系统没有 Merge 能力，Review 与 Merge 始终由人工完成。
 
 ## 演示范围
 
@@ -9,7 +9,8 @@
 - 目标仓库：`openJiuwen/agent-core-java`
 - 发布仓库：必须替换为用户自己的 Fork，例如 `<fork-owner>/agent-core-java`
 - 基线分支：`730`
-- 触发条件：Issue 的 `update` Webhook 中明确新增 `bug` 标签
+- 新示例触发方式：启动后立即扫描，此后每 15 分钟轮询一次
+- 轮询准入条件：扫描快照过去 24 小时内创建、状态为 open、精确带有 `bug` 标签
 - 修改范围：`src/main/java/**`、`src/test/java/**`
 - 验证命令：`mvn -B -ntp -DskipTests test-compile`
 
@@ -40,7 +41,7 @@
 - JDK 17，且 `java`、`javac` 可从 `PATH` 访问
 - Maven，且 `mvn.cmd` 可从 `PATH` 访问
 - Git
-- `cloudflared`
+- `cloudflared`（仅 `webhook` 或 `both` 模式需要）
 - 已创建的 GitCode Fork，以及满足最小权限的机器 Token
 - 目标仓库已准备 `bug` 标签
 - 目标仓库和发布仓库具备配置中要求的基线分支关系
@@ -55,7 +56,9 @@
 编辑两个 `.local.json` 文件：
 
 - `evolver-config.local.json` 保存仓库坐标、端口、目录和 Assignee，不保存密钥。必须替换 `publishRepository` 和 `assignees` 占位符。
-- `evolver-secrets.local.json` 只保存 GitCode Token 和 Webhook Secret。Webhook Secret 至少使用 32 个随机 UTF-8 字节。
+- `evolver-secrets.local.json` 保存 Evolver Bot 的 GitCode Token；只有 `webhook` 或 `both` 模式才需要至少 32 个随机 UTF-8 字节的 Webhook Secret。
+
+`triggerMode` 可取 `polling`、`webhook`、`both`。未配置该字段的旧配置仍按 `webhook` 运行；新示例使用 `polling`。`gitCodeToken` 始终属于 Evolver Bot，用于读取 Issue/PR、推送分支、创建 PR 和评论，不得与用户提交 Issue 时使用的个人 PAT 混用。
 
 模型配置使用仓库统一的 `examples/apiconfig.json`。该文件与 secrets 文件必须由用户预先配置；安装型 Agent 不得打开、打印、总结、复制或代写其内容。
 
@@ -67,7 +70,7 @@
 
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File resources/skills/gitcode-issue-evolver/scripts/manage.ps1 -Action Start -RepositoryRoot "<repository-root>"
 
-入口先检查工具链、Example、非密运行配置和本地文件，再编译 Example、启动服务、以 HTTP/2 启动 Cloudflare Quick Tunnel，并等待本地和公网 `/health/ready` 返回 200。成功输出包含本地健康地址、公网健康地址和临时 `/webhooks/gitcode` URL，不包含 Token、模型 API Key 或 Webhook Secret。
+入口先检查工具链、Example、非密运行配置和本地文件，再编译并启动服务。polling-only 只等待本地 `/health/ready`，不检查或启动 cloudflared；`webhook`/`both` 会额外启动 Cloudflare Quick Tunnel 并等待公网健康地址。结构化输出不会包含 Token、模型 API Key 或 Webhook Secret。
 
 其他操作：
 
@@ -75,18 +78,26 @@
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File resources/skills/gitcode-issue-evolver/scripts/manage.ps1 -Action Status -RepositoryRoot "<repository-root>"
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File resources/skills/gitcode-issue-evolver/scripts/manage.ps1 -Action Stop -RepositoryRoot "<repository-root>"
 
-Quick Tunnel URL 每次可能变化。用户必须人工把返回的 URL 配置到 GitCode，选择 Issue 和 Pull Request 事件，并使用本地 secrets 文件中的同一个 Webhook Secret。Skill 不会修改 GitCode 设置。
+Linux/macOS 可运行 Example 层确定性测试入口（会先编译 Example）：
+
+    bash examples/gitcode_issue_evolver/scripts/test-demo.sh
+
+该入口不连接 GitCode，使用内存 HTTP 响应、可注入时钟和临时 SQLite 验证窗口、标签、分页断点、跨通道终身去重、迁移回填及 PR 对账。
+
+polling-only 无需公网入站地址或 GitCode Webhook。`webhook`/`both` 的 Quick Tunnel URL 每次可能变化，用户必须人工把返回的 URL 配置到 GitCode，选择 Issue 和 Pull Request 事件，并使用本地 secrets 文件中的同一个 Webhook Secret。Skill 不会修改 GitCode 设置。
 
 ## 运行流程
 
-1. GitCode 发送 Issue Webhook；服务校验 JSON、1 MiB 上限、HMAC、Delivery ID 和目标仓库。
-2. 只有明确新增 `bug` 标签的 update 事件进入 SQLite JobStore。
+1. polling 启动后立即冻结 `[now-24h, now]` 窗口，按创建时间升序、每页 100 条读取 open Issue；每轮最多 10 页，超限则持久化下一页断点。
+2. 服务再次校验创建时间、open 状态和大小写精确的 `bug` 标签；`webhook`/`both` 同时支持签名 Webhook，Webhook 触发标签也来自 `triggerLabel`。
 3. Worker 获取 Issue 和评论，确认 Issue 仍为 open，且不存在活动任务或未关闭 PR。
 4. Worktree Manager 从配置的基线创建短路径、`--no-checkout` sparse Worktree，只检出 `src/main` 和 `src/test`。
 5. ReAct Agent 加载可信暂存的 `coding-standard` 与 `gitcode-issue-evolver-worker`，并只使用受限文件工具。
 6. 服务执行编译 Gate；通过后由受控 Committer 只暂存经过验证的精确文件。
 7. Publisher 复核 Issue、分支、SHA、路径和 Gate，再推送发布仓库、创建 PR、指定 Assignee 并评论原 Issue。
-8. PR Webhook 只把 Job 更新为 `MERGED` 或 `CLOSED`，不会执行 Merge。
+8. 每轮 polling 也会轮转检查 `WAITING_REVIEW` PR，将已合并或已关闭任务对账为 `MERGED` 或 `CLOSED`；不会执行 Merge。
+
+Webhook 与 polling 使用同一条 SQLite Issue 准入记录竞争。同一仓库的同一 Issue 在服务重启、跨触发通道和跨终态后都不会再次自动进入流程；Job 内已有的失败重试规则保持不变。瞬时轮询失败会在下一周期重试并且不推进分页断点，`/health/ready` 仍返回 200，同时仅公开触发模式和最近扫描结果，不公开原始异常。
 
 ## 安全边界
 

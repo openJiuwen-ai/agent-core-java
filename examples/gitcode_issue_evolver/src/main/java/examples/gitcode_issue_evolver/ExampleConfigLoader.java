@@ -54,6 +54,14 @@ public final class ExampleConfigLoader {
                 .baseBranch(value(settings.baseBranch(), "730"))
                 .assignees(settings.assignees() == null ? List.of() : settings.assignees())
                 .workerConcurrency(settings.workerConcurrency() == null ? 1 : settings.workerConcurrency())
+                .triggerMode(TriggerMode.parse(settings.triggerMode()))
+                .triggerLabel(value(settings.triggerLabel(), AutoEvolvingConfig.DEFAULT_TRIGGER_LABEL))
+                .issueScanWindowHours(settings.issueScanWindowHours() == null
+                        ? 24 : settings.issueScanWindowHours())
+                .pollIntervalMinutes(settings.pollIntervalMinutes() == null
+                        ? 15 : settings.pollIntervalMinutes())
+                .maxIssueScanPages(settings.maxIssueScanPages() == null
+                        ? 10 : settings.maxIssueScanPages())
                 .gitUserName(value(settings.gitUserName(), "gitcode-issue-evolver"))
                 .gitUserEmail(value(settings.gitUserEmail(), "gitcode-issue-evolver@localhost"))
                 .modelProvider(SharedExampleApiConfigLoader.getModelProvider())
@@ -108,6 +116,11 @@ public final class ExampleConfigLoader {
             String baseBranch,
             List<String> assignees,
             Integer workerConcurrency,
+            String triggerMode,
+            String triggerLabel,
+            Integer issueScanWindowHours,
+            Integer pollIntervalMinutes,
+            Integer maxIssueScanPages,
             String gitUserName,
             String gitUserEmail) {
     }

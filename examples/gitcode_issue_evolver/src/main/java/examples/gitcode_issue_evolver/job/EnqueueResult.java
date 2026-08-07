@@ -22,6 +22,7 @@ public record EnqueueResult(Status status, Optional<EvolutionJob> job) {
     public enum Status {
         CREATED,
         DUPLICATE_DELIVERY,
-        EXISTING_ACTIVE_JOB
+        EXISTING_ACTIVE_JOB,
+        EXISTING_ISSUE
     }
 }

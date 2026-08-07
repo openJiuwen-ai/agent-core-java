@@ -14,10 +14,14 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +36,7 @@ import java.util.Optional;
  */
 public final class HttpGitCodeClient implements GitCodeClient {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpGitCodeClient.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final OkHttpClient client;
     private final HttpUrl apiBase;
@@ -56,6 +61,28 @@ public final class HttpGitCodeClient implements GitCodeClient {
         this.apiBase = requireBase(apiBaseUrl);
         this.token = requireText(token, "GitCode token");
         this.coordinates = Objects.requireNonNull(coordinates, "coordinates must not be null");
+    }
+
+    @Override
+    public GitCodeIssuePage listIssues(IssueScanRequest request) {
+        IssueScanRequest requiredRequest = Objects.requireNonNull(request, "request must not be null");
+        HttpUrl url = path(targetPath("issues")).newBuilder()
+                .addQueryParameter("state", "open")
+                .addQueryParameter("labels", requiredRequest.label())
+                .addQueryParameter("sort", "created")
+                .addQueryParameter("direction", "asc")
+                .addQueryParameter("created_after", requiredRequest.createdAfter().minusMillis(1).toString())
+                .addQueryParameter("created_before", requiredRequest.createdBefore().plusMillis(1).toString())
+                .addQueryParameter("page", Integer.toString(requiredRequest.page()))
+                .addQueryParameter("per_page", Integer.toString(requiredRequest.perPage()))
+                .build();
+        JsonNode response = get(url);
+        if (!response.isArray()) {
+            throw new GitCodeApiException("GitCode Issue list response was not an array", 0, false);
+        }
+        List<GitCodeIssueSummary> issues = new ArrayList<>();
+        response.forEach(node -> issueSummary(node).ifPresent(issues::add));
+        return new GitCodeIssuePage(issues, response.size());
     }
 
     @Override
@@ -217,6 +244,47 @@ public final class HttpGitCodeClient implements GitCodeClient {
                 text(node, "html_url", "web_url"), text(node, "state"),
                 text(head, "ref", "label"), text(head, "sha"),
                 node.path("draft").asBoolean(node.path("work_in_progress").asBoolean(false)));
+    }
+
+    private static Optional<GitCodeIssueSummary> issueSummary(JsonNode node) {
+        try {
+            long iid = issueIid(node);
+            String title = text(node, "title");
+            String url = text(node, "html_url", "web_url");
+            Instant createdAt = Instant.parse(text(node, "created_at"));
+            if (iid <= 0 || title.isBlank() || url.isBlank()) {
+                LOGGER.warn("Skipped a malformed GitCode Issue list entry");
+                return Optional.empty();
+            }
+            return Optional.of(new GitCodeIssueSummary(iid, title, text(node, "state"), url,
+                    labelNames(node.path("labels")), createdAt));
+        } catch (DateTimeParseException | NumberFormatException ex) {
+            LOGGER.warn("Skipped a GitCode Issue list entry with invalid identifier or timestamp");
+            return Optional.empty();
+        }
+    }
+
+    private static long issueIid(JsonNode node) {
+        JsonNode number = node.path("number");
+        if (number.canConvertToLong()) {
+            return number.asLong();
+        }
+        String value = number.asText("");
+        return value.isBlank() ? node.path("iid").asLong(-1L) : Long.parseLong(value);
+    }
+
+    private static List<String> labelNames(JsonNode labels) {
+        if (!labels.isArray()) {
+            return List.of();
+        }
+        List<String> names = new ArrayList<>();
+        labels.forEach(label -> {
+            String name = label.isTextual() ? label.asText() : text(label, "name", "title");
+            if (!name.isBlank()) {
+                names.add(name);
+            }
+        });
+        return List.copyOf(names);
     }
 
     private JsonNode parse(Response response) throws IOException {

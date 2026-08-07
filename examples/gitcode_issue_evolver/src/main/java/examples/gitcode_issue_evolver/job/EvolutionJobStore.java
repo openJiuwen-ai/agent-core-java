@@ -5,6 +5,7 @@
 package examples.gitcode_issue_evolver.job;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -64,6 +65,46 @@ public interface EvolutionJobStore extends AutoCloseable {
      * @return matching job
      */
     Optional<EvolutionJob> findByPullRequest(String repository, long pullRequestNumber);
+
+    /**
+     * Load an unfinished Issue polling window.
+     *
+     * @param repository target repository
+     * @param label exact trigger label
+     * @return durable continuation when one exists
+     */
+    Optional<IssueScanCheckpoint> loadIssueScanCheckpoint(String repository, String label);
+
+    /**
+     * Save the next page for an unfinished Issue polling window.
+     *
+     * @param checkpoint durable continuation
+     */
+    void saveIssueScanCheckpoint(IssueScanCheckpoint checkpoint);
+
+    /**
+     * Clear a completed Issue polling window.
+     *
+     * @param repository target repository
+     * @param label exact trigger label
+     */
+    void clearIssueScanCheckpoint(String repository, String label);
+
+    /**
+     * Return review-waiting jobs least recently reconciled first.
+     *
+     * @param limit maximum jobs returned
+     * @return immutable job snapshots
+     */
+    List<EvolutionJob> listPullRequestsForReconciliation(int limit);
+
+    /**
+     * Record a successful open-PR reconciliation without changing job state.
+     *
+     * @param jobId durable job identifier
+     * @param checkedAt reconciliation epoch milliseconds
+     */
+    void markPullRequestChecked(String jobId, long checkedAt);
 
     /**
      * Atomically lease the next eligible job.

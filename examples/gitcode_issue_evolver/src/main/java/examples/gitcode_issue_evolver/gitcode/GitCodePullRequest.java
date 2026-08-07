@@ -15,4 +15,14 @@ public record GitCodePullRequest(long number, String url, String state, String h
     public boolean isOpen() {
         return "open".equalsIgnoreCase(state) || "opened".equalsIgnoreCase(state);
     }
+
+    /** @return {@code true} when GitCode reports that the PR was merged */
+    public boolean isMerged() {
+        return "merged".equalsIgnoreCase(state);
+    }
+
+    /** @return {@code true} when GitCode reports that the PR was closed without merging */
+    public boolean isClosed() {
+        return "closed".equalsIgnoreCase(state);
+    }
 }
