@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.openjiuwen.autoharness.schema.AutoHarnessConfig;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Assumptions;
@@ -18,6 +19,11 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class InfraCompatibilityTest {
     @TempDir
@@ -785,6 +791,50 @@ class InfraCompatibilityTest {
     }
 
     @Test
+    void worktreeEnsureBaseRepoShouldSingleFlightConcurrentClone() throws Exception {
+        Path origin = tempDir.resolve("origin-concurrent-cache.git");
+        Path seed = tempDir.resolve("seed-concurrent-cache");
+        run(tempDir, "git", "init", "--bare", origin.toString());
+        run(tempDir, "git", "clone", origin.toString(), seed.toString());
+        run(seed, "git", "checkout", "-b", "develop");
+        run(seed, "git", "config", "user.email", "bot@example.com");
+        run(seed, "git", "config", "user.name", "Auto Harness");
+        Files.writeString(seed.resolve("README.md"), "base\n");
+        run(seed, "git", "add", "README.md");
+        run(seed, "git", "commit", "-m", "base");
+        run(seed, "git", "push", "-u", "origin", "develop");
+
+        AutoHarnessConfig config = AutoHarnessConfig.builder()
+                .dataDir(tempDir.resolve("data-concurrent-cache").toString()).repoUrl(origin.toString())
+                .gitBaseBranch("develop").build();
+        AtomicInteger cloneCalls = new AtomicInteger();
+        CountDownLatch firstCloneStarted = new CountDownLatch(1);
+        CountDownLatch concurrentCloneStarted = new CountDownLatch(1);
+        CountDownLatch releaseClone = new CountDownLatch(1);
+        WorktreeManager first = new BlockingCloneWorktreeManager(config, cloneCalls, firstCloneStarted,
+                concurrentCloneStarted, releaseClone);
+        WorktreeManager second = new BlockingCloneWorktreeManager(config, cloneCalls, firstCloneStarted,
+                concurrentCloneStarted, releaseClone);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("autoharness-clone-test", 2, true);
+        try {
+            Future<Path> firstResult = executor.submit(first::ensureBaseRepo);
+            assertThat(firstCloneStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<Path> secondResult = executor.submit(second::ensureBaseRepo);
+
+            assertThat(concurrentCloneStarted.await(300, TimeUnit.MILLISECONDS)).isFalse();
+            releaseClone.countDown();
+
+            assertThat(firstResult.get(10, TimeUnit.SECONDS)).isEqualTo(config.cacheRepoPath());
+            assertThat(secondResult.get(10, TimeUnit.SECONDS)).isEqualTo(config.cacheRepoPath());
+            assertThat(cloneCalls).hasValue(1);
+        } finally {
+            releaseClone.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
     void worktreeEnsureBaseRepoShouldContinueWhenLocalRepoFetchFails() throws Exception {
         Path local = tempDir.resolve("local_fetch_failure");
         Files.createDirectories(local);
@@ -908,5 +958,40 @@ class InfraCompatibilityTest {
         int code = process.waitFor();
         assertThat(code).as(String.join(" ", command) + "\n" + output).isZero();
         return output.strip();
+    }
+
+    private static final class BlockingCloneWorktreeManager extends WorktreeManager {
+        private final AtomicInteger cloneCalls;
+        private final CountDownLatch firstCloneStarted;
+        private final CountDownLatch concurrentCloneStarted;
+        private final CountDownLatch releaseClone;
+
+        private BlockingCloneWorktreeManager(AutoHarnessConfig config, AtomicInteger cloneCalls,
+                CountDownLatch firstCloneStarted, CountDownLatch concurrentCloneStarted, CountDownLatch releaseClone) {
+            super(config);
+            this.cloneCalls = cloneCalls;
+            this.firstCloneStarted = firstCloneStarted;
+            this.concurrentCloneStarted = concurrentCloneStarted;
+            this.releaseClone = releaseClone;
+        }
+
+        @Override
+        public GitOperations.GitCommandResult runGit(Path cwd, String... args) {
+            if (args.length > 0 && "clone".equals(args[0])) {
+                int call = cloneCalls.incrementAndGet();
+                firstCloneStarted.countDown();
+                if (call > 1) {
+                    concurrentCloneStarted.countDown();
+                }
+                try {
+                    if (!releaseClone.await(5, TimeUnit.SECONDS)) {
+                        return new GitOperations.GitCommandResult(1, "timed out waiting to release clone");
+                    }
+                } catch (InterruptedException ex) {
+                    return new GitOperations.GitCommandResult(1, "clone interrupted");
+                }
+            }
+            return super.runGit(cwd, args);
+        }
     }
 }

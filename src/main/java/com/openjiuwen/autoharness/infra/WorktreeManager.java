@@ -6,14 +6,26 @@ package com.openjiuwen.autoharness.infra;
 
 import com.openjiuwen.autoharness.schema.AutoHarnessConfig;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.FileLockInterruptionException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
-import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 /**
  * Public class WorktreeManager used by the Java parity implementation.
@@ -21,7 +33,9 @@ import java.util.logging.Logger;
  * @since 0.1.7
  */
 public class WorktreeManager {
-    private static final Logger LOGGER = Logger.getLogger(WorktreeManager.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorktreeManager.class);
+    private static final int CACHE_REPO_LOCK_STRIPES = 64;
+    private static final ReentrantLock[] CACHE_REPO_LOCKS = createCacheRepoLocks();
 
     /**
      * Pattern.compile.
@@ -310,7 +324,7 @@ public class WorktreeManager {
         }
         GitOperations.GitCommandResult result = runGit(baseRepoPath(), "worktree", "remove", "--force", wt.toString());
         if (result.code() != 0) {
-            LOGGER.warning("worktree remove failed (manual cleanup needed): " + result.output());
+            LOGGER.warn("worktree remove failed (manual cleanup needed): {}", result.output());
         }
     }
 
@@ -323,24 +337,112 @@ public class WorktreeManager {
     public Path ensureBaseRepo() {
         Path base = baseRepoPath();
         if (hasText(config.getLocalRepo())) {
-            if (!java.nio.file.Files.exists(base)) {
+            if (!Files.exists(base)) {
                 throw new IllegalStateException("local_repo not found: " + base);
             }
             runGit(base, "fetch", "origin");
             return base;
         }
-        if (java.nio.file.Files.isDirectory(base.resolve(".git"))
-                || java.nio.file.Files.isRegularFile(base.resolve("HEAD"))) {
+        return ensureCachedBaseRepo(base);
+    }
+
+    private Path ensureCachedBaseRepo(Path base) {
+        ReentrantLock jvmLock = cacheRepoLock(base);
+        boolean isLocked = false;
+        try {
+            jvmLock.lockInterruptibly();
+            isLocked = true;
+            return ensureCachedBaseRepoWithFileLock(base);
+        } catch (InterruptedException ex) {
+            throw new IllegalStateException("interrupted while waiting for cache repo lock: " + base, ex);
+        } finally {
+            if (isLocked) {
+                jvmLock.unlock();
+            }
+        }
+    }
+
+    private Path ensureCachedBaseRepoWithFileLock(Path base) {
+        Path parent = Objects.requireNonNull(base.getParent(), "cache repo parent");
+        Path lockPath = parent.resolve("." + base.getFileName() + ".clone.lock");
+        try {
+            Files.createDirectories(parent);
+            try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock ignored = channel.lock()) {
+                return initializeOrFetchCachedBaseRepo(base, parent);
+            }
+        } catch (FileLockInterruptionException ex) {
+            throw new IllegalStateException("interrupted while waiting for cache repo file lock: " + base, ex);
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to lock cache repo: " + base + ": " + ex.getMessage(), ex);
+        }
+    }
+
+    private Path initializeOrFetchCachedBaseRepo(Path base, Path parent) {
+        if (isGitRepository(base)) {
             runGit(base, "fetch", "origin");
             return base;
         }
-        try {
-            java.nio.file.Files.createDirectories(base.getParent());
-        } catch (IOException ex) {
-            throw new IllegalStateException("failed to create cache repo parent: " + ex.getMessage(), ex);
+        if (Files.exists(base)) {
+            throw new IllegalStateException("cache repo path exists but is not a git repository: " + base);
         }
-        runGitOrThrow(base.getParent(), "clone", "-b", defaultBaseBranch(), config.getRepoUrl(), base.toString());
+        Path clonePath;
+        try {
+            clonePath = Files.createTempDirectory(parent, "." + base.getFileName() + ".clone-");
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to create cache repo clone directory: " + ex.getMessage(), ex);
+        }
+        try {
+            runGitOrThrow(parent, "clone", "-b", defaultBaseBranch(), config.getRepoUrl(), clonePath.toString());
+            moveClonedRepo(clonePath, base);
+        } finally {
+            cleanupCloneDirectory(clonePath);
+        }
         return base;
+    }
+
+    private static boolean isGitRepository(Path path) {
+        return Files.isDirectory(path.resolve(".git")) || Files.isRegularFile(path.resolve("HEAD"));
+    }
+
+    private static void moveClonedRepo(Path clonePath, Path base) {
+        try {
+            Files.move(clonePath, base, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ex) {
+            try {
+                Files.move(clonePath, base);
+            } catch (IOException moveEx) {
+                throw new IllegalStateException("failed to install cloned cache repo: " + moveEx.getMessage(), moveEx);
+            }
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to install cloned cache repo: " + ex.getMessage(), ex);
+        }
+    }
+
+    private static void cleanupCloneDirectory(Path clonePath) {
+        if (!Files.exists(clonePath)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(clonePath)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException ex) {
+            LOGGER.warn("failed to clean temporary cache repo clone: {}: {}", clonePath, ex.getMessage());
+        }
+    }
+
+    private static ReentrantLock cacheRepoLock(Path base) {
+        int index = Math.floorMod(base.toAbsolutePath().normalize().hashCode(), CACHE_REPO_LOCK_STRIPES);
+        return CACHE_REPO_LOCKS[index];
+    }
+
+    private static ReentrantLock[] createCacheRepoLocks() {
+        ReentrantLock[] locks = new ReentrantLock[CACHE_REPO_LOCK_STRIPES];
+        for (int index = 0; index < locks.length; index++) {
+            locks[index] = new ReentrantLock();
+        }
+        return locks;
     }
 
     /**
