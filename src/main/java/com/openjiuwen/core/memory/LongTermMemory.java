@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 
@@ -105,6 +106,15 @@ public class LongTermMemory {
      * @since 0.1.7
      */
     private final ConcurrentHashMap<String, MemoryScopeConfig> scopeConfig = new ConcurrentHashMap<>();
+
+    /**
+     * Scope identifiers whose explicit configurations were deleted.
+     *
+     * @since 0.1.7
+     */
+    private final Set<String> deletedScopeConfigs = ConcurrentHashMap.newKeySet();
+
+    private volatile boolean hasScopeConfiguration;
 
     // stores
     private BaseKVStore kvStore;
@@ -279,6 +289,8 @@ public class LongTermMemory {
             String encryptedJson = MAPPER.writeValueAsString(configMap);
             MemoryScopeConfig encryptedConfig = MAPPER.readValue(encryptedJson, MemoryScopeConfig.class);
             scopeConfig.put(scopeId, encryptedConfig);
+            deletedScopeConfigs.remove(scopeId);
+            hasScopeConfiguration = true;
 
             String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
             kvStore.set(configKey, encryptedJson);
@@ -338,6 +350,7 @@ public class LongTermMemory {
             kvStore.delete(configKey);
             scopeConfig.remove(scopeId);
             scopeEmbedding.remove(scopeId);
+            deletedScopeConfigs.add(scopeId);
             return true;
         } catch (Exception e) {
             MEMORY_LOGGER.error("[{}] Failed to delete configuration: {}", LogEventType.MEMORY_DELETE, e.getMessage());
@@ -395,7 +408,7 @@ public class LongTermMemory {
         }
         String msgId = "-1";
         Map.Entry<String, Model> llm = getScopeLlm(scopeId);
-        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
+        SemanticStore semanticStore = createSemanticStoreForAdd(scopeId);
 
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
@@ -708,11 +721,15 @@ public class LongTermMemory {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             return List.of();
         }
-        SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
         if (searchManager == null) {
             throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
                     "error_msg", "search manager is not initialized");
         }
+        Embedding embeddingModel = resolveEmbeddingModel(scopeId);
+        if (embeddingModel == null) {
+            return List.of();
+        }
+        SemanticStore semanticStore = createSemanticStore(embeddingModel);
         SearchParams params =
             SearchParams.builder().query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold).build();
         try {
@@ -937,12 +954,52 @@ public class LongTermMemory {
      * @since 0.1.7
      */
     private SemanticStore createSemanticStoreWithEmbedding(String scopeId) {
-        SemanticStore semanticStore = new SemanticStore(vectorStore);
+        return createSemanticStore(resolveEmbeddingModel(scopeId));
+    }
+
+    /**
+     * Create a semantic store for adding memory to a configured scope.
+     *
+     * @param scopeId scopeId
+     * @return semantic store
+     * @since 0.1.7
+     */
+    private SemanticStore createSemanticStoreForAdd(String scopeId) {
+        if (hasScopeConfiguration && getInternalScopeConfig(scopeId) == null) {
+            return createSemanticStore(null);
+        }
+        return createSemanticStoreWithEmbedding(scopeId);
+    }
+
+    /**
+     * Resolve the embedding model available to a scope.
+     *
+     * @param scopeId scopeId
+     * @return the embedding model, or null when no configured model is available
+     * @since 0.1.7
+     */
+    private Embedding resolveEmbeddingModel(String scopeId) {
         Embedding embeddingModel = getScopeEmbeddingModel(scopeId);
         if (embeddingModel != null) {
+            return embeddingModel;
+        }
+        if (deletedScopeConfigs.contains(scopeId)) {
+            return null;
+        }
+        return baseEmbed;
+    }
+
+    /**
+     * Create a semantic store with an optional embedding model.
+     *
+     * @param embeddingModel embedding model
+     * @return semantic store
+     * @since 0.1.7
+     */
+    private SemanticStore createSemanticStore(Embedding embeddingModel) {
+        SemanticStore semanticStore = new SemanticStore(vectorStore);
+        if (embeddingModel != null) {
             semanticStore.initializeEmbeddingModel(embeddingModel);
-        } else if (baseEmbed != null) {
-            semanticStore.initializeEmbeddingModel(baseEmbed);
         }
         return semanticStore;
     }

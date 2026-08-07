@@ -305,7 +305,11 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         if (query == null) {
             return "";
         }
-        return query.toLowerCase(Locale.ROOT).replace("我的", "用户的").replace("我叫", "用户的姓名是");
+        return query.toLowerCase(Locale.ROOT)
+                .replace("我是谁", "用户的姓名是")
+                .replace("我今年几岁", "用户的年龄是")
+                .replace("我的", "用户的")
+                .replace("我叫", "用户的姓名是");
     }
 
     private static Set<Integer> significantCharacters(String text) {

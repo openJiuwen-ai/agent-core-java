@@ -25,6 +25,7 @@ public class VariableManager extends BaseMemoryManager {
     private static final String SEPARATOR = "/";
     private static final String USER_VAR_PREFIX = "user_var";
     private static final String SESSION_VAR_PREFIX = "session_var";
+    private static final String DELETED_USER_VAR_PREFIX = "deleted_user_var";
 
     private final BaseKVStore kvStore;
     private final byte[] cryptoKey;
@@ -41,6 +42,7 @@ public class VariableManager extends BaseMemoryManager {
         this.cryptoKey = cryptoKey;
         KvPrefixRegistry.getInstance().registerCurrent(USER_VAR_PREFIX);
         KvPrefixRegistry.getInstance().registerCurrent(SESSION_VAR_PREFIX);
+        KvPrefixRegistry.getInstance().registerCurrent(DELETED_USER_VAR_PREFIX);
     }
 
     /**
@@ -66,6 +68,7 @@ public class VariableManager extends BaseMemoryManager {
             String key = makeVariableKey(userId, scopeId, unit.getVariableName(), null);
             String value = encryptMemoryIfNeeded(cryptoKey, unit.getVariableMem());
             kvStore.set(key, value);
+            kvStore.delete(makeDeletedVariableKey(userId, scopeId, unit.getVariableName()));
         }
     }
 
@@ -98,8 +101,7 @@ public class VariableManager extends BaseMemoryManager {
             MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
             return;
         }
-        Map<String, String> existing = queryVariable(userId, scopeId, varName, null);
-        if (!checkExist(existing, varName)) {
+        if (kvStore.get(makeDeletedVariableKey(userId, scopeId, varName)) != null) {
             return;
         }
         String key = makeVariableKey(userId, scopeId, varName, null);
@@ -140,8 +142,10 @@ public class VariableManager extends BaseMemoryManager {
         }
         String userPrefix = makeVariablePrefix(USER_VAR_PREFIX, userId, scopeId);
         String sessionPrefix = makeVariablePrefix(SESSION_VAR_PREFIX, userId, scopeId);
+        String deletedUserPrefix = makeVariablePrefix(DELETED_USER_VAR_PREFIX, userId, scopeId);
         kvStore.deleteByPrefix(userPrefix, null);
         kvStore.deleteByPrefix(sessionPrefix, null);
+        kvStore.deleteByPrefix(deletedUserPrefix, null);
         return true;
     }
 
@@ -160,6 +164,7 @@ public class VariableManager extends BaseMemoryManager {
         }
         String key = makeVariableKey(userId, scopeId, varName, null);
         kvStore.delete(key);
+        kvStore.set(makeDeletedVariableKey(userId, scopeId, varName), Boolean.TRUE.toString());
     }
 
     /**
@@ -273,6 +278,20 @@ public class VariableManager extends BaseMemoryManager {
     }
 
     /**
+     * makeDeletedVariableKey.
+     *
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param varName varName
+     * @return the result
+     * @since 0.1.7
+     */
+    private String makeDeletedVariableKey(String userId, String scopeId, String varName) {
+        String rawKey = DELETED_USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
+        return TenantKVStoreKeyResolver.resolveKey(rawKey);
+    }
+
+    /**
      * checkUserAndScopeId.
      * 
      * @param userId userId
@@ -288,21 +307,4 @@ public class VariableManager extends BaseMemoryManager {
         }
     }
 
-    /**
-     * checkExist.
-     * 
-     * @param variableDict variableDict
-     * @param variableName variableName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static boolean checkExist(Map<String, String> variableDict, String variableName) {
-        if (variableDict == null || variableDict.isEmpty()) {
-            return false;
-        }
-        if (!variableDict.containsKey(variableName)) {
-            return false;
-        }
-        return variableDict.get(variableName) != null && !variableDict.get(variableName).isEmpty();
-    }
 }
