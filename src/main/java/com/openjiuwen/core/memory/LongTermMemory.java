@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
@@ -725,8 +726,8 @@ public class LongTermMemory {
             throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
                     "error_msg", "search manager is not initialized");
         }
-        Embedding embeddingModel = resolveEmbeddingModel(scopeId);
-        if (embeddingModel == null) {
+        Optional<Embedding> embeddingModel = resolveEmbeddingModel(scopeId);
+        if (embeddingModel.isEmpty()) {
             return List.of();
         }
         SemanticStore semanticStore = createSemanticStore(embeddingModel);
@@ -966,7 +967,7 @@ public class LongTermMemory {
      */
     private SemanticStore createSemanticStoreForAdd(String scopeId) {
         if (hasScopeConfiguration && getInternalScopeConfig(scopeId) == null) {
-            return createSemanticStore(null);
+            return createSemanticStore(Optional.empty());
         }
         return createSemanticStoreWithEmbedding(scopeId);
     }
@@ -975,32 +976,30 @@ public class LongTermMemory {
      * Resolve the embedding model available to a scope.
      *
      * @param scopeId scopeId
-     * @return the embedding model, or null when no configured model is available
+     * @return the embedding model, or an empty value when no configured model is available
      * @since 0.1.7
      */
-    private Embedding resolveEmbeddingModel(String scopeId) {
+    private Optional<Embedding> resolveEmbeddingModel(String scopeId) {
         Embedding embeddingModel = getScopeEmbeddingModel(scopeId);
         if (embeddingModel != null) {
-            return embeddingModel;
+            return Optional.of(embeddingModel);
         }
         if (deletedScopeConfigs.contains(scopeId)) {
-            return null;
+            return Optional.empty();
         }
-        return baseEmbed;
+        return Optional.ofNullable(baseEmbed);
     }
 
     /**
      * Create a semantic store with an optional embedding model.
      *
-     * @param embeddingModel embedding model
+     * @param embeddingModel optional embedding model
      * @return semantic store
      * @since 0.1.7
      */
-    private SemanticStore createSemanticStore(Embedding embeddingModel) {
+    private SemanticStore createSemanticStore(Optional<Embedding> embeddingModel) {
         SemanticStore semanticStore = new SemanticStore(vectorStore);
-        if (embeddingModel != null) {
-            semanticStore.initializeEmbeddingModel(embeddingModel);
-        }
+        embeddingModel.ifPresent(semanticStore::initializeEmbeddingModel);
         return semanticStore;
     }
 
