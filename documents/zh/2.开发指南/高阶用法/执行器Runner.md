@@ -66,11 +66,35 @@ Runner.start();
 
 ## 运行时线程池配置
 
-OpenJiuwen 通过统一入口创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用共享线程池；模块已有的实例专用线程池也由统一入口创建，但保留原有的队列、拒绝策略和生命周期。
+OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理，但保留各模块默认的队列形态与拒绝策略。
 
 AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
 
-线程池配置支持 JVM 系统属性或环境变量。两种方式都是进程启动参数，在线程池初始化时读取，不支持运行期热更新。
+### 配置读取规则
+
+下列配置均支持 **JVM 系统属性** 或 **环境变量** 两种方式。均为进程启动参数，在对应线程池**首次创建时**读取，**不支持运行期热更新**。
+
+读取顺序（`OpenJiuwenExecutors` 内整数配置统一遵循）：
+
+1. 先读 JVM 系统属性（`-D...`）；
+2. 若未设置或为空，再读同名语义的环境变量；
+3. 若仍未设置、为空或解析失败，使用代码中的默认值（解析失败会打 warning 日志并回退默认值）；
+4. 解析成功的值会与允许的最小值取 `max`（线程池大小类配置最小为 `1`）。
+
+**若两种方式同时配置，JVM 系统属性优先于环境变量。**
+
+模块有界池的命名约定（`{模块前缀}` 与线程名前缀一致，如 `deep-agent-stream`）：
+
+| 配置项 | JVM 系统属性 | 环境变量（规则） |
+| --- | --- | --- |
+| 最大线程数 | `openjiuwen.executor.{模块前缀}.max-size` | `OPENJIUWEN_EXECUTOR_{模块前缀大写}_MAX_SIZE`（`-` 换 `_`） |
+| 队列容量 | `openjiuwen.executor.{模块前缀}.queue-size` | `OPENJIUWEN_EXECUTOR_{模块前缀大写}_QUEUE_SIZE` |
+
+示例：`deep-agent-stream` → `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE`。
+
+> **与 LLM HTTP 配置区分**：`openjiuwen.llm.http.*`（如 `max-requests-per-host`）由 Model 客户端在构建 OkHttp 时读取，**仅支持 JVM 系统属性**，且无环境变量兜底；不属于本节 `OpenJiuwenExecutors` 配置体系。
+
+### 共享线程池
 
 | 配置含义 | JVM 系统属性 | 环境变量 | 默认值 |
 | --- | --- | --- | --- |
@@ -85,14 +109,44 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 - 工具调用和普通后台两个共享线程池的最大线程数默认 `max(8, CPU 核数 * 2)`，兼顾低核机器并发能力和资源上限。
 - 两个共享线程池的空闲线程保留时间默认 `60s`，用于覆盖短时突发，同时空闲后可回收线程。
 - 单次工具调用超时默认 `0`，表示不启用统一超时，以保持历史兼容性。超时后当前轮不再等待结果并记录失败，但不会中断底层已开始执行的工具；工具自身仍需负责超时或取消。
+- 共享池使用 `SynchronousQueue` + `CallerRunsPolicy`：饱和时由提交线程执行，形成背压。
 
-每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池；模块专用线程池沿用其原有参数。高并发场景建议结合业务压测结果调大。
+每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池。
+
+### 模块有界线程池
+
+由 `OpenJiuwenExecutors.newBoundedModulePool(模块前缀, isDaemon)` 创建的池均纳入统一注册与 JVM 退出回收。未在表中列出的前缀会使用 **GENERIC** 默认（max=`16`，queue=`256`）。
+
+下表为**未配置覆盖时**的默认上限；均可通过上一节的属性 / 环境变量覆盖 `max-size` 与 `queue-size`。
+
+| 模块前缀 | 用途（概要） | 默认 max | 默认 queue | 队列形态 |
+| --- | --- | --- | --- | --- |
+| `pregel-task` | Pregel 图节点并行 | `32` | `512` | 同步移交（`SynchronousQueue`，利于并行） |
+| `workflow-stream` | Workflow 流式执行 | `16` | `256` | 有界队列 |
+| `vertex-stream` | Vertex 流能力 | `8` | `256` | 同步移交 |
+| `stream-actor` | StreamActor 流处理 | `8` | `256` | 同步移交 |
+| `end-template-render` | End 模板渲染 | `8` | `128` | 有界队列 |
+| `callback-parallel` | 回调并行触发（短生命周期） | `16` | `256` | 同步移交 |
+| `mq-server-adapter` | MQ 服务端适配器 | `8` | `128` | 有界队列 |
+| `task-manager-worker` | TaskManager 任务 worker | `16` | `512` | 同步移交（避免 parent/child 死锁） |
+| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(16, CPU 核数 * 4)`** | `128` | 有界队列 |
+
+模块池共性：
+
+- `corePoolSize=0`，`keepAlive=60s`，空闲线程可回收。
+- 饱和策略为 **`AbortPolicy`**（抛出 `RejectedExecutionException`），与共享池不同。
+- **同步移交** 模块在 max 线程占满前不会排队积压 Runnable，行为接近原 `CachedThreadPool` 并行语义；**有界队列** 模块则在队列中等待空槽。
+
+**DeepAgent stream 调优**：`deep-agent-stream` 限制同时进行中的 stream 会话数（I/O 型）。默认可随 CPU 缩放；高并发或长连接场景可显式调大，并配合 LLM 侧 HTTP / 配额限流，见 [DeepAgent 使用指南](DeepAgent/DeepAgent使用指南.md#stream-并发与线程池)。
+
+### 配置示例
 
 JVM 系统属性适合本地测试或启动脚本中直接传参：
 
 ```bash
 java -Dopenjiuwen.executor.tool-call.max-size=16 \
      -Dopenjiuwen.executor.tool-call.timeout-millis=30000 \
+     -Dopenjiuwen.executor.deep-agent-stream.max-size=48 \
      -jar app.jar
 ```
 
@@ -101,10 +155,11 @@ java -Dopenjiuwen.executor.tool-call.max-size=16 \
 ```bash
 OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE=16 \
 OPENJIUWEN_EXECUTOR_TOOL_CALL_TIMEOUT_MILLIS=30000 \
+OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE=48 \
 java -jar app.jar
 ```
 
-如果两种方式同时配置，JVM 系统属性优先于环境变量。
+高并发场景建议结合业务压测结果调大；模块池与共享池的上限均为**进程内全局**，多会话会共同竞争。
 
 ## `DistributedConfig` 负责什么
 

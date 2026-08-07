@@ -12,6 +12,7 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
 - [快速开始](#快速开始)
 - [执行模式](#执行模式)
 - [高阶用法](#高阶用法)
+- [Stream 并发与线程池](#stream-并发与线程池)
 - [扩展能力示例](#扩展能力示例)
   - [1. Skill 注册与使用](#1-skill-注册与使用日期--星期python-脚本)
   - [2. Tool 注册与使用](#2-tool-注册与使用星期--日期java-tool)
@@ -71,6 +72,23 @@ LLM 配置参见 Demo 工程 `src/main/resources/apiconfig.json`（DashScope 兼
 | `run()` | 内层 ReAct 单轮推理 | — |
 | `invoke()` | 仅元数据包装 | 外层多轮任务循环 |
 | `Runner.runAgentStreaming(inner, …)` | 流式 token | — |
+
+---
+
+## Stream 并发与线程池
+
+DeepAgent 的 `stream()`（含开启 task loop 时的 `streamTaskLoop`）将每条 stream 会话提交到统一模块池 **`deep-agent-stream`**（`OpenJiuwenExecutors.newBoundedModulePool`），限制**同时进行中的 stream 会话数**，与 `invoke()` 路径分离。
+
+| 项 | 说明 |
+| --- | --- |
+| 默认 max | `max(16, CPU 核数 × 4)`（I/O 型 workload，随 CPU 缩放） |
+| 默认 queue | `128` |
+| 覆盖方式 | `-Dopenjiuwen.executor.deep-agent-stream.max-size=N` 或环境变量 `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE` |
+| 读取顺序 | **JVM 系统属性优先**，环境变量兜底；池创建时读取，不支持热更新 |
+
+饱和时模块池使用 `AbortPolicy`（`RejectedExecutionException`），不会无限排队。调大 stream 槽位后，仍需关注 LLM HTTP 并发（`openjiuwen.llm.http.max-requests-per-host` 等，**仅 `-D` 系统属性**）与厂商 API 配额。
+
+完整命名规则、模块默认表与其它模块池说明见 **[执行器 Runner — 运行时线程池配置](../执行器Runner.md#运行时线程池配置)**。
 
 ---
 
@@ -468,7 +486,8 @@ agent.invoke(inputs, session);
 4. **自定义 Tool**：派生 `Tool` 并实现 `invoke()` / `stream()`；`LocalFunction` 适用于简单函数包装。
 5. **权限配置**：`permissions.enabled=true` 时 `ensureInitialized()` 自动挂载 `PermissionInterruptRail`；可与自定义 Guard Rail 叠加。
 6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
-7. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
+7. **Stream 并发**：高并发 stream 场景见 [Stream 并发与线程池](#stream-并发与线程池)；与 `invoke` 默认不走同一线程池，勿仅调 LLM 配额而忽略 `deep-agent-stream`。
+8. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
 
 ---
 

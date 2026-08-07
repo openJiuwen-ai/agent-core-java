@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -82,10 +83,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -95,19 +94,8 @@ import java.util.function.Supplier;
  */
 @Getter
 public class DeepAgent implements AutoCloseable {
-    private static final AtomicLong STREAM_THREAD_SEQ = new AtomicLong(0);
-
-    private static final ThreadPoolExecutor STREAM_EXECUTOR = new ThreadPoolExecutor(
-            0, 8, 60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(128),
-            r -> {
-                Thread thread = new Thread(r, "deep-agent-stream-" + STREAM_THREAD_SEQ.incrementAndGet());
-                thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, error) -> Loggers.AGENT.exception(
-                        "deep-agent stream task failed", error));
-                return thread;
-            },
-            new ThreadPoolExecutor.CallerRunsPolicy());
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
 
     private final AgentCard card;
     private final DeepAgentConfig config;

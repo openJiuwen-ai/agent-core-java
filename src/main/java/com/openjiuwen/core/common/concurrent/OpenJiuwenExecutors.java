@@ -143,7 +143,7 @@ public final class OpenJiuwenExecutors {
      */
     public static ExecutorService newBoundedModulePool(String threadNamePrefix, boolean isDaemon) {
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        return newBoundedModulePool(threadNamePrefix, defaults.maxSize(), defaults.queueCapacity(), isDaemon);
+        return newBoundedModulePool(threadNamePrefix, defaults.resolveMaxSize(), defaults.queueCapacity(), isDaemon);
     }
 
     /**
@@ -503,6 +503,16 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * DeepAgent stream 会话池默认上限：I/O 型 workload，按 {@code max(16, CPU 核数 × 4)} 估算并发 session 槽位。
+     *
+     * @return 默认最大线程数
+     * @since 0.1.14
+     */
+    static int defaultDeepAgentStreamMaxSize() {
+        return Math.max(16, Runtime.getRuntime().availableProcessors() * 4);
+    }
+
+    /**
      * 创建带统一名称和异常日志的线程工厂。
      *
      * @param threadNamePrefix 线程名称前缀
@@ -585,6 +595,7 @@ public final class OpenJiuwenExecutors {
         CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
         MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
         TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
+        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, false),
         GENERIC("", 16, 256, false);
 
         private final String prefix;
@@ -599,7 +610,10 @@ public final class OpenJiuwenExecutors {
             this.isDirectHandoff = isDirectHandoff;
         }
 
-        int maxSize() {
+        int resolveMaxSize() {
+            if (this == DEEP_AGENT_STREAM) {
+                return defaultDeepAgentStreamMaxSize();
+            }
             return maxSize;
         }
 
