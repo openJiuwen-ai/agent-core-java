@@ -17,6 +17,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,6 +46,9 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
     private static final String FIND_LATEST_ISSUE_SQL = "SELECT " + JOB_COLUMNS
             + " FROM evolution_jobs WHERE repo=? AND issue_iid=? ORDER BY created_at DESC LIMIT 1";
     private static final String FIND_BY_ID_SQL = "SELECT " + JOB_COLUMNS + " FROM evolution_jobs WHERE id=?";
+    private static final String LIST_REVIEW_JOBS_SQL = "SELECT " + JOB_COLUMNS
+            + " FROM evolution_jobs WHERE state='WAITING_REVIEW' AND pr_number IS NOT NULL"
+            + " ORDER BY pr_checked_at,updated_at LIMIT ?";
     private static final String CLAIM_JOB_SQL = "UPDATE evolution_jobs SET lease_owner=?,lease_until=?,"
             + "attempt_count=attempt_count+1,version=version+1,updated_at=? WHERE id=(SELECT id "
             + "FROM evolution_jobs WHERE state IN ('RECEIVED','FAILED_RETRYABLE','CANCEL_REQUESTED') "
@@ -95,11 +101,14 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                     return new EnqueueResult(EnqueueResult.Status.DUPLICATE_DELIVERY,
                             findByIssue(connection, request.repository(), request.issueIid(), true));
                 }
-                Optional<EvolutionJob> existing = findByIssue(
-                        connection, request.repository(), request.issueIid(), true);
-                if (existing.isPresent()) {
+                int admitted = insertIssueAdmission(connection, request);
+                if (admitted == 0) {
+                    Optional<EvolutionJob> existing = findAnyByIssue(
+                            connection, request.repository(), request.issueIid());
                     connection.commit();
-                    return new EnqueueResult(EnqueueResult.Status.EXISTING_ACTIVE_JOB, existing);
+                    EnqueueResult.Status status = existing.filter(job -> job.state().isActive()).isPresent()
+                            ? EnqueueResult.Status.EXISTING_ACTIVE_JOB : EnqueueResult.Status.EXISTING_ISSUE;
+                    return new EnqueueResult(status, existing);
                 }
                 EvolutionJob created = insertJob(connection, request);
                 connection.commit();
@@ -115,32 +124,7 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
 
     @Override
     public Optional<EvolutionJob> createJobIfAbsent(IssueJobRequest request) {
-        Objects.requireNonNull(request, "request must not be null");
-        try (Connection connection = connection()) {
-            connection.setAutoCommit(false);
-            try {
-                int inserted = insertDelivery(
-                        connection, request.deliveryId(), request.eventType(), request.payloadSha256());
-                Optional<EvolutionJob> existing = findByIssue(
-                        connection, request.repository(), request.issueIid(), true);
-                if (existing.isPresent()) {
-                    connection.commit();
-                    return existing;
-                }
-                if (inserted == 0) {
-                    connection.commit();
-                    return Optional.empty();
-                }
-                EvolutionJob created = insertJob(connection, request);
-                connection.commit();
-                return Optional.of(created);
-            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
-                rollback(connection, ex);
-                throw ex;
-            }
-        } catch (SQLException ex) {
-            throw failure("create issue job", ex);
-        }
+        return enqueueIssue(request).job();
     }
 
     @Override
@@ -182,6 +166,95 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
             }
         } catch (SQLException ex) {
             throw failure("find pull request job", ex);
+        }
+    }
+
+    @Override
+    public Optional<IssueScanCheckpoint> loadIssueScanCheckpoint(String repository, String label) {
+        requireText(repository, "repository");
+        requireText(label, "label");
+        String sql = "SELECT window_start,window_end,next_page FROM issue_scan_checkpoints "
+                + "WHERE repo=? AND label=?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, repository);
+            statement.setString(2, label);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new IssueScanCheckpoint(repository, label,
+                        Instant.ofEpochMilli(result.getLong("window_start")),
+                        Instant.ofEpochMilli(result.getLong("window_end")), result.getInt("next_page")));
+            }
+        } catch (SQLException ex) {
+            throw failure("load Issue scan checkpoint", ex);
+        }
+    }
+
+    @Override
+    public void saveIssueScanCheckpoint(IssueScanCheckpoint checkpoint) {
+        IssueScanCheckpoint required = Objects.requireNonNull(checkpoint, "checkpoint must not be null");
+        String sql = "INSERT INTO issue_scan_checkpoints(repo,label,window_start,window_end,next_page,updated_at) "
+                + "VALUES(?,?,?,?,?,?) ON CONFLICT(repo,label) DO UPDATE SET window_start=excluded.window_start,"
+                + "window_end=excluded.window_end,next_page=excluded.next_page,updated_at=excluded.updated_at";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, required.repository());
+            statement.setString(2, required.label());
+            statement.setLong(3, required.windowStart().toEpochMilli());
+            statement.setLong(4, required.windowEnd().toEpochMilli());
+            statement.setInt(5, required.nextPage());
+            statement.setLong(6, System.currentTimeMillis());
+            requireUpdated(statement.executeUpdate(), required.repository() + ":" + required.label());
+        } catch (SQLException ex) {
+            throw failure("save Issue scan checkpoint", ex);
+        }
+    }
+
+    @Override
+    public void clearIssueScanCheckpoint(String repository, String label) {
+        requireText(repository, "repository");
+        requireText(label, "label");
+        String sql = "DELETE FROM issue_scan_checkpoints WHERE repo=? AND label=?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, repository);
+            statement.setString(2, label);
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            throw failure("clear Issue scan checkpoint", ex);
+        }
+    }
+
+    @Override
+    public List<EvolutionJob> listPullRequestsForReconciliation(int limit) {
+        if (limit < 1 || limit > 10_000) {
+            throw new IllegalArgumentException("limit must be between 1 and 10000");
+        }
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(LIST_REVIEW_JOBS_SQL)) {
+            statement.setInt(1, limit);
+            try (ResultSet result = statement.executeQuery()) {
+                List<EvolutionJob> jobs = new ArrayList<>();
+                while (result.next()) {
+                    jobs.add(readJob(result));
+                }
+                return List.copyOf(jobs);
+            }
+        } catch (SQLException ex) {
+            throw failure("list review-waiting jobs", ex);
+        }
+    }
+
+    @Override
+    public void markPullRequestChecked(String jobId, long checkedAt) {
+        requireText(jobId, "jobId");
+        requireNonNegative(checkedAt, "checkedAt");
+        String sql = "UPDATE evolution_jobs SET pr_checked_at=? WHERE id=? AND state='WAITING_REVIEW'";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, checkedAt);
+            statement.setString(2, jobId);
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            throw failure("mark pull request checked", ex);
         }
     }
 
@@ -418,6 +491,7 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                   lease_until INTEGER NOT NULL DEFAULT 0,
                   version INTEGER NOT NULL DEFAULT 0,
                   last_error TEXT NOT NULL DEFAULT '',
+                  pr_checked_at INTEGER NOT NULL DEFAULT 0,
                   created_at INTEGER NOT NULL,
                   updated_at INTEGER NOT NULL,
                   FOREIGN KEY(trigger_delivery_id) REFERENCES webhook_deliveries(delivery_id)
@@ -431,6 +505,23 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                   created_at INTEGER NOT NULL,
                   FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
                 );
+                CREATE TABLE IF NOT EXISTS issue_admissions (
+                  repo TEXT NOT NULL,
+                  issue_iid INTEGER NOT NULL,
+                  first_delivery_id TEXT NOT NULL,
+                  admitted_at INTEGER NOT NULL,
+                  PRIMARY KEY(repo,issue_iid),
+                  FOREIGN KEY(first_delivery_id) REFERENCES webhook_deliveries(delivery_id)
+                );
+                CREATE TABLE IF NOT EXISTS issue_scan_checkpoints (
+                  repo TEXT NOT NULL,
+                  label TEXT NOT NULL,
+                  window_start INTEGER NOT NULL,
+                  window_end INTEGER NOT NULL,
+                  next_page INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  PRIMARY KEY(repo,label)
+                );
                 DROP INDEX IF EXISTS ux_evolution_active_issue;
                 CREATE UNIQUE INDEX ux_evolution_active_issue
                   ON evolution_jobs(repo, issue_iid) WHERE state IN (
@@ -438,7 +529,7 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                     'PR_CREATED','WAITING_REVIEW','FAILED_RETRYABLE','CANCEL_REQUESTED');
                 CREATE UNIQUE INDEX IF NOT EXISTS ux_evolution_pr
                   ON evolution_jobs(repo, pr_number) WHERE pr_number IS NOT NULL;
-                PRAGMA user_version=2;
+                PRAGMA user_version=3;
                 """;
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
             for (String sql : schema.split(";")) {
@@ -447,6 +538,11 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                     LOGGER.debug("Applied SQLite schema statement with update count {}", updated);
                 }
             }
+            ensureColumn(connection, "evolution_jobs", "pr_checked_at",
+                    "ALTER TABLE evolution_jobs ADD COLUMN pr_checked_at INTEGER NOT NULL DEFAULT 0");
+            statement.executeUpdate("INSERT OR IGNORE INTO issue_admissions"
+                    + "(repo,issue_iid,first_delivery_id,admitted_at) "
+                    + "SELECT repo,issue_iid,trigger_delivery_id,created_at FROM evolution_jobs");
         } catch (SQLException ex) {
             throw failure("initialize SQLite schema", ex);
         }
@@ -484,6 +580,18 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
         }
     }
 
+    private static int insertIssueAdmission(Connection connection, IssueJobRequest request) throws SQLException {
+        String sql = "INSERT OR IGNORE INTO issue_admissions"
+                + "(repo,issue_iid,first_delivery_id,admitted_at) VALUES(?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, request.repository());
+            statement.setLong(2, request.issueIid());
+            statement.setString(3, request.deliveryId());
+            statement.setLong(4, System.currentTimeMillis());
+            return statement.executeUpdate();
+        }
+    }
+
     private static EvolutionJob insertJob(Connection connection, IssueJobRequest request) throws SQLException {
         long now = System.currentTimeMillis();
         String id = UUID.randomUUID().toString();
@@ -502,8 +610,14 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
             requireInserted(statement.executeUpdate(), "evolution job", id);
         }
         EvolutionJob job = requireById(connection, id);
-        appendEvent(connection, id, EvolutionJobState.RECEIVED, EvolutionJobState.RECEIVED, "webhook accepted");
+        appendEvent(connection, id, EvolutionJobState.RECEIVED, EvolutionJobState.RECEIVED, "trigger accepted");
         return job;
+    }
+
+    private static Optional<EvolutionJob> findAnyByIssue(Connection connection, String repo, long iid)
+            throws SQLException {
+        Optional<EvolutionJob> active = findByIssue(connection, repo, iid, true);
+        return active.isPresent() ? active : findByIssue(connection, repo, iid, false);
     }
 
     private static Optional<EvolutionJob> findByIssue(Connection connection, String repo, long iid, boolean active)
@@ -577,6 +691,25 @@ public final class SqliteEvolutionJobStore implements EvolutionJobStore {
                 while (result.next()) {
                     LOGGER.debug("SQLite pragma {} returned a result", sql);
                 }
+            }
+        }
+    }
+
+    private static void ensureColumn(Connection connection, String table, String column, String alterSql)
+            throws SQLException {
+        boolean hasColumn = false;
+        try (PreparedStatement statement = connection.prepareStatement("PRAGMA table_info(" + table + ")");
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                if (column.equals(result.getString("name"))) {
+                    hasColumn = true;
+                    break;
+                }
+            }
+        }
+        if (!hasColumn) {
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(alterSql);
             }
         }
     }

@@ -16,16 +16,22 @@ import java.util.Set;
 public final class WebhookAdmission {
     private final boolean enabled;
     private final Set<String> allowedRepositories;
+    private final String triggerLabel;
 
     /**
      * Create a demo admission policy.
      *
      * @param enabled whether webhook automation is explicitly enabled
      * @param allowedRepositories exact GitCode repository paths accepted by this endpoint
+     * @param triggerLabel exact Issue label that admits an update
      */
-    public WebhookAdmission(boolean enabled, Collection<String> allowedRepositories) {
+    public WebhookAdmission(boolean enabled, Collection<String> allowedRepositories, String triggerLabel) {
         this.enabled = enabled;
         this.allowedRepositories = normalize(allowedRepositories);
+        if (triggerLabel == null || triggerLabel.isBlank()) {
+            throw new IllegalArgumentException("triggerLabel must not be blank");
+        }
+        this.triggerLabel = triggerLabel;
     }
 
     /**
@@ -34,7 +40,7 @@ public final class WebhookAdmission {
      * @return disabled admission policy
      */
     public static WebhookAdmission disabled() {
-        return new WebhookAdmission(false, Set.of());
+        return new WebhookAdmission(false, Set.of(), "disabled");
     }
 
     /**
@@ -54,7 +60,7 @@ public final class WebhookAdmission {
      * @return whether the event is an allowlisted update that newly adds bug
      */
     public boolean allowsIssue(GitCodeIssueEvent event) {
-        return event != null && allowsRepository(event.repository()) && event.eligible();
+        return event != null && allowsRepository(event.repository()) && event.eligible(triggerLabel);
     }
 
     /**

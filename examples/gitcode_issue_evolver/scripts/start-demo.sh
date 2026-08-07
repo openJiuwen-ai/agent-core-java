@@ -14,7 +14,7 @@ Usage: start-demo.sh [options]
 
 Options:
   --config <path>       Non-secret runtime JSON
-  --secrets <path>      Local GitCode and webhook secrets JSON
+  --secrets <path>      Local GitCode Bot and optional webhook secrets JSON
   --llm-config <path>   Model configuration JSON
   --cloudflared <path>  cloudflared executable or command name
   --skip-build          Reuse existing Example build output
@@ -121,6 +121,20 @@ json_integer_field() {
     fi
 }
 
+json_string_field() {
+    local file="$1"
+    local field="$2"
+    local match
+    match="$(
+        LC_ALL=C tr -d '\r\n' < "$file" |
+            grep -oE "\"${field}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" |
+            head -n 1 || true
+    )"
+    if [[ -n "$match" ]]; then
+        printf '%s\n' "${match#*:}" | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//'
+    fi
+}
+
 is_active_pid() {
     local pid="${1-}"
     [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null
@@ -153,7 +167,23 @@ require_command grep
 require_command nohup
 require_command tr
 require_command bash
-cloudflared_path="$(resolve_executable "$cloudflared_command")"
+require_command sed
+
+trigger_mode="$(json_string_field "$config_path" "triggerMode")"
+trigger_mode="${trigger_mode:-webhook}"
+trigger_label="$(json_string_field "$config_path" "triggerLabel")"
+trigger_label="${trigger_label:-bug}"
+case "$trigger_mode" in
+    polling)
+        cloudflared_path=""
+        ;;
+    webhook|both)
+        cloudflared_path="$(resolve_executable "$cloudflared_command")"
+        ;;
+    *)
+        fail "triggerMode must be webhook, polling, or both"
+        ;;
+esac
 
 example_root="$repository_root/examples/gitcode_issue_evolver"
 runtime_dir="$example_root/.runtime"
@@ -240,43 +270,55 @@ done
 [[ "$ready" == true ]] ||
     fail "The Java service did not become ready; inspect $service_err"
 
-nohup "$cloudflared_path" tunnel \
-    --url "http://127.0.0.1:$port" \
-    --protocol http2 \
-    --no-autoupdate \
-    > "$tunnel_out" 2> "$tunnel_err" < /dev/null &
-tunnel_pid=$!
-
 public_url=""
-for ((attempt = 0; attempt < 60; attempt++)); do
-    if ! is_active_pid "$tunnel_pid"; then
-        wait "$tunnel_pid" 2>/dev/null || true
-        fail "Cloudflared stopped before creating a Quick Tunnel; inspect $tunnel_err"
-    fi
-    public_url="$(
-        grep -Eho 'https://[a-z0-9-]+\.trycloudflare\.com' \
-            "$tunnel_out" "$tunnel_err" 2>/dev/null |
-            head -n 1 || true
-    )"
-    if [[ -n "$public_url" ]]; then
-        break
-    fi
-    sleep 1
-done
-[[ -n "$public_url" ]] ||
-    fail "Cloudflared did not publish a Quick Tunnel URL; inspect $tunnel_err"
+if [[ "$trigger_mode" != "polling" ]]; then
+    nohup "$cloudflared_path" tunnel \
+        --url "http://127.0.0.1:$port" \
+        --protocol http2 \
+        --no-autoupdate \
+        > "$tunnel_out" 2> "$tunnel_err" < /dev/null &
+    tunnel_pid=$!
+
+    for ((attempt = 0; attempt < 60; attempt++)); do
+        if ! is_active_pid "$tunnel_pid"; then
+            wait "$tunnel_pid" 2>/dev/null || true
+            fail "Cloudflared stopped before creating a Quick Tunnel; inspect $tunnel_err"
+        fi
+        public_url="$(
+            grep -Eho 'https://[a-z0-9-]+\.trycloudflare\.com' \
+                "$tunnel_out" "$tunnel_err" 2>/dev/null |
+                head -n 1 || true
+        )"
+        if [[ -n "$public_url" ]]; then
+            break
+        fi
+        sleep 1
+    done
+    [[ -n "$public_url" ]] ||
+        fail "Cloudflared did not publish a Quick Tunnel URL; inspect $tunnel_err"
+fi
 
 state_temp="$state_file.tmp.$$"
 printf '{\n' > "$state_temp"
 printf '  "servicePid": %s,\n' "$service_pid" >> "$state_temp"
-printf '  "tunnelPid": %s,\n' "$tunnel_pid" >> "$state_temp"
+if [[ -n "$tunnel_pid" ]]; then
+    printf '  "tunnelPid": %s,\n' "$tunnel_pid" >> "$state_temp"
+else
+    printf '  "tunnelPid": null,\n' >> "$state_temp"
+fi
 printf '  "localHealthUrl": "%s",\n' "$health_url" >> "$state_temp"
-printf '  "publicUrl": "%s"\n' "$public_url" >> "$state_temp"
+printf '  "publicUrl": "%s",\n' "$public_url" >> "$state_temp"
+printf '  "triggerMode": "%s",\n' "$trigger_mode" >> "$state_temp"
+printf '  "triggerLabel": "%s"\n' "$trigger_label" >> "$state_temp"
 printf '}\n' >> "$state_temp"
 mv -f -- "$state_temp" "$state_file"
 state_temp=""
 
 cleanup_required=false
 printf 'Service ready: %s\n' "$health_url"
-printf 'Webhook URL: %s/webhooks/gitcode\n' "$public_url"
-printf 'Update the GitCode Issue and Pull Request webhook manually.\n'
+if [[ "$trigger_mode" == "polling" ]]; then
+    printf 'Polling mode is active; no public webhook tunnel was started.\n'
+else
+    printf 'Webhook URL: %s/webhooks/gitcode\n' "$public_url"
+    printf 'Update the GitCode Issue and Pull Request webhook manually.\n'
+fi

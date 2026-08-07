@@ -14,6 +14,14 @@ import java.util.Optional;
  */
 public interface GitCodeClient {
     /**
+     * Read one page of open Issues ordered by creation time.
+     *
+     * @param request bounded scan request
+     * @return Issue page with valid summaries and the raw page count
+     */
+    GitCodeIssuePage listIssues(IssueScanRequest request);
+
+    /**
      * Read current Issue data.
      *
      * @param issueIid Issue IID

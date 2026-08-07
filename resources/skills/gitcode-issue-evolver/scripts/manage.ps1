@@ -74,6 +74,15 @@ function Get-RequiredProperty {
     return $property.Value
 }
 
+function Get-OptionalProperty {
+    param([object]$Config, [string]$Name, [object]$DefaultValue)
+    $property = $Config.PSObject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) {
+        return $DefaultValue
+    }
+    return $property.Value
+}
+
 function Test-IsPlaceholder {
     param([string]$Value)
     return [string]::IsNullOrWhiteSpace($Value) -or $Value.Contains("<") -or $Value.Contains(">")
@@ -161,6 +170,26 @@ function Read-RuntimeConfiguration {
     if ($workerConcurrency -ne 1) {
         throw "workerConcurrency must be 1 for the SQLite demo"
     }
+    $triggerMode = ([string](Get-OptionalProperty $config "triggerMode" "webhook")).ToLowerInvariant()
+    if ($triggerMode -notin @("polling", "webhook", "both")) {
+        throw "triggerMode must be polling, webhook, or both"
+    }
+    $triggerLabel = [string](Get-OptionalProperty $config "triggerLabel" "bug")
+    if ([string]::IsNullOrWhiteSpace($triggerLabel) -or $triggerLabel.Length -gt 64) {
+        throw "triggerLabel must contain between 1 and 64 characters"
+    }
+    $issueScanWindowHours = [int](Get-OptionalProperty $config "issueScanWindowHours" 24)
+    if ($issueScanWindowHours -lt 1 -or $issueScanWindowHours -gt 168) {
+        throw "issueScanWindowHours must be between 1 and 168"
+    }
+    $pollIntervalMinutes = [int](Get-OptionalProperty $config "pollIntervalMinutes" 15)
+    if ($pollIntervalMinutes -lt 1 -or $pollIntervalMinutes -gt 1440) {
+        throw "pollIntervalMinutes must be between 1 and 1440"
+    }
+    $maxIssueScanPages = [int](Get-OptionalProperty $config "maxIssueScanPages" 10)
+    if ($maxIssueScanPages -lt 1 -or $maxIssueScanPages -gt 100) {
+        throw "maxIssueScanPages must be between 1 and 100"
+    }
     $localRepository = Resolve-ConfiguredPath $Root `
             ([string](Get-RequiredProperty $config "localRepository")) "localRepository"
     if (-not (Test-Path -LiteralPath $localRepository -PathType Container) -or
@@ -202,6 +231,11 @@ function Read-RuntimeConfiguration {
         TargetRepository = $target
         PublishRepository = $publish
         BaseBranch = $baseBranch
+        TriggerMode = $triggerMode
+        TriggerLabel = $triggerLabel
+        IssueScanWindowHours = $issueScanWindowHours
+        PollIntervalMinutes = $pollIntervalMinutes
+        MaxIssueScanPages = $maxIssueScanPages
     }
 }
 
@@ -239,7 +273,7 @@ function Invoke-VersionCommand {
 }
 
 function Assert-Toolchain {
-    param([string]$CloudflaredCommand)
+    param([string]$CloudflaredCommand, [bool]$NeedsCloudflared)
     if (-not [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
             [Runtime.InteropServices.OSPlatform]::Windows)) {
         throw "The first version of this Skill supports Windows only"
@@ -248,7 +282,6 @@ function Assert-Toolchain {
     $javac = Resolve-Executable "javac.exe" "javac"
     $maven = Resolve-Executable "mvn.cmd" "Maven"
     $git = Resolve-Executable "git.exe" "Git"
-    $cloudflaredExecutable = Resolve-Executable $CloudflaredCommand "cloudflared"
     $javaVersion = Invoke-VersionCommand $java @("-version")
     if ($javaVersion.ExitCode -ne 0 -or $javaVersion.Output -notmatch 'version\s+"(?<major>[0-9]+)') {
         throw "Unable to determine the Java version"
@@ -268,12 +301,16 @@ function Assert-Toolchain {
     if ($gitVersion.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($gitVersion.Output)) {
         throw "Git is not runnable"
     }
-    $cloudflaredVersion = Invoke-VersionCommand $cloudflaredExecutable @("--version")
-    if ($cloudflaredVersion.ExitCode -ne 0 -or
-            [string]::IsNullOrWhiteSpace($cloudflaredVersion.Output)) {
-        throw "cloudflared is not runnable"
+    if ($NeedsCloudflared) {
+        $cloudflaredExecutable = Resolve-Executable $CloudflaredCommand "cloudflared"
+        $cloudflaredVersion = Invoke-VersionCommand $cloudflaredExecutable @("--version")
+        if ($cloudflaredVersion.ExitCode -ne 0 -or
+                [string]::IsNullOrWhiteSpace($cloudflaredVersion.Output)) {
+            throw "cloudflared is not runnable"
+        }
+        return $cloudflaredExecutable
     }
-    return $cloudflaredExecutable
+    return ""
 }
 
 function Read-ProcessState {
@@ -287,30 +324,47 @@ function Read-ProcessState {
         throw "The demo process state is invalid"
     }
     $servicePid = 0
+    if (-not [int]::TryParse([string]$state.servicePid, [ref]$servicePid) -or $servicePid -le 0) {
+        throw "The demo process state contains an invalid service process identifier"
+    }
+    $triggerMode = ([string](Get-OptionalProperty $state "triggerMode" "webhook")).ToLowerInvariant()
+    if ($triggerMode -notin @("polling", "webhook", "both")) {
+        throw "The demo process state contains an invalid trigger mode"
+    }
+    $triggerLabel = [string](Get-OptionalProperty $state "triggerLabel" "bug")
+    $needsTunnel = $triggerMode -ne "polling"
     $tunnelPid = 0
-    if (-not [int]::TryParse([string]$state.servicePid, [ref]$servicePid) -or $servicePid -le 0 -or
-            -not [int]::TryParse([string]$state.tunnelPid, [ref]$tunnelPid) -or $tunnelPid -le 0) {
-        throw "The demo process state contains invalid process identifiers"
+    if ($needsTunnel -and
+            (-not [int]::TryParse([string]$state.tunnelPid, [ref]$tunnelPid) -or $tunnelPid -le 0)) {
+        throw "The demo process state contains an invalid tunnel process identifier"
     }
     $localHealthUrl = [string]$state.localHealthUrl
     $publicUrl = [string]$state.publicUrl
     if ($localHealthUrl -notmatch '^http://127\.0\.0\.1:[0-9]+/health/ready$' -or
-            $publicUrl -notmatch '^https://[a-z0-9-]+\.trycloudflare\.com$') {
+            ($needsTunnel -and $publicUrl -notmatch '^https://[a-z0-9-]+\.trycloudflare\.com$')) {
         throw "The demo process state contains invalid health URLs"
     }
+    $publicHealthUrl = if ($needsTunnel) { "$publicUrl/health/ready" } else { "" }
+    $webhookUrl = if ($needsTunnel) { "$publicUrl/webhooks/gitcode" } else { "" }
     return [PSCustomObject]@{
         ServicePid = $servicePid
         TunnelPid = $tunnelPid
         LocalHealthUrl = $localHealthUrl
         PublicUrl = $publicUrl
-        PublicHealthUrl = "$publicUrl/health/ready"
-        WebhookUrl = "$publicUrl/webhooks/gitcode"
+        PublicHealthUrl = $publicHealthUrl
+        WebhookUrl = $webhookUrl
+        TriggerMode = $triggerMode
+        TriggerLabel = $triggerLabel
     }
 }
 
 function Test-ProcessActive {
-    param([int]$ProcessId)
-    return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+    param([object]$ProcessId)
+    $parsed = 0
+    if (-not [int]::TryParse([string]$ProcessId, [ref]$parsed) -or $parsed -le 0) {
+        return $false
+    }
+    return $null -ne (Get-Process -Id $parsed -ErrorAction SilentlyContinue)
 }
 
 function Test-Health {
@@ -355,8 +409,10 @@ function Get-StateStatus {
     $serviceActive = Test-ProcessActive $State.ServicePid
     $tunnelActive = Test-ProcessActive $State.TunnelPid
     $localReady = $serviceActive -and (Test-Health $State.LocalHealthUrl)
-    $publicReady = $tunnelActive -and (Test-Health $State.PublicHealthUrl)
-    $name = if ($serviceActive -and $tunnelActive -and $localReady -and $publicReady) {
+    $needsTunnel = $State.TriggerMode -ne "polling"
+    $publicReady = -not $needsTunnel -or ($tunnelActive -and (Test-Health $State.PublicHealthUrl))
+    $allProcessesActive = $serviceActive -and (-not $needsTunnel -or $tunnelActive)
+    $name = if ($allProcessesActive -and $localReady -and $publicReady) {
         "RUNNING"
     } elseif ($serviceActive -or $tunnelActive) {
         "UNHEALTHY"
@@ -379,6 +435,33 @@ function New-Result {
     $target = if ($null -eq $RuntimeConfig) { "" } else { $RuntimeConfig.TargetRepository }
     $publish = if ($null -eq $RuntimeConfig) { "" } else { $RuntimeConfig.PublishRepository }
     $base = if ($null -eq $RuntimeConfig) { "" } else { $RuntimeConfig.BaseBranch }
+    $mode = if ($null -ne $RuntimeConfig) {
+        $RuntimeConfig.TriggerMode
+    } elseif ($null -ne $State) {
+        $State.TriggerMode
+    } else {
+        ""
+    }
+    $label = if ($null -ne $RuntimeConfig) {
+        $RuntimeConfig.TriggerLabel
+    } elseif ($null -ne $State) {
+        $State.TriggerLabel
+    } else {
+        ""
+    }
+    $needsWebhook = $mode -ne "polling" -and -not [string]::IsNullOrWhiteSpace($mode)
+    $events = if ($needsWebhook) { @("Issue", "Pull Request") } else { @() }
+    $manualSteps = if ($needsWebhook) {
+        @(
+            "Configure the returned webhook URL manually for Issue and Pull Request events.",
+            "Use the same locally stored Webhook Secret without pasting it into the Agent.",
+            "Add the configured trigger label to an open Issue or wait for polling."
+        )
+    } elseif ($mode -eq "polling") {
+        @("Create an open Issue with the configured trigger label and wait for the next polling cycle.")
+    } else {
+        @()
+    }
     return [ordered]@{
         action = $RequestedAction
         status = $Status
@@ -386,18 +469,15 @@ function New-Result {
         targetRepository = $target
         publishRepository = $publish
         baseBranch = $base
+        triggerMode = $mode
         localHealthUrl = $localHealth
         publicHealthUrl = $publicHealth
         webhookUrl = $webhook
-        triggerLabel = "bug"
-        manualWebhookUpdateRequired = $true
-        webhookEvents = @("Issue", "Pull Request")
+        triggerLabel = $label
+        manualWebhookUpdateRequired = $needsWebhook
+        webhookEvents = $events
         message = $Message
-        manualSteps = @(
-            "Configure the returned webhook URL manually for Issue and Pull Request events.",
-            "Use the same locally stored Webhook Secret without pasting it into the Agent.",
-            "Trigger the demo by explicitly adding the bug label to an open Issue."
-        )
+        manualSteps = $manualSteps
     }
 }
 
@@ -454,7 +534,8 @@ try {
     $secretsPath = Resolve-InputFile $root $SecretsFile "Local secrets"
     $modelPath = Resolve-InputFile $root $ModelConfig "Model configuration"
     $runtimeConfig = Read-RuntimeConfiguration $root $configPath
-    $cloudflaredExecutable = Assert-Toolchain $Cloudflared
+    $needsCloudflared = $runtimeConfig.TriggerMode -ne "polling"
+    $cloudflaredExecutable = Assert-Toolchain $Cloudflared $needsCloudflared
     $state = Read-ProcessState $stateFile
     $status = Get-StateStatus $state
 
@@ -490,9 +571,11 @@ try {
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $startScript,
         "-ConfigFile", $configPath,
         "-SecretsFile", $secretsPath,
-        "-ModelConfig", $modelPath,
-        "-Cloudflared", $cloudflaredExecutable
+        "-ModelConfig", $modelPath
     )
+    if ($needsCloudflared) {
+        $arguments += @("-Cloudflared", $cloudflaredExecutable)
+    }
     if ($SkipBuild) {
         $arguments += "-SkipBuild"
     }
@@ -505,18 +588,23 @@ try {
     if ($null -eq $state) {
         throw "The demo startup script did not create process state"
     }
-    if (-not (Wait-Health $state.LocalHealthUrl 15) -or
-            -not (Wait-Health $state.PublicHealthUrl 90)) {
+    $localReady = Wait-Health $state.LocalHealthUrl 15
+    $publicReady = -not $needsCloudflared -or (Wait-Health $state.PublicHealthUrl 90)
+    if (-not $localReady -or -not $publicReady) {
         Invoke-StopScript $stopScript
-        throw "The demo did not become healthy through both local and public endpoints"
+        throw "The demo did not become healthy through its configured endpoints"
     }
     $status = Get-StateStatus $state
     if ($status.Name -ne "RUNNING") {
         Invoke-StopScript $stopScript
         throw "The demo processes did not remain healthy after startup"
     }
-    Write-Result (New-Result $Action "RUNNING" $state $false `
-            "Service and Cloudflare Quick Tunnel are ready" $runtimeConfig)
+    $message = if ($needsCloudflared) {
+        "Service and Cloudflare Quick Tunnel are ready"
+    } else {
+        "Polling service is ready on the local health endpoint"
+    }
+    Write-Result (New-Result $Action "RUNNING" $state $false $message $runtimeConfig)
     exit 0
 } catch {
     Write-Error $_.Exception.Message

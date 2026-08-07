@@ -61,7 +61,7 @@ public final class GitCodeWebhookParser {
                 attributes.path("state").asText(""),
                 attributes.path("action").asText(""),
                 attributes.path("url").asText(""),
-                labelAdded(requiredRoot, "bug"));
+                addedLabels(requiredRoot));
     }
 
     /**
@@ -90,20 +90,22 @@ public final class GitCodeWebhookParser {
         return "";
     }
 
-    private static boolean labelAdded(JsonNode root, String expectedLabel) {
+    private static Set<String> addedLabels(JsonNode root) {
         JsonNode changes = root.path("changes").path("labels");
         if (changes.isMissingNode() || changes.isNull()) {
-            return false;
+            return Set.of();
         }
         Optional<JsonNode> beforeNode = first(changes, "previous", "before", "old");
         Optional<JsonNode> afterNode = first(changes, "current", "after", "new");
         if (beforeNode.isEmpty()) {
-            return false;
+            return Set.of();
         }
         JsonNode effectiveAfter = afterNode.orElse(root.path("labels"));
         Set<String> before = labels(beforeNode.get());
         Set<String> after = labels(effectiveAfter);
-        return !before.contains(expectedLabel) && after.contains(expectedLabel);
+        Set<String> added = new LinkedHashSet<>(after);
+        added.removeAll(before);
+        return Set.copyOf(added);
     }
 
     private static Optional<JsonNode> first(JsonNode object, String... fields) {

@@ -16,8 +16,8 @@ Do not grant this installation Agent GitCode API, merge, browser automation, or 
 
 The installation Agent and the Issue worker are different trust domains:
 
-- The installation Agent may launch the temporary Maven gate directly. It launches Java and
-  cloudflared only through `manage.ps1`.
+- The installation Agent may launch the temporary Maven gate directly. It launches Java and, when
+  the trigger mode needs an inbound Webhook, cloudflared only through `manage.ps1`.
 - The Issue worker receives only Worktree-scoped read, search, and write tools.
 - The Issue worker never receives GitCode Token, Shell, HTTP, push, PR, or merge capabilities.
 

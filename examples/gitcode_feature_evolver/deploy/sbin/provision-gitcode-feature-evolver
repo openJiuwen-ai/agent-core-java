@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+service_account="gitcode-feature-evolver"
+service_group="gitcode-feature-evolver"
+service_home="/var/lib/gitcode-feature-evolver"
+runtime_dir="/run/gitcode-feature-evolver"
+repository_dir="/opt/gitcode-feature-evolver/repo"
+config_dir="/etc/gitcode-feature-evolver"
+config_file="$config_dir/feature-config.json"
+secrets_file="$config_dir/feature-secrets.json"
+model_file="$config_dir/apiconfig.json"
+unit_name="gitcode-feature-evolver.service"
+unit_target="/etc/systemd/system/$unit_name"
+unit_digest="52015fca5369878780a74756e7fc7448e37884a444e75f13d427f2eb402098e8"
+auth_file="$config_dir/empty-container-auth.json"
+gate_stamp="$config_dir/deployment-gate"
+activate=false
+
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf '%s\n' \
+        'Usage: provision-gitcode-feature-evolver [--activate]' \
+        '' \
+        'Without arguments, provision the fixed rootless service boundary.' \
+        '--activate starts the unit only after run-feature-evolver-test wrote' \
+        'a gate stamp for the current commit, runtime config, and image.'
+}
+
+if (($# > 1)); then
+    usage >&2
+    exit 2
+fi
+if (($# == 1)); then
+    case "$1" in
+        --activate)
+            activate=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "Unsupported argument: $1"
+            ;;
+    esac
+fi
+
+((EUID == 0)) || fail "This command must run as root"
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "Required command is unavailable: $1"
+}
+
+for required_command in awk getent grep id install jq loginctl mktemp mv podman \
+    readlink runuser sha256sum sort stat systemctl useradd usermod; do
+    require_command "$required_command"
+done
+
+if ! id "$service_account" >/dev/null 2>&1; then
+    useradd --system --user-group --create-home --home-dir "$service_home" \
+        --shell /usr/sbin/nologin "$service_account"
+fi
+
+account_home="$(getent passwd "$service_account" | awk -F: '{print $6}')"
+[[ "$account_home" == "$service_home" ]] ||
+    fail "$service_account must use $service_home as its home"
+service_uid="$(id -u "$service_account")"
+service_gid="$(id -g "$service_account")"
+((service_uid > 0 && service_gid > 0)) || fail "The service account must not be root"
+[[ "$(id -gn "$service_account")" == "$service_group" ]] ||
+    fail "$service_account must use $service_group as its primary group"
+[[ -f /etc/subuid && -f /etc/subgid ]] ||
+    fail "Rootless Podman subordinate ID databases are unavailable"
+
+find_free_subid_range() {
+    local database="$1"
+    local candidate=100000
+    local range_size=65536
+    local start
+    local count
+    while read -r start count; do
+        [[ "$start" =~ ^[0-9]+$ && "$count" =~ ^[0-9]+$ ]] || continue
+        local range_end=$((start + count - 1))
+        if ((candidate + range_size - 1 < start)); then
+            break
+        fi
+        if ((candidate <= range_end)); then
+            candidate=$((range_end + 1))
+        fi
+    done < <(awk -F: 'NF >= 3 {print $2, $3}' "$database" | sort -n -k1,1)
+    ((candidate + range_size - 1 <= 4294967294)) ||
+        fail "No subordinate ID range remains in $database"
+    printf '%s-%s\n' "$candidate" "$((candidate + range_size - 1))"
+}
+
+if ! grep -q "^${service_account}:" /etc/subuid; then
+    usermod --add-subuids "$(find_free_subid_range /etc/subuid)" "$service_account"
+fi
+if ! grep -q "^${service_account}:" /etc/subgid; then
+    usermod --add-subgids "$(find_free_subid_range /etc/subgid)" "$service_account"
+fi
+
+install -d -o "$service_account" -g "$service_group" -m 0700 "$service_home"
+install -d -o "$service_account" -g "$service_group" -m 0700 \
+    "$service_home/data" "$service_home/worktrees" "$service_home/m2" "$runtime_dir"
+install -d -o "$service_account" -g "$service_group" -m 0755 \
+    /opt/gitcode-feature-evolver
+install -d -o root -g "$service_group" -m 0750 "$config_dir"
+install -d -o "$service_account" -g "$service_group" -m 0700 \
+    /var/log/gitcode-feature-evolver
+temporary_auth="$(mktemp "$config_dir/.empty-container-auth.XXXXXX")"
+printf '{}\n' > "$temporary_auth"
+chown root:"$service_group" "$temporary_auth"
+chmod 0440 "$temporary_auth"
+mv -f "$temporary_auth" "$auth_file"
+loginctl enable-linger "$service_account"
+
+run_as_service() {
+    runuser --user "$service_account" -- env -i \
+        HOME="$service_home" USER="$service_account" LOGNAME="$service_account" \
+        XDG_RUNTIME_DIR="$runtime_dir" REGISTRY_AUTH_FILE="$auth_file" \
+        PATH=/usr/local/bin:/usr/bin:/bin GIT_TERMINAL_PROMPT=0 "$@"
+}
+
+if [[ ! -e "$repository_dir" ]]; then
+    printf 'Provisioned account %s (%s:%s).\n' \
+        "$service_account" "$service_uid" "$service_gid"
+    printf 'Deploy the repository to %s as that account, then rerun this command.\n' \
+        "$repository_dir"
+    exit 0
+fi
+[[ -d "$repository_dir" && ! -L "$repository_dir" ]] ||
+    fail "$repository_dir must be a real directory"
+[[ "$(readlink -f -- "$repository_dir")" == "$repository_dir" ]] ||
+    fail "Repository path must resolve exactly to $repository_dir"
+[[ -d "$repository_dir/.git" ]] || fail "$repository_dir must be a primary Git checkout"
+chown -R -h "$service_account:$service_group" "$repository_dir"
+
+[[ -f "$unit_target" && ! -L "$unit_target" ]] ||
+    fail "Install the root-owned service unit before delegating this helper"
+[[ "$(stat -c '%u:%g:%a' "$unit_target")" == "0:0:644" ]] ||
+    fail "$unit_target must be owned by root:root with mode 0644"
+[[ "$(sha256sum "$unit_target" | awk '{print $1}')" == "$unit_digest" ]] ||
+    fail "$unit_target does not match this provision helper"
+systemctl daemon-reload
+
+if [[ ! -f "$config_file" || -L "$config_file" ]]; then
+    printf 'Rootless account, directories, and systemd unit are provisioned.\n'
+    printf 'Install external configuration, using containerUser %s:%s, then rerun.\n' \
+        "$service_uid" "$service_gid"
+    exit 0
+fi
+
+secure_external_file() {
+    local file="$1"
+    [[ -f "$file" && ! -L "$file" ]] || fail "External file is unavailable: $file"
+    [[ "$(stat -c '%u' "$file")" == "0" ]] || fail "$file must be owned by root"
+    [[ "$(stat -c '%g' "$file")" == "$service_gid" ]] ||
+        fail "$file must be grouped to $service_group"
+    local mode
+    mode="$(stat -c '%a' "$file")"
+    [[ "$mode" == "640" || "$mode" == "440" ]] ||
+        fail "$file permissions must be 0640 or 0440"
+}
+
+secure_external_file "$config_file"
+secure_external_file "$secrets_file"
+secure_external_file "$model_file"
+
+json_string() {
+    jq -er --arg field "$1" '.[$field] | select(type == "string" and length > 0)' \
+        "$config_file"
+}
+
+[[ "$(json_string localRepository)" == "$repository_dir" ]] ||
+    fail "localRepository must be $repository_dir"
+[[ "$(json_string dataDir)" == "$service_home/data" ]] ||
+    fail "dataDir must be $service_home/data"
+[[ "$(json_string worktreeRoot)" == "$service_home/worktrees" ]] ||
+    fail "worktreeRoot must be $service_home/worktrees"
+[[ "$(json_string containerMavenCache)" == "$service_home/m2" ]] ||
+    fail "containerMavenCache must be $service_home/m2"
+[[ "$(json_string containerRuntime)" == "podman" ]] ||
+    fail "containerRuntime must be podman"
+[[ "$(json_string containerUser)" == "$service_uid:$service_gid" ]] ||
+    fail "containerUser must be $service_uid:$service_gid"
+
+container_image="$(json_string containerImage)"
+[[ "$container_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-fA-F]{64}$ ]] ||
+    fail "containerImage must contain a public image pinned by sha256 digest"
+
+rootless="$(run_as_service podman info --format '{{.Host.Security.Rootless}}')"
+[[ "$rootless" == "true" ]] || fail "Podman is not rootless for $service_account"
+run_as_service podman pull --authfile "$auth_file" "$container_image"
+run_as_service podman image exists "$container_image" ||
+    fail "Pinned image is unavailable after pull"
+
+if [[ "$activate" != true ]]; then
+    printf 'Provisioning complete. Run /usr/local/sbin/run-feature-evolver-test next.\n'
+    printf 'Service account/container UID:GID: %s:%s\n' "$service_uid" "$service_gid"
+    exit 0
+fi
+
+[[ -f "$gate_stamp" && ! -L "$gate_stamp" ]] ||
+    fail "Deployment gate is absent; run run-feature-evolver-test first"
+[[ "$(stat -c '%u:%g:%a' "$gate_stamp")" == "0:0:600" ]] ||
+    fail "Deployment gate must be owned by root:root with mode 0600"
+mapfile -t gate_values < "$gate_stamp"
+((${#gate_values[@]} == 5)) || fail "Deployment gate has an invalid format"
+current_commit="$(run_as_service git -C "$repository_dir" rev-parse HEAD)"
+repository_dirty="$(run_as_service git -C "$repository_dir" \
+    status --porcelain --untracked-files=no)"
+[[ -z "$repository_dirty" ]] ||
+    fail "Deployment repository contains tracked modifications"
+config_digest="$(sha256sum "$config_file" | awk '{print $1}')"
+secrets_digest="$(sha256sum "$secrets_file" | awk '{print $1}')"
+model_digest="$(sha256sum "$model_file" | awk '{print $1}')"
+[[ "${gate_values[0]}" == "$current_commit" ]] ||
+    fail "Deployment gate belongs to a different repository commit"
+[[ "${gate_values[1]}" == "$config_digest" ]] ||
+    fail "Deployment gate belongs to a different runtime configuration"
+[[ "${gate_values[2]}" == "$secrets_digest" ]] ||
+    fail "Deployment gate belongs to different GitCode secrets"
+[[ "${gate_values[3]}" == "$model_digest" ]] ||
+    fail "Deployment gate belongs to a different model configuration"
+[[ "${gate_values[4]}" == "$container_image" ]] ||
+    fail "Deployment gate belongs to a different container image"
+
+systemctl enable --now "$unit_name"
+systemctl is-active --quiet "$unit_name" || fail "$unit_name did not become active"
+printf '%s is active; verify /health/ready before configuring Webhook ingress.\n' \
+    "$unit_name"

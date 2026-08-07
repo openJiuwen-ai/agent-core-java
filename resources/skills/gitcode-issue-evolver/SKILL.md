@@ -1,6 +1,6 @@
 ---
 name: gitcode-issue-evolver
-description: Set up, validate, start, inspect, or stop the Windows GitCode Issue Evolver demo and its Cloudflare Quick Tunnel. Use only when the user explicitly asks an installation Agent to prepare or run examples/gitcode_issue_evolver, check its local file-based configuration, or report the temporary GitCode webhook URL. Requires readFile and executeCmd; never read secret or model configuration contents.
+description: Set up, validate, start, inspect, or stop the Windows GitCode Issue Evolver polling or webhook demo. Use only when the user explicitly asks an installation Agent to prepare or run examples/gitcode_issue_evolver, check its local file-based configuration, or report service status and any temporary GitCode webhook URL. Requires readFile and executeCmd; never read secret or model configuration contents.
 ---
 
 # GitCode Issue Evolver Setup
@@ -31,14 +31,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
    - Explain every field the user must review, in the user's language.
    - Show only the sanitized JSON skeleton from the reference; never show or infer a real value.
    - Help choose non-secret repository, branch, path, port, and Assignee values.
-   - Tell the user to enter Token, Webhook Secret, and model credentials locally. Never ask the user
-     to paste them into the conversation.
+   - Tell the user to enter the Evolver Bot Token and model credentials locally. Require a Webhook
+     Secret only for `webhook` or `both`. Never ask the user to paste credentials into the conversation.
    - Wait for the user to confirm that the local files are ready, then rerun Check. Do not bypass it.
    Before returning, treat the configuration help as incomplete unless it includes all of:
    - Meanings for `bindHost`, `port`, `dataDir`, `worktreeRoot`, `localRepository`,
      `codingStandardSkill`, `issueWorkerSkill`, `targetRepository`, `publishRepository`,
-     `baseBranch`, `assignees`, `workerConcurrency`, `gitUserName`, and `gitUserEmail`.
-   - Meanings for `gitCodeToken` and `webhookSecret`, without requesting their values.
+     `baseBranch`, `assignees`, `workerConcurrency`, `triggerMode`, `triggerLabel`,
+     `issueScanWindowHours`, `pollIntervalMinutes`, `maxIssueScanPages`, `gitUserName`, and
+     `gitUserEmail`.
+   - Meanings for `gitCodeToken` and the conditionally required `webhookSecret`, without requesting
+     their values or confusing the Bot Token with a user's personal Issue-submission PAT.
    - Both sanitized JSON skeletons from the reference.
    Do not return only the first Check error or a summary of selected fields.
 6. Before starting the service, run only the Maven `test` lifecycle phase from the repository root:
@@ -70,8 +73,9 @@ mvn.cmd -B -ntp test
    is a Maven test gate with skips, not a complete repository test-suite pass. The POM continues to
    exclude `@Tag("system-test")` by default.
 7. When the temporary Maven gate succeeds, run the same management command with `-Action Start`. The Example start script performs its own compilation with Maven tests skipped; do not treat that compilation as another test result.
-8. Report only the structured status, local and public health URLs, webhook URL, manual GitCode steps,
-   and the Maven test gate result, including every skipped file, its classification, and its reason.
+8. Report only the structured status, trigger mode, local health URL, optional public health and
+   webhook URLs, mode-specific manual GitCode steps, and the Maven test gate result, including every
+   skipped file, its classification, and its reason.
 
 ## Other actions
 
@@ -84,6 +88,7 @@ Use `-Action Status` to inspect the non-secret process state. Use `-Action Stop`
 - Never configure GitCode Webhooks, labels, branches, permissions, or repository settings.
 - Never push, create a PR, comment on an Issue, or merge while setting up the service.
 - Never grant setup Shell tools to the Issue worker Agent.
-- Treat a temporary Quick Tunnel URL as runtime output, not repository configuration.
+- Treat a temporary Quick Tunnel URL as runtime output, not repository configuration. Polling-only
+  mode has no Quick Tunnel or Webhook URL.
 
 Read `references/configuration.md` only when Check reports a missing prerequisite or invalid non-secret runtime configuration.

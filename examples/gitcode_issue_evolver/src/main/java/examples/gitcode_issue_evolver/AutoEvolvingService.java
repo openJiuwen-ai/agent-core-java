@@ -4,20 +4,25 @@
 
 package examples.gitcode_issue_evolver;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import examples.gitcode_issue_evolver.job.EvolutionJobStore;
+import examples.gitcode_issue_evolver.polling.IssuePollingCoordinator;
+import examples.gitcode_issue_evolver.polling.PollingStatusSnapshot;
 import examples.gitcode_issue_evolver.profile.RepositoryProfile;
 import examples.gitcode_issue_evolver.webhook.GitCodeWebhookHandler;
 import examples.gitcode_issue_evolver.webhook.WebhookAdmission;
 import examples.gitcode_issue_evolver.worker.AutoEvolvingWorker;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -39,13 +44,17 @@ public final class AutoEvolvingService implements AutoCloseable {
     private static final int HTTP_QUEUE_CAPACITY = 256;
     private static final Logger LOGGER = LoggerFactory.getLogger(AutoEvolvingService.class);
     private final Optional<AutoEvolvingWorker> worker;
+    private final Optional<IssuePollingCoordinator> pollingCoordinator;
     private final HttpServer server;
     private final ExecutorService httpExecutor;
     private final ScheduledExecutorService workerExecutor;
+    private final ScheduledExecutorService pollingExecutor;
     private final List<String> readinessErrors;
+    private final TriggerMode triggerMode;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Optional<ScheduledFuture<?>> workerTask = Optional.empty();
+    private volatile Optional<ScheduledFuture<?>> pollingTask = Optional.empty();
 
     /**
      * Create the HTTP service without starting any listener or worker thread.
@@ -54,18 +63,31 @@ public final class AutoEvolvingService implements AutoCloseable {
      * @param store caller-owned durable job store
      * @param profile configured target repository policy
      * @param worker worker instance, or empty while readiness is failing
+     * @param pollingCoordinator polling loop, or empty when polling is disabled
      * @throws IOException when the HTTP listener cannot be created
      */
     public AutoEvolvingService(AutoEvolvingConfig config, EvolutionJobStore store,
-                               RepositoryProfile profile, Optional<AutoEvolvingWorker> worker) throws IOException {
+                               RepositoryProfile profile, Optional<AutoEvolvingWorker> worker,
+                               Optional<IssuePollingCoordinator> pollingCoordinator) throws IOException {
         AutoEvolvingConfig requiredConfig = Objects.requireNonNull(config, "config must not be null");
         EvolutionJobStore requiredStore = Objects.requireNonNull(store, "store must not be null");
         this.worker = Objects.requireNonNull(worker, "worker must not be null");
-        this.readinessErrors = requiredConfig.readinessErrors();
+        this.pollingCoordinator = Objects.requireNonNull(
+                pollingCoordinator, "pollingCoordinator must not be null");
+        this.triggerMode = requiredConfig.getTriggerMode();
+        this.readinessErrors = serviceReadinessErrors(requiredConfig, this.pollingCoordinator);
         boolean automationReady = readinessErrors.isEmpty() && this.worker.isPresent();
         this.server = HttpServer.create(
                 new InetSocketAddress(requiredConfig.getBindHost(), requiredConfig.getPort()), 0);
-        this.httpExecutor = new ThreadPoolExecutor(
+        this.httpExecutor = newHttpExecutor();
+        this.workerExecutor = newScheduledExecutor("auto-evolving-worker");
+        this.pollingExecutor = newScheduledExecutor("auto-evolving-polling");
+        configureContexts(requiredConfig, requiredStore,
+                Objects.requireNonNull(profile, "profile must not be null"), automationReady);
+    }
+
+    private ExecutorService newHttpExecutor() {
+        ExecutorService executor = new ThreadPoolExecutor(
                 HTTP_WORKER_COUNT,
                 HTTP_WORKER_COUNT,
                 0L,
@@ -73,21 +95,32 @@ public final class AutoEvolvingService implements AutoCloseable {
                 new ArrayBlockingQueue<>(HTTP_QUEUE_CAPACITY),
                 new AutoEvolvingThreadFactory("auto-evolving-http"),
                 new ThreadPoolExecutor.CallerRunsPolicy());
+        server.setExecutor(executor);
+        return executor;
+    }
+
+    private static ScheduledExecutorService newScheduledExecutor(String threadName) {
         ScheduledThreadPoolExecutor scheduledExecutor = new ScheduledThreadPoolExecutor(
                 1,
-                new AutoEvolvingThreadFactory("auto-evolving-worker"),
+                new AutoEvolvingThreadFactory(threadName),
                 new ThreadPoolExecutor.AbortPolicy());
         scheduledExecutor.setRemoveOnCancelPolicy(true);
-        this.workerExecutor = scheduledExecutor;
-        server.setExecutor(httpExecutor);
-        server.createContext("/webhooks/gitcode",
-                new GitCodeWebhookHandler(requiredConfig.getWebhookSecret(), requiredStore,
-                        Objects.requireNonNull(profile, "profile must not be null"),
-                        new WebhookAdmission(automationReady, List.of(profile.repository()))));
+        return scheduledExecutor;
+    }
+
+    private void configureContexts(AutoEvolvingConfig config, EvolutionJobStore store,
+                                   RepositoryProfile profile, boolean automationReady) {
+        if (triggerMode.usesWebhook()) {
+            server.createContext("/webhooks/gitcode",
+                    new GitCodeWebhookHandler(config.getWebhookSecret(), store,
+                            profile, new WebhookAdmission(automationReady,
+                            List.of(profile.repository()), config.getTriggerLabel())));
+        }
         server.createContext("/health/live", exchange -> health(exchange, 200, "UP"));
         server.createContext("/health/ready", exchange -> {
-            boolean ready = readinessErrors.isEmpty() && worker.isPresent();
-            health(exchange, ready ? 200 : 503, ready ? "READY" : String.join("; ", readinessErrors));
+            boolean isReady = readinessErrors.isEmpty() && worker.isPresent();
+            readiness(exchange, isReady ? 200 : 503,
+                    isReady ? "READY" : String.join("; ", readinessErrors));
         });
     }
 
@@ -105,17 +138,10 @@ public final class AutoEvolvingService implements AutoCloseable {
         }
         server.start();
         if (readinessErrors.isEmpty() && worker.isPresent()) {
-            AutoEvolvingWorker activeWorker = worker.orElseThrow();
-            ScheduledFuture<?> scheduledTask = workerExecutor.scheduleWithFixedDelay(() -> {
-                try {
-                    if (activeWorker.runOnce()) {
-                        LOGGER.debug("Auto-evolving worker processed a leased job");
-                    }
-                } catch (IllegalStateException ex) {
-                    LOGGER.error("Auto-evolving worker iteration failed", ex);
-                }
-            }, 0, 1, TimeUnit.SECONDS);
-            workerTask = Optional.of(scheduledTask);
+            scheduleWorker(worker.orElseThrow());
+            if (triggerMode.usesPolling()) {
+                schedulePolling(pollingCoordinator.orElseThrow());
+            }
         }
     }
 
@@ -134,7 +160,9 @@ public final class AutoEvolvingService implements AutoCloseable {
             return;
         }
         workerTask.ifPresent(AutoEvolvingService::cancel);
+        pollingTask.ifPresent(AutoEvolvingService::cancel);
         server.stop(1);
+        shutdown(pollingExecutor);
         shutdown(workerExecutor);
         shutdown(httpExecutor);
     }
@@ -143,6 +171,31 @@ public final class AutoEvolvingService implements AutoCloseable {
         if (!task.cancel(false) && !task.isDone()) {
             LOGGER.warn("Unable to cancel auto-evolving worker task cleanly");
         }
+    }
+
+    private void scheduleWorker(AutoEvolvingWorker activeWorker) {
+        ScheduledFuture<?> scheduledTask = workerExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                if (activeWorker.runOnce()) {
+                    LOGGER.debug("Auto-evolving worker processed a leased job");
+                }
+            } catch (IllegalStateException ex) {
+                LOGGER.error("Auto-evolving worker iteration failed", ex);
+            }
+        }, 0, 1, TimeUnit.SECONDS);
+        workerTask = Optional.of(scheduledTask);
+    }
+
+    private void schedulePolling(IssuePollingCoordinator coordinator) {
+        long delayMinutes = coordinator.pollIntervalMinutes();
+        ScheduledFuture<?> scheduledTask = pollingExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                coordinator.runOnce();
+            } catch (RuntimeException ex) {
+                LOGGER.error("GitCode polling iteration failed", ex);
+            }
+        }, 0L, delayMinutes, TimeUnit.MINUTES);
+        pollingTask = Optional.of(scheduledTask);
     }
 
     private static void shutdown(ExecutorService executor) {
@@ -164,12 +217,42 @@ public final class AutoEvolvingService implements AutoCloseable {
     }
 
     private static void health(HttpExchange exchange, int status, String text) throws IOException {
-        byte[] body = ("{\"status\":\"" + escape(text) + "\"}").getBytes(StandardCharsets.UTF_8);
+        writeJson(exchange, status, "{\"status\":\"" + escape(text) + "\"}");
+    }
+
+    private void readiness(HttpExchange exchange, int status, String text) throws IOException {
+        String mode = triggerMode.name().toLowerCase(Locale.ROOT);
+        String polling = pollingJson();
+        String bodyText = "{\"status\":\"" + escape(text) + "\",\"triggerMode\":\""
+                + mode + "\",\"polling\":" + polling + "}";
+        writeJson(exchange, status, bodyText);
+    }
+
+    private String pollingJson() {
+        if (!triggerMode.usesPolling() || pollingCoordinator.isEmpty()) {
+            return "null";
+        }
+        PollingStatusSnapshot snapshot = pollingCoordinator.orElseThrow().status();
+        return "{\"result\":\"" + snapshot.result().name() + "\",\"lastAttemptAt\":"
+                + snapshot.lastAttemptAt() + ",\"lastSuccessAt\":" + snapshot.lastSuccessAt() + "}";
+    }
+
+    private static void writeJson(HttpExchange exchange, int status, String bodyText) throws IOException {
+        byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, body.length);
-        try (java.io.OutputStream output = exchange.getResponseBody()) {
+        try (OutputStream output = exchange.getResponseBody()) {
             output.write(body);
         }
+    }
+
+    private static List<String> serviceReadinessErrors(
+            AutoEvolvingConfig config, Optional<IssuePollingCoordinator> pollingCoordinator) {
+        List<String> errors = new ArrayList<>(config.readinessErrors());
+        if (config.getTriggerMode().usesPolling() && pollingCoordinator.isEmpty()) {
+            errors.add("polling coordinator is required when triggerMode enables polling");
+        }
+        return List.copyOf(errors);
     }
 
     private static String escape(String value) {

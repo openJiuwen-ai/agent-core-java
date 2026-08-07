@@ -28,6 +28,14 @@ function Quote-ProcessArgument {
 $configPath = Resolve-RequiredFile $ConfigFile "Runtime configuration"
 $secretsPath = Resolve-RequiredFile $SecretsFile "Local secrets"
 $modelPath = Resolve-RequiredFile $ModelConfig "Model configuration"
+$runtimeConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$triggerModeProperty = $runtimeConfig.PSObject.Properties["triggerMode"]
+$triggerLabelProperty = $runtimeConfig.PSObject.Properties["triggerLabel"]
+$triggerMode = if ($null -ne $triggerModeProperty) { [string]$triggerModeProperty.Value } else { "webhook" }
+$triggerLabel = if ($null -ne $triggerLabelProperty) { [string]$triggerLabelProperty.Value } else { "bug" }
+if ($triggerMode -notin @("polling", "webhook", "both")) {
+    throw "triggerMode must be webhook, polling, or both"
+}
 $runtimeDir = Join-Path $repositoryRoot "examples/gitcode_issue_evolver/.runtime"
 $runtimeDir = [IO.Path]::GetFullPath($runtimeDir)
 $exampleRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot "examples/gitcode_issue_evolver"))
@@ -96,7 +104,6 @@ $javaArguments = @(
 $service = Start-Process -FilePath "java" -ArgumentList $javaArguments -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $serviceOut -RedirectStandardError $serviceErr
 
-$runtimeConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 $port = if ($runtimeConfig.port) { [int]$runtimeConfig.port } else { 8081 }
 $healthUrl = "http://127.0.0.1:$port/health/ready"
 $ready = $false
@@ -119,45 +126,53 @@ if (-not $ready) {
     throw "The Java service did not become ready; inspect $serviceErr"
 }
 
-$tunnelOut = Join-Path $runtimeDir "cloudflared.out.log"
-$tunnelErr = Join-Path $runtimeDir "cloudflared.err.log"
-$tunnel = Start-Process -FilePath $Cloudflared -ArgumentList @(
-    "tunnel", "--url", "http://127.0.0.1:$port", "--protocol", "http2", "--no-autoupdate"
-) -PassThru -WindowStyle Hidden -RedirectStandardOutput $tunnelOut -RedirectStandardError $tunnelErr
-
+$tunnel = $null
 $publicUrl = $null
-for ($attempt = 0; $attempt -lt 60; $attempt++) {
-    if ($tunnel.HasExited) {
+if ($triggerMode -ne "polling") {
+    $tunnelOut = Join-Path $runtimeDir "cloudflared.out.log"
+    $tunnelErr = Join-Path $runtimeDir "cloudflared.err.log"
+    $tunnel = Start-Process -FilePath $Cloudflared -ArgumentList @(
+        "tunnel", "--url", "http://127.0.0.1:$port", "--protocol", "http2", "--no-autoupdate"
+    ) -PassThru -WindowStyle Hidden -RedirectStandardOutput $tunnelOut -RedirectStandardError $tunnelErr
+    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        if ($tunnel.HasExited) {
+            Stop-Process -Id $service.Id -Force -ErrorAction SilentlyContinue
+            throw "Cloudflared stopped before creating a Quick Tunnel; inspect $tunnelErr"
+        }
+        $logs = ""
+        if (Test-Path -LiteralPath $tunnelOut) {
+            $logs += Get-Content -LiteralPath $tunnelOut -Raw
+        }
+        if (Test-Path -LiteralPath $tunnelErr) {
+            $logs += Get-Content -LiteralPath $tunnelErr -Raw
+        }
+        $match = [regex]::Match($logs, "https://[a-z0-9-]+\.trycloudflare\.com")
+        if ($match.Success) {
+            $publicUrl = $match.Value
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $publicUrl) {
+        Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue
         Stop-Process -Id $service.Id -Force -ErrorAction SilentlyContinue
-        throw "Cloudflared stopped before creating a Quick Tunnel; inspect $tunnelErr"
+        throw "Cloudflared did not publish a Quick Tunnel URL; inspect $tunnelErr"
     }
-    $logs = ""
-    if (Test-Path -LiteralPath $tunnelOut) {
-        $logs += Get-Content -LiteralPath $tunnelOut -Raw
-    }
-    if (Test-Path -LiteralPath $tunnelErr) {
-        $logs += Get-Content -LiteralPath $tunnelErr -Raw
-    }
-    $match = [regex]::Match($logs, "https://[a-z0-9-]+\.trycloudflare\.com")
-    if ($match.Success) {
-        $publicUrl = $match.Value
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (-not $publicUrl) {
-    Stop-Process -Id $tunnel.Id -Force -ErrorAction SilentlyContinue
-    Stop-Process -Id $service.Id -Force -ErrorAction SilentlyContinue
-    throw "Cloudflared did not publish a Quick Tunnel URL; inspect $tunnelErr"
 }
 
 @{
     servicePid = $service.Id
-    tunnelPid = $tunnel.Id
+    tunnelPid = if ($null -eq $tunnel) { $null } else { $tunnel.Id }
     localHealthUrl = $healthUrl
     publicUrl = $publicUrl
+    triggerMode = $triggerMode
+    triggerLabel = $triggerLabel
 } | ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding UTF8
 
 Write-Host "Service ready: $healthUrl"
-Write-Host "Webhook URL: $publicUrl/webhooks/gitcode"
-Write-Host "Update the GitCode Issue and Pull Request webhook manually."
+if ($triggerMode -eq "polling") {
+    Write-Host "Polling mode is active; no public webhook tunnel was started."
+} else {
+    Write-Host "Webhook URL: $publicUrl/webhooks/gitcode"
+    Write-Host "Update the GitCode Issue and Pull Request webhook manually."
+}

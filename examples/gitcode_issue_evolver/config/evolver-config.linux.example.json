@@ -11,6 +11,11 @@
   "baseBranch": "730",
   "assignees": ["<gitcode-admin>"],
   "workerConcurrency": 1,
+  "triggerMode": "polling",
+  "triggerLabel": "bug",
+  "issueScanWindowHours": 24,
+  "pollIntervalMinutes": 15,
+  "maxIssueScanPages": 10,
   "gitUserName": "gitcode-issue-evolver",
   "gitUserEmail": "gitcode-issue-evolver@localhost"
 }

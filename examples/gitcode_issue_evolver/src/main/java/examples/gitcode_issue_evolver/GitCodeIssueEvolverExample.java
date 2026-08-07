@@ -6,6 +6,7 @@ package examples.gitcode_issue_evolver;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Starts the file-configured GitCode Issue Evolver ReAct Agent demo.
@@ -23,7 +24,7 @@ public final class GitCodeIssueEvolverExample {
     }
 
     /**
-     * Load local files and start the webhook service.
+     * Load local files and start the configured polling or webhook service.
      *
      * @param args optional --config, --secrets, --llm-config, --check, or --help arguments
      * @throws Exception when configuration or service startup fails
@@ -52,7 +53,13 @@ public final class GitCodeIssueEvolverExample {
             System.out.println("Target repository: " + coordinates.targetRepository());
             System.out.println("Publish repository: " + coordinates.publishRepository());
             System.out.println("Base branch: " + coordinates.baseBranch());
-            System.out.println("Trigger: Issue update adding label " + AutoEvolvingConfig.TRIGGER_LABEL);
+            String triggerMode = config.getTriggerMode().name().toLowerCase(Locale.ROOT);
+            System.out.println("Trigger mode: " + triggerMode);
+            System.out.println("Trigger label: " + config.getTriggerLabel());
+            if (config.getTriggerMode().usesPolling()) {
+                System.out.println("Issue scan window: " + config.getIssueScanWindowHours() + " hours");
+                System.out.println("Poll interval: " + config.getPollIntervalMinutes() + " minutes");
+            }
             return;
         }
         System.out.println("Configuration: NOT READY");
@@ -63,7 +70,7 @@ public final class GitCodeIssueEvolverExample {
     private static void printUsage() {
         System.out.println("GitCodeIssueEvolverExample options:");
         System.out.println("  --config <path>      Non-secret runtime JSON");
-        System.out.println("  --secrets <path>     Local GitCode and webhook secrets JSON");
+        System.out.println("  --secrets <path>     Local GitCode Bot and optional webhook secrets JSON");
         System.out.println("  --llm-config <path>  Shared examples/apiconfig.json");
         System.out.println("  --check              Validate configuration without starting the service");
         System.out.println("  --help               Show this help");

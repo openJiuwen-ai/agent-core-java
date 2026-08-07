@@ -4,6 +4,9 @@
 
 package examples.gitcode_issue_evolver.webhook;
 
+import java.util.Objects;
+import java.util.Set;
+
 /**
  * Normalized subset of a GitCode Issue webhook.
  *
@@ -17,14 +20,21 @@ public record GitCodeIssueEvent(
         String state,
         String action,
         String url,
-        boolean bugLabelAdded) {
+        Set<String> addedLabels) {
+
+    /** Copy untrusted collection data received from the remote payload. */
+    public GitCodeIssueEvent {
+        addedLabels = addedLabels == null ? Set.of() : Set.copyOf(addedLabels);
+    }
 
     /**
-     * Return whether this demo event explicitly added the {@code bug} label.
+     * Return whether this update explicitly added the configured label.
      *
-     * @return {@code true} only for an update that newly adds {@code bug}
+     * @param triggerLabel exact configured trigger label
+     * @return {@code true} only for an update that newly adds the label
      */
-    public boolean eligible() {
-        return "update".equalsIgnoreCase(action) && bugLabelAdded;
+    public boolean eligible(String triggerLabel) {
+        return "update".equalsIgnoreCase(action)
+                && addedLabels.contains(Objects.requireNonNull(triggerLabel, "triggerLabel must not be null"));
     }
 }

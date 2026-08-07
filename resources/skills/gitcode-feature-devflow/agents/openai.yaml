@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitCode Feature DevFlow"
+  short_description: "Drive feature work through gated DevFlow stages"
+  default_prompt: "Use $gitcode-feature-devflow to execute this GitCode feature through specification, design, TDD, reviews, and PR readiness."

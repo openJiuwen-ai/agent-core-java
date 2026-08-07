@@ -1,0 +1,142 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.gitcode_feature_evolver.publish;
+
+import examples.gitcode_feature_evolver.FeatureEvolvingConfig;
+import examples.gitcode_feature_evolver.FeatureWorkflowMode;
+import examples.gitcode_feature_evolver.gitcode.CreateFeaturePullRequest;
+import examples.gitcode_feature_evolver.gitcode.FeatureComment;
+import examples.gitcode_feature_evolver.gitcode.FeatureGitCodeClient;
+import examples.gitcode_feature_evolver.gitcode.FeatureIssue;
+import examples.gitcode_feature_evolver.gitcode.FeatureIssuePage;
+import examples.gitcode_feature_evolver.gitcode.FeatureIssueScanRequest;
+import examples.gitcode_feature_evolver.gitcode.FeaturePullRequest;
+import examples.gitcode_feature_evolver.gitcode.UpdateFeaturePullRequest;
+import examples.gitcode_feature_evolver.job.FeatureJob;
+import examples.gitcode_feature_evolver.job.FeatureStage;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/** Deterministic standardized Draft-to-ready PR lifecycle checks. */
+public final class FeaturePullRequestPublisherDeterministicTest {
+    private static final String SHA = "a".repeat(40);
+
+    private FeaturePullRequestPublisherDeterministicTest() {
+    }
+
+    /** Run canonical PR creation, update, and Issue-comment checks. */
+    public static void main(String[] args) {
+        FeatureEvolvingConfig config = FeatureEvolvingConfig.builder()
+                .targetRepository("openJiuwen/agent-core-java")
+                .publishRepository("tester/agent-core-java")
+                .baseBranch("730")
+                .assignees(List.of("reviewer"))
+                .build();
+        FakeGitCodeClient gitCode = new FakeGitCodeClient();
+        FeaturePullRequestPublisher publisher = new FeaturePullRequestPublisher(config, gitCode);
+
+        FeaturePullRequestPublisher.Result created = publisher.publish(
+                job(FeatureStage.CREATE_DRAFT_PR, FeatureJob.PullRequest.empty()),
+                SHA, FeatureStage.WAIT_R1_APPROVAL, false);
+        require(created.success() && created.created() && created.pullRequest().draft(),
+                "long-lived Draft PR was not created");
+        require(gitCode.created.content().body().contains("## Mandatory gates")
+                        && gitCode.created.content().body().contains("## Human boundary"),
+                "PR creation did not use the standardized body");
+
+        FeatureJob.PullRequest binding = new FeatureJob.PullRequest(
+                91L, "https://gitcode/pr/91", SHA, true, 0L);
+        FeaturePullRequestPublisher.Result ready = publisher.publish(
+                job(FeatureStage.SHIP, binding), SHA, FeatureStage.READY_FOR_REVIEW, true);
+        require(ready.success() && !ready.pullRequest().draft(),
+                "SHIP did not update the same PR to ready state");
+        require(gitCode.updated.number() == 91 && !gitCode.updated.draft(),
+                "canonical PR update created a replacement or remained Draft");
+        require(gitCode.updated.content().body().contains("| R3 tests/code | passed |"),
+                "ready PR body did not report the passed R3 gate");
+        require(gitCode.issueComments.size() == 2,
+                "Draft creation and ready transition were not reported to the Issue");
+        System.out.println("FeaturePullRequestPublisherDeterministicTest: PASS");
+    }
+
+    private static FeatureJob job(FeatureStage stage, FeatureJob.PullRequest pullRequest) {
+        FeatureJob.IssueReference issue = new FeatureJob.IssueReference(
+                77L, "Add deterministic feature", "https://gitcode/issues/77");
+        FeatureJob.Identity identity = new FeatureJob.Identity(
+                "12345678-1234-1234-1234-123456789012", "openJiuwen/agent-core-java",
+                issue, "feature-evolving/issue-77-add-deterministic-feature",
+                "features/77-add-deterministic-feature");
+        FeatureJob.Progress progress = new FeatureJob.Progress(
+                stage, null, FeatureWorkflowMode.ATTENDED, 1, 0);
+        FeatureJob.RecordMetadata metadata = new FeatureJob.RecordMetadata(
+                1L, "", Instant.now().toEpochMilli(), Instant.now().toEpochMilli());
+        return new FeatureJob(identity, progress, pullRequest,
+                new FeatureJob.Lease("worker", Long.MAX_VALUE), metadata);
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private static final class FakeGitCodeClient implements FeatureGitCodeClient {
+        private final List<String> issueComments = new ArrayList<>();
+        private CreateFeaturePullRequest created;
+        private UpdateFeaturePullRequest updated;
+
+        @Override
+        public FeatureIssuePage listIssues(FeatureIssueScanRequest request) {
+            return new FeatureIssuePage(List.of(), 0);
+        }
+
+        @Override
+        public FeatureIssue getIssue(long issueIid) {
+            return new FeatureIssue(issueIid, "Feature", "", "open",
+                    "https://gitcode/issues/" + issueIid);
+        }
+
+        @Override
+        public List<FeatureComment> listIssueComments(long issueIid) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<FeaturePullRequest> findOpenPullRequest(long issueIid, String headBranch) {
+            return Optional.empty();
+        }
+
+        @Override
+        public FeaturePullRequest createPullRequest(CreateFeaturePullRequest request) {
+            created = request;
+            return pullRequest(true);
+        }
+
+        @Override
+        public FeaturePullRequest updatePullRequest(UpdateFeaturePullRequest request) {
+            updated = request;
+            return pullRequest(request.draft());
+        }
+
+        @Override
+        public FeaturePullRequest getPullRequest(long number) {
+            return pullRequest(true);
+        }
+
+        @Override
+        public void commentIssue(long issueIid, String body) {
+            issueComments.add(issueIid + ":" + body);
+        }
+
+        private FeaturePullRequest pullRequest(boolean draft) {
+            return new FeaturePullRequest(91L, "https://gitcode/pr/91", "open", draft,
+                    new FeaturePullRequest.Head(
+                            "feature-evolving/issue-77-add-deterministic-feature", SHA));
+        }
+    }
+}

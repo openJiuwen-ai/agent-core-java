@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
 @Builder(toBuilder = true)
 @ToString(exclude = {"webhookSecret", "gitCodeToken", "modelApiKey"})
 public final class AutoEvolvingConfig {
-    /** Label that explicitly admits one Issue update into the demo. */
-    public static final String TRIGGER_LABEL = "bug";
+    /** Default label that explicitly admits one Issue into the demo. */
+    public static final String DEFAULT_TRIGGER_LABEL = "bug";
 
     private static final URI GITCODE_API_BASE = URI.create("https://api.gitcode.com/api/v5/");
     private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_.-]+");
@@ -54,6 +54,16 @@ public final class AutoEvolvingConfig {
     private final List<String> assignees = List.of();
     @Builder.Default
     private final int workerConcurrency = 1;
+    @Builder.Default
+    private final TriggerMode triggerMode = TriggerMode.WEBHOOK;
+    @Builder.Default
+    private final String triggerLabel = DEFAULT_TRIGGER_LABEL;
+    @Builder.Default
+    private final int issueScanWindowHours = 24;
+    @Builder.Default
+    private final int pollIntervalMinutes = 15;
+    @Builder.Default
+    private final int maxIssueScanPages = 10;
     @Builder.Default
     private final String gitUserName = "gitcode-issue-evolver";
     @Builder.Default
@@ -134,13 +144,30 @@ public final class AutoEvolvingConfig {
         if (workerConcurrency != 1) {
             errors.add("workerConcurrency must be 1 for the SQLite demo");
         }
+        if (triggerMode == null) {
+            errors.add("triggerMode is required");
+        }
+        if (triggerLabel == null || triggerLabel.isBlank() || triggerLabel.length() > 64) {
+            errors.add("triggerLabel must contain between 1 and 64 characters");
+        }
+        if (issueScanWindowHours < 1 || issueScanWindowHours > 168) {
+            errors.add("issueScanWindowHours must be between 1 and 168");
+        }
+        if (pollIntervalMinutes < 1 || pollIntervalMinutes > 1440) {
+            errors.add("pollIntervalMinutes must be between 1 and 1440");
+        }
+        if (maxIssueScanPages < 1 || maxIssueScanPages > 100) {
+            errors.add("maxIssueScanPages must be between 1 and 100");
+        }
     }
 
     private void validateCredentials(List<String> errors) {
-        if (isUnsetValue(webhookSecret)) {
-            errors.add("webhookSecret is required in the local secrets file");
-        } else if (webhookSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            errors.add("webhookSecret must contain at least 32 UTF-8 bytes");
+        if (triggerMode != null && triggerMode.usesWebhook()) {
+            if (isUnsetValue(webhookSecret)) {
+                errors.add("webhookSecret is required when triggerMode enables webhook");
+            } else if (webhookSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+                errors.add("webhookSecret must contain at least 32 UTF-8 bytes");
+            }
         }
         if (isUnsetValue(gitCodeToken)) {
             errors.add("gitCodeToken is required in the local secrets file");

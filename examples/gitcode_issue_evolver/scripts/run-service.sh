@@ -15,7 +15,7 @@ Run the GitCode Issue Evolver Java process in the foreground.
 
 Options:
   --config <path>      Non-secret runtime JSON
-  --secrets <path>     Local GitCode and webhook secrets JSON
+  --secrets <path>     Local GitCode Bot and optional webhook secrets JSON
   --llm-config <path>  Model configuration JSON
   --check              Validate configuration, then exit
   -h, --help           Show this help
