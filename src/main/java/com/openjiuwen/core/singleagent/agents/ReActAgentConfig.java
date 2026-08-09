@@ -62,6 +62,14 @@ public class ReActAgentConfig {
     @Builder.Default
     private int maxIterations = 5;
 
+    // 流式失败重试次数（不含首次调用）
+    @Builder.Default
+    private int streamMaxRetries = 2;
+
+    // 流式重试间隔（毫秒）
+    @Builder.Default
+    private long streamRetryDelayMs = 1000;
+
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfigObj;
     private String sysOperationId;
@@ -170,6 +178,20 @@ public class ReActAgentConfig {
      */
     public ReActAgentConfig configureMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
+        return this;
+    }
+
+    /**
+     * Set the stream retry parameters for streaming model calls.
+     * 
+     * @param maxRetries max retry count (excluding the first attempt)
+     * @param retryDelayMs delay between retries in milliseconds
+     * @return this config
+     * @since 0.1.7
+     */
+    public ReActAgentConfig configureStreamRetry(int maxRetries, long retryDelayMs) {
+        this.streamMaxRetries = maxRetries;
+        this.streamRetryDelayMs = retryDelayMs;
         return this;
     }
 
