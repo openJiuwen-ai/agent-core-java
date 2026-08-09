@@ -68,7 +68,7 @@ public class ReActAgentConfig {
 
     // 流式重试间隔（毫秒）
     @Builder.Default
-    private long streamRetryDelayMs = 1000;
+    private long streamRetryDelayMs = 1000L;
 
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfigObj;

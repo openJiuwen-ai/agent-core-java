@@ -339,6 +339,160 @@ class ReActAgentStreamDegradationTest {
                 .invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
+    /**
+     * 模拟长耗时（100秒）非流式回退场景，验证心跳机制是否在回退期间发送 progress 事件，
+     * 防止客户端因长时间无响应而超时断开。
+     *
+     * 场景：流式返回空 → 回退非流式 → callModel 阻塞 100 秒 → 响应到达 → 包装为流式发送
+     * 验证：在 callModel 前收到了 progress 类型的 SSE 心跳事件
+     */
+    @Test
+    void heartbeatSentBeforeLongRunningNonStreamFallback() throws Exception {
+        ReActAgent agent = newAgent("long-fallback");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(0)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyIterator());
+
+        // 模拟 callModel 长耗时：用 latch 阻塞 invoke，直到测试释放
+        java.util.concurrent.CountDownLatch invokeStarted = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch invokeProceed = new java.util.concurrent.CountDownLatch(1);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    invokeStarted.countDown();
+                    // 阻塞等待测试放行，模拟长耗时
+                    invokeProceed.await();
+                    return AssistantMessage.builder().content("delayed content").build();
+                });
+        agent.setLlm(model);
+
+        AgentSessionApi session =
+            new AgentSessionApi("long-fallback-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
+
+        // 使用线程安全集合收集结果
+        java.util.List<Object> collected = java.util.Collections.synchronizedList(new ArrayList<>());
+
+        // 后台线程消费流输出（streamOutput 会阻塞直到流结束）
+        java.util.concurrent.CountDownLatch consumerReady = new java.util.concurrent.CountDownLatch(1);
+        Thread consumerThread = new Thread(() -> {
+            consumerReady.countDown();
+            session.streamOutput(collected::add);
+        }, "test-consumer");
+        consumerThread.setDaemon(true);
+        consumerThread.start();
+        // 确保 consumer 已开始等待
+        consumerReady.await();
+
+        // 触发流式执行（stream 方法会启动后台线程，并返回迭代器——但我们不消费它）
+        agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+
+        // 等待 callModel 被调用（说明心跳已经发送完毕）
+        assertThat(invokeStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                .as("callModel should be invoked within 10s").isTrue();
+
+        // 给消费回调一点时间处理已入队的心跳事件
+        Thread.sleep(500);
+
+        // 在 callModel 阻塞期间，验证已收到 progress 心跳事件
+        long heartbeatCount = collected.stream()
+                .filter(item -> item instanceof OutputSchema)
+                .map(item -> (OutputSchema) item)
+                .filter(output -> "progress".equals(output.getType()))
+                .count();
+        assertThat(heartbeatCount).as("应在 callModel 前发送至少一个 progress 心跳").isGreaterThanOrEqualTo(1);
+
+        // 验证心跳内容包含非流式切换提示
+        boolean hasFallbackMessage = collected.stream()
+                .filter(item -> item instanceof OutputSchema)
+                .map(item -> (OutputSchema) item)
+                .filter(output -> "progress".equals(output.getType()))
+                .anyMatch(output -> String.valueOf(output.getPayload()).contains("非流式"));
+        assertThat(hasFallbackMessage).as("心跳应包含非流式切换提示").isTrue();
+
+        // 释放 callModel 阻塞，让流完成
+        invokeProceed.countDown();
+
+        // 等待流完成（轮询检查 answer 事件是否到达）
+        long deadline = System.currentTimeMillis() + 10000;
+        boolean found = false;
+        while (System.currentTimeMillis() < deadline) {
+            found = collected.stream()
+                    .filter(item -> item instanceof OutputSchema)
+                    .map(item -> (OutputSchema) item)
+                    .filter(output -> "answer".equals(output.getType()))
+                    .anyMatch(output -> String.valueOf(output.getPayload()).contains("delayed content"));
+            if (found) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertThat(found).as("应在 10s 内收到最终 content").isTrue();
+
+        // 验证最终 content 也被正确发送
+        long answerCount = collected.stream()
+                .filter(item -> item instanceof OutputSchema)
+                .map(item -> (OutputSchema) item)
+                .filter(output -> "answer".equals(output.getType()))
+                .filter(output -> String.valueOf(output.getPayload()).contains("delayed content"))
+                .count();
+        assertThat(answerCount).as("最终 content 应通过 answer 发送").isEqualTo(1);
+    }
+
+    /**
+     * 模拟重试期间的心跳验证：流式返回空 → 心跳 → 重试 → 心跳 → 回退非流式 → 心跳。
+     * 验证每次重试等待前和回退前都发送了 progress 心跳。
+     */
+    @Test
+    void heartbeatSentDuringRetriesAndFallback() throws Exception {
+        ReActAgent agent = newAgent("retry-heartbeat");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(2)
+                .streamRetryDelayMs(50)  // 短延迟，测试快速完成
+                .build());
+        Model model = mock(Model.class);
+        // stream 始终返回空（触发重试 + 回退）
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyIterator());
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(AssistantMessage.builder().content("final content").build());
+        agent.setLlm(model);
+
+        AgentSessionApi session =
+            new AgentSessionApi("retry-heartbeat-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
+
+        List<Object> collected = new ArrayList<>();
+        StepVerifier.create(agent.streamAsync(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT)))
+                .thenConsumeWhile(item -> {
+                    collected.add(item);
+                    return true;
+                })
+                .verifyComplete();
+
+        // 提取所有 progress 心跳事件
+        List<OutputSchema> heartbeats = collected.stream()
+                .filter(item -> item instanceof OutputSchema)
+                .map(item -> (OutputSchema) item)
+                .filter(output -> "progress".equals(output.getType()))
+                .toList();
+
+        // streamMaxRetries=2，所以首次 + 2 次重试 = 3 次 stream 调用
+        // 重试前心跳：attempt 0→1, attempt 1→2，共 2 次重试心跳
+        // 回退前心跳：1 次
+        // 总计：3 次 progress 事件
+        assertThat(heartbeats).as("应有 3 个心跳（2 次重试 + 1 次回退）").hasSize(3);
+
+        // 验证心跳内容
+        String firstMsg = String.valueOf(heartbeats.get(0).getPayload());
+        assertThat(firstMsg).contains("重试");
+        String lastMsg = String.valueOf(heartbeats.get(2).getPayload());
+        assertThat(lastMsg).contains("非流式");
+    }
+
     private static ReActAgent newAgent(String id) {
         ReActAgent agent = new ReActAgent(AgentCard.builder().id(id).name(id).description(id).build());
         agent.configure(ReActAgentConfig.builder()
