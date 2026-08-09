@@ -6,20 +6,15 @@ package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 /**
- * Base session abstraction shared by workflow, agent, and graph runtime sessions.
+ * BaseSession
  *
- * <p>Mirrors Python's {@code BaseSession} in
- * {@code openjiuwen/core/session/session.py}.</p>
  */
 public abstract class BaseSession {
-
-    private String currentOperatorId;
 
     @SuppressWarnings("unchecked")
     public <T extends SessionConfigAccess> T config() {
@@ -34,52 +29,12 @@ public abstract class BaseSession {
         return null;
     }
 
-    public <T> T streamWriterManager() {
+    public StreamWriterManager streamWriterManager() {
         return null;
-    }
-
-    /**
-     * Get the raw {@link StreamWriterManager} instance, bypassing any adapter layer.
-     *
-     * <p>Subclasses that wrap or adapt the stream writer manager (e.g., returning a
-     * {@code Vertex.VertexStreamWriterManager} adapter from {@link #streamWriterManager()})
-     * should override this method to return the underlying {@code StreamWriterManager}
-     * directly. This allows downstream code that requires the concrete
-     * {@code StreamWriterManager} type to access it without reflection.</p>
-     *
-     * @return the raw StreamWriterManager, or null if not available
-     */
-    public StreamWriterManager rawStreamWriterManager() {
-        Object manager = streamWriterManager();
-        return manager instanceof StreamWriterManager typed ? typed : null;
     }
 
     public String sessionId() {
         return "";
-    }
-
-    public String workflowId() {
-        return sessionId();
-    }
-
-    public String mainWorkflowId() {
-        return workflowId();
-    }
-
-    public int workflowNestingDepth() {
-        return 0;
-    }
-
-    public String agentId() {
-        return sessionId();
-    }
-
-    public String teamId() {
-        return sessionId();
-    }
-
-    public BaseSession parent() {
-        return null;
     }
 
     public Object checkpointer() {
@@ -108,14 +63,6 @@ public abstract class BaseSession {
         if (currentState != null && data != null) {
             currentState.update(data);
         }
-    }
-
-    public void setCurrentOperatorId(String operatorId) {
-        this.currentOperatorId = operatorId;
-    }
-
-    public String getCurrentOperatorId() {
-        return currentOperatorId;
     }
 
     public void close() {

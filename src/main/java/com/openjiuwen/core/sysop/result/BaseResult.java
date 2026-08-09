@@ -4,30 +4,31 @@
 
 package com.openjiuwen.core.sysop.result;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Backward-compatible result envelope for moved sys-operation results.
- *
- * <p>Mirrors Python's {@code BaseResult} in
- * {@code openjiuwen/core/sys_operation/result/base_result.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.BaseResult}.
+ * Base result envelope for sys-operation responses.
+ * <p>
+ * Mirrors Python's {@code BaseResult} in
+ * {@code openjiuwen/core/sys_operation/result/base_result.py}.
  */
-@Deprecated(since = "0.1.14", forRemoval = false)
-public class BaseResult<T> {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public abstract class BaseResult<T> {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern TEMPLATE_PATTERN = Pattern.compile("\\{([^{}]+)\\}");
 
     private int code;
     private String message;
     private T data;
 
     public BaseResult() {
-    }
-
-    public BaseResult(int code, String message, T data) {
-        this.code = code;
-        this.message = message;
-        this.data = data;
     }
 
     public int getCode() {
@@ -54,28 +55,58 @@ public class BaseResult<T> {
         this.data = data;
     }
 
-    /**
-     * Build an error result for a sys operation.
-     *
-     * @param statusCode the error status code
-     * @param execution  the execution type
-     * @param errorMsg   the error message
-     * @param resultFactory factory to create the result instance
-     * @param data       the result data
-     * @param <R>        result type
-     * @param <D>        data type
-     * @return a new error result
-     */
-    public static <R extends BaseResult<D>, D> R buildOperationErrorResult(
-            StatusCode statusCode,
-            String execution,
-            String errorMsg,
-            java.util.function.Supplier<R> resultFactory,
-            D data) {
-        R result = resultFactory.get();
-        result.setCode(statusCode.getCode());
-        result.setMessage(errorMsg != null ? errorMsg : execution);
-        result.setData(data);
-        return result;
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "{code=" + code + ", message=" + message + ", data=" + data + "}";
+    }
+
+    public static <T, R> R buildOperationErrorResult(
+            StatusCode errorType,
+            Map<String, Object> msgFormatKwargs,
+            Class<R> resultClass
+    ) {
+        return buildOperationErrorResult(errorType, msgFormatKwargs, resultClass, null, Map.of());
+    }
+
+    public static <T, R> R buildOperationErrorResult(
+            StatusCode errorType,
+            Map<String, Object> msgFormatKwargs,
+            Class<R> resultClass,
+            T data
+    ) {
+        return buildOperationErrorResult(errorType, msgFormatKwargs, resultClass, data, Map.of());
+    }
+
+    public static <T, R> R buildOperationErrorResult(
+            StatusCode errorType,
+            Map<String, Object> msgFormatKwargs,
+            Class<R> resultClass,
+            T data,
+            Map<String, Object> extraFields
+    ) {
+        String errorMessage = formatTemplate(errorType.errmsg(), msgFormatKwargs);
+        Map<String, Object> finalFields = new LinkedHashMap<>();
+        finalFields.put("code", errorType.code());
+        finalFields.put("message", errorMessage);
+        finalFields.put("data", data);
+        if (extraFields != null) {
+            finalFields.putAll(extraFields);
+        }
+        return OBJECT_MAPPER.convertValue(finalFields, resultClass);
+    }
+
+    private static String formatTemplate(String template, Map<String, Object> values) {
+        Matcher matcher = TEMPLATE_PATTERN.matcher(template == null ? "" : template);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            String key = matcher.group(1);
+            if (values == null || !values.containsKey(key)) {
+                throw new IllegalArgumentException("Missing message format key: " + key);
+            }
+            Object value = values.get(key);
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(String.valueOf(value)));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
     }
 }

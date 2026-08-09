@@ -15,6 +15,7 @@ import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.schema.AgentResult;
 
+import java.net.http.HttpClient;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -36,6 +37,10 @@ public class A2ARemoteClient implements RemoteClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TypeReference<LinkedHashMap<String, Object>> RESULT_MAP_TYPE = new TypeReference<>() {
     };
+    /** Runtime outbound injection: JDK {@link HttpClient} for TLS/auth control. */
+    private static final String KWARG_HTTP_CLIENT = "_ojw_http_client";
+    /** Runtime outbound injection: extra HTTP auth headers. */
+    private static final String KWARG_AUTH_HEADERS = "_ojw_auth_headers";
 
     private final RemoteClientConfig config;
     private final A2AClient client;
@@ -195,14 +200,40 @@ public class A2ARemoteClient implements RemoteClient {
     }
 
     protected A2AClient createClient(Object card, boolean polling) {
+        HttpClient httpClient = resolveHttpClient();
+        Map<String, String> authHeaders = resolveAuthHeaders();
         Object factoryCandidate = kwargs().get("clientFactory");
         if (!(factoryCandidate instanceof A2AClient.A2AClientFactory)) {
             factoryCandidate = kwargs().get("client_factory");
         }
-        if (factoryCandidate instanceof A2AClient.A2AClientFactory factory) {
-            return new A2AClient(card, polling, factory);
+        A2AClient.A2AClientFactory factory = factoryCandidate instanceof A2AClient.A2AClientFactory typed
+                ? typed
+                : (config, ignoredCard) -> {
+                    throw new UnsupportedOperationException("A2A Java SDK client factory is not configured");
+                };
+        return new A2AClient(card, polling, factory, httpClient, authHeaders);
+    }
+
+    private HttpClient resolveHttpClient() {
+        Object injected = kwargs().get(KWARG_HTTP_CLIENT);
+        if (injected instanceof HttpClient client) {
+            return client;
         }
-        return new A2AClient(card, polling);
+        return HttpClient.newHttpClient();
+    }
+
+    private Map<String, String> resolveAuthHeaders() {
+        Object injected = kwargs().get(KWARG_AUTH_HEADERS);
+        if (!(injected instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                headers.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        return headers;
     }
 
     private Object resolveA2aCard() {

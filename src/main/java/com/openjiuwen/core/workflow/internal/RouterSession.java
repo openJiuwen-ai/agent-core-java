@@ -5,6 +5,7 @@
 package com.openjiuwen.core.workflow.internal;
 
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.ProxySession;
 import com.openjiuwen.core.session.stream.StreamWriter;
 
 import java.util.Map;

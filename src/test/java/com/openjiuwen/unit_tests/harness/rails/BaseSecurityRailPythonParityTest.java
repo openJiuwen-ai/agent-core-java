@@ -4,7 +4,7 @@
 
 package com.openjiuwen.unit_tests.harness.rails;
 
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.security.BaseSecurityRail;
 import com.openjiuwen.harness.rails.security.SafetyPromptRail;

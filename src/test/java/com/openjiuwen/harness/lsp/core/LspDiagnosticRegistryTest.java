@@ -416,6 +416,40 @@ class LspDiagnosticRegistryTest {
     }
 
     @Test
+    void concurrentRegisterDoesNotLoseBatches() throws Exception {
+        LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
+        int threadCount = 16;
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                int index = i;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    registry.register(
+                            "pyright",
+                            "file:///workspace/race" + index + ".py",
+                            List.of(diagnostic("err-" + index, 1, index, 0))
+                    );
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (java.util.concurrent.Future<?> future : futures) {
+                future.get();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+        assertEquals(threadCount, registry.getPendingCount());
+        List<LspDiagnosticFile> files = registry.getAndClear(10, 30);
+        int collected = files.stream().mapToInt(file -> file.getDiagnostics().size()).sum();
+        assertEquals(threadCount, collected);
+        assertEquals(0, registry.getPendingCount());
+    }
+
+    @Test
     void openFileHandlerRoutesNotificationsToRegistry() throws Exception {
         Path file = writeFile("main.py", "print('open')");
         FakeLspServerInstance server = fakeServer(TEST_SERVER_ID);

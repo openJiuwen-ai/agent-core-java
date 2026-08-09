@@ -200,6 +200,23 @@ public class InMemoryKVStore extends BaseKVStore {
         });
     }
 
+    /**
+     * Release in-memory state by clearing all stored keys and expiry markers.
+     * <p>
+     * After {@code close()}, the store is empty and subsequent reads return
+     * {@code null}. Safe to call multiple times.
+     *
+     * @since 0.1.13
+     */
+    public void close() {
+        lock.lock();
+        try {
+            store.clear();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private Object getWithoutLock(String key) {
         ValueEntry entry = store.get(key);
         if (entry == null) {

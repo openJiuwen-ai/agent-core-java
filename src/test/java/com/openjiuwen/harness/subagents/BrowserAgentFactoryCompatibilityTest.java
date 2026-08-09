@@ -2,8 +2,8 @@ package com.openjiuwen.harness.subagents;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.harness.DeepAgent;
-import com.openjiuwen.harness.rails.MemoryRail;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.rails.memory.MemoryRail;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.tools.browser_move.playwright_runtime.RuntimeSettings;

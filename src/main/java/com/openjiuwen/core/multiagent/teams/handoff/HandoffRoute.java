@@ -4,17 +4,24 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Objects;
+
 /**
- * Camelcase package compatibility facade for handoff routes.
+ * Routing rule that permits one source agent to hand off to one target agent.
  *
  * <p>Mirrors Python's {@code HandoffRoute} in
  * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_config.py}.</p>
  */
 public final class HandoffRoute {
+
     private final String source;
     private final String target;
 
-    public HandoffRoute(String source, String target) {
+    @JsonCreator
+    public HandoffRoute(@JsonProperty("source") String source, @JsonProperty("target") String target) {
         this.source = source;
         this.target = target;
     }
@@ -27,7 +34,24 @@ public final class HandoffRoute {
         return target;
     }
 
-    com.openjiuwen.core.multi_agent.teams.handoff.HandoffRoute toUnderscore() {
-        return new com.openjiuwen.core.multi_agent.teams.handoff.HandoffRoute(source, target);
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof HandoffRoute that)) {
+            return false;
+        }
+        return Objects.equals(source, that.source) && Objects.equals(target, that.target);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(source, target);
+    }
+
+    @Override
+    public String toString() {
+        return "HandoffRoute(source=%s, target=%s)".formatted(source, target);
     }
 }

@@ -9,7 +9,7 @@ import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>Mirrors Python's {@code tests/unit_tests/auto_harness/test_runtime_extension_loader.py}.</p>
@@ -80,14 +79,7 @@ class RuntimeExtensionLoaderMissingTest {
                 "new runtime skill body"
         );
         DeepAgent agent = configuredAgent("runtime-skill-agent");
-        SkillUseRail oldRail = new SkillUseRail(
-                oldRoot.toString(),
-                SkillUseRail.SKILL_MODE_ALL,
-                true,
-                true,
-                null,
-                null
-        );
+        SkillUseRail oldRail = new SkillUseRail(List.of(oldRoot.toString()), SkillUseRail.SKILL_MODE_ALL);
         agent.registerRail(oldRail).join();
         oldRail.reloadSkills();
 
@@ -130,13 +122,12 @@ class RuntimeExtensionLoaderMissingTest {
     }
 
     @Test
-    void unloadHarnessConfigRaisesForMissingFile() {
+    void unloadHarnessConfigReturnsEmptyForMissingFile() {
         DeepAgent agent = configuredAgent("missing-config-agent");
         Path missingConfig = tempDir.resolve("missing").resolve("harness_config.yaml");
 
-        assertThatThrownBy(() -> agent.unloadHarnessConfig(missingConfig.toString()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("not found");
+        // Align with Python unload_harness_config: missing manifest -> empty list (no throw).
+        assertThat(agent.unloadHarnessConfig(missingConfig.toString())).isEmpty();
     }
 
     @Test
@@ -150,14 +141,7 @@ class RuntimeExtensionLoaderMissingTest {
                 "new runtime skill body"
         );
         DeepAgent agent = configuredAgent("skill-unload-agent");
-        SkillUseRail oldRail = new SkillUseRail(
-                oldRoot.toString(),
-                SkillUseRail.SKILL_MODE_ALL,
-                true,
-                true,
-                null,
-                null
-        );
+        SkillUseRail oldRail = new SkillUseRail(List.of(oldRoot.toString()), SkillUseRail.SKILL_MODE_ALL);
         agent.registerRail(oldRail).join();
         oldRail.reloadSkills();
 

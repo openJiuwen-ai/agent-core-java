@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.multiagent;
 
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 
 import java.util.Map;
 
@@ -17,7 +17,7 @@ import java.util.Map;
  * 
  * @since 0.1.7
  */
-public class Session extends AgentGroupSessionApi {
+public class Session extends AgentGroupSession {
     /**
      * Session.
      * 

@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -33,7 +34,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Mirrors Python's {@code APIEmbedding} in
@@ -97,19 +97,11 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
             this.headers.putAll(extraHeaders);
         }
         this.limiter = new Semaphore(maxConcurrent);
-        this.executor = (ThreadPoolExecutor) java.util.concurrent.Executors.newFixedThreadPool(
-                maxConcurrent,
-                runnable -> {
-                    Thread thread = new Thread(runnable);
-                    thread.setDaemon(true);
-                    thread.setName("openjiuwen_embed-" + THREAD_COUNTER.incrementAndGet());
-                    return thread;
-                }
-        );
+        // 线程名前缀保持 openjiuwen_embed-，对齐历史实现与 Python 侧命名习惯
+        this.executor = (ThreadPoolExecutor) OpenJiuwenExecutors.newFixedThreadPool(
+                "openjiuwen_embed", this.maxConcurrent, true);
         this.httpClient = httpClient == null ? createHttpClient() : httpClient;
     }
-
-    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
 
     @Override
     public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
@@ -172,9 +164,10 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
         if (cached != null) {
             return cached;
         }
+        int inferred = embedQuerySync("test").size();
         synchronized (this) {
             if (dimension == null) {
-                dimension = embedQuerySync("test").size();
+                dimension = inferred;
                 LOGGER.debug("Determined embedding dimension: {}", dimension);
             }
             return dimension;

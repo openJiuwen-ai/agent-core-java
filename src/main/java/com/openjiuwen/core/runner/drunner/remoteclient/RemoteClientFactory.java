@@ -18,16 +18,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * Factory and registry for remote client instances.
  * <p>
  * Built-in protocols are discovered via {@link ServiceLoader} from
- * {@code META-INF/services/com.openjiuwen.core.runner.drunner.remote_client.RemoteClientProvider}.
+ * {@code META-INF/services/com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider}.
  * Service adapters can register additional protocols via
  * {@link #register(String, RemoteClientProvider)} without modifying Core source.
  * <p>
- * Calling point: remote-agent Tool creation in the execution chain.
+ * This package is the SPI / sync facade. Production async callers should prefer
+ * {@code com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory}, which
+ * bridges known SPI providers onto the async API.
  * 
  * @see RemoteClientProvider
  * @see RemoteClient
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory}.
  */
+@Deprecated(since = "0.1.14")
 public final class RemoteClientFactory {
     private static final Map<String, RemoteClientProvider> REGISTRY = new ConcurrentHashMap<>();
 

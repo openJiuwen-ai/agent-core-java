@@ -7,7 +7,8 @@ package com.openjiuwen.core.foundation.llm;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.clients.ClientRegistry;
-import com.openjiuwen.core.context_engine.context.KVCacheManager;
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
+import com.openjiuwen.core.context.context.KVCacheManager;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -25,6 +26,9 @@ import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.LLMCallEvents;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -35,6 +39,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Unified LLM invocation entry point.
@@ -156,8 +161,8 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
                                          String negativePrompt, Integer seed, Map<String, Object> extraFields) {
     }
 
-    private static final Map<String, ModelInvoker> INVOKERS = new LinkedHashMap<>();
-    private static final Map<String, ModelClientFactory> CLIENT_FACTORIES = new LinkedHashMap<>();
+    private static final Map<String, ModelInvoker> INVOKERS = new ConcurrentHashMap<>();
+    private static final Map<String, ModelClientFactory> CLIENT_FACTORIES = new ConcurrentHashMap<>();
     @SuppressWarnings("unused")
     private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = CLIENT_FACTORIES;
 
@@ -332,6 +337,48 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             return iterator;
         }
         return new CallbackIterator(iterator, framework, request, modelConfig, modelClientConfig);
+    }
+
+    /**
+     * Reactive version of {@link #invoke(List, ModelInvokeOptions)}.
+     *
+     * @param messages input messages
+     * @param options invoke options
+     * @return Mono emitting the assistant message
+     */
+    public Mono<AssistantMessage> invokeAsync(List<BaseMessage> messages, ModelInvokeOptions options) {
+        return ReactiveAdapters.fromCompletionStage(invoke(messages, options));
+    }
+
+    /**
+     * Reactive version of {@link #invoke(List)}.
+     *
+     * @param messages input messages
+     * @return Mono emitting the assistant message
+     */
+    public Mono<AssistantMessage> invokeAsync(List<BaseMessage> messages) {
+        return invokeAsync(messages, ModelInvokeOptions.builder().build());
+    }
+
+    /**
+     * Reactive version of {@link #stream(List, ModelInvokeOptions)}.
+     *
+     * @param messages input messages
+     * @param options stream options
+     * @return Flux emitting assistant message chunks
+     */
+    public Flux<AssistantMessageChunk> streamAsync(List<BaseMessage> messages, ModelInvokeOptions options) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(messages, options));
+    }
+
+    /**
+     * Reactive version of {@link #stream(List)}.
+     *
+     * @param messages input messages
+     * @return Flux emitting assistant message chunks
+     */
+    public Flux<AssistantMessageChunk> streamAsync(List<BaseMessage> messages) {
+        return streamAsync(messages, ModelInvokeOptions.builder().build());
     }
 
     @Override

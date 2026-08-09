@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Round-robin allocator over a model pool.
@@ -20,7 +21,7 @@ public class RoundRobinModelAllocator implements ModelAllocator {
     private final List<ModelPoolEntry> pool;
     private final String poolDigest;
     private final Map<String, List<ModelPoolEntry>> groups = new LinkedHashMap<>();
-    private int index;
+    private final AtomicInteger index = new AtomicInteger();
 
     public RoundRobinModelAllocator(List<ModelPoolEntry> pool) {
         this.pool = pool == null ? List.of() : new ArrayList<>(pool);
@@ -35,8 +36,8 @@ public class RoundRobinModelAllocator implements ModelAllocator {
         if (pool.isEmpty()) {
             return null;
         }
-        ModelPoolEntry entry = pool.get(Math.floorMod(index, pool.size()));
-        index += 1;
+        int idx = index.getAndIncrement();
+        ModelPoolEntry entry = pool.get(Math.floorMod(idx, pool.size()));
         List<ModelPoolEntry> group = groups.getOrDefault(entry.getModelName(), List.of(entry));
         return new Allocation(entry, groupIndexOf(entry, group));
     }
@@ -44,7 +45,7 @@ public class RoundRobinModelAllocator implements ModelAllocator {
     @Override
     public Map<String, Object> stateDict() {
         Map<String, Object> state = new LinkedHashMap<>();
-        state.put("index", index);
+        state.put("index", index.get());
         state.put("pool_digest", poolDigest);
         return state;
     }
@@ -52,13 +53,13 @@ public class RoundRobinModelAllocator implements ModelAllocator {
     @Override
     public void loadStateDict(Map<String, Object> state) {
         if (state == null || !poolDigest.equals(state.get("pool_digest"))) {
-            index = 0;
+            index.set(0);
             return;
         }
         try {
-            index = Integer.parseInt(String.valueOf(state.getOrDefault("index", 0)));
+            index.set(Integer.parseInt(String.valueOf(state.getOrDefault("index", 0))));
         } catch (NumberFormatException exc) {
-            index = 0;
+            index.set(0);
         }
     }
 

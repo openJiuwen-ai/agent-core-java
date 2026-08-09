@@ -13,7 +13,6 @@
 | [`InMemoryCheckpointer`](./checkpointer/InMemoryCheckpointer.md) | 基于内存 `Map` 与 `InMemoryStore` 的检查点实现。 |
 | [`PersistenceCheckpointer`](./checkpointer/PersistenceCheckpointer.md) | 基于 `BaseKVStore` 的持久化检查点实现。 |
 | [`PersistenceCheckpointerProvider`](./checkpointer/PersistenceCheckpointerProvider.md) | 从 `kv_store` 配置构造持久化检查点；缺失时回退到内存实现。 |
-| [`Storage`](./checkpointer/Storage.md) | agent / workflow 存储实现共用的抽象存储基类。 |
 
 ## 说明
 

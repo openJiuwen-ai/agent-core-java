@@ -26,7 +26,7 @@ import java.util.Map;
  * <p>Mirrors Python's {@code Session} in
  * {@code openjiuwen/core/session/node.py}.</p>
  */
-public class NodeSessionApi extends BaseSession {
+public class NodeSessionApi {
 
     private final BaseSession inner;
     private WorkflowInteraction interaction;
@@ -122,12 +122,10 @@ public class NodeSessionApi extends BaseSession {
         return stringValue(invokeString("executableId"));
     }
 
-    @Override
     public String getSessionId() {
         return sessionId();
     }
 
-    @Override
     public void updateState(Map<String, Object> data) {
         if (state() != null) {
             state().update(data);
@@ -138,7 +136,6 @@ public class NodeSessionApi extends BaseSession {
         return state() == null ? null : state().get(key);
     }
 
-    @Override
     public Object getState(String key) {
         return getState((Object) key);
     }
@@ -186,7 +183,7 @@ public class NodeSessionApi extends BaseSession {
             if (manager != null) {
                 return manager;
             }
-            current = current.parent();
+            current = WorkflowSessionSupport.parent(current);
         }
         return null;
     }
@@ -257,48 +254,34 @@ public class NodeSessionApi extends BaseSession {
         return result instanceof Boolean bool && bool;
     }
 
-    @Override
     public Config config() {
         return inner.config();
     }
 
-    @Override
     public State state() {
         return inner.state();
     }
 
-    @Override
     public Object tracer() {
         return inner.tracer();
     }
 
-    @Override
     public StreamWriterManager streamWriterManager() {
-        Object manager = inner.streamWriterManager();
-        if (manager instanceof StreamWriterManager typed) {
-            return typed;
-        }
-        // 兼容 WorkflowRuntimeSession：其 streamWriterManager() 返回 Vertex 适配器，
-        // 通过 rawStreamWriterManager() 获取底层原始 StreamWriterManager
-        return inner.rawStreamWriterManager();
+        return inner.streamWriterManager();
     }
 
-    @Override
     public String sessionId() {
         return inner.sessionId();
     }
 
-    @Override
     public Object checkpointer() {
         return inner.checkpointer();
     }
 
-    @Override
     public Object actorManager() {
         return inner.actorManager();
     }
 
-    @Override
     public CallbackManager callbackManager() {
         return inner.callbackManager();
     }

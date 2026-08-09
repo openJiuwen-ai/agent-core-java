@@ -5,95 +5,91 @@
 package com.openjiuwen.core.sysop.sandbox.providers;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
+import com.openjiuwen.core.sysop.protocal.BaseShellProtocal;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
-import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Abstract base class for shell command providers in the sandbox environment.
- * Defines the SPI contract for command execution, streaming, and background execution.
- * 
- * @version 1.0
- * @since 0.1.7
+ * Mirrors Python's {@code BaseShellProvider} in
+ * {@code openjiuwen/core/sys_operation/sandbox/providers/base_provider.py}.
  */
-public abstract class BaseShellProvider {
-    /**
-     * endpoint.
-     * 
-     * @since 0.1.7
-     */
-    protected final SandboxEndpoint endpoint;
+public abstract class BaseShellProvider extends BaseShellProtocal {
 
-    /**
-     * config.
-     * 
-     * @since 0.1.7
-     */
-    protected final SandboxGatewayConfig config;
+    private final SandboxEndpoint endpoint;
 
-    /**
-     * Constructs a BaseShellProvider with the given endpoint and config.
-     * 
-     * @param endpoint the sandbox endpoint
-     * @param config the sandbox gateway configuration
-     * @since 0.1.7
-     */
+    private final SandboxGatewayConfig config;
+
+    protected BaseShellProvider(SandboxEndpoint endpoint) {
+        this(endpoint, null);
+    }
+
     protected BaseShellProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         this.endpoint = endpoint;
         this.config = config;
     }
 
-    /**
-     * Executes a command in the sandbox and returns the result.
-     * 
-     * @param command the command to execute
-     * @param cwd the working directory for the command
-     * @param timeout the timeout in seconds
-     * @param environment the environment variables
-     * @param options additional options map
-     * @return the command execution result
-     * @since 0.1.7
-     */
-    public ExecuteCmdResult executeCmd(String command, String cwd, int timeout, Map<String, String> environment,
+    public SandboxEndpoint getEndpoint() {
+        return endpoint;
+    }
+
+    public SandboxGatewayConfig getConfig() {
+        return config;
+    }
+
+    @Override
+    public CompletableFuture<ExecuteCmdResult> executeCmd(
+            String command,
+            String cwd,
+            Integer timeoutSeconds,
+            Map<String, String> environment,
             Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".executeCmd is not implemented");
+        return failedFuture("executeCmd");
     }
 
-    /**
-     * Executes a command in the sandbox and returns a stream of result chunks.
-     * 
-     * @param command the command to execute
-     * @param cwd the working directory for the command
-     * @param timeout the timeout in seconds
-     * @param environment the environment variables
-     * @param options additional options map
-     * @return an iterator of command execution stream results
-     * @since 0.1.7
-     */
-    public Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
-            Map<String, String> environment, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".executeCmdStream is not implemented");
+    @Override
+    public Flow.Publisher<ExecuteCmdStreamResult> executeCmdStream(
+            String command,
+            String cwd,
+            Integer timeoutSeconds,
+            Map<String, String> environment,
+            Map<String, Object> options) {
+        return failedPublisher("executeCmdStream");
     }
 
-    /**
-     * Executes a command in the sandbox in the background with a grace period.
-     * 
-     * @param command the command to execute
-     * @param cwd the working directory for the command
-     * @param environment the environment variables
-     * @param grace the grace period in seconds before termination
-     * @param options additional options map
-     * @return the background command execution result
-     * @since 0.1.7
-     */
-    public ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd, Map<String, String> environment,
-            double grace, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".executeCmdBackground is not implemented");
+    private <T> CompletableFuture<T> failedFuture(String methodName) {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(notImplementedMessage(methodName)));
+    }
+
+    private <T> Flow.Publisher<T> failedPublisher(String methodName) {
+        UnsupportedOperationException error = new UnsupportedOperationException(notImplementedMessage(methodName));
+        return subscriber -> {
+            Objects.requireNonNull(subscriber, "subscriber");
+            subscriber.onSubscribe(new Flow.Subscription() {
+                private final AtomicBoolean done = new AtomicBoolean(false);
+
+                @Override
+                public void request(long itemCount) {
+                    if (done.compareAndSet(false, true)) {
+                        subscriber.onError(error);
+                    }
+                }
+
+                @Override
+                public void cancel() {
+                    done.set(true);
+                }
+            });
+        };
+    }
+
+    private String notImplementedMessage(String methodName) {
+        return getClass().getSimpleName() + "." + methodName + " is not implemented";
     }
 }

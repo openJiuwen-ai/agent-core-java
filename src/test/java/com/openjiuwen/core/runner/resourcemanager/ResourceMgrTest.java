@@ -15,11 +15,11 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.multi_agent.schema.TeamCard;
+import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
@@ -389,6 +389,20 @@ class ResourceMgrTest {
 
         assertTrue(card instanceof ToolCard);
         assertEquals("read_file", ((ToolCard) card).getName());
+    }
+
+    @Disabled("remote env do not support node")
+    @Test
+    void getSingleSysOperationToolCardAcceptsScalarAndCamelCaseNames() {
+        ResourceMgr manager = resourceMgrWithSysOperation();
+
+        Object byScalar = manager.getSysOpToolCards("test-sys-op", java.util.List.of("fs"), java.util.List.of("readFile"));
+        Object bySnake = manager.getSysOpToolCards("test-sys-op", java.util.List.of("fs"), java.util.List.of("read_file"));
+
+        assertTrue(byScalar instanceof ToolCard);
+        assertTrue(bySnake instanceof ToolCard);
+        assertEquals("read_file", ((ToolCard) byScalar).getName());
+        assertEquals("read_file", ((ToolCard) bySnake).getName());
     }
 
     @Test

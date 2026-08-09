@@ -175,7 +175,7 @@ class TemplateAssemblePythonParityTest {
         assertThat(asm1.getInputKeys()).containsExactlyInAnyOrder("domain", "memory");
         assertThat(asm1.promptAssemble(Map.of("memory", memoryMessage("我是谁"), "domain", "科学")))
                 .isEqualTo("`#system#`你是一个精通科学领域的问答助手。`#user#`"
-                        + "[{'role': 'user', 'content': '我是谁'}]");
+                        + "[{role=user, content=我是谁}]");
 
         PromptAssembler asm2 = new PromptAssembler(
                 "`#system#`{role}`#user#`{memory}",
@@ -186,7 +186,7 @@ class TemplateAssemblePythonParityTest {
         assertThat(asm2.getInputKeys()).containsExactlyInAnyOrder("domain", "memory");
         assertThat(asm2.promptAssemble(Map.of("memory", memoryMessage("我是谁"), "domain", "天文")))
                 .isEqualTo("`#system#`你是一个精通天文领域的问答助手。`#user#`"
-                        + "[{'role': 'user', 'content': '我是谁'}]");
+                        + "[{role=user, content=我是谁}]");
 
         ToolCall toolCall = ToolCall.builder().type("test").name("func").arguments("x").id("test").build();
         List<BaseMessage> content = new ArrayList<>();
@@ -217,7 +217,7 @@ class TemplateAssemblePythonParityTest {
         PromptTemplate formatted = template.format(Map.of("memory", memoryMessage("你是谁"), "domain", "数学"));
         assertThat(formatted.toMessages()).containsExactly(
                 new UserMessage("`#system#`你是一个精通数学领域的问答助手`#user#`"
-                        + "[{'role': 'user', 'content': '你是谁'}]")
+                        + "[{role=user, content=你是谁}]")
         );
 
         PromptTemplate partial = PromptTemplate.builder()
@@ -226,11 +226,11 @@ class TemplateAssemblePythonParityTest {
                 .format(Map.of("memory", memoryMessage("你是谁")));
         assertThat(partial.getContent())
                 .isEqualTo("`#system#`你是一个精通{{domain}}领域的问答助手`#user#`"
-                        + "[{'role': 'user', 'content': '你是谁'}]");
+                        + "[{role=user, content=你是谁}]");
         partial = partial.format(Map.of("domain", "数学"));
         assertThat(partial.getContent())
                 .isEqualTo("`#system#`你是一个精通数学领域的问答助手`#user#`"
-                        + "[{'role': 'user', 'content': '你是谁'}]");
+                        + "[{role=user, content=你是谁}]");
 
         PromptTemplate messageTemplate = PromptTemplate.builder()
                 .content(List.of(
@@ -331,7 +331,7 @@ class TemplateAssemblePythonParityTest {
         assertThat(var.getValue()).isEqualTo(Map.of("count", "Total: 100"));
 
         var.update(Map.of("num", true));
-        assertThat(var.getValue()).isEqualTo(Map.of("count", "Total: True"));
+        assertThat(var.getValue()).isEqualTo(Map.of("count", "Total: true"));
     }
 
     private static List<Map<String, Object>> memoryMessage(String content) {

@@ -76,12 +76,14 @@ class ReActAgentPromptBuilderTest {
                 .maxIterations(2)
                 .build()
                 .configureModelClient(PROVIDER, "key", "mirror://prompt-builder", "prompt-model", false));
-        agent.addPromptBuilderSection("business_rules", "business rules", 20);
+        // invoke() clears transient sections; persist across invoke like Python's
+        // add_section (Python has no clear_transient).
+        agent.addPersistentPromptBuilderSection("business_rules", "business rules", 20);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) agent.invoke(
                 Map.of("query", "hello", "conversation_id", "prompt-builder-session"),
-                new com.openjiuwen.core.session.AgentGroupSessionApi("prompt-builder-session")
+                new com.openjiuwen.core.session.AgentGroupSession("prompt-builder-session")
         ).toCompletableFuture().join();
 
         assertThat(result.get("result_type")).isEqualTo("answer");

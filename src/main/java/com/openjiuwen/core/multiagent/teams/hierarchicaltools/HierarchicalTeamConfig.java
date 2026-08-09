@@ -13,7 +13,7 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
  * {@code openjiuwen/core/multi_agent/teams/hierarchical_tools/hierarchical_config.py}.</p>
  */
 public class HierarchicalTeamConfig
-        extends com.openjiuwen.core.multi_agent.teams.hierarchical_tools.HierarchicalTeamConfig {
+        extends com.openjiuwen.core.multiagent.teams.hierarchical_tools.HierarchicalTeamConfig {
 
     public HierarchicalTeamConfig() {
         super();

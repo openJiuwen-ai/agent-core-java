@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator;
+package com.openjiuwen.agentevolving.evaluator;
 
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import org.junit.jupiter.api.Test;

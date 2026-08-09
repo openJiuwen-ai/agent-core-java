@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxRecord;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxStatus;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,7 +35,7 @@ class SandboxLifecycleCompatibilityTest {
 
         SandboxClient first = manager.acquire(null, config(60));
         SandboxClient second = manager.acquire(null, config(60));
-        SandboxRecord record = manager.store().get("session-1");
+        SandboxRecord record = manager.store().get("session-1").orElse(null);
 
         assertThat(first).isSameAs(second);
         assertThat(record).isNotNull();
@@ -49,7 +51,7 @@ class SandboxLifecycleCompatibilityTest {
         manager.acquire(null, config(1));
 
         assertThat(manager.evictExpired(config(1), (System.currentTimeMillis() / 1000.0) + 5.0)).hasSize(1);
-        assertThat(manager.store().get("session-1")).isNull();
+        assertThat(manager.store().get("session-1")).isEmpty();
     }
 
     @Test

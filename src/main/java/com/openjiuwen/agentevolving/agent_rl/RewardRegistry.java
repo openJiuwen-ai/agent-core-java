@@ -7,103 +7,67 @@ package com.openjiuwen.agentevolving.agent_rl;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
+import java.util.logging.Logger;
 
 /**
  * Simple in-memory registry for reward functions.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code RewardRegistry} and module-level helpers in
+ * {@code openjiuwen/agent_evolving/agent_rl/reward.py}.</p>
  */
 public class RewardRegistry {
-    private static final Logger LOG = LoggerFactory.getLogger(RewardRegistry.class);
 
+    private static final Logger LOGGER = Logger.getLogger(RewardRegistry.class.getName());
     private static final RewardRegistry DEFAULT_REGISTRY = new RewardRegistry();
 
     private final Map<String, RewardCallable> registry = new LinkedHashMap<>();
 
     /**
-     * Functional interface for Python-style reward callables.
-     * 
-     * @since 0.1.7
+     * Mirrors Python's {@code RewardCallable = Callable[..., Any]}.
      */
     @FunctionalInterface
     public interface RewardCallable {
-        /**
-         * apply.
-         * 
-         * @param args args
-         * @return the result
-         * @since 0.1.7
-         */
-        Object apply(Object... args);
+        Object apply(Object value);
     }
 
-    /**
-     * Return the module-level default reward registry.
-     * 
-     * @return module-level default reward registry instance
-     * @since 0.1.7
-     */
     public static RewardRegistry rewardRegistry() {
         return DEFAULT_REGISTRY;
     }
 
-    /**
-     * Register a reward function into the module-level default registry.
-     * 
-     * @param name reward function name
-     * @param fn reward function
-     * @return registered reward callable
-     * @since 0.1.7
-     */
-    public static RewardCallable registerReward(String name, RewardCallable fn) {
-        rewardRegistry().register(name, fn);
-        return fn;
+    public static UnaryOperator<RewardCallable> registerReward(String name) {
+        return callable -> {
+            rewardRegistry().register(name, callable);
+            return callable;
+        };
     }
 
-    /**
-     * Register a reward function by name.
-     * 
-     * @param name reward function name
-     * @param fn reward function
-     * @since 0.1.7
-     */
     public synchronized void register(String name, RewardCallable fn) {
-        if (name == null || name.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_RL_REWARD_NAME_INVALID, "error_msg",
-                    "reward name must be non-empty");
+        if (name == null || name.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_RL_REWARD_NAME_INVALID,
+                    "error_msg", "reward name must be non-empty"
+            );
         }
-        LOG.info("register reward function: {}", name);
+        LOGGER.info(() -> "register reward function: " + name);
         registry.put(name, fn);
     }
 
-    /**
-     * Look up a reward function by name.
-     * 
-     * @param name reward function name
-     * @return reward callable registered by name
-     * @since 0.1.7
-     */
     public synchronized RewardCallable get(String name) {
-        RewardCallable rewardCallable = registry.get(name);
-        if (rewardCallable == null) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_RL_REWARD_NOT_FOUND, "name", String.valueOf(name));
+        RewardCallable callable = registry.get(name);
+        if (callable == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.AGENT_RL_REWARD_NOT_FOUND,
+                    "name", String.valueOf(name)
+            );
         }
-        return rewardCallable;
+        return callable;
     }
 
-    /**
-     * Return the list of all registered reward names.
-     * 
-     * @return ordered reward names snapshot
-     * @since 0.1.7
-     */
     public synchronized List<String> list() {
         return new ArrayList<>(registry.keySet());
     }

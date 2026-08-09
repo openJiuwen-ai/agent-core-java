@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -50,7 +50,8 @@ class ReActAgentModelRetryOutputTest {
 
         assertThat(outputs).extracting(OutputSchema::getType)
                 .containsExactly("model_retry", "llm_output", "answer");
-        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 1, 2);
+        // Final answer always uses index=0 (Python react_agent parity).
+        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 1, 0);
         assertThat(payload(outputs.get(0))).containsExactly(
                 Map.entry("retry_count", 2),
                 Map.entry("max_retries", 4),

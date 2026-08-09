@@ -25,13 +25,16 @@ public class McpServerConfig {
 
     public static final float NO_TIMEOUT = -1.0F;
 
-    private String serverId = UUID.randomUUID().toString().replace("-", "");
+    /** Server identifier. Defaults to serverName when blank; otherwise a random UUID. */
+    private String serverId;
     private String serverName;
     private String serverPath;
     private String clientType = "sse";
     private Map<String, Object> params = new HashMap<>();
     private Map<String, String> authHeaders = new HashMap<>();
     private Map<String, String> authQueryParams = new HashMap<>();
+    private Double connectTimeoutSeconds;
+    private Double callTimeoutSeconds;
 
     public McpServerConfig() {
     }
@@ -39,18 +42,20 @@ public class McpServerConfig {
     public McpServerConfig(String serverName, String serverPath) {
         this.serverName = serverName;
         this.serverPath = serverPath;
+        normalizeServerId();
     }
 
     public McpServerConfig(String serverId, String serverName, String serverPath, String clientType,
                            Map<String, Object> params, Map<String, String> authHeaders,
                            Map<String, String> authQueryParams) {
-        this.serverId = serverId != null ? serverId : UUID.randomUUID().toString().replace("-", "");
+        this.serverId = serverId;
         this.serverName = serverName;
         this.serverPath = serverPath;
         this.clientType = clientType != null ? clientType : "sse";
         setParams(params);
         setAuthHeaders(authHeaders);
         setAuthQueryParams(authQueryParams);
+        normalizeServerId();
     }
 
     public static Builder builder() {
@@ -68,7 +73,26 @@ public class McpServerConfig {
 
     @JsonProperty("server_id")
     public void setServerId(String serverId) {
-        this.serverId = serverId != null ? serverId : UUID.randomUUID().toString().replace("-", "");
+        this.serverId = serverId;
+    }
+
+    /**
+     * Fills a missing {@link #serverId}: prefer {@link #serverName}, otherwise a random UUID without hyphens.
+     * Whitespace-only ids are left unchanged so {@code ResourceMgr} validation can reject them.
+     */
+    public void normalizeServerId() {
+        if (serverId != null && !serverId.isBlank()) {
+            return;
+        }
+        // Keep whitespace-only values for validation (do not silently rewrite to serverName).
+        if (serverId != null && serverId.isBlank()) {
+            return;
+        }
+        if (serverName != null && !serverName.isBlank()) {
+            serverId = serverName;
+        } else {
+            serverId = UUID.randomUUID().toString().replace("-", "");
+        }
     }
 
     @JsonProperty("server_name")
@@ -79,6 +103,10 @@ public class McpServerConfig {
     @JsonProperty("server_name")
     public void setServerName(String serverName) {
         this.serverName = serverName;
+        // Only auto-fill when serverId is absent (null/""); leave whitespace for validation.
+        if (this.serverId == null || this.serverId.isEmpty()) {
+            normalizeServerId();
+        }
     }
 
     @JsonProperty("server_path")
@@ -129,6 +157,26 @@ public class McpServerConfig {
         this.authQueryParams = authQueryParams != null ? new HashMap<>(authQueryParams) : new HashMap<>();
     }
 
+    @JsonProperty("connect_timeout_seconds")
+    public Double getConnectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    @JsonProperty("connect_timeout_seconds")
+    public void setConnectTimeoutSeconds(Double connectTimeoutSeconds) {
+        this.connectTimeoutSeconds = connectTimeoutSeconds;
+    }
+
+    @JsonProperty("call_timeout_seconds")
+    public Double getCallTimeoutSeconds() {
+        return callTimeoutSeconds;
+    }
+
+    @JsonProperty("call_timeout_seconds")
+    public void setCallTimeoutSeconds(Double callTimeoutSeconds) {
+        this.callTimeoutSeconds = callTimeoutSeconds;
+    }
+
     /**
      * Builder for translated callers that need Python-style optional fields.
      *
@@ -177,9 +225,23 @@ public class McpServerConfig {
             return this;
         }
 
+        public Builder connectTimeoutSeconds(Double connectTimeoutSeconds) {
+            value.setConnectTimeoutSeconds(connectTimeoutSeconds);
+            return this;
+        }
+
+        public Builder callTimeoutSeconds(Double callTimeoutSeconds) {
+            value.setCallTimeoutSeconds(callTimeoutSeconds);
+            return this;
+        }
+
         public McpServerConfig build() {
-            return new McpServerConfig(value.serverId, value.serverName, value.serverPath, value.clientType,
-                    value.params, value.authHeaders, value.authQueryParams);
+            McpServerConfig built = new McpServerConfig(value.serverId, value.serverName, value.serverPath,
+                    value.clientType, value.params, value.authHeaders, value.authQueryParams);
+            built.setConnectTimeoutSeconds(value.connectTimeoutSeconds);
+            built.setCallTimeoutSeconds(value.callTimeoutSeconds);
+            built.normalizeServerId();
+            return built;
         }
     }
 }

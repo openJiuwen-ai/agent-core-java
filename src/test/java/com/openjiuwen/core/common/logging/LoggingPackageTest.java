@@ -14,7 +14,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class LoggingPackageTest {
@@ -42,30 +43,37 @@ class LoggingPackageTest {
 
     @Test
     void commonLoggerRebindsAfterManagerReset() {
-        AtomicReference<RecordingLogger> createdLogger = new AtomicReference<>();
-        LogManager.LogConfigProvider.setProvider(() -> Map.of("common", Map.of("output", "console", "level", LogLevels.INFO)));
+        // Isolate from other suites that leave static LogManager state behind.
+        LogManager.reset();
+        LogManager.LogConfigProvider.setProvider(
+                () -> Map.of("common", Map.of("output", "console", "level", LogLevels.INFO)));
+        // Track by logType: initialize may create multiple loggers; "last created" is flaky.
+        Map<String, RecordingLogger> byType = new LinkedHashMap<>();
         LogManager.setDefaultLoggerFactory((logType, config) -> {
             RecordingLogger logger = new RecordingLogger(logType);
-            createdLogger.set(logger);
+            byType.put(logType, logger);
             return logger;
         });
 
         Loggers.COMMON.info("before-reset");
-        RecordingLogger first = createdLogger.get();
+        RecordingLogger first = assertInstanceOf(RecordingLogger.class, LogManager.getLogger("common"));
+        assertSame(byType.get("common"), first);
+        assertEquals(List.of("before-reset"), first.infoMessages);
 
         LogManager.reset();
-        LogManager.LogConfigProvider.setProvider(() -> Map.of("common", Map.of("output", "console", "level", LogLevels.INFO)));
+        byType.clear();
+        LogManager.LogConfigProvider.setProvider(
+                () -> Map.of("common", Map.of("output", "console", "level", LogLevels.INFO)));
         LogManager.setDefaultLoggerFactory((logType, config) -> {
             RecordingLogger logger = new RecordingLogger(logType + "-reset");
-            createdLogger.set(logger);
+            byType.put(logType, logger);
             return logger;
         });
 
         Loggers.COMMON.info("after-reset");
-        RecordingLogger second = createdLogger.get();
-
-        assertNotNull(first);
-        assertNotNull(second);
+        RecordingLogger second = assertInstanceOf(RecordingLogger.class, LogManager.getLogger("common"));
+        assertSame(byType.get("common"), second);
+        assertNotSame(first, second);
         assertEquals(List.of("before-reset"), first.infoMessages);
         assertEquals(List.of("after-reset"), second.infoMessages);
     }

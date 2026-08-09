@@ -2,7 +2,7 @@
 
 `Runner` 是 Java 版 openJiuwen 的全局执行门面。它把 `Workflow`、`Agent`、`AgentGroup` 的运行入口统一到一组静态方法里，并把资源注册、回调框架、消息队列和检查点初始化放到同一处管理。
 
-如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`AsyncCallbackFramework` 与后续几页。
+如果你只想知道“怎么把一个 workflow 或 agent 跑起来”，从 `Runner` 开始就够了；如果你想进一步理解 session 复用、交互恢复、回调观测或分布式运行，再继续看 `RunnerImpl`、`ResourceMgr`、`CallbackFramework` 与后续几页。
 
 > 这里聚焦 Java 当前公开 API 与示例，不展开底层 MQ 或 distributed server adapter 的实现细节。
 
@@ -12,10 +12,10 @@
 | --- | --- | --- |
 | `Runner` | 全局单例门面，统一暴露 `start()`、`runWorkflow(...)`、`runAgent(...)`、`release(...)` 等静态入口 | 日常调用时 |
 | `RunnerImpl` | 真实执行器，负责 session 准备、资源管理、消息队列启动、checkpointer 初始化 | 理解运行时行为时 |
-| `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID 和 `checkpointerConfig` | 启动前配置时 |
+| `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID、`checkpointerConfig` 与多租户隔离开关（`enableTenantIsolation` / `tenantDataRoot`） | 启动前配置时 |
 | `DistributedConfig` | 分布式运行相关参数，如 topic 模板、超时、并发数和消息队列配置 | 需要跨进程执行时 |
 | `ResourceMgr` | 统一管理 workflow、agent、group、tool、model、prompt、sysop 等资源 | 你想按 ID 注册 / 获取资源时 |
-| `AsyncCallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
+| `CallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
 
 ## `Runner` 与 `RunnerImpl` 的关系
 
@@ -63,6 +63,48 @@ Runner.start();
 - fake message queue
 
 理解“默认运行器行为”时，应以 `RunnerConfig.DEFAULT` 为准，而不是只看字段声明的默认值。
+
+## 运行时线程池配置
+
+OpenJiuwen 通过统一入口创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用共享线程池；模块已有的实例专用线程池也由统一入口创建，但保留原有的队列、拒绝策略和生命周期。
+
+AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
+
+线程池配置支持 JVM 系统属性或环境变量。两种方式都是进程启动参数，在线程池初始化时读取，不支持运行期热更新。
+
+| 配置含义 | JVM 系统属性 | 环境变量 | 默认值 |
+| --- | --- | --- | --- |
+| 工具或能力调用最大线程数 | `openjiuwen.executor.tool-call.max-size` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE` | `max(8, CPU 核数 * 2)` |
+| 工具或能力调用空闲线程保留时间，单位秒 | `openjiuwen.executor.tool-call.keep-alive-seconds` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_KEEP_ALIVE_SECONDS` | `60` |
+| 等待单次工具调用结果的超时时间，单位毫秒；非正数表示不启用 | `openjiuwen.executor.tool-call.timeout-millis` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_TIMEOUT_MILLIS` | `0` |
+| 普通后台任务最大线程数 | `openjiuwen.executor.background.max-size` | `OPENJIUWEN_EXECUTOR_BACKGROUND_MAX_SIZE` | `max(8, CPU 核数 * 2)` |
+| 普通后台任务空闲线程保留时间，单位秒 | `openjiuwen.executor.background.keep-alive-seconds` | `OPENJIUWEN_EXECUTOR_BACKGROUND_KEEP_ALIVE_SECONDS` | `60` |
+
+默认值设计说明：
+
+- 工具调用和普通后台两个共享线程池的最大线程数默认 `max(8, CPU 核数 * 2)`，兼顾低核机器并发能力和资源上限。
+- 两个共享线程池的空闲线程保留时间默认 `60s`，用于覆盖短时突发，同时空闲后可回收线程。
+- 单次工具调用超时默认 `0`，表示不启用统一超时，以保持历史兼容性。超时后当前轮不再等待结果并记录失败，但不会中断底层已开始执行的工具；工具自身仍需负责超时或取消。
+
+每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池；模块专用线程池沿用其原有参数。高并发场景建议结合业务压测结果调大。
+
+JVM 系统属性适合本地测试或启动脚本中直接传参：
+
+```bash
+java -Dopenjiuwen.executor.tool-call.max-size=16 \
+     -Dopenjiuwen.executor.tool-call.timeout-millis=30000 \
+     -jar app.jar
+```
+
+环境变量适合容器、CI/CD 或平台化部署：
+
+```bash
+OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE=16 \
+OPENJIUWEN_EXECUTOR_TOOL_CALL_TIMEOUT_MILLIS=30000 \
+java -jar app.jar
+```
+
+如果两种方式同时配置，JVM 系统属性优先于环境变量。
 
 ## `DistributedConfig` 负责什么
 
@@ -229,7 +271,7 @@ while (stream.hasNext()) {
 }
 ```
 
-Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同类命令行路径可参考 `src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java`，它通过 `Runner.runAgentStreaming(...)` 消费 Agent 输出。工作流中断与交互恢复行为可参考 `src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java`。
+在 `examples/workflow_agent/WorkflowAgentExampleSupport.java` 里，命令行示例就是通过 `Runner.runAgentStreaming(...)` 消费 `WorkflowAgent` 的输出和交互事件。
 
 ## Runner 会怎样准备 session
 
@@ -250,7 +292,7 @@ Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同�
 
 ## 回调框架：如何观察运行过程
 
-`Runner.getCallbackFramework()` 暴露的是一个功能较完整的事件框架，而不只是简单的事件总线；`Runner.callbackFramework` 也保留为同一全局实例的静态字段。Java 当前实现已经支持：
+`Runner.callbackFramework()` 暴露的是一个功能较完整的事件框架，而不只是简单的事件总线。Java 当前实现已经支持：
 
 - callback priority
 - event / callback filter
@@ -268,7 +310,23 @@ Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同�
 - 某类事件统一日志
 - 执行失败后的回滚 / 降级
 
-就应该从 `AsyncCallbackFramework` 和 `runner/callback` 子包继续往下看。
+就应该从 `CallbackFramework` 和 `runner/callback` 子包继续往下看。
+
+## 多租户隔离入口
+
+`Runner` 暴露了一组带 `TenantContext tenantCtx` 末参的静态重载，签名与各自的无租户版本一致，仅末尾追加 `tenantCtx`：`runWorkflow` / `runWorkflowStreaming` / `runAgent` / `runAgentStreaming` / `runAgentGroup` / `runAgentGroupStreaming` / `runAgentAsync` / `runAgentStreamingAsync`。
+
+```java
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.multitenant.TenantContext;
+
+TenantContext tenantCtx = TenantContext.builder().tenantId("dept-01").build();
+Object result = Runner.runAgent(agent, inputs, session, context, envs, tenantCtx);
+```
+
+`RunnerImpl` 统一完成 `resolveTenantContext(session, explicitCtx)` → `bindTenantContext()` → 执行 → `unbindTenantContext()`；流式入口用 `TenantUnbindIterator` 包装器，在迭代结束或异常时才 unbind。`enableTenantIsolation=true` 时入口必须携带有效 `tenantId`，否则严格模式快速失败。
+
+完整的多租户隔离说明（严格模式、隔离资源、目录结构、KV 前缀、安全防护、清理接口）见 [多租户数据隔离](多租户数据隔离.md)。
 
 ## 清理：`release(sessionId)` 做什么
 
@@ -280,19 +338,24 @@ Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同�
 
 因此，`release(...)` 更像“结束一个执行会话并回收状态”，而不是“关闭 Runner 本身”。真正的全局资源回收仍然要看 `Runner.stop()`。
 
-## 对照现有入口看 Runner
+## 对照示例看 Runner
 
-### CLI 本地 Agent 入口
+### `examples/workflow_agent`
 
-`src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java` 是当前 Java 仓库中最接近命令行示例的入口：它把用户输入整理成 `query`，再调用 `Runner.runAgentStreaming(...)` 取得流式输出。需要接入命令行、WebSocket 或其他前端时，可以沿用这个“外层收集输入，Runner 统一执行”的结构。
+这个示例展示了最典型的 Runner 用法：
 
-### WorkflowAgent 交互恢复测试
+1. 创建 `WorkflowAgent`
+2. 注册多个 workflow
+3. 使用 `Runner.runAgentStreaming(...)` 执行
+4. 收到 `__interaction__` 事件后，用同一个 `conversation_id` 继续调用
+5. 退出时调用 `Runner.release(conversationId)` 与 `Runner.stop()`
 
-`src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java`、`WorkflowAgentInterruptInvokeMissingTest.java` 和 `WorkflowAgentConcurrentMissingTest.java` 覆盖了 Python 文档里强调的 `conversation_id`、`__interaction__`、中断后继续调用等场景。它们不是面向用户的示例工程，但比旧的 `examples/workflow_agent` 链接更能反映 Java 0.1.14 实际行为。
+### `examples/interact`
 
-### 原生 Workflow + checkpointer 路径
+这个示例更多展示原生 `Workflow.invoke(...)` + `Checkpointer` 的恢复路径，而不是直接通过 `Runner` 运行。但它和本页并不冲突：
 
-当前 Java 文档中没有 `examples/interact` 对应目录；如果要理解底层恢复语义，应从 `RunnerImpl.createWorkflowSession(...)`、checkpointer 相关 API 文档，以及 `WorkflowAgent*Interrupt*` 测试里的会话复用方式入手。这个路径和 `Runner` 的定位并不冲突：`Runner` 负责统一入口，原生 `Workflow` + checkpointer 更适合解释恢复机制。
+- `Runner` 负责“全局执行门面”；
+- 原生 `Workflow` + checkpointer 更适合展示底层恢复语义。
 
 ## 当前 Java 能力边界
 
@@ -309,7 +372,6 @@ Java 0.1.14 仓库当前没有独立的 `examples/workflow_agent` 目录；同�
 - [API 文档：RunnerConfig](../API文档/com.openjiuwen.core/runner/RunnerConfig.md)
 - [API 文档：DistributedConfig](../API文档/com.openjiuwen.core/runner/DistributedConfig.md)
 - [API 文档：ResourceMgr](../API文档/com.openjiuwen.core/runner/resourcemanager/ResourceMgr.md)
-- [API 文档：AsyncCallbackFramework](../API文档/com.openjiuwen.core/runner/callback/AsyncCallbackFramework.md)
-- [源码：Runner](../../../../src/main/java/com/openjiuwen/core/runner/Runner.java)
-- [源码：CLI LocalBackend](../../../../src/main/java/com/openjiuwen/harness/cli/agent/LocalBackend.java)
-- [测试：WorkflowAgent 流式中断恢复](../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)
+- [API 文档：CallbackFramework](../API文档/com.openjiuwen.core/runner/callback/CallbackFramework.md)
+- [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
+- [示例：interact](../../../../examples/interact/README.md)

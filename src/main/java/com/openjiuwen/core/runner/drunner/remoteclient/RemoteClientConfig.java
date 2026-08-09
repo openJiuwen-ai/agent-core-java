@@ -16,7 +16,10 @@ import lombok.NoArgsConstructor;
  *
  * <p>Mirrors Python's {@code RemoteClientConfig} in
  * {@code openjiuwen/core/runner/drunner/remote_client/remote_client_config.py}.</p>
+ *
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig}.
  */
+@Deprecated(since = "0.1.14")
 @Data
 @Builder
 @NoArgsConstructor

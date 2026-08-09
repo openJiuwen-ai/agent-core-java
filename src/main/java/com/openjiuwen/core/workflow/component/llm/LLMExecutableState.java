@@ -20,14 +20,14 @@ public class LLMExecutableState {
     /**
      * Accumulate stream content chunks.
      */
-    public void accumulateContent(String content) {
+    public synchronized void accumulateContent(String content) {
         accumulatedContent.append(content);
     }
 
     /**
      * Build final result from accumulated content.
      */
-    public Map<String, Object> buildFinalResult(Map<String, Object> responseFormat,
+    public synchronized Map<String, Object> buildFinalResult(Map<String, Object> responseFormat,
                                                  Map<String, Object> outputConfig) {
         if (accumulatedContent.length() == 0) {
             return Map.of();
@@ -38,7 +38,7 @@ public class LLMExecutableState {
     /**
      * Clear state.
      */
-    public void clear() {
+    public synchronized void clear() {
         finalResult = Map.of();
         accumulatedContent.setLength(0);
     }

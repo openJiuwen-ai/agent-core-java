@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -27,9 +27,9 @@ import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -88,7 +88,7 @@ class ReActAgentToolLifecycleStreamTest {
                 .containsEntry("tool_call_id", "call-global")
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{\"result\":\"prod\"}");
+                .containsEntry("result", "{result=prod}");
         assertThat(tool.invokeCount).isEqualTo(1);
     }
 
@@ -159,10 +159,18 @@ class ReActAgentToolLifecycleStreamTest {
                 .containsExactlyInAnyOrder("call-first", "call-second");
         assertThat(toolCallIds(outputsOfType(outputs, "tool_result")))
                 .containsExactlyInAnyOrder("call-first", "call-second");
-        assertThat(outputs).extracting(OutputSchema::getIndex).doesNotHaveDuplicates();
-        for (int i = 1; i < outputs.size(); i++) {
-            assertThat(outputs.get(i).getIndex()).isGreaterThan(outputs.get(i - 1).getIndex());
+        // Non-answer events share a monotonic index; final answer always uses index=0 (Python parity).
+        List<Integer> nonAnswerIndexes = outputs.stream()
+                .filter(output -> !"answer".equals(output.getType()))
+                .map(OutputSchema::getIndex)
+                .toList();
+        assertThat(nonAnswerIndexes).doesNotHaveDuplicates();
+        for (int i = 1; i < nonAnswerIndexes.size(); i++) {
+            assertThat(nonAnswerIndexes.get(i)).isGreaterThan(nonAnswerIndexes.get(i - 1));
         }
+        assertThat(outputs).filteredOn(output -> "answer".equals(output.getType()))
+                .extracting(OutputSchema::getIndex)
+                .containsOnly(0);
     }
 
     @Test
@@ -185,7 +193,7 @@ class ReActAgentToolLifecycleStreamTest {
                 .containsEntry("tool_call_id", "call-skill")
                 .containsEntry("tool_name", "echoTool")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{\"echo\":\"hello\"}");
+                .containsEntry("result", "{echo=hello}");
         assertThat(skillTool.invokeCount).isEqualTo(1);
     }
 
@@ -339,10 +347,17 @@ class ReActAgentToolLifecycleStreamTest {
 
         OutputSchema usage = singleOutput(outputs, "llm_usage");
         assertThat(usage.getIndex()).isGreaterThan(0);
-        assertThat(outputs).extracting(OutputSchema::getIndex).doesNotHaveDuplicates();
-        for (int i = 1; i < outputs.size(); i++) {
-            assertThat(outputs.get(i).getIndex()).isGreaterThan(outputs.get(i - 1).getIndex());
+        List<Integer> nonAnswerIndexes = outputs.stream()
+                .filter(output -> !"answer".equals(output.getType()))
+                .map(OutputSchema::getIndex)
+                .toList();
+        assertThat(nonAnswerIndexes).doesNotHaveDuplicates();
+        for (int i = 1; i < nonAnswerIndexes.size(); i++) {
+            assertThat(nonAnswerIndexes.get(i)).isGreaterThan(nonAnswerIndexes.get(i - 1));
         }
+        assertThat(outputs).filteredOn(output -> "answer".equals(output.getType()))
+                .extracting(OutputSchema::getIndex)
+                .containsOnly(0);
     }
 
     private static ReActAgent streamingAgent(List<AssistantMessageChunk> chunks) {

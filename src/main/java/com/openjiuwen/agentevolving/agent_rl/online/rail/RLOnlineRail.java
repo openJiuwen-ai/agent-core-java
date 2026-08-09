@@ -324,12 +324,11 @@ public class RLOnlineRail extends EvolutionRail {
         return new SplitResponse(copy, promptTokenIds, completionTokenIds, logprobs);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Object> normalizeTools(List<Object> tools) {
+    private static List<Map<String, Object>> normalizeTools(List<Object> tools) {
         if (tools == null) {
             return null;
         }
-        List<Object> normalized = new ArrayList<>();
+        List<Map<String, Object>> normalized = new ArrayList<>();
         for (Object tool : tools) {
             if (tool instanceof Map<?, ?> map) {
                 Map<String, Object> item = new LinkedHashMap<>();

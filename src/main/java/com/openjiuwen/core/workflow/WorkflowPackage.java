@@ -328,8 +328,8 @@ public final class WorkflowPackage {
         javaTypeNames.put("ExpressionCondition", "com.openjiuwen.core.workflow.condition.ExpressionCondition");
         javaTypeNames.put("ArrayCondition", "com.openjiuwen.core.workflow.condition.ArrayCondition");
         javaTypeNames.put("NumberCondition", "com.openjiuwen.core.workflow.condition.NumberCondition");
-        javaTypeNames.put("Session", "com.openjiuwen.core.session.WorkflowSessionApi");
-        javaTypeNames.put("create_workflow_session", "com.openjiuwen.core.session.WorkflowSessionApi#createWorkflowSession");
+        javaTypeNames.put("Session", "com.openjiuwen.core.session.WorkflowSession");
+        javaTypeNames.put("create_workflow_session", "com.openjiuwen.core.session.WorkflowSession#createWorkflowSession");
         return Collections.unmodifiableMap(javaTypeNames);
     }
 }

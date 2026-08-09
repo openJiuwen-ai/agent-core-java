@@ -10,5 +10,5 @@ package com.openjiuwen.core.multiagent.teamruntime;
  * <p>Mirrors Python's {@code CommunicableAgent} in
  * {@code openjiuwen/core/multi_agent/team_runtime/communicable_agent.py}.</p>
  */
-public interface CommunicableAgent extends com.openjiuwen.core.multi_agent.team_runtime.CommunicableAgent {
+public interface CommunicableAgent extends com.openjiuwen.core.multiagent.team_runtime.CommunicableAgent {
 }

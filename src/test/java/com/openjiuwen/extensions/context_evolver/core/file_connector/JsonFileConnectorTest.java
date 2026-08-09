@@ -26,13 +26,13 @@ class JsonFileConnectorTest {
 
     @Test
     void basicSaveLoadExistsAndDeleteMirrorPythonConnector() {
-        JSONFileConnector connector = new JSONFileConnector();
+        JSONFileConnector connector = new JSONFileConnector(tempDir);
         Map<String, Object> testData = new LinkedHashMap<>();
         testData.put("key1", "value1");
         testData.put("key2", List.of(1, 2, 3));
         testData.put("key3", Map.of("nested", "data"));
 
-        String targetFile = tempDir.resolve("test_output.json").toString();
+        String targetFile = "test_output.json";
         connector.saveToFile(targetFile, testData);
 
         assertTrue(connector.exists(targetFile));
@@ -43,14 +43,14 @@ class JsonFileConnectorTest {
 
     @Test
     void unicodeContentIsPreservedThroughRoundTrip() {
-        JSONFileConnector connector = new JSONFileConnector();
+        JSONFileConnector connector = new JSONFileConnector(tempDir);
         Map<String, Object> testData = Map.of(
                 "chinese", "测试",
                 "emoji", "\uD83C\uDF80",
                 "japanese", "テスト"
         );
 
-        String targetFile = tempDir.resolve("unicode_test.json").toString();
+        String targetFile = "unicode_test.json";
         connector.saveToFile(targetFile, testData);
 
         assertEquals(testData, connector.loadFromFile(targetFile));

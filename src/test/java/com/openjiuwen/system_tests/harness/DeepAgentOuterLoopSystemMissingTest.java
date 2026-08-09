@@ -7,7 +7,7 @@ package com.openjiuwen.system_tests.harness;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 import com.openjiuwen.harness.schema.task.TodoItem;
@@ -43,10 +43,10 @@ class DeepAgentOuterLoopSystemMissingTest {
         ControlledReactAgent reactAgent = new ControlledReactAgent(Set.of(1, 2));
         DeepAgent agent = agent("deep_outer_loop_sys", 8, reactAgent);
 
-        CompletableFuture<Map<String, Object>> invokeTask = agent.invoke(Map.of("query", "base query"), session);
+        CompletableFuture<Map<String, Object>> invokeTask = agent.invokeAsync(Map.of("query", "base query"), session);
 
         reactAgent.waitCallStarted(1);
-        agent.steer("please format as bullet points", session).join();
+        agent.steerAsync("please format as bullet points", session).join();
         reactAgent.releaseCall(1);
 
         reactAgent.waitCallStarted(2);
@@ -80,7 +80,7 @@ class DeepAgentOuterLoopSystemMissingTest {
         ControlledReactAgent reactAgent = new ControlledReactAgent(Set.of(1));
         DeepAgent agent = agent("fifo_test", 10, reactAgent);
 
-        CompletableFuture<Map<String, Object>> invokeTask = agent.invoke(Map.of("query", "base"), session);
+        CompletableFuture<Map<String, Object>> invokeTask = agent.invokeAsync(Map.of("query", "base"), session);
 
         reactAgent.waitCallStarted(1);
         agent.followUp("first_fu", session).join();
@@ -103,7 +103,7 @@ class DeepAgentOuterLoopSystemMissingTest {
         ControlledReactAgent reactAgent = new ControlledReactAgent(Set.of(1, 2));
         DeepAgent agent = agent("persist_test", 10, reactAgent);
 
-        CompletableFuture<Map<String, Object>> invokeTask = agent.invoke(Map.of("query", "base"), session);
+        CompletableFuture<Map<String, Object>> invokeTask = agent.invokeAsync(Map.of("query", "base"), session);
 
         reactAgent.waitCallStarted(1);
         agent.followUp("fu_alpha", session).join();

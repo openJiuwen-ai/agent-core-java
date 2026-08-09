@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.checkpointing;
+package com.openjiuwen.agentevolving.checkpointing;
 
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.experience.EvolutionContext;
-import com.openjiuwen.agent_evolving.experience.PendingChange;
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.experience.EvolutionContext;
+import com.openjiuwen.agentevolving.experience.PendingChange;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -179,9 +179,9 @@ class TypesTest {
 
     @Test
     void testCompatImportsPointToNewTypeOwners() {
-        assertEquals("com.openjiuwen.agent_evolving.checkpointing", EvolveCheckpoint.class.getPackageName());
-        assertEquals("com.openjiuwen.agent_evolving.experience", PendingChange.class.getPackageName());
-        assertEquals("com.openjiuwen.agent_evolving.experience", EvolutionContext.class.getPackageName());
+        assertEquals("com.openjiuwen.agentevolving.checkpointing", EvolveCheckpoint.class.getPackageName());
+        assertEquals("com.openjiuwen.agentevolving.experience", PendingChange.class.getPackageName());
+        assertEquals("com.openjiuwen.agentevolving.experience", EvolutionContext.class.getPackageName());
     }
 
     @Test

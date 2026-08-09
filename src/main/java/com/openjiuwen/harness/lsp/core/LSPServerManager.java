@@ -15,13 +15,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Global singleton LSP server manager with lazy-loading server startup.
@@ -35,13 +34,12 @@ public class LSPServerManager {
     private static LSPServerManager instance;
 
     private String workspaceRoot = "";
-    private Map<String, List<ScopedLspServerConfig>> configs = new LinkedHashMap<>();
-    private Map<ServerInstanceKey, LspServerInstance> instances = new LinkedHashMap<>();
-    private Map<ServerInstanceKey, Thread> spawning = new LinkedHashMap<>();
-    private Map<String, List<String>> extensionMap = new LinkedHashMap<>();
-    private final Set<LspServerInstance> diagnosticHandlerInstances =
-            Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Map<String, Integer> documentVersions = new LinkedHashMap<>();
+    private Map<String, List<ScopedLspServerConfig>> configs = new ConcurrentHashMap<>();
+    private Map<ServerInstanceKey, LspServerInstance> instances = new ConcurrentHashMap<>();
+    private Map<ServerInstanceKey, Thread> spawning = new ConcurrentHashMap<>();
+    private Map<String, List<String>> extensionMap = new ConcurrentHashMap<>();
+    private final Set<LspServerInstance> diagnosticHandlerInstances = ConcurrentHashMap.newKeySet();
+    private final Map<String, Integer> documentVersions = new ConcurrentHashMap<>();
 
     public static synchronized InitializeResult initialize() {
         return initialize(null);
@@ -196,7 +194,7 @@ public class LSPServerManager {
     }
 
     public void ensureDiagnosticHandler(LspServerInstance server) {
-        if (server == null || diagnosticHandlerInstances.contains(server)) {
+        if (server == null || !diagnosticHandlerInstances.add(server)) {
             return;
         }
         LspDiagnosticRegistry registry = LspDiagnosticRegistry.getInstance();
@@ -212,7 +210,6 @@ public class LSPServerManager {
             }
             registry.register(serverName, String.valueOf(uriValue), diagnostics);
         });
-        diagnosticHandlerInstances.add(server);
     }
 
     public static List<LspDiagnosticFile> getPendingDiagnostics(int maxPerFile, int maxTotal) {

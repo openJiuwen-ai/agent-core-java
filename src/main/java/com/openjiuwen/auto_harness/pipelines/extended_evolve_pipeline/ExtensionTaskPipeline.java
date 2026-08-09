@@ -24,7 +24,7 @@ import com.openjiuwen.auto_harness.stages.BaseStage;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
 import java.nio.file.Path;

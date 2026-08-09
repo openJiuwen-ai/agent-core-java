@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.ReadFileChunkData
+# com.openjiuwen.core.sysop.result.ReadFileChunkData
 
 ## 类 ReadFileChunkData
 

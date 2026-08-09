@@ -7,7 +7,7 @@ package com.openjiuwen.core.workflow.component.loop;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.workflow.Workflow;
@@ -55,7 +55,8 @@ public class LoopRuntimePythonParityTest {
         WorkflowOutput output = workflow.invoke(Map.of("num", 3), new WorkflowSession(), null);
 
         Map<String, Object> endOut = toMap(toMap(toMap(output.getResult()).get("output")).get("end_out"));
-        assertThat(endOut).containsEntry("index", 0);
+        // Align with Python out-of-loop: INDEX is cleared/omitted from final loop outputs.
+        assertThat(endOut).doesNotContainKey("index");
         assertThat(endOut).containsEntry("l_index", 3);
         assertThat(endOut).containsEntry("l_out1", List.of(10, 11, 12));
         assertThat(endOut).doesNotContainKeys("loop", "loop_1");

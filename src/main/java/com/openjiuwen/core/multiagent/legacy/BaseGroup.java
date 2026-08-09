@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.multiagent.legacy;
 
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 
 import java.util.Iterator;
 
@@ -34,7 +34,7 @@ public abstract class BaseGroup extends LegacyBaseGroup {
      * @since 0.1.7
      */
     @Override
-    public abstract Object invoke(Object message, AgentGroupSessionApi session);
+    public abstract Object invoke(Object message, AgentGroupSession session);
 
     /**
      * stream.
@@ -45,5 +45,5 @@ public abstract class BaseGroup extends LegacyBaseGroup {
      * @since 0.1.7
      */
     @Override
-    public abstract Iterator<Object> stream(Object message, AgentGroupSessionApi session);
+    public abstract Iterator<Object> stream(Object message, AgentGroupSession session);
 }

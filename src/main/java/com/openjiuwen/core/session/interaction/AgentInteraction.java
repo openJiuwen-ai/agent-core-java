@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 import java.lang.reflect.InvocationTargetException;
 
@@ -63,22 +64,11 @@ public class AgentInteraction extends BaseInteraction {
     }
 
     private void writeOutput(OutputSchema output) {
-        Object writerManager = session == null ? null : session.streamWriterManager();
-        if (writerManager == null) {
+        StreamWriterManager writerManager = session == null ? null : session.streamWriterManager();
+        if (writerManager == null || writerManager.getOutputWriter() == null) {
             return;
         }
-        try {
-            Object outputWriter = writerManager.getClass().getMethod("getOutputWriter").invoke(writerManager);
-            outputWriter.getClass().getMethod("write", Object.class).invoke(outputWriter, output);
-        } catch (NoSuchMethodException | IllegalAccessException ignored) {
-            // Streaming is optional in the Python implementation.
-        } catch (InvocationTargetException exception) {
-            Throwable target = exception.getTargetException();
-            if (target instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException(target);
-        }
+        writerManager.getOutputWriter().write(output);
     }
 
     private static String executableId(BaseSession session) {

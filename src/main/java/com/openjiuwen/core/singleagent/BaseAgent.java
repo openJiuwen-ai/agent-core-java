@@ -4,12 +4,15 @@
 
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -51,12 +54,13 @@ public abstract class BaseAgent {
     private AbilityManager abilityManager;
     private final AgentCallbackManager agentCallbackManager;
     private final SkillToolRegistry skillToolRegistry;
-    private SkillUtil skillUtil;
+    private volatile SkillUtil skillUtil;
+    private final Object skillUtilLock = new Object();
     private Object config;
 
     protected BaseAgent(AgentCard card) {
         this.card = Objects.requireNonNull(card, "card");
-        this.abilityManager = new AbilityManager();
+        this.abilityManager = new AbilityManager(card.getId());
         this.agentCallbackManager = new AgentCallbackManager(card.getId());
         this.skillToolRegistry = new SkillToolRegistry();
         lazyInitSkill();
@@ -67,10 +71,18 @@ public abstract class BaseAgent {
         if (sysOperationId == null || sysOperationId.isBlank()) {
             return;
         }
-        if (skillUtil == null) {
-            skillUtil = createSkillUtil(sysOperationId);
-        } else {
-            skillUtil.setSysOperationId(sysOperationId);
+        SkillUtil local = skillUtil;
+        if (local != null) {
+            local.setSysOperationId(sysOperationId);
+            return;
+        }
+        synchronized (skillUtilLock) {
+            local = skillUtil;
+            if (local == null) {
+                skillUtil = createSkillUtil(sysOperationId);
+            } else {
+                local.setSysOperationId(sysOperationId);
+            }
         }
     }
 
@@ -101,6 +113,44 @@ public abstract class BaseAgent {
         }
         try {
             return CompletableFuture.completedFuture(skillUtil.registerSkills(skillPaths, this, null, useMetadataName));
+        } catch (IOException | RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    /**
+     * Register skill(s) only when each real path is within a trusted skills root.
+     *
+     * <p>Absolute paths are accepted when they canonicalize inside {@code skillsRoot}.</p>
+     *
+     * @param skillPath path or list of paths to register
+     * @param skillsRoot trusted root containing loadable skills
+     */
+    public CompletionStage<Boolean> registerSkill(Object skillPath, Path skillsRoot) {
+        return registerSkill(skillPath, skillsRoot, false);
+    }
+
+    public CompletionStage<Boolean> registerSkill(Object skillPath, Path skillsRoot, boolean useMetadataName) {
+        lazyInitSkill();
+        if (skillUtil == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("sys_operation_id is required before registering skills")
+            );
+        }
+        try {
+            if (skillPath instanceof String path) {
+                return CompletableFuture.completedFuture(
+                        skillUtil.registerSkills(List.of(path), skillsRoot, this, null, useMetadataName));
+            }
+            if (skillPath instanceof List<?> paths) {
+                List<String> skillPaths = new ArrayList<>();
+                for (Object item : paths) {
+                    skillPaths.add(String.valueOf(item));
+                }
+                return CompletableFuture.completedFuture(
+                        skillUtil.registerSkills(skillPaths, skillsRoot, this, null, useMetadataName));
+            }
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Unsupported skill path type"));
         } catch (IOException | RuntimeException exception) {
             return CompletableFuture.failedFuture(exception);
         }
@@ -217,30 +267,76 @@ public abstract class BaseAgent {
     }
 
     public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-        return CompletableFuture.completedFuture(invoke(inputs, (Session) null));
+        return CompletableFuture.completedFuture(invoke(inputs, (AgentSession) null));
     }
 
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-        return stream(inputs, (Session) null, streamModes);
+        return stream(inputs, (AgentSession) null, streamModes);
     }
 
-    public CompletionStage<Object> invoke(Map<?, ?> inputs, Session session) {
+    public CompletionStage<Object> invoke(Map<?, ?> inputs, AgentSession session) {
         return legacyInvokeStage(inputs, session);
     }
 
-    public CompletionStage<Object> invoke(String inputs, Session session) {
+    public CompletionStage<Object> invoke(String inputs, AgentSession session) {
         return legacyInvokeStage(inputs, session);
     }
 
-    public Object invoke(Object inputs, Session session) {
-        throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, Session)");
+    public Object invoke(Object inputs, AgentSession session) {
+        throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, AgentSession)");
     }
 
-    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+    public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
         return List.<Object>of(invoke(inputs, session)).iterator();
     }
 
-    private CompletionStage<Object> legacyInvokeStage(Object inputs, Session session) {
+    /**
+     * Reactive version of {@link #invoke(Object, AgentSession)}.
+     *
+     * @param inputs agent inputs
+     * @param session session context, nullable
+     * @return Mono emitting the invocation result
+     */
+    public Mono<Object> invokeAsync(Object inputs, AgentSession session) {
+        return ReactiveAdapters.fromCallable(() -> invoke(inputs, session));
+    }
+
+    /**
+     * Reactive version of {@link #invoke(Object, AgentSessionApi)}.
+     *
+     * @param inputs agent inputs
+     * @param session agent session
+     * @return Mono emitting the invocation result
+     */
+    public Mono<Object> invokeAsync(Object inputs, AgentSessionApi session) {
+        return ReactiveAdapters.fromCompletionStage(invoke(inputs, session));
+    }
+
+    /**
+     * Reactive version of {@link #stream(Object, AgentSession, List)}.
+     *
+     * @param inputs agent inputs
+     * @param session session context, nullable
+     * @param streamModes stream output modes
+     * @return Flux emitting stream chunks
+     */
+    public Flux<Object> streamAsync(Object inputs, AgentSession session, List<StreamMode> streamModes) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, streamModes));
+    }
+
+    /**
+     * Reactive version of {@link #stream(Object, AgentSessionApi, List)}.
+     *
+     * @param inputs agent inputs
+     * @param session agent session
+     * @param streamModes stream output modes
+     * @return Flux emitting stream chunks
+     */
+    public Flux<Object> streamAsync(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, streamModes));
+    }
+
+    private CompletionStage<Object> legacyInvokeStage(Object inputs, AgentSession session) {
         try {
             Object result = invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
             if (result instanceof Map<?, ?> resultMap) {
@@ -338,7 +434,7 @@ public abstract class BaseAgent {
     }
 
     public void setAbilityManager(AbilityManager abilityManager) {
-        this.abilityManager = abilityManager == null ? new AbilityManager() : abilityManager;
+        this.abilityManager = abilityManager == null ? new AbilityManager(card.getId()) : abilityManager;
     }
 
     public AgentCallbackManager getAgentCallbackManager() {

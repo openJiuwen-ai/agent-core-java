@@ -14,9 +14,9 @@ import com.openjiuwen.agent_teams.tools.database.MessageDao;
 import com.openjiuwen.agent_teams.tools.database.TaskDao;
 import com.openjiuwen.agent_teams.tools.database.TeamDao;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Process-global shared resources for agent teams.
@@ -27,8 +27,8 @@ import java.util.Objects;
 public final class SharedResources {
 
     private static TeamRuntimeManager runtime;
-    private static SharedDatabase memoryDb;
-    private static final Map<String, SharedDatabase> DB_INSTANCES = new LinkedHashMap<>();
+    private static volatile SharedDatabase memoryDb;
+    private static final Map<String, SharedDatabase> DB_INSTANCES = new ConcurrentHashMap<>();
     private static DatabaseFactory databaseFactory = SharedTeamDatabase::new;
 
     private SharedResources() {
@@ -49,7 +49,7 @@ public final class SharedResources {
         ));
     }
 
-    public static synchronized SharedDatabase getSharedDb(SharedDbConfig config) {
+    public static SharedDatabase getSharedDb(SharedDbConfig config) {
         SharedDbConfig effectiveConfig = Objects.requireNonNull(config, "config");
         if ("memory".equals(effectiveConfig.dbType())) {
             return getSharedMemoryDb();
@@ -77,15 +77,29 @@ public final class SharedResources {
     }
 
     private static SharedDatabase getSharedMemoryDb() {
-        if (memoryDb == null) {
-            memoryDb = databaseFactory.create(SharedDbConfig.memory());
+        SharedDatabase cached = memoryDb;
+        if (cached != null) {
+            return cached;
         }
-        return memoryDb;
+        SharedDatabase created = databaseFactory.create(SharedDbConfig.memory());
+        synchronized (SharedResources.class) {
+            if (memoryDb == null) {
+                memoryDb = created;
+                return created;
+            }
+            return memoryDb;
+        }
     }
 
     private static SharedDatabase getSharedDbInstance(SharedDbConfig config) {
         String key = config.dbType() + "::" + config.connectionString();
-        return DB_INSTANCES.computeIfAbsent(key, ignored -> databaseFactory.create(config));
+        SharedDatabase cached = DB_INSTANCES.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        SharedDatabase created = databaseFactory.create(config);
+        SharedDatabase existing = DB_INSTANCES.putIfAbsent(key, created);
+        return existing != null ? existing : created;
     }
 
     /**

@@ -4,16 +4,16 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
-import com.openjiuwen.agent_evolving.experience.PendingChange;
-import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
-import com.openjiuwen.agent_evolving.optimizer.skill_call.TeamSkillExperienceOptimizer;
-import com.openjiuwen.agent_evolving.signal.TeamSignalDetector;
-import com.openjiuwen.agent_evolving.trajectory.StepKind;
-import com.openjiuwen.agent_evolving.trajectory.ToolCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
+import com.openjiuwen.agentevolving.experience.PendingChange;
+import com.openjiuwen.agentevolving.optimizer.LlmResilience;
+import com.openjiuwen.agentevolving.optimizer.skill_call.TeamSkillExperienceOptimizer;
+import com.openjiuwen.agentevolving.signal.TeamSignalDetector;
+import com.openjiuwen.agentevolving.trajectory.StepKind;
+import com.openjiuwen.agentevolving.trajectory.ToolCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.harness.rails.CallbackContext;

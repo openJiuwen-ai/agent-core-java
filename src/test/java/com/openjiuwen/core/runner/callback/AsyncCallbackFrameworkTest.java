@@ -6,12 +6,16 @@ package com.openjiuwen.core.runner.callback;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -154,9 +158,22 @@ class AsyncCallbackFrameworkTest {
         })), 0, false, "default", Set.of(), List.of(), null, null, 0, 0.0, null, "");
 
         assertEquals(List.of("one"), framework.triggerParallel("parallel", new Object[0], Map.of()));
+        assertEquals(List.of("one"), framework.triggerParallel("parallel", new Object[0], Map.of()));
         Iterator<Object> generated = framework.triggerGenerator("generator", new Object[0], Map.of());
         assertEquals(List.of("a", "b"), toList(generated));
         assertTrue(framework.triggerWithTimeout("timeout", 0.05, new Object[0], Map.of()).isEmpty());
+    }
+
+    @Test
+    void parallelCallbacksUseSharedBoundedModulePool() throws Exception {
+        Field poolField = AsyncCallbackFramework.class.getDeclaredField("PARALLEL_EXECUTOR");
+        poolField.setAccessible(true);
+        ExecutorService executor = (ExecutorService) poolField.get(null);
+        assertTrue(executor instanceof ThreadPoolExecutor);
+        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        assertTrue(pool.getQueue() instanceof ArrayBlockingQueue);
+        assertEquals(pool.getMaximumPoolSize(), pool.getCorePoolSize());
+        assertFalse(pool.isShutdown());
     }
 
     private static Function<Map<String, Object>, Object> named(

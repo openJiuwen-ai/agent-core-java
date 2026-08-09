@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
@@ -50,9 +51,9 @@ public class WorkflowStorage extends BaseRedisStorage {
 
             var stateBlob = serializeState(baseSession.state().getState());
             if (stateBlob != null) {
-                String dumpTypeKey = Checkpointer.buildKeyWithNamespace(
+                String dumpTypeKey = Checkpointer.resolveNsKey(
                         sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-                String blobKey = Checkpointer.buildKeyWithNamespace(
+                String blobKey = Checkpointer.resolveNsKey(
                         sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
                 pipeline.set(dumpTypeKey, stateBlob.type(), ttlSeconds);
                 pipeline.set(blobKey, stateBlob.data(), ttlSeconds);
@@ -64,9 +65,9 @@ public class WorkflowStorage extends BaseRedisStorage {
             if (baseSession.state() instanceof WorkflowCommitState workflowState) {
                 var updatesBlob = serializeState(workflowState.getUpdates());
                 if (updatesBlob != null) {
-                    String updatesDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+                    String updatesDumpTypeKey = Checkpointer.resolveNsKey(
                             sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-                    String updatesBlobKey = Checkpointer.buildKeyWithNamespace(
+                    String updatesBlobKey = Checkpointer.resolveNsKey(
                             sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
                     pipeline.set(updatesDumpTypeKey, updatesBlob.type(), ttlSeconds);
                     pipeline.set(updatesBlobKey, updatesBlob.data(), ttlSeconds);
@@ -94,13 +95,13 @@ public class WorkflowStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String workflowId = resolveWorkflowId(baseSession);
 
-            String stateDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String stateDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = Checkpointer.buildKeyWithNamespace(
+            String stateBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String updatesDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey = Checkpointer.buildKeyWithNamespace(
+            String updatesBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();
@@ -158,13 +159,13 @@ public class WorkflowStorage extends BaseRedisStorage {
      */
     public CompletableFuture<Void> clear(String workflowId, String sessionId) {
         try {
-            String stateDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String stateDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = Checkpointer.buildKeyWithNamespace(
+            String stateBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String updatesDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey = Checkpointer.buildKeyWithNamespace(
+            String updatesBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
             redisStore.batchDelete(List.of(
                     stateDumpTypeKey, stateBlobKey,
@@ -184,13 +185,13 @@ public class WorkflowStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String workflowId = resolveWorkflowId(baseSession);
 
-            String stateDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String stateDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = Checkpointer.buildKeyWithNamespace(
+            String stateBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String updatesDumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey = Checkpointer.buildKeyWithNamespace(
+            String updatesBlobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();

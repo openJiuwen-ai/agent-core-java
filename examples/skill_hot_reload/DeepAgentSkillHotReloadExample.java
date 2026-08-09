@@ -13,7 +13,8 @@ import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
-import com.openjiuwen.harness.rails.SkillUseRail;
+import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 import examples.utils.SharedExampleApiConfigLoader;
@@ -98,11 +99,11 @@ public final class DeepAgentSkillHotReloadExample {
 
         // Get SkillUseRail to monitor skill changes
         SkillUseRail skillUseRail = findSkillUseRail(deepAgent);
-        System.out.println("[Step 1] Initial skills loaded: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[Step 1] Initial skills loaded: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // Step 2: Run DeepAgent - SkillUseRail auto-injects skill info
-        System.out.println("[Step 2] Running DeepAgent with " + skillUseRail.registeredSkillNames().size() + " skills...");
+        System.out.println("[Step 2] Running DeepAgent with " + skillNames(skillUseRail).size() + " skills...");
         Map<String, Object> result1 = runDeepAgent(deepAgent,
                 "How many skills do you currently have? List all skill names and their descriptions.");
         System.out.println("[Step 2] DeepAgent response: " + extractOutput(result1));
@@ -121,8 +122,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> result2 = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names and their descriptions.");
         System.out.println("[Step 3] DeepAgent response: " + extractOutput(result2));
-        System.out.println("[Step 4] Skills after add hot-reload: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[Step 4] Skills after add hot-reload: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // Hot-reload: delete skill_b
         Files.deleteIfExists(skillBDir.resolve("SKILL.md"));
@@ -133,8 +134,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> result3 = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names and their descriptions.");
         System.out.println("[Step 5] DeepAgent response: " + extractOutput(result3));
-        System.out.println("[Step 6] Skills after delete hot-reload: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[Step 6] Skills after delete hot-reload: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // ---- TC_004: Batch load with one abnormal skill, others still work ----
         System.out.println("\n--- TC_004: Batch load with one abnormal skill, others still load ---");
@@ -155,12 +156,12 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> resultBatchWithBad = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names.");
         System.out.println("[TC_004] DeepAgent response: " + extractOutput(resultBatchWithBad));
-        System.out.println("[TC_004] Skills after batch load: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[TC_004] Skills after batch load: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
         // Verify: tc004_invalid should NOT be in the list, tc004_valid_1..5 SHOULD be in the list
-        boolean invalidNotLoaded = !skillUseRail.registeredSkillNames().contains("tc004_invalid");
-        boolean allValidLoaded = skillUseRail.registeredSkillNames().contains("tc004_valid_1")
-                && skillUseRail.registeredSkillNames().contains("tc004_valid_5");
+        boolean invalidNotLoaded = !skillNames(skillUseRail).contains("tc004_invalid");
+        boolean allValidLoaded = skillNames(skillUseRail).contains("tc004_valid_1")
+                && skillNames(skillUseRail).contains("tc004_valid_5");
         System.out.println("[TC_004] tc004_invalid NOT loaded: " + invalidNotLoaded
                 + ", tc004_valid_1..5 ALL loaded: " + allValidLoaded);
 
@@ -184,8 +185,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> resultOversize = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names.");
         System.out.println("[TC_002] DeepAgent response: " + extractOutput(resultOversize));
-        System.out.println("[TC_002] Skills after oversized attempt: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[TC_002] Skills after oversized attempt: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
         Files.deleteIfExists(oversizedDir.resolve("SKILL.md"));
         Files.deleteIfExists(oversizedDir);
 
@@ -201,8 +202,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> resultInvalid = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names.");
         System.out.println("[TC_003] DeepAgent response: " + extractOutput(resultInvalid));
-        System.out.println("[TC_003] Skills after invalid attempt: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[TC_003] Skills after invalid attempt: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // ---- TC_012: Recover invalid skill file → reloaded and works ----
         System.out.println("\n--- TC_012: Recover invalid SKILL.md → should be reloaded ---");
@@ -214,8 +215,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> resultRecover = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names and descriptions.");
         System.out.println("[TC_012] DeepAgent response: " + extractOutput(resultRecover));
-        System.out.println("[TC_012] Skills after recovery: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[TC_012] Skills after recovery: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // ---- TC_011: Simultaneous add, delete, modify (10 each) ----
         System.out.println("\n--- TC_011: Simultaneous add 10, delete 10, modify 10 skills ---");
@@ -229,7 +230,7 @@ public final class DeepAgentSkillHotReloadExample {
         // Run once to load all 30 batch skills + existing skills
         Map<String, Object> resultBaseline = runDeepAgent(deepAgent,
                 "List all your skill names.");
-        System.out.println("[TC_011 Baseline] Skills count: " + skillUseRail.registeredSkillNames().size());
+        System.out.println("[TC_011 Baseline] Skills count: " + skillNames(skillUseRail).size());
 
         // Now: delete batch_skill_1..10, modify batch_skill_11..20, add new_skill_31..40
         for (int i = 1; i <= 10; i++) {
@@ -253,8 +254,8 @@ public final class DeepAgentSkillHotReloadExample {
         Map<String, Object> resultSimultaneous = runDeepAgent(deepAgent,
                 "How many skills do you have now? List all skill names.");
         System.out.println("[TC_011] DeepAgent response: " + extractOutput(resultSimultaneous));
-        System.out.println("[TC_011] Skills after simultaneous operations: " + skillUseRail.registeredSkillNames()
-                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        System.out.println("[TC_011] Skills after simultaneous operations: " + skillNames(skillUseRail)
+                + " (count: " + skillNames(skillUseRail).size() + ")");
 
         // Cleanup batch skills
         for (int i = 11; i <= 40; i++) {
@@ -367,12 +368,16 @@ public final class DeepAgentSkillHotReloadExample {
      * Find the SkillUseRail from DeepAgent's registered rails.
      */
     private static SkillUseRail findSkillUseRail(DeepAgent deepAgent) {
-        for (Object rail : deepAgent.getRegisteredRails()) {
+        for (Object rail : deepAgent.getRails()) {
             if (rail instanceof SkillUseRail skillUseRail) {
                 return skillUseRail;
             }
         }
         return null;
+    }
+
+    private static List<String> skillNames(SkillUseRail rail) {
+        return rail.getSkillsMeta().stream().map(SkillDescriptor::name).toList();
     }
 
     private static Map<String, Object> runDeepAgent(DeepAgent deepAgent, String query) {

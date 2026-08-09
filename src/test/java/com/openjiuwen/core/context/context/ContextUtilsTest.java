@@ -4,147 +4,184 @@
 
 package com.openjiuwen.core.context.context;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
-import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
+import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /**
- * Tests for {@link ContextUtils}.
+ * Focused parity tests for context utility helpers.
+ *
+ * <p>Mirrors Python's {@code ContextUtils} in
+ * {@code openjiuwen/core/context_engine/context/context_utils.py}.</p>
  */
 class ContextUtilsTest {
-    @Test
-    @DisplayName("findLastAiMessageWithoutToolCall finds correct index")
-    void testFindLastAiMessage() {
-        List<BaseMessage> messages = List.of(new UserMessage("hi"), new AssistantMessage("hello"),
-                new UserMessage("question"), AssistantMessage.builder().role("assistant").content("answer").build());
 
-        Optional<Integer> result = ContextUtils.findLastAiMessageWithoutToolCall(messages);
-        assertTrue(result.isPresent());
-        assertEquals(3, result.get());
+    @Test
+    void parseOpenrouterModelsAddsOnlyUnambiguousAliases() {
+        List<Map<String, Object>> models = List.of(
+                Map.of("id", "openai/shared", "context_length", 100),
+                Map.of("id", "other/shared", "context_length", 200),
+                Map.of("id", "anthropic/unique", "context_length", 300),
+                Map.of("id", "plain", "context_length", 400),
+                Map.of("id", "bad", "context_length", -1)
+        );
+
+        Map<String, Integer> tokens = ContextUtils.parseOpenrouterModelContextWindowTokens(models);
+
+        assertThat(tokens).containsEntry("openai/shared", 100)
+                .containsEntry("other/shared", 200)
+                .containsEntry("anthropic/unique", 300)
+                .containsEntry("unique", 300)
+                .containsEntry("plain", 400);
+        assertThat(tokens).doesNotContainKey("shared");
+        assertThat(ContextUtils.parseOpenrouterModel(Map.of("context_length", 10))).isEmpty();
     }
 
     @Test
-    @DisplayName("findLastAiMessageWithoutToolCall returns empty when all have tool calls")
-    void testFindLastAiMessageWithToolCalls() {
-        List<BaseMessage> messages = List.of(new UserMessage("hi"),
-                AssistantMessage.builder().role("assistant").content("calling tool")
-                        .toolCalls(List.of(com.openjiuwen.core.foundation.llm.schema.ToolCall.builder().id("1")
-                                .name("test").arguments("{}").build()))
-                        .build());
+    void buildAndResolveModelContextWindowTokensFollowPythonPriority() {
+        Map<String, Integer> resolved = ContextUtils.buildModelContextWindowTokens(
+                Map.of("custom", 1234), false, 3.0d);
 
-        Optional<Integer> result = ContextUtils.findLastAiMessageWithoutToolCall(messages);
-        assertFalse(result.isPresent());
+        assertThat(resolved).containsEntry("custom", 1234);
+        assertThat(ContextUtils.resolveContextMax("custom", 99, resolved)).isEqualTo(99);
+        assertThat(ContextUtils.resolveContextMax("custom", null, resolved)).isEqualTo(1234);
+        assertThat(ContextUtils.resolveContextMax("gpt-5.4", null, resolved)).isEqualTo(1050000);
+        assertThat(ContextUtils.resolveContextMax("unknown", null, resolved))
+                .isEqualTo(ContextUtils.DEFAULT_CONTEXT_MAX_TOKENS);
     }
 
     @Test
-    @DisplayName("replaceMessages replaces range correctly")
-    void testReplaceMessages() {
-        List<BaseMessage> msgs = new ArrayList<>(
-                List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c"), new UserMessage("d")));
+    void validateAndEnsureMessagesMatchBaseMessageContract() {
+        BaseMessage message = new BaseMessage("user", "hello");
 
-        List<BaseMessage> replacements = List.of(new UserMessage("X"));
-        List<BaseMessage> result = ContextUtils.replaceMessages(msgs, replacements, 1, 2);
+        ContextUtils.validateMessages(message);
+        ContextUtils.validateMessages(List.of(message));
+        ContextUtils.ensureContextMessageIds(List.of(message));
 
-        assertEquals(3, result.size());
-        assertEquals("a", result.get(0).getContentAsString());
-        assertEquals("X", result.get(1).getContentAsString());
-        assertEquals("d", result.get(2).getContentAsString());
+        assertThat(message.getMetadata()).containsKey(ContextUtils.CONTEXT_MESSAGE_ID_KEY);
+        assertThatThrownBy(() -> ContextUtils.validateMessages(List.of("bad")))
+                .hasMessageContaining("messages should be a BaseMessage");
+        assertThatThrownBy(() -> ContextUtils.validateMessages("bad"))
+                .hasMessageContaining("messages should be a BaseMessage");
     }
 
     @Test
-    @DisplayName("findAllDialogueRound identifies dialogue rounds")
-    void testFindAllDialogueRound() {
-        List<BaseMessage> messages = List.of(new UserMessage("q1"), new AssistantMessage("a1"), new UserMessage("q2"),
-                new AssistantMessage("a2"));
+    void validateAndFixContextWindowDropsLeadingToolMessages() {
+        ToolMessage tool = new ToolMessage("tool result", "call-1");
+        BaseMessage user = new BaseMessage("user", "question");
+        ContextWindow mixedWindow = new ContextWindow(List.of(), List.of(tool, user), List.of(), null);
+        ContextWindow onlyToolsWindow = new ContextWindow(List.of(), List.of(tool), List.of(), null);
 
-        List<int[]> rounds = ContextUtils.findAllDialogueRound(messages);
-        assertEquals(2, rounds.size());
+        ContextUtils.validateAndFixContextWindow(mixedWindow);
+        ContextUtils.validateAndFixContextWindow(onlyToolsWindow);
+
+        assertThat(mixedWindow.getContextMessages()).containsExactly(user);
+        assertThat(onlyToolsWindow.getContextMessages()).isEmpty();
     }
 
     @Test
-    @DisplayName("findAllDialogueRound merges contiguous user blocks and keeps incomplete rounds")
-    void testFindAllDialogueRoundMergesUserBlocks() {
-        List<BaseMessage> messages = List.of(new UserMessage("q1"), new UserMessage("q1-1"), new AssistantMessage("a1"),
-                new UserMessage("q2"), new UserMessage("q2-1"));
+    void findLastAiMessageUsesPythonSingularToolCallCheck() {
+        AssistantMessage assistantWithToolCalls = AssistantMessage.builder()
+                .role("assistant")
+                .content("tool call")
+                .toolCalls(List.of(ToolCall.builder().id("call-1").name("search").arguments("{}").build()))
+                .build();
+        BaseMessage assistantWithSingularToolCall = new BaseMessage("assistant", "singular");
+        assistantWithSingularToolCall.setMetadata(Map.of("tool_call", Map.of("id", "call-2")));
 
-        List<int[]> rounds = ContextUtils.findAllDialogueRound(messages);
-        assertEquals(2, rounds.size());
-        assertArrayEquals(new int[]{3, -1}, rounds.get(0));
-        assertArrayEquals(new int[]{0, 2}, rounds.get(1));
+        Optional<Integer> index = ContextUtils.findLastAiMessageWithoutToolCall(List.of(
+                new BaseMessage("user", "q"),
+                assistantWithToolCalls,
+                assistantWithSingularToolCall
+        ));
+
+        assertThat(index).contains(1);
     }
 
     @Test
-    @DisplayName("findLastNDialogueRound returns correct start index")
-    void testFindLastNDialogueRound() {
-        List<BaseMessage> messages = List.of(new UserMessage("q1"), new AssistantMessage("a1"), new UserMessage("q2"),
-                new AssistantMessage("a2"), new UserMessage("q3"), new AssistantMessage("a3"));
+    void replaceMessagesAndDialogueRoundsMirrorPythonBoundaries() {
+        List<BaseMessage> messages = List.of(
+                new BaseMessage("user", "q1a"),
+                new BaseMessage("user", "q1b"),
+                new AssistantMessage("a1"),
+                new BaseMessage("user", "q2"),
+                new AssistantMessage("a2"),
+                new BaseMessage("user", "q3")
+        );
 
-        int idx = ContextUtils.findLastNDialogueRound(messages, 2);
-        assertEquals(2, idx, "Should start from the second dialogue round");
+        List<BaseMessage> replaced = ContextUtils.replaceMessages(messages, List.of(new BaseMessage("user", "x")),
+                1, 3);
+        List<ContextUtils.DialogueRound> rounds = ContextUtils.findAllDialogueRound(messages);
+
+        assertThat(replaced).extracting(BaseMessage::getContent).containsExactly("q1a", "x", "a2", "q3");
+        assertThat(rounds).containsExactly(
+                new ContextUtils.DialogueRound(5, null),
+                new ContextUtils.DialogueRound(3, 4),
+                new ContextUtils.DialogueRound(0, 2)
+        );
+        assertThat(ContextUtils.findLastNDialogueRound(messages, 2)).isEqualTo(3);
+        assertThatThrownBy(() -> ContextUtils.replaceMessages(messages, List.of(), 4, 3))
+                .isInstanceOf(IndexOutOfBoundsException.class);
     }
 
     @Test
-    @DisplayName("findLastNDialogueRound treats only-user input as one round")
-    void testFindLastNDialogueRoundOnlyUsers() {
-        List<BaseMessage> messages = List.of(new UserMessage("q1"), new UserMessage("q2"));
+    void toolCallHelpersResolveIdsAndNamesFromMessagesAndMaps() {
+        ToolCall call = ToolCall.builder().id("call-1").name("search").arguments("{}").build();
+        AssistantMessage assistant = AssistantMessage.builder()
+                .role("assistant")
+                .content("calling")
+                .toolCalls(List.of(call))
+                .build();
+        ToolMessage toolMessage = new ToolMessage("result", "call-1");
 
-        int idx = ContextUtils.findLastNDialogueRound(messages, 1);
-        assertEquals(0, idx);
-        assertEquals(1, ContextUtils.findAllDialogueRound(messages).size());
+        assertThat(ContextUtils.toolCallMatchesId(Map.of("id", "call-2"), "call-2")).isTrue();
+        assertThat(ContextUtils.extractToolName(Map.of("function", Map.of("name", "lookup")))).contains("lookup");
+        assertThat(ContextUtils.resolveToolCallFromMessage(toolMessage, List.of(assistant))).contains(call);
+        assertThat(ContextUtils.resolveToolNameFromMessage(toolMessage, List.of(assistant))).contains("search");
+        assertThat(ContextUtils.resolveToolNameFromMessage(new BaseMessage("user", "q"), List.of(assistant)))
+                .isEmpty();
     }
 
     @Test
-    @DisplayName("formatReloadedMessages creates formatted string")
-    void testFormatReloadedMessages() {
-        List<BaseMessage> messages = List.of(new UserMessage("hello"), new AssistantMessage("hi there"));
-
-        String result = ContextUtils.formatReloadedMessages("handle_123", messages);
-        assertTrue(result.contains("handle_123"));
-        assertTrue(result.contains("user"));
-        assertTrue(result.contains("assistant"));
+    void compressionProcessorDetectionAndTokenEstimationFollowHeuristics() {
+        assertThat(ContextUtils.isCompressionProcessor(new CompactProcessor())).isTrue();
+        assertThat(ContextUtils.isCompressionProcessor(new PlainProcessor())).isFalse();
+        assertThat(ContextUtils.estimateTokens("abcdef")).isEqualTo(2);
+        assertThat(ContextUtils.estimateTokens("")).isEqualTo(1);
+        assertThat(ContextUtils.estimateMessageTokens(new BaseMessage("user", "abcdefghi"))).isEqualTo(3);
     }
 
-    @Test
-    @DisplayName("resolveToolCallFromMessage finds matching tool call")
-    void testResolveToolCallFromMessage() {
-        ToolCall toolCall = ToolCall.builder().id("tc-1").name("grep").arguments("{\"path\":\"README.md\"}").build();
-        List<BaseMessage> messages =
-            List.of(AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build(),
-                    ToolMessage.builder().content("result").toolCallId("tc-1").name("grep").build());
-
-        ToolCall resolved = ContextUtils.resolveToolCallFromMessage(messages.get(1), messages);
-        assertNotNull(resolved);
-        assertEquals("grep", resolved.getName());
-        assertEquals("grep", ContextUtils.resolveToolNameFromMessage(messages.get(1), messages));
+    /**
+     * Compression processor test double.
+     *
+     * <p>Mirrors Python's processor object in
+     * {@code openjiuwen/core/context_engine/context/context_utils.py}.</p>
+     */
+    private static final class CompactProcessor {
+        public String processorType() {
+            return "compact";
+        }
     }
 
-    @Test
-    @DisplayName("resolveContextMax prefers explicit fallback then mapping")
-    void testResolveContextMax() {
-        assertEquals(123, ContextUtils.resolveContextMax("mapped-model", 123, java.util.Map.of("mapped-model", 456)));
-        assertEquals(456, ContextUtils.resolveContextMax("mapped-model", null, java.util.Map.of("mapped-model", 456)));
-        assertTrue(ContextUtils.resolveContextMax("gpt-4o", null, null) > 0);
-        assertEquals(ContextUtils.DEFAULT_CONTEXT_MAX_TOKENS, ContextUtils.resolveContextMax(null, null, null));
-    }
-
-    @Test
-    @DisplayName("isCompressionProcessor detects compressor types")
-    void testIsCompressionProcessor() {
-        assertTrue(ContextUtils
-                .isCompressionProcessor(new RoundLevelCompressor(RoundLevelCompressorConfig.builder().build())));
-        assertFalse(ContextUtils.isCompressionProcessor(new Object()));
+    /**
+     * Non-compression processor test double.
+     *
+     * <p>Mirrors Python's processor object in
+     * {@code openjiuwen/core/context_engine/context/context_utils.py}.</p>
+     */
+    private static final class PlainProcessor {
+        public String processorType() {
+            return "validator";
+        }
     }
 }

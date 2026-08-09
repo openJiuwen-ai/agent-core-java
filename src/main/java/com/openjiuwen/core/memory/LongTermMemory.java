@@ -38,6 +38,7 @@ import com.openjiuwen.core.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.core.memory.manage.index.SummaryManager;
 import com.openjiuwen.core.memory.manage.index.VariableManager;
 import com.openjiuwen.core.memory.manage.index.WriteManager;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.DataIdManager;
 import com.openjiuwen.core.memory.manage.mem_model.DbModelSupport;
@@ -350,7 +351,7 @@ public class LongTermMemory {
         encodeApiKeys(encryptedConfig);
         scopeConfig.put(scopeId, encryptedConfig);
 
-        String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+        String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
         join(kvStore.set(configKey, writeJson(encryptedConfig)));
         scopeEmbedding.remove(scopeId);
         return CompletableFuture.completedFuture(true);
@@ -367,7 +368,7 @@ public class LongTermMemory {
             );
         }
 
-        String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+        String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
         Object rawConfig = join(kvStore.get(configKey));
         String configJson = readStoreValue(rawConfig);
         if (configJson == null || configJson.isEmpty()) {
@@ -390,7 +391,7 @@ public class LongTermMemory {
             );
         }
         try {
-            join(kvStore.delete(SCOPE_CONFIG_KEY + "/" + scopeId));
+            join(kvStore.delete(TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId)));
             scopeConfig.remove(scopeId);
             scopeEmbedding.remove(scopeId);
             MEMORY_LOGGER.debug("Successfully deleted configuration. event_type={}, scope_id={}",

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.rails.memory;
 
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.MemorySection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
@@ -29,6 +29,10 @@ public class MemoryRail extends DeepAgentRail {
     private boolean readOnly;
     private Object toolContext;
     private String language = "cn";
+
+    public MemoryRail() {
+        this(null, true);
+    }
 
     public MemoryRail(Object embeddingConfig) {
         this(embeddingConfig, true);

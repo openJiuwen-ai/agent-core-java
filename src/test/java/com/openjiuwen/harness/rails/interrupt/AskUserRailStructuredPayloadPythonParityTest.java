@@ -71,7 +71,8 @@ class AskUserRailStructuredPayloadPythonParityTest {
         assertEquals(1, request.getQuestions().size());
         assertEquals("Which feature should be enabled?", request.getQuestions().get(0).get("question"));
         assertEquals("Feature", request.getQuestions().get(0).get("header"));
-        assertEquals("", request.getMessage());
+        // Java fills message for A2A clients that only read InterruptRequest.message (issue #47 / 921b4bd).
+        assertTrue(request.getMessage().contains("Which feature should be enabled?"));
         assertTrue(((Map<?, ?>) request.getPayloadSchema().get("properties")).containsKey("answers"));
     }
 

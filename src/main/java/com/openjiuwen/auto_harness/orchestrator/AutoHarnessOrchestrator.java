@@ -27,7 +27,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PipelineSpec;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ProjectProfile;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

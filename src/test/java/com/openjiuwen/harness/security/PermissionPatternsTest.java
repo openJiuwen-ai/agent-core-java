@@ -85,4 +85,16 @@ class PermissionPatternsTest {
             Files.deleteIfExists(tempFile);
         }
     }
+
+    @Test
+    void persistCliTrustedDirectoryRejectsEmptyPath() {
+        Map<String, Object> result = PermissionPatterns.persistCliTrustedDirectory(
+                "",
+                Path.of("unused.yaml"),
+                Map.of("enabled", true)
+        );
+
+        assertFalse((Boolean) result.get("ok"));
+        assertEquals("path is empty", result.get("error"));
+    }
 }

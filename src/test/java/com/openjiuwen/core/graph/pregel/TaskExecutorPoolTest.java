@@ -9,6 +9,7 @@ import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -35,6 +36,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/core/graph/test_task.py}.</p>
  */
 class TaskExecutorPoolTest {
+
+    private final List<TaskExecutorPool> poolsToClose = new ArrayList<>();
+
+    @AfterEach
+    void shutdownPools() {
+        for (TaskExecutorPool pool : poolsToClose) {
+            pool.shutdown();
+        }
+        poolsToClose.clear();
+    }
+
+    private TaskExecutorPool newPool(PregelConfig config) {
+        TaskExecutorPool pool = new TaskExecutorPool(config);
+        poolsToClose.add(pool);
+        return pool;
+    }
 
     @Test
     void nodeTaskPassesInnerConfigAndRoutesMessages() throws Exception {
@@ -83,7 +100,7 @@ class TaskExecutorPoolTest {
 
     @Test
     void waitAllCollectsSuccessMessages() throws Exception {
-        TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig("session-1", "graph", 5));
+        TaskExecutorPool pool = newPool(new PregelConfig("session-1", "graph", 5));
         PregelNode node = new PregelNode("node-a", ignored -> null,
                 List.of(sourceNode -> List.of(new TriggerMessage(sourceNode, "node-b"))));
 
@@ -97,7 +114,7 @@ class TaskExecutorPoolTest {
 
     @Test
     void waitAllRecordsAndRaisesFirstError() {
-        TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig("session-1", "graph", 5));
+        TaskExecutorPool pool = newPool(new PregelConfig("session-1", "graph", 5));
         PregelNode node = new PregelNode("bad-node", ignored -> {
             throw new IllegalStateException("boom");
         }, List.of());
@@ -111,7 +128,7 @@ class TaskExecutorPoolTest {
 
     @Test
     void waitAllRecordsInterruptAndRaisesIt() {
-        TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig("session-1", "graph", 5));
+        TaskExecutorPool pool = newPool(new PregelConfig("session-1", "graph", 5));
         PregelNode node = new PregelNode("interrupt-node", ignored -> new GraphInterrupt("pause"), List.of());
 
         pool.submit(node, 1);
@@ -123,7 +140,7 @@ class TaskExecutorPoolTest {
 
     @Test
     void cancelAllCancelsRunningTasks() throws Exception {
-        TaskExecutorPool pool = new TaskExecutorPool(new PregelConfig("session-1", "graph", 5));
+        TaskExecutorPool pool = newPool(new PregelConfig("session-1", "graph", 5));
         PregelNode node = new PregelNode("slow-node", ignored -> {
             try {
                 // Park indefinitely until interrupted by cancelAll. A never-counted-down latch
@@ -147,7 +164,7 @@ class TaskExecutorPoolTest {
     void poolRuntimeExceptionCancelsSlowSiblingAndKeepsFastSuccess() {
         PregelConfig config = new PregelConfig("test_conv_1", "root", 5);
         config.setParentNs(config.getNs());
-        TaskExecutorPool pool = new TaskExecutorPool(config);
+        TaskExecutorPool pool = newPool(config);
         pool.submit(routingNode("A", "Target_A", 1_000L, null), 1);
         pool.submit(new PregelNode("B", invocation -> {
             sleep(100L);
@@ -173,7 +190,7 @@ class TaskExecutorPoolTest {
     void poolInterruptRaisesAndKeepsCompletedSiblingMessages() {
         PregelConfig config = new PregelConfig("test_conv_2", "root", 5);
         config.setParentNs(config.getNs());
-        TaskExecutorPool pool = new TaskExecutorPool(config);
+        TaskExecutorPool pool = newPool(config);
         pool.submit(routingNode("A", "Target_A", 0L, null), 1);
         pool.submit(new PregelNode("B", invocation -> {
             sleep(100L);

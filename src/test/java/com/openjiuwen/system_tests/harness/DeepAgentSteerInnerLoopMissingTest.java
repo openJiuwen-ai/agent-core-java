@@ -17,7 +17,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 import com.openjiuwen.harness.schema.task.TodoItem;
@@ -53,13 +53,13 @@ class DeepAgentSteerInnerLoopMissingTest {
         ReActAgent reactAgent = reactAgent(modelClient, observer);
         DeepAgent agent = deepAgent(reactAgent);
 
-        CompletableFuture<Map<String, Object>> invokeTask = agent.invoke(
+        CompletableFuture<Map<String, Object>> invokeTask = agent.invokeAsync(
                 Map.of("query", "execute the two-step plan"),
                 session
         );
 
         assertThat(modelClient.firstCallStarted.await(10, TimeUnit.SECONDS)).isTrue();
-        agent.steer(steerText, session).join();
+        agent.steerAsync(steerText, session).join();
         modelClient.releaseFirstCall.countDown();
 
         Map<String, Object> result = invokeTask.get(10, TimeUnit.SECONDS);

@@ -10,7 +10,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.CycleResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -97,6 +97,9 @@ class AutoHarnessOrchestratorTest {
     @Test
     void cancellationStateResetsForNewSession() {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+        // Empty tasks select META; stub like Python's mocked _run_pipeline_stream
+        // so this case does not hit real git/worktree setup.
+        stubMetaPipelineAsNoop(orchestrator);
         orchestrator.cancel();
         assertThat(orchestrator.shouldCancel()).isTrue();
 
@@ -170,6 +173,8 @@ class AutoHarnessOrchestratorTest {
     @Test
     void runSessionStreamWithNullTasksStillStartsAndFinishes() {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(config());
+        // Null tasks select META; stub pipeline body so we only assert session lifecycle.
+        stubMetaPipelineAsNoop(orchestrator);
 
         List<Object> chunks = toList(orchestrator.runSessionStream(null));
 
@@ -279,6 +284,12 @@ class AutoHarnessOrchestratorTest {
         config.setCommunitySkillRepos(List.of());
         config.setMaxTasksPerSession(0);
         return config;
+    }
+
+    private static void stubMetaPipelineAsNoop(AutoHarnessOrchestrator orchestrator) {
+        orchestrator.getPipelineRegistry()
+                .require(AutoHarnessPipelineNames.META_EVOLVE_PIPELINE)
+                .setPipelineCls(Object.class);
     }
 
     private static List<Object> toList(Iterator<Object> iterator) {

@@ -28,7 +28,9 @@ import com.openjiuwen.extensions.a2a.A2ATransformer.StreamResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
@@ -92,6 +94,24 @@ class A2ARemoteClientTest {
         assertThat(client.getClient().isPolling()).isFalse();
         assertThat(factory.card).isInstanceOf(A2aAgentCard.class);
         assertThat(((A2aAgentCard) factory.card).getName()).isEqualTo("a2a-agent");
+    }
+
+    @Test
+    void a2aRemoteClientShouldInjectHttpClientAndAuthHeadersIntoClientConfig() {
+        HttpClient injected = HttpClient.newHttpClient();
+        Map<String, String> authHeaders = Map.of("Authorization", "Bearer token-1");
+        RecordingFactory factory = new RecordingFactory(List.of());
+
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("card", card());
+        kwargs.put("clientFactory", factory);
+        kwargs.put("_ojw_http_client", injected);
+        kwargs.put("_ojw_auth_headers", authHeaders);
+
+        new A2ARemoteClient(config(kwargs));
+
+        assertThat(factory.config.getHttpClient()).isSameAs(injected);
+        assertThat(factory.config.getAuthHeaders()).containsEntry("Authorization", "Bearer token-1");
     }
 
     @Test

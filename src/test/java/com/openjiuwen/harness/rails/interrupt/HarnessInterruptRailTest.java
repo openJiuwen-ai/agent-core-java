@@ -1,6 +1,6 @@
 package com.openjiuwen.harness.rails.interrupt;
 
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 
 import org.junit.jupiter.api.Test;

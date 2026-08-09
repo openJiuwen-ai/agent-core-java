@@ -4,13 +4,41 @@
 
 package com.openjiuwen.core.sysop.config;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Sandbox container creation granularity.
- * 
- * @since 0.1.7
+ * Container creation granularity.
+ * <p>
+ * Mirrors Python's {@code ContainerScope} in
+ * {@code openjiuwen/core/sys_operation/config.py}.
  */
 public enum ContainerScope {
-    SYSTEM,
-    SESSION,
-    CUSTOM
+    SYSTEM("system"),
+    SESSION("session"),
+    CUSTOM("custom");
+
+    private final String value;
+
+    ContainerScope(String value) {
+        this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+        return value;
+    }
+
+    @JsonCreator
+    public static ContainerScope fromValue(String value) {
+        if (value == null) {
+            return SESSION;
+        }
+        for (ContainerScope scope : values()) {
+            if (scope.value.equalsIgnoreCase(value)) {
+                return scope;
+            }
+        }
+        return SESSION;
+    }
 }

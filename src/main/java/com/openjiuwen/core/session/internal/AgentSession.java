@@ -24,10 +24,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Internal single-agent session.
+ * Agent session providing full session lifecycle for an agent execution.
+ * Manages configuration, state (AgentStateCollection), stream emitter/writer,
+ * callback manager, tracer, and checkpointer.
  *
- * <p>Mirrors Python's {@code AgentSession} in
- * {@code openjiuwen/core/session/internal/agent.py}.</p>
+ * @since 0.1.7
  */
 public class AgentSession extends BaseSession {
 
@@ -36,7 +37,7 @@ public class AgentSession extends BaseSession {
     private final Object card;
     private final AgentStateCollection state = new AgentStateCollection();
     private final StreamWriterManager streamWriterManager;
-    private final Tracer tracer = new Tracer();
+    private final Tracer tracer;
     private final Checkpointer checkpointer;
     private final TraceAgentSpan agentSpan;
     private final CallbackManager callbackManager = new CallbackManager();
@@ -57,6 +58,7 @@ public class AgentSession extends BaseSession {
         this.streamWriterManager = streamWriterManager == null
                 ? new StreamWriterManager(new StreamEmitter())
                 : streamWriterManager;
+        this.tracer = new Tracer(sessionId);
         tracer.init(this.streamWriterManager);
         this.checkpointer = checkpointer == null ? CheckpointerFactory.getCheckpointer() : checkpointer;
         this.agentSpan = tracer.getTracerAgentSpanManager().createAgentSpan();

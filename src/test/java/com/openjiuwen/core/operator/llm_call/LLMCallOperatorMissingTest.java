@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.operator.llm_call;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateValue;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateValue;
 import com.openjiuwen.core.operator.TunableSpec;
 
 import org.junit.jupiter.api.Test;

@@ -8,8 +8,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.utils.MessageUtils;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.modules.TaskExecutor;
 import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
 import com.openjiuwen.core.controller.modules.TaskFilter;
@@ -282,19 +282,22 @@ public class WorkflowTaskExecutor extends TaskExecutor {
 
     static Object extractComponentIds(List<Object> interactionData) {
         if (interactionData == null || interactionData.isEmpty()) {
-            return "";
+            return null;
         }
         List<String> componentIds = new ArrayList<>();
         for (Object item : interactionData) {
             if (item instanceof OutputSchema outputSchema && Constant.INTERACTION.equals(outputSchema.getType())) {
                 Object componentId = payloadField(outputSchema.getPayload(), "id");
                 if (componentId != null) {
-                    componentIds.add(String.valueOf(componentId));
+                    String text = String.valueOf(componentId);
+                    if (!text.isBlank()) {
+                        componentIds.add(text);
+                    }
                 }
             }
         }
         if (componentIds.isEmpty()) {
-            return "";
+            return null;
         }
         return componentIds.size() == 1 ? componentIds.get(0) : componentIds;
     }

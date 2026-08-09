@@ -6,7 +6,7 @@ package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
@@ -68,7 +68,7 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
      * @return component output
      */
     public O invoke(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return invoke(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
+        return invoke(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     /**
@@ -94,7 +94,7 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
      * @return streamed component output
      */
     public Iterator<O> stream(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return stream(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
+        return stream(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     /**
@@ -119,7 +119,7 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
      * @return collected component output
      */
     public O collect(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return collect(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
+        return collect(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     /**
@@ -145,7 +145,7 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
      * @return transformed component output
      */
     public Iterator<O> transform(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return transform(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
+        return transform(inputs, session.getInner(), com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     private void ensureSession(BaseSession session, String methodName) {
@@ -171,9 +171,6 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
     }
 
     private NodeSessionApi adaptSession(BaseSession session, boolean streamMode) {
-        if (session instanceof NodeSessionApi nodeSessionApi) {
-            return nodeSessionApi;
-        }
         return new NodeSessionApi(session, streamMode);
     }
 

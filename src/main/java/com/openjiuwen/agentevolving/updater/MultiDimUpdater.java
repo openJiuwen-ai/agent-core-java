@@ -1,124 +1,85 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.updater;
 
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.signal.FromEval;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Multi-dimensional update updater.
- * <p>
- * Internally handles attribution/allocation, then runs corresponding
- * dimension optimizer for attributed operators, merges Updates.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.updater.multi_dim.MultiDimUpdater}.
- * 
- * @since 0.1.7
+ * Base class for multi-dimensional update generation.
+ *
+ * <p>Mirrors Python's {@code MultiDimUpdater} in
+ * {@code openjiuwen/agent_evolving/updater/multi_dim.py}.</p>
  */
 public abstract class MultiDimUpdater implements Updater {
-    /**
-     * domainOptimizers.
-     * 
-     * @since 0.1.7
-     */
-    protected Map<String, Object> domainOptimizers = new HashMap<>();
 
-    /**
-     * Create with domain optimizers.
-     * 
-     * @param domainOptimizers Map of domain name to optimizer
-     * @since 0.1.7
-     */
-    public MultiDimUpdater(Map<String, Object> domainOptimizers) {
-        this.domainOptimizers = domainOptimizers != null ? domainOptimizers : new HashMap<>();
+    private final Map<String, BaseOptimizer> domainOptimizers;
+
+    protected MultiDimUpdater() {
+        this(null);
     }
 
-    /**
-     * Create empty updater.
-     * 
-     * @since 0.1.7
-     */
-    public MultiDimUpdater() {
-        this(new HashMap<>());
+    protected MultiDimUpdater(Map<String, ? extends BaseOptimizer> domainOptimizers) {
+        this.domainOptimizers = domainOptimizers == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(domainOptimizers);
     }
 
-    /**
-     * requiresForwardData.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    protected Map<String, BaseOptimizer> getDomainOptimizers() {
+        return new LinkedHashMap<>(domainOptimizers);
+    }
+
     @Override
     public boolean requiresForwardData() {
-        for (Object opt : domainOptimizers.values()) {
-            try {
-                java.lang.reflect.Method method = opt.getClass().getMethod("requiresForwardData");
-                Object result = method.invoke(opt);
-                if (Boolean.TRUE.equals(result)) {
-                    return true;
-                }
-            } catch (Exception e) {
-                // Continue checking
+        for (BaseOptimizer optimizer : domainOptimizers.values()) {
+            if (optimizer != null && optimizer.requiresForwardData()) {
+                return true;
             }
         }
         return false;
     }
 
-    /**
-     * bind.
-     * 
-     * @param operators operators
-     * @param targets targets
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public abstract int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config);
+    public CompletionStage<Object> update(
+            List<Trajectory> trajectories,
+            List<Object> evaluatedCases,
+            Map<String, Object> config
+    ) {
+        Objects.requireNonNull(evaluatedCases, "evaluatedCases");
+        Map<String, Object> resolvedConfig = Objects.requireNonNull(config, "config");
+        Double scoreThreshold = readScoreThreshold(resolvedConfig.get("score_threshold"));
+        List<EvolutionSignal> signals = new ArrayList<>();
+        for (Object caseValue : evaluatedCases) {
+            if (!(caseValue instanceof EvaluatedCase evaluatedCase)) {
+                throw new IllegalArgumentException("evaluatedCases must contain EvaluatedCase values");
+            }
+            EvolutionSignal signal = FromEval.fromEvaluatedCase(evaluatedCase, "", scoreThreshold);
+            if (signal != null) {
+                signals.add(signal);
+            }
+        }
+        return process(trajectories, signals, resolvedConfig);
+    }
 
-    /**
-     * update.
-     * 
-     * @param trajectories trajectories
-     * @param evaluatedCases evaluatedCases
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public abstract Object update(List<Trajectory> trajectories, List<Object> evaluatedCases,
-            Map<String, Object> config);
-
-    /**
-     * getState.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    @Override
-    public abstract Map<String, Object> getState();
-
-    /**
-     * loadState.
-     * 
-     * @param state state
-     * @since 0.1.7
-     */
-    @Override
-    public abstract void loadState(Map<String, Object> state);
-
-    /**
-     * Get domain optimizers.
-     * 
-     * @return Domain optimizers map
-     * @since 0.1.7
-     */
-    public Map<String, Object> getDomainOptimizers() {
-        return new HashMap<>(domainOptimizers);
+    private static Double readScoreThreshold(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        throw new IllegalArgumentException("score_threshold must be numeric");
     }
 }

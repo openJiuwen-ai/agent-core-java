@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests session config defaults and environment override behavior.
  *
- * <p>Mirrors Python's {@code Config}, {@code MetadataLike}, and env helpers in
+ * <p>Mirrors Python's {@code Config} and env helpers in
  * {@code openjiuwen/core/session/config/base.py}.</p>
  */
 class ConfigTest {
@@ -96,13 +96,5 @@ class ConfigTest {
         assertThrows(IllegalArgumentException.class, () -> config.getWorkflowConfig(null));
         assertThrows(IllegalArgumentException.class, () -> config.addWorkflowConfig(null, workflowConfig));
         assertThrows(IllegalArgumentException.class, () -> config.addWorkflowConfig("workflow-b", null));
-    }
-
-    @Test
-    void metadataLikeStoresNameAndEvent() {
-        MetadataLike metadata = new MetadataLike("session", "update");
-
-        assertEquals("session", metadata.name());
-        assertEquals("update", metadata.event());
     }
 }

@@ -88,8 +88,28 @@ public class InProcessSpawnHandle {
         return task != null && !task.isDone();
     }
 
+    /**
+     * Terminated tasks are healthy when they finished without exception and shutdown was not requested.
+     * A normal completion (after shutdown_member/clean_team) must not look unhealthy and trigger respawn.
+     */
     public boolean isHealthy() {
-        return isAlive() && !shutdownRequested;
+        if (shutdownRequested) {
+            return false;
+        }
+        if (task == null) {
+            return false;
+        }
+        if (!task.isDone()) {
+            return true;
+        }
+        try {
+            task.get();
+            return true;
+        } catch (ExecutionException | CancellationException e) {
+            return false;
+        } catch (InterruptedException e) {
+            return false;
+        }
     }
 
     public CompletableFuture<Void> startHealthCheck(Double interval) {

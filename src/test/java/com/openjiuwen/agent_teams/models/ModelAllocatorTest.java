@@ -10,8 +10,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -260,6 +265,78 @@ class ModelAllocatorTest {
         assertThat(ModelAllocators.resolveMemberModel(pool, "missing", 0)).isNull();
         assertThat(ModelAllocators.resolveMemberModel(pool, "gpt-4", 99).getModelClientConfig().getApiBase())
                 .isEqualTo("http://a1");
+    }
+
+    @Test
+    void roundRobinAndByModelNameAreSafeUnderConcurrentAllocate() throws Exception {
+        List<ModelPoolEntry> pool = List.of(
+                namedEntry("gpt-4", "a1"),
+                namedEntry("gpt-4", "a2"),
+                namedEntry("claude", "c1")
+        );
+        RoundRobinModelAllocator roundRobin = new RoundRobinModelAllocator(pool);
+        ByModelNameAllocator byName = new ByModelNameAllocator(pool);
+
+        int threadCount = 16;
+        int perThread = 32;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    for (int j = 0; j < perThread; j++) {
+                        assertThat(roundRobin.allocate()).isNotNull();
+                        assertThat(byName.allocate("gpt-4")).isNotNull();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (java.util.concurrent.Future<?> future : futures) {
+                future.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(roundRobin.stateDict().get("index")).isEqualTo(threadCount * perThread);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> counters = (List<Map<String, Object>>) byName.stateDict().get("counters");
+        int gptIndex = counters.stream()
+                .filter(record -> "gpt-4".equals(record.get("model_name")))
+                .map(record -> ((Number) record.get("index")).intValue())
+                .findFirst()
+                .orElseThrow();
+        assertThat(gptIndex).isEqualTo(threadCount * perThread);
+    }
+
+    @Test
+    void roundRobinConcurrentAllocateDoesNotLoseTurns() throws Exception {
+        RoundRobinModelAllocator allocator = new RoundRobinModelAllocator(List.of(
+                namedEntry("gpt-4", "a1"),
+                namedEntry("claude", "c1")
+        ));
+        int threadCount = 16;
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        try {
+            List<Future<Allocation>> futures = new ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return allocator.allocate();
+                }));
+            }
+            start.countDown();
+            for (Future<Allocation> future : futures) {
+                assertThat(future.get()).isNotNull();
+            }
+            assertThat(allocator.stateDict().get("index")).isEqualTo(threadCount);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test

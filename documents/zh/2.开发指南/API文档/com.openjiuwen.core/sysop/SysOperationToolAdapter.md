@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.SysOperationToolAdapter
+# com.openjiuwen.core.sysop.SysOperationToolAdapter
 
 ## 类 SysOperationToolAdapter
 

@@ -10,11 +10,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
-import com.openjiuwen.core.sys_operation.result.BaseResult;
-import com.openjiuwen.core.sys_operation.result.FileSystemItem;
-import com.openjiuwen.core.sys_operation.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.result.BaseResult;
+import com.openjiuwen.core.sysop.result.FileSystemItem;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import java.io.IOException;
 import java.net.URI;

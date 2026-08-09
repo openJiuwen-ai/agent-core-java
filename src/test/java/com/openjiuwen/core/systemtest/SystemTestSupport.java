@@ -17,8 +17,8 @@ import com.openjiuwen.core.multiagent.BaseGroup;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.TraceSchema;
@@ -157,14 +157,13 @@ abstract class SystemTestSupport {
     }
 
     protected InvocationCapture invokeAgent(Object agent, Map<String, Object> inputs, String sessionId) {
-        Session session = new Session();
+        AgentSession session = new AgentSession();
         Object result;
         try {
             if (agent instanceof BaseAgent baseAgent) {
                 result = baseAgent.invoke(inputs, session).toCompletableFuture().join();
             } else {
-                java.lang.reflect.Method invokeMethod = agent.getClass().getMethod("invoke", Map.class, AgentSessionApi.class);
-                result = ((CompletionStage<?>) invokeMethod.invoke(agent, inputs, session)).toCompletableFuture().join();
+                result = invokeDeepAgentCompat(agent, inputs, session);
             }
         } catch (Exception e) {
             result = e;
@@ -175,7 +174,7 @@ abstract class SystemTestSupport {
 
     @SuppressWarnings("unchecked")
     protected InvocationCapture streamAgent(Object agent, Map<String, Object> inputs, String sessionId) {
-        Session session = new Session();
+        AgentSession session = new AgentSession();
         List<Object> streamItems;
         try {
             Iterator<Object> iterator;
@@ -190,6 +189,32 @@ abstract class SystemTestSupport {
             streamItems = List.of(e);
         }
         return new InvocationCapture(streamItems, streamItems, flattenText(streamItems));
+    }
+
+    /**
+     * Invoke DeepAgent-compatible agents whether {@code invoke} is sync ({@code Map})
+     * or legacy async ({@code CompletionStage}).
+     */
+    private static Object invokeDeepAgentCompat(Object agent, Map<String, Object> inputs, AgentSessionApi session)
+            throws Exception {
+        try {
+            java.lang.reflect.Method async = agent.getClass()
+                    .getMethod("invokeAsync", Map.class, AgentSessionApi.class);
+            Object stage = async.invoke(agent, inputs, session);
+            if (stage instanceof CompletionStage<?> completionStage) {
+                return completionStage.toCompletableFuture().join();
+            }
+            return stage;
+        } catch (NoSuchMethodException ignored) {
+            // fall through to invoke(...)
+        }
+        java.lang.reflect.Method invokeMethod = agent.getClass()
+                .getMethod("invoke", Map.class, AgentSessionApi.class);
+        Object invoked = invokeMethod.invoke(agent, inputs, session);
+        if (invoked instanceof CompletionStage<?> completionStage) {
+            return completionStage.toCompletableFuture().join();
+        }
+        return invoked;
     }
 
     protected List<Object> collect(Iterator<Object> iterator) {

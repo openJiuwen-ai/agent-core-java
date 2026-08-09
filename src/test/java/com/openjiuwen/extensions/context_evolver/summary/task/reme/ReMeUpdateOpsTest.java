@@ -189,9 +189,8 @@ class ReMeUpdateOpsTest {
         serviceContext.registerService("vector_store", vectorStore);
         RuntimeContext context = new RuntimeContext();
         context.set("user_id", "user-1");
-        Path pathTemplate = tempDir.resolve("{algo_name}-{user_id}.json");
 
-        new PersistMemoryOp("json", pathTemplate.toString(), "localhost", 19530, "vector_nodes")
+        new PersistMemoryOp("json", "{algo_name}-{user_id}.json", "localhost", 19530, "vector_nodes", tempDir)
                 .asyncExecute(context)
                 .join();
 

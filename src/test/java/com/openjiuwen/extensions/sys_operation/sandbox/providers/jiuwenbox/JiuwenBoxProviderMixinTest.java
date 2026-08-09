@@ -16,8 +16,9 @@ import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -92,6 +93,24 @@ class JiuwenBoxProviderMixinTest {
 
         List<String> cleared = JiuwenBoxProviderMixin.clearSharedSandbox("http://mock-server:8080");
         assertThat(cleared).contains("sb-shared-1");
+    }
+
+    @Test
+    @DisplayName("getClient uses injected _ojw_okhttp_client from gateway params")
+    void testGetClientUsesInjectedOkHttpClient() {
+        OkHttpClient injected = new OkHttpClient();
+        SandboxGatewayConfig cfg = SandboxGatewayConfig.builder()
+                .launcherConfig(SandboxLauncherConfig.builder()
+                        .launcherType("pre_deploy")
+                        .baseUrl("http://mock-server:8080")
+                        .sandboxType("jiuwenbox")
+                        .extraParams(new LinkedHashMap<>())
+                        .build())
+                .params(Map.of("_ojw_okhttp_client", injected))
+                .build();
+        JiuwenBoxProviderMixin mixin = new JiuwenBoxProviderMixin(endpoint, cfg);
+
+        assertThat(mixin.getClient().httpClient()).isSameAs(injected);
     }
 
     @Test

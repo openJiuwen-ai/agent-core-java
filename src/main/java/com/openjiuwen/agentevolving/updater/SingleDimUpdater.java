@@ -1,112 +1,115 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.updater;
 
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
-import com.openjiuwen.agentevolving.trajectory.Trajectory;
-import com.openjiuwen.agentevolving.trajectory.Updates;
 import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.signal.FromEval;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.core.operator.Operator;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Single-dimension update updater.
- * <p>
- * Reuses BaseOptimizer (backward/step), Updates-first applied uniformly by Trainer.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.updater.single_dim.SingleDimUpdater}.
- * 
- * @since 0.1.7
+ * Single-dimension updater backed by one optimizer.
+ *
+ * <p>Mirrors Python's {@code SingleDimUpdater} in
+ * {@code openjiuwen/agent_evolving/updater/single_dim.py}.</p>
  */
-public class SingleDimUpdater implements Updater {
+public final class SingleDimUpdater implements Updater {
+
     private final BaseOptimizer optimizer;
 
-    /**
-     * Create with optimizer.
-     * 
-     * @param optimizer Base optimizer instance
-     * @since 0.1.7
-     */
     public SingleDimUpdater(BaseOptimizer optimizer) {
-        this.optimizer = optimizer;
+        this.optimizer = Objects.requireNonNull(optimizer, "optimizer");
     }
 
-    /**
-     * bind.
-     * 
-     * @param operators operators
-     * @param targets targets
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
-        List<String> effectiveTargets = targets;
-        if (effectiveTargets == null && config != null) {
-            @SuppressWarnings("unchecked")
-            List<String> configTargets = (List<String>) config.get("targets");
-            effectiveTargets = configTargets;
-        }
-        return optimizer.bind(operators, effectiveTargets, config != null ? config : new HashMap<>());
+    public int bind(Map<String, Operator> operators, List<String> targets, Map<String, Object> config) {
+        Map<String, Object> resolvedConfig = Objects.requireNonNull(config, "config");
+        List<String> effectiveTargets = targets == null || targets.isEmpty()
+                ? readTargets(resolvedConfig.get("targets"))
+                : targets;
+        return optimizer.bind(operators, effectiveTargets, resolvedConfig);
     }
 
-    /**
-     * requiresForwardData.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean requiresForwardData() {
         return optimizer.requiresForwardData();
     }
 
-    /**
-     * update.
-     * 
-     * @param trajectories trajectories
-     * @param evaluatedCases evaluatedCases
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
-    public Updates update(List<Trajectory> trajectories, List<Object> evaluatedCases, Map<String, Object> config) {
-        for (Trajectory traj : trajectories != null ? trajectories : List.<Trajectory>of()) {
-            optimizer.addTrajectory(traj);
+    public CompletionStage<Object> process(
+            List<Trajectory> trajectories,
+            List<EvolutionSignal> signals,
+            Map<String, Object> config
+    ) {
+        Objects.requireNonNull(trajectories, "trajectories");
+        for (Trajectory trajectory : trajectories) {
+            optimizer.addTrajectory(trajectory);
         }
-        List<EvaluatedCase> typedCases = (evaluatedCases != null ? evaluatedCases : List.of()).stream()
-                .filter(EvaluatedCase.class::isInstance).map(EvaluatedCase.class::cast).toList();
-        optimizer.backward(typedCases);
-        Updates updates = optimizer.step();
-        return updates != null ? updates : new Updates();
+        return optimizer.backward(signals).thenApply(ignored -> optimizer.step());
     }
 
-    /**
-     * getState.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    public CompletionStage<Object> update(
+            List<Trajectory> trajectories,
+            List<Object> evaluatedCases,
+            Map<String, Object> config
+    ) {
+        Objects.requireNonNull(evaluatedCases, "evaluatedCases");
+        Map<String, Object> resolvedConfig = Objects.requireNonNull(config, "config");
+        Double scoreThreshold = readScoreThreshold(resolvedConfig.get("score_threshold"));
+        List<EvolutionSignal> signals = new ArrayList<>();
+        for (Object caseValue : evaluatedCases) {
+            if (!(caseValue instanceof EvaluatedCase evaluatedCase)) {
+                throw new IllegalArgumentException("evaluatedCases must contain EvaluatedCase values");
+            }
+            EvolutionSignal signal = FromEval.fromEvaluatedCase(evaluatedCase, "", scoreThreshold);
+            if (signal != null) {
+                signals.add(signal);
+            }
+        }
+        return process(trajectories, signals, resolvedConfig);
+    }
+
     @Override
     public Map<String, Object> getState() {
-        // Current: BaseOptimizer has no stable recoverable state
-        return new HashMap<>();
+        return Map.of();
     }
 
-    /**
-     * loadState.
-     * 
-     * @param state state
-     * @since 0.1.7
-     */
     @Override
     public void loadState(Map<String, Object> state) {
-        // No-op: BaseOptimizer has no stable recoverable state
+    }
+
+    private static List<String> readTargets(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof List<?> values)) {
+            throw new IllegalArgumentException("targets must be a list");
+        }
+        List<String> targets = new ArrayList<>();
+        for (Object item : values) {
+            targets.add(String.valueOf(item));
+        }
+        return targets;
+    }
+
+    private static Double readScoreThreshold(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        throw new IllegalArgumentException("score_threshold must be numeric");
     }
 }

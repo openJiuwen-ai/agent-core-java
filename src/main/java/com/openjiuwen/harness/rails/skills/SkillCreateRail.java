@@ -108,6 +108,10 @@ public class SkillCreateRail extends EvolutionRail {
         return skillsDir;
     }
 
+    public String getLanguage() {
+        return language;
+    }
+
     public boolean isAutoTrigger() {
         return autoTrigger;
     }

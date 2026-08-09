@@ -13,8 +13,7 @@ import java.util.Map;
 /**
  * Checkpointer configuration value object.
  *
- * <p>Mirrors Python's {@code CheckpointerConfig} in
- * {@code openjiuwen/core/session/checkpointer/checkpointer.py}.</p>
+ * @since 0.1.7
  */
 public class CheckpointerConfig {
 
@@ -75,15 +74,6 @@ public class CheckpointerConfig {
         return "type='" + type + "' conf=" + redact(conf);
     }
 
-    public String toSimpleString() {
-        return toString();
-    }
-
-    public Object redactUrlsInValue(Object value) {
-        return redact(value);
-    }
-
-    @SuppressWarnings("unchecked")
     private Object redact(Object value) {
         return redact(null, value);
     }

@@ -29,7 +29,12 @@ public class LspTool extends AbstractHarnessTool {
     }
 
     public LspTool(LspGateway gateway, Object operation, String language, String workspace, String agentId) {
-        super(toolCard("lsp_tool", "LspTool", "Dispatch a language-server operation."));
+        super(toolCard(
+                "lsp",
+                "LspTool",
+                "Dispatch a language-server operation.",
+                language == null || language.isBlank() ? "cn" : language
+        ));
         this.gateway = gateway;
         this.operation = operation;
         this.language = language == null || language.isBlank() ? "cn" : language;

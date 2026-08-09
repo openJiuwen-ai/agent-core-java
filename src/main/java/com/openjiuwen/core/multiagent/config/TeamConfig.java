@@ -5,10 +5,8 @@
 package com.openjiuwen.core.multiagent.config;
 
 /**
- * Camelcase package compatibility facade for team configuration.
- *
- * <p>Mirrors Python's {@code TeamConfig} in
- * {@code openjiuwen/core/multi_agent/config.py}.</p>
+ * @deprecated Use {@link com.openjiuwen.core.multiagent.TeamConfig}.
  */
-public class TeamConfig extends com.openjiuwen.core.multi_agent.TeamConfig {
+@Deprecated(since = "0.1.14", forRemoval = false)
+public class TeamConfig extends com.openjiuwen.core.multiagent.TeamConfig {
 }

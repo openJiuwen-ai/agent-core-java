@@ -1,10 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.harness;
 
-import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.deepagents.DeepAgentsFactory;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.task_loop.TaskLoopEventExecutor;
 import com.openjiuwen.harness.task_loop.TaskLoopEventHandler;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -18,13 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's package exports in {@code openjiuwen/harness/__init__.py}.
+ * Module export facade now lives on {@link DeepAgentsFactory}.
  */
 class HarnessPackageTest {
 
     @Test
     void exposesExactPythonModulePath() {
-        assertEquals("openjiuwen/harness/__init__.py", HarnessPackage.PYTHON_MODULE);
+        assertEquals("openjiuwen/harness/__init__.py", DeepAgentsFactory.PYTHON_MODULE);
     }
 
     @Test
@@ -35,35 +37,40 @@ class HarnessPackageTest {
                         TaskLoopEventHandler.class,
                         TaskLoopEventExecutor.class,
                         DeepAgentConfig.class,
-                        DeepAgentConfig.AudioModelConfig.class,
-                        DeepAgentConfig.VisionModelConfig.class,
+                        "AudioModelConfig",
+                        "VisionModelConfig",
                         "create_deep_agent",
                         Workspace.class
                 ),
-                HarnessPackage.exports()
+                DeepAgentsFactory.exports()
         );
     }
 
     @Test
     void resolvesLazyAttributesAndUnknownNames() {
-        assertEquals(DeepAgent.class, HarnessPackage.getAttribute("DeepAgent"));
-        assertEquals(TaskLoopEventHandler.class, HarnessPackage.getAttribute("TaskLoopEventHandler"));
-        assertEquals(TaskLoopEventExecutor.class, HarnessPackage.getAttribute("TaskLoopEventExecutor"));
-        assertEquals(DeepAgentConfig.class, HarnessPackage.getAttribute("DeepAgentConfig"));
-        assertEquals(DeepAgentConfig.AudioModelConfig.class, HarnessPackage.getAttribute("AudioModelConfig"));
-        assertEquals(DeepAgentConfig.VisionModelConfig.class, HarnessPackage.getAttribute("VisionModelConfig"));
-        assertEquals("create_deep_agent", HarnessPackage.getAttribute("create_deep_agent"));
-        assertEquals(Workspace.class, HarnessPackage.getAttribute("Workspace"));
+        assertEquals(DeepAgent.class, DeepAgentsFactory.getAttribute("DeepAgent"));
+        assertEquals(TaskLoopEventHandler.class, DeepAgentsFactory.getAttribute("TaskLoopEventHandler"));
+        assertEquals(TaskLoopEventExecutor.class, DeepAgentsFactory.getAttribute("TaskLoopEventExecutor"));
+        assertEquals(DeepAgentConfig.class, DeepAgentsFactory.getAttribute("DeepAgentConfig"));
+        assertEquals("AudioModelConfig", DeepAgentsFactory.getAttribute("AudioModelConfig"));
+        assertEquals("VisionModelConfig", DeepAgentsFactory.getAttribute("VisionModelConfig"));
+        assertEquals("create_deep_agent", DeepAgentsFactory.getAttribute("create_deep_agent"));
+        assertEquals(Workspace.class, DeepAgentsFactory.getAttribute("Workspace"));
 
-        assertThrows(IllegalArgumentException.class, () -> HarnessPackage.getAttribute("missing"));
+        assertThrows(IllegalArgumentException.class, () -> DeepAgentsFactory.getAttribute("missing"));
     }
 
     @Test
     void delegatesCreateDeepAgentToFactory() {
         Object model = new Object();
-        DeepAgent agent = HarnessPackage.createDeepAgent(model);
+        DeepAgent agent = DeepAgentsFactory.createDeepAgent(model);
 
-        assertSame(model, agent.deepConfig().getModel());
-        assertTrue(agent.getSubagents().containsKey("general-purpose"));
+        assertSame(model, agent.getConfig().getModel());
+        assertTrue(agent.getConfig().getSubagents().stream().anyMatch(item -> {
+            if (item instanceof com.openjiuwen.harness.subagents.SubAgentConfig spec) {
+                return spec.getAgentCard() != null && "general-purpose".equals(spec.getAgentCard().getName());
+            }
+            return false;
+        }));
     }
 }

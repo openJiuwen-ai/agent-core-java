@@ -2,11 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.offline;
+package com.openjiuwen.agentevolving.agent_rl.offline;
 
-import com.openjiuwen.agent_evolving.agent_rl.offline.MainTrainer.RlSampler;
-import com.openjiuwen.agent_evolving.agent_rl.offline.MainTrainer.SamplerType;
-import com.openjiuwen.agent_evolving.agent_rl.offline.store.RLMetricsTracker;
+import com.openjiuwen.agentevolving.agent_rl.offline.MainTrainer.RlSampler;
+import com.openjiuwen.agentevolving.agent_rl.offline.MainTrainer.SamplerType;
+import com.openjiuwen.agentevolving.agent_rl.offline.store.RLMetricsTracker;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;

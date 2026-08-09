@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.online.judge;
+package com.openjiuwen.agentevolving.agent_rl.online.judge;
 
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

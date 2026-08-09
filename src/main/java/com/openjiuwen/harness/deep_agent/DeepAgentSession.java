@@ -4,90 +4,105 @@
 
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * DeepAgent-specific session wrapper that implements AgentSessionApi
- * and provides the additional methods needed by DeepAgent.
+ * DeepAgent product session. Delegates to the official {@link AgentSession} facade
+ * so state, stream, and lifecycle share one kernel.
  *
  * @since 0.1.14
  */
 public class DeepAgentSession implements AgentSessionApi {
 
-    private final AgentSession inner;
+    private final AgentSession facade;
     private Map<String, Object> envs;
-    private Map<String, Object> preRunData;
 
     public DeepAgentSession(String sessionId) {
-        this.inner = new AgentSession(sessionId);
+        this.facade = new AgentSession(sessionId, null, null);
     }
 
     public DeepAgentSession(String sessionId, Object config, AgentCard card) {
-        this.inner = new AgentSession(sessionId, null, card, null);
+        this.facade = new AgentSession(sessionId, null, card);
     }
 
     public DeepAgentSession(String sessionId, Object config, AgentCard card, List<StreamMode> streamModes) {
-        this.inner = new AgentSession(sessionId, null, card, null);
+        this.facade = new AgentSession(sessionId, null, card);
     }
 
     public DeepAgentSession(String sessionId, Object config, Object checkpointer, AgentCard card) {
-        this.inner = new AgentSession(sessionId, null, null, card, null);
+        this.facade = new AgentSession(sessionId, null, card);
     }
-
-    // --- AgentSessionApi interface ---
 
     @Override
     public String getSessionId() {
-        return inner.getSessionId();
+        return facade.getSessionId();
     }
 
     @Override
     public Object getState(String key) {
-        return inner.getState(key);
+        return facade.getState(key);
     }
 
     @Override
     public void updateState(Map<String, Object> data) {
-        inner.updateState(data);
+        facade.updateState(data);
     }
 
     @Override
     public void writeStream(Object data) {
-        com.openjiuwen.core.session.stream.OutputSchema streamData =
-                data instanceof com.openjiuwen.core.session.stream.OutputSchema os ? os
-                        : new com.openjiuwen.core.session.stream.OutputSchema("message", 0, data);
-        inner.streamWriterManager().getOutputWriter().write(streamData);
+        facade.writeStream(data);
     }
 
     @Override
     public Iterator<Object> streamIterator() {
-        return inner.streamWriterManager().streamIterator();
+        return facade.streamIterator();
     }
 
-    // --- DeepAgent-specific methods ---
+    @Override
+    public TenantContext getTenantContext() {
+        return facade.getTenantContext();
+    }
 
-    public void preRun(Map<String, Object> inputs) {
-        this.preRunData = inputs != null ? new LinkedHashMap<>(inputs) : new LinkedHashMap<>();
+    @Override
+    public DeepAgentSession withTenantContext(TenantContext ctx) {
+        facade.withTenantContext(ctx);
+        return this;
+    }
+
+    @Override
+    public DeepAgentSession preRun(Map<String, Object> inputs) {
+        facade.preRun(inputs == null ? Map.of() : Map.of("inputs", inputs));
+        return this;
     }
 
     public void postRun() {
-        this.preRunData = null;
+        facade.postRun();
     }
 
-    public AgentSession getInner() {
-        return inner;
+    @Override
+    public void closeStream() {
+        facade.closeStream();
+    }
+
+    @Override
+    public void commit() {
+        facade.commit();
+    }
+
+    public com.openjiuwen.core.session.internal.AgentSession getInner() {
+        return facade.getInner();
     }
 
     public Map<String, Object> getEnvs() {
-        return envs;
+        return envs != null ? envs : facade.getEnvs();
     }
 
     public void setEnvs(Map<String, Object> envs) {

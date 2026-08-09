@@ -30,9 +30,6 @@ public class CaseLoader implements Iterable<Case> {
     }
 
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Case> iterator() {
         return cases.iterator();
     }

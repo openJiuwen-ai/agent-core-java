@@ -54,6 +54,9 @@ public final class HarnessPromptToolsPackage {
         registerBuiltinProvider(new AudioPromptToolProviders.AudioMetadataMetadataProvider());
         registerBuiltinProvider(new ListMcpResourcesMetadataProvider());
         registerBuiltinProvider(new ReadMcpResourceMetadataProvider());
+        registerBuiltinProvider(new LspToolMetadataProvider());
+        registerBuiltinProvider(new EnterWorktreePromptToolProviders.EnterWorktreeMetadataProvider());
+        registerBuiltinProvider(new ExitWorktreePromptToolProviders.ExitWorktreeMetadataProvider());
     }
 
     private HarnessPromptToolsPackage() {

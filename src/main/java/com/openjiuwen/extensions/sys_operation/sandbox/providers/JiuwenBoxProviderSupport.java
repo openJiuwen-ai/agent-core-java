@@ -10,11 +10,11 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.openjiuwen.core.common.VirtualThreadSupport;
-import com.openjiuwen.core.sys_operation.config.PreDeployLauncherConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
-import com.openjiuwen.core.sys_operation.result.FileSystemItem;
-import com.openjiuwen.core.sys_operation.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.config.PreDeployLauncherConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.result.FileSystemItem;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

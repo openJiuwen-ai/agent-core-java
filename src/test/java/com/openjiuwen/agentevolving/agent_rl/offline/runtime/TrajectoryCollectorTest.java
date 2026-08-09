@@ -1,7 +1,7 @@
-package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
+package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 
-import com.openjiuwen.agent_evolving.agent_rl.RLRail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.agent_rl.RLRail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;

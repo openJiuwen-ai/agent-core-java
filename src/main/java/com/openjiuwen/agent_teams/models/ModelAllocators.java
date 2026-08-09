@@ -27,7 +27,7 @@ public final class ModelAllocators {
 
     public static String poolDigest(List<ModelPoolEntry> pool) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (ModelPoolEntry entry : pool == null ? List.<ModelPoolEntry>of() : pool) {
                 digest.update(nullToEmpty(entry.getModelName()).getBytes(StandardCharsets.UTF_8));
                 digest.update((byte) 0);
@@ -36,7 +36,7 @@ public final class ModelAllocators {
             }
             return hex(digest.digest());
         } catch (NoSuchAlgorithmException exc) {
-            throw new IllegalStateException("SHA-1 digest is unavailable", exc);
+            throw new IllegalStateException("SHA-256 digest is unavailable", exc);
         }
     }
 

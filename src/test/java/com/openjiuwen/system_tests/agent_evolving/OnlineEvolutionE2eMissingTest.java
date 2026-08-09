@@ -5,14 +5,14 @@
 package com.openjiuwen.system_tests.agent_evolving;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionLog;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
-import com.openjiuwen.agent_evolving.experience.EvolutionContext;
-import com.openjiuwen.agent_evolving.optimizer.skill_call.SkillExperienceOptimizer;
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
-import com.openjiuwen.agent_evolving.signal.SignalDetector;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionLog;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
+import com.openjiuwen.agentevolving.experience.EvolutionContext;
+import com.openjiuwen.agentevolving.optimizer.skill_call.SkillExperienceOptimizer;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.signal.SignalDetector;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;

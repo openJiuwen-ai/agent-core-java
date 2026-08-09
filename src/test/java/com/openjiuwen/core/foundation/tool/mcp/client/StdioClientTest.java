@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Mirrors Python's {@code StdioClient} behavior in
@@ -41,18 +43,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StdioClientTest {
 
     @Test
-    void buildServerParametersUsesParamsAndNormalizesEncodingHandler() {
+    void buildServerParametersUsesParamsAndNormalizesEncodingHandler() throws Exception {
+        Path python = resolveAllowlistedCommand("python");
+        assumeTrue(python != null, "python not available");
         StdioClient client = new StdioClient(config(Map.of(
-                "command", "python",
+                "command", python.toString(),
                 "args", List.of("-m", "server"),
                 "env", Map.of("A", "B"),
                 "cwd", "workspace",
                 "encoding_error_handler", "drop"
-        )));
+        ), python.toString()));
 
         StdioClient.StdioServerParameters parameters = client.buildServerParameters();
 
-        assertEquals("python", parameters.command());
+        assertEquals(python.toString(), parameters.command());
         assertEquals(List.of("-m", "server"), parameters.args());
         assertEquals(Map.of("A", "B"), parameters.env());
         assertEquals("workspace", parameters.cwd());
@@ -62,7 +66,7 @@ class StdioClientTest {
     @Test
     void connectInitializesSessionAndDisconnectIsIdempotent() throws Exception {
         FakeSession session = new FakeSession();
-        StdioClient client = new StdioClient(config(Map.of("command", "server")),
+        StdioClient client = new StdioClient(config(Map.of()),
                 parameters -> session);
 
         assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
@@ -74,8 +78,8 @@ class StdioClientTest {
     }
 
     @Test
-    void connectReturnsFalseWhenSessionCannotOpen() {
-        StdioClient client = new StdioClient(config(Map.of("command", "server")),
+    void connectReturnsFalseWhenSessionCannotOpen() throws Exception {
+        StdioClient client = new StdioClient(config(Map.of()),
                 parameters -> {
                     throw new IllegalStateException("boom");
                 });
@@ -84,8 +88,8 @@ class StdioClientTest {
     }
 
     @Test
-    void operationsRequireConnectedSession() {
-        StdioClient client = new StdioClient(config(Map.of("command", "server")),
+    void operationsRequireConnectedSession() throws Exception {
+        StdioClient client = new StdioClient(config(Map.of()),
                 parameters -> new FakeSession());
 
         RuntimeException error = assertThrows(RuntimeException.class,
@@ -369,8 +373,8 @@ class StdioClientTest {
         return condition.matches();
     }
 
-    private static StdioClient connectedClient(FakeSession session) {
-        StdioClient client = new StdioClient(config(Map.of("command", "server")),
+    private static StdioClient connectedClient(FakeSession session) throws Exception {
+        StdioClient client = new StdioClient(config(Map.of()),
                 parameters -> session);
         assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
         return client;
@@ -385,9 +389,34 @@ class StdioClientTest {
         boolean matches();
     }
 
-    private static McpServerConfig config(Map<String, Object> params) {
-        return new McpServerConfig("srv-stdio", "stdio-server", "ignored", "stdio",
-                params, Map.of(), Map.of());
+    private static McpServerConfig config(Map<String, Object> params) throws Exception {
+        return config(params, javaExecutable().toString());
+    }
+
+    private static McpServerConfig config(Map<String, Object> params, String serverPath) throws Exception {
+        Map<String, Object> mergedParams = new LinkedHashMap<>(params);
+        mergedParams.putIfAbsent("command", serverPath);
+        return new McpServerConfig("srv-stdio", "stdio-server", serverPath, "stdio",
+                mergedParams, Map.of(), Map.of());
+    }
+
+    private static Path javaExecutable() throws Exception {
+        String executableName = System.getProperty("os.name").toLowerCase().contains("win")
+                ? "java.exe"
+                : "java";
+        return Path.of(System.getProperty("java.home"), "bin", executableName).toRealPath();
+    }
+
+    private static Path resolveAllowlistedCommand(String command) {
+        try {
+            McpServerConfig config = McpServerConfig.builder()
+                    .serverPath("")
+                    .params(Map.of("command", command))
+                    .build();
+            return Path.of(StdioClient.resolveAllowedCommand(config));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**

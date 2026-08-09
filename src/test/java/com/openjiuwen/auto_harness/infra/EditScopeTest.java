@@ -4,7 +4,7 @@
 
 package com.openjiuwen.auto_harness.infra;
 
-import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sysop.Cwd;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

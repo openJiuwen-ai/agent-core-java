@@ -22,6 +22,7 @@ class ResourceRegistryTest {
         ResourceRegistry registry = new ResourceRegistry();
 
         assertSame(registry.tool(), registry.tool());
+        assertSame(registry.tool(), registry.toolManager());
         assertSame(registry.workflow(), registry.workflow());
         assertSame(registry.prompt(), registry.prompt());
         assertSame(registry.model(), registry.model());

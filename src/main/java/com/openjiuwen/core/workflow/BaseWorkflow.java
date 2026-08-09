@@ -16,8 +16,8 @@ import com.openjiuwen.core.graph.stream_actor.StreamGraph;
 import com.openjiuwen.core.graph.visualization.Drawable;
 import com.openjiuwen.core.graph.visualization.Stringifiable;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.ProxySession;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
-import com.openjiuwen.core.workflow.internal.ProxySession;
 import com.openjiuwen.core.workflow.internal.RouterSession;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
 

@@ -2,12 +2,12 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.online.gateway.app;
+package com.openjiuwen.agentevolving.agent_rl.online.gateway.app;
 
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayConfig;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.Forwarder;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.GatewayConfig;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.Forwarder;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;

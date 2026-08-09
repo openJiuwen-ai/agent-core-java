@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.sys_operation.sandbox.SandboxRegistry;
+import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
 
 /**
  * Extension sandbox provider registrations.

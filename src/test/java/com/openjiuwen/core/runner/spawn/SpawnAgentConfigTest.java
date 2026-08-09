@@ -13,7 +13,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -69,7 +68,6 @@ class SpawnAgentConfigTest {
         assertEquals(SpawnAgentKind.TEAM_AGENT, parsed.getAgentKind());
         assertEquals("session-1", parsed.getSessionId());
         assertEquals(Map.of("distributed_mode", false), parsed.getRunnerConfig());
-        assertNull(SpawnPackage.javaSymbolNameFor("SpawnConfig"));
     }
 
     @Test

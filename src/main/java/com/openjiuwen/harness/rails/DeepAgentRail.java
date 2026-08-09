@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,9 +22,15 @@ public class DeepAgentRail {
     private int priority = 100;
 
     public void init(DeepAgent agent) {
-        if (agent != null && agent.deepConfig() != null) {
-            setWorkspace(agent.deepConfig().getWorkspace());
-            setSysOperation(agent.deepConfig().getSysOperation());
+        if (agent == null) {
+            return;
+        }
+        if (agent.getWorkspace() != null) {
+            setWorkspace(agent.getWorkspace());
+        }
+        Object sysOperation = agent.getSysOperation();
+        if (sysOperation != null) {
+            setSysOperation(sysOperation);
         }
     }
 

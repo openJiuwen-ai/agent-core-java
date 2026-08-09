@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.operator;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateValue;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateValue;
 
 /**
  * Optional operator extension for local preview updates.

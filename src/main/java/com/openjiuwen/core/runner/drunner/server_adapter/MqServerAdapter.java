@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -31,7 +31,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -51,8 +50,9 @@ public class MqServerAdapter {
     private final String topic;
     private final Function<Map<String, Object>, Object> invokeHandler;
     private final Function<Map<String, Object>, Object> streamHandler;
-    private final ExecutorService executor = VirtualThreadSupport.newThreadPerTaskExecutor();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("mq-server-adapter", false);
+    private final ScheduledExecutorService scheduler =
+            OpenJiuwenExecutors.newScheduledThreadPool("mq-server-adapter-scheduler", 1, false);
     private final Map<String, MessageTask> runningTasks = new ConcurrentHashMap<>();
 
     private MessageQueueBase mq;

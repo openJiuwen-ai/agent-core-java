@@ -4,131 +4,190 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
-import com.openjiuwen.core.sysop.BaseShellOperation;
-import com.openjiuwen.core.sysop.OperationMode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-
-import com.openjiuwen.core.sysop.registry.Operation;
+import com.openjiuwen.core.sysop.BaseShellOperation;
+import com.openjiuwen.core.sysop.OperationDef;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.OperationRegistry;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
-import java.util.List;
-import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicBoolean;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
 
 /**
- * Sandbox shell operation routed through the sandbox gateway/provider chain.
+ * Sandbox shell execution operation.
+ *
+ * <p>Mirrors Python's {@code ShellOperation} in
+ * {@code openjiuwen/core/sys_operation/sandbox/shell_operation.py}.</p>
  */
-@Operation(name = "shell", mode = OperationMode.SANDBOX, description = "sandbox shell operation")
 public class SandboxShellOperation extends BaseShellOperation {
-    private static final String OP_TYPE = "shell";
 
-    private final SandboxGatewayClient gatewayClient;
+    public static final OperationDef OP_DEF = new OperationDef(
+            SandboxShellOperation.class,
+            "Sandbox shell execution operation",
+            "shell",
+            OperationMode.SANDBOX
+    );
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public SandboxShellOperation(Object runConfig) {
-        super("shell", OperationMode.SANDBOX, "sandbox shell operation", runConfig);
-        SandboxGatewayConfig config = getSandboxConfig();
-        this.gatewayClient = new SandboxGatewayClient(
-                config,
-                SandboxOperationSupport.resolveIsolationKey(config)
-        );
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private final SandboxGatewayClientMixin sandboxClient = new SandboxGatewayClientMixin();
+
+    static {
+        OperationRegistry.register(SandboxShellOperation.class);
     }
 
-    private SandboxGatewayConfig getSandboxConfig() {
-        Object rc = getRunConfig();
-        if (rc instanceof SandboxGatewayConfig config) {
+    public SandboxShellOperation(SandboxGatewayConfig config) {
+        this("shell", OperationMode.SANDBOX, "Sandbox shell execution operation",
+                SandboxRunConfig.builder().config(config).build());
+    }
+
+    public SandboxShellOperation(Object runConfig) {
+        this("shell", OperationMode.SANDBOX, "Sandbox shell execution operation", runConfig);
+    }
+
+    public SandboxShellOperation(String name, OperationMode mode, String description, Object runConfig) {
+        super(name, mode, description, runConfig);
+        SandboxRunConfig sandboxRunConfig = toSandboxRunConfig(runConfig);
+        sandboxClient.initClientContext(sandboxRunConfig, "shell");
+    }
+
+    @Override
+    public CompletableFuture<ExecuteCmdResult> executeCmd(String command, String cwd, Integer timeout,
+                                                          Map<String, String> environment,
+                                                          Map<String, Object> options, ShellType shellType) {
+        return sandboxClient.invoke("executeCmd", executeParams(command, cwd, timeout, environment, options,
+                shellType)).thenApply(raw -> convert(raw, ExecuteCmdResult.class));
+    }
+
+    @Override
+    public Flow.Publisher<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, Integer timeout,
+                                                                   Map<String, String> environment,
+                                                                   Map<String, Object> options,
+                                                                   ShellType shellType) {
+        return mappedPublisher(sandboxClient.invokeStream("executeCmdStream", executeParams(command, cwd, timeout,
+                environment, options, shellType)), ExecuteCmdStreamResult.class);
+    }
+
+    @Override
+    public CompletableFuture<ExecuteCmdBackgroundResult> executeCmdBackground(String command, String cwd,
+                                                                              Map<String, String> environment,
+                                                                              double grace, ShellType shellType) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("command", command);
+        params.put("cwd", cwd);
+        params.put("environment", environment);
+        params.put("grace", grace);
+        params.put("shellType", shellTypeValue(shellType));
+        return sandboxClient.invoke("executeCmdBackground", params)
+                .thenApply(raw -> convert(raw, ExecuteCmdBackgroundResult.class));
+    }
+
+    private static Map<String, Object> executeParams(String command, String cwd, Integer timeout,
+                                                     Map<String, String> environment, Map<String, Object> options,
+                                                     ShellType shellType) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("command", command);
+        params.put("cwd", cwd);
+        params.put("timeoutSeconds", timeout);
+        params.put("environment", environment);
+        params.put("options", options);
+        params.put("shellType", shellTypeValue(shellType));
+        return params;
+    }
+
+    private static String shellTypeValue(ShellType shellType) {
+        return (shellType == null ? ShellType.AUTO : shellType).value();
+    }
+
+    private static <T> T convert(Object raw, Class<T> resultClass) {
+        if (resultClass.isInstance(raw)) {
+            return resultClass.cast(raw);
+        }
+        return OBJECT_MAPPER.convertValue(raw, resultClass);
+    }
+
+    private static <T> Flow.Publisher<T> mappedPublisher(CompletableFuture<Flow.Publisher<?>> rawPublisher,
+                                                         Class<T> resultClass) {
+        return subscriber -> {
+            Objects.requireNonNull(subscriber, "subscriber");
+            rawPublisher.whenComplete((publisher, error) -> {
+                if (error != null) {
+                    subscriber.onSubscribe(new EmptySubscription());
+                    subscriber.onError(rootCause(error));
+                    return;
+                }
+                subscribeMapped(publisher, subscriber, resultClass);
+            });
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> void subscribeMapped(Flow.Publisher<?> publisher, Flow.Subscriber<? super T> subscriber,
+                                            Class<T> resultClass) {
+        Flow.Publisher<Object> rawPublisher = (Flow.Publisher<Object>) publisher;
+        rawPublisher.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscriber.onSubscribe(subscription);
+            }
+
+            @Override
+            public void onNext(Object item) {
+                subscriber.onNext(convert(item, resultClass));
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                subscriber.onError(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                subscriber.onComplete();
+            }
+        });
+    }
+
+    private static Throwable rootCause(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        return cursor;
+    }
+
+    private static final class EmptySubscription implements Flow.Subscription {
+
+        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        @Override
+        public void request(long itemCount) {
+            // No-op: this subscription only satisfies the Flow onSubscribe contract before onError.
+        }
+
+        @Override
+        public void cancel() {
+            cancelled.set(true);
+        }
+    }
+
+    private static SandboxRunConfig toSandboxRunConfig(Object runConfig) {
+        if (runConfig instanceof SandboxRunConfig config) {
             return config;
         }
-        return SandboxGatewayConfig.builder().build();
-    }
-
-    @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
-                                       Map<String, String> environment, Map<String, Object> options) {
-        try {
-            return invoke("executeCmd", ExecuteCmdResult.class, SandboxOperationSupport.paramsOf(
-                    "command", command,
-                    "cwd", cwd,
-                    "timeout", timeout,
-                    "environment", environment,
-                    "options", options
-            ));
-        } catch (IllegalArgumentException ex) {
-            return SandboxOperationSupport.buildShellError("execute_cmd", ex.getMessage(), command, cwd);
+        if (runConfig instanceof SandboxGatewayConfig config) {
+            return SandboxRunConfig.builder().config(config).build();
         }
+        return SandboxRunConfig.builder().build();
     }
-
-    @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
-                                                              Map<String, String> environment,
-                                                              Map<String, Object> options) {
-        try {
-            @SuppressWarnings("unchecked")
-            Iterator<ExecuteCmdStreamResult> iterator = invoke(
-                    "executeCmdStream",
-                    Iterator.class,
-                    SandboxOperationSupport.paramsOf(
-                    "command", command,
-                    "cwd", cwd,
-                    "timeout", timeout,
-                    "environment", environment,
-                    "options", options
-            ));
-            return iterator;
-        } catch (IllegalArgumentException ex) {
-            return List.of(SandboxOperationSupport.buildShellStreamError(
-                    "execute_cmd_stream",
-                    ex.getMessage(),
-                    command,
-                    cwd)).iterator();
-        }
-    }
-
-    @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public ExecuteCmdBackgroundResult executeCmdBackground(String command,
-                                                           String cwd,
-                                                           Map<String, String> environment,
-                                                           double grace,
-                                                           Map<String, Object> options) {
-        try {
-            return invoke(
-                    "executeCmdBackground",
-                    ExecuteCmdBackgroundResult.class,
-                    SandboxOperationSupport.paramsOf(
-                    "command", command,
-                    "cwd", cwd,
-                    "environment", environment,
-                    "grace", grace,
-                    "options", options
-            ));
-        } catch (IllegalArgumentException ex) {
-            return BaseShellOperationErrorBridge.backgroundError(
-                    "execute_cmd_background",
-                    ex.getMessage(),
-                    command,
-                    cwd);
-        }
-    }
-
-    private <T> T invoke(String method, Class<T> type, Map<String, Object> params) {
-        Object result = gatewayClient.invoke(OP_TYPE, method, params);
-        if (type.isInstance(result)) {
-            return type.cast(result);
-        }
-        throw new IllegalArgumentException("Unexpected sandbox shell response data type");
-    }
-
 }

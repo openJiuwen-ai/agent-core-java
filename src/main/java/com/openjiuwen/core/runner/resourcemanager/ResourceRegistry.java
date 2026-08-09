@@ -12,7 +12,7 @@ package com.openjiuwen.core.runner.resourcemanager;
  */
 public class ResourceRegistry {
 
-    private ToolMgr toolMgr = new ToolMgr();
+    private ToolManager toolMgr = new ToolManager();
     private WorkflowMgr workflowMgr = new WorkflowMgr();
     private PromptMgr promptMgr = new PromptMgr();
     private ModelMgr modelMgr = new ModelMgr();
@@ -24,7 +24,7 @@ public class ResourceRegistry {
      * Clears all registered resources across all sub-managers.
      */
     public void clearAll() {
-        toolMgr = new ToolMgr();
+        toolMgr = new ToolManager();
         workflowMgr = new WorkflowMgr();
         promptMgr = new PromptMgr();
         modelMgr = new ModelMgr();
@@ -55,7 +55,7 @@ public class ResourceRegistry {
         sysOperationMgr.removeSysOperation(resourceId);
     }
 
-    public ToolMgr tool() {
+    public ToolManager tool() {
         return toolMgr;
     }
 
@@ -88,7 +88,7 @@ public class ResourceRegistry {
     }
 
     public ToolManager toolManager() {
-        return toolMgr.asToolManager();
+        return toolMgr;
     }
 
     public WorkflowManager workflowManager() {

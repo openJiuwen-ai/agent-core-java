@@ -10,35 +10,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Manages the context message buffer, supporting history tracking and size limits.
- * <p>
- * Mirrors Python's {@code ContextMessageBuffer} from {@code context_engine/context/message_buffer.py}.
- * 
- * @since 0.1.7
+ * Rolling context-message buffer with history tracking.
+ *
+ * <p>Mirrors Python's {@code ContextMessageBuffer} in
+ * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
  */
 public class ContextMessageBuffer {
     private final Integer maxBufferSize;
-    private List<BaseMessage> contextMessages;
+    private List<BaseMessage> contextMessages = new ArrayList<>();
     private int historyMessagesSize;
 
-    /**
-     * ContextMessageBuffer.
-     * 
-     * @param historyMessages historyMessages
-     * @param maxBufferSize maxBufferSize
-     * @since 0.1.7
-     */
     public ContextMessageBuffer(List<BaseMessage> historyMessages, Integer maxBufferSize) {
         this.maxBufferSize = maxBufferSize;
-        rebuild(historyMessages);
+        rebulid(historyMessages);
     }
 
-    /**
-     * Return the effective size of the buffer.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int size() {
         if (maxBufferSize != null) {
             return Math.min(contextMessages.size(), maxBufferSize);
@@ -46,79 +32,41 @@ public class ContextMessageBuffer {
         return contextMessages.size();
     }
 
-    /**
-     * Append messages to the back of the buffer.
-     * 
-     * @param messages messages
-     * @since 0.1.7
-     */
+    public void addBack(BaseMessage message) {
+        contextMessages.add(message);
+        resizeIfNeeded();
+    }
+
     public void addBack(List<BaseMessage> messages) {
         contextMessages.addAll(messages);
-        ifNeedResize();
+        resizeIfNeeded();
     }
 
-    /**
-     * Get messages from the back of the buffer.
-     * 
-     * @param size number of messages to get; null for all
-     * @param withHistory whether to include history messages
-     * @return list of messages
-     * @since 0.1.7
-     */
-    public List<BaseMessage> getBack(Integer size, boolean withHistory) {
-        List<BaseMessage> available;
-        if (maxBufferSize == null) {
-            available = new ArrayList<>(contextMessages);
-        } else {
-            int start = Math.max(0, contextMessages.size() - maxBufferSize);
-            available = new ArrayList<>(contextMessages.subList(start, contextMessages.size()));
-        }
-
-        if (size == null) {
-            if (withHistory) {
-                return available;
-            }
-            int historyInAvailable = Math.min(historyMessagesSize, available.size());
-            return new ArrayList<>(available.subList(historyInAvailable, available.size()));
-        }
-
-        int totalSize = available.size();
-        int contextSize = totalSize - Math.min(historyMessagesSize, totalSize);
-        int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSize);
-        return new ArrayList<>(available.subList(totalSize - effectiveSize, totalSize));
-    }
-
-    /**
-     * Get all messages from the back.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<BaseMessage> getBack() {
         return getBack(null, true);
     }
 
-    /**
-     * Pop messages from the back of the buffer.
-     * 
-     * @param size number of messages to pop
-     * @param withHistory whether to also pop from history
-     * @return the popped messages
-     * @since 0.1.7
-     */
+    public List<BaseMessage> getBack(Integer size, boolean withHistory) {
+        List<BaseMessage> visibleMessages = maxBufferSize == null
+                ? new ArrayList<>(contextMessages)
+                : tail(contextMessages, maxBufferSize);
+        if (size == null) {
+            return withHistory
+                    ? visibleMessages
+                    : new ArrayList<>(visibleMessages.subList(Math.min(historyMessagesSize, visibleMessages.size()),
+                    visibleMessages.size()));
+        }
+
+        int totalSize = visibleMessages.size();
+        int contextSize = totalSize - Math.min(historyMessagesSize, totalSize);
+        int effectiveSize = withHistory ? Math.min(size, totalSize) : Math.min(size, contextSize);
+        return new ArrayList<>(visibleMessages.subList(totalSize - effectiveSize, totalSize));
+    }
+
     public List<BaseMessage> popBack(int size, boolean withHistory) {
         return popBack(Integer.valueOf(size), withHistory);
     }
 
-    /**
-     * Pop messages from the back of the buffer.
-     * Mirrors Python's {@code pop_back(size=None, with_history=True)}.
-     * 
-     * @param size number of messages to pop; {@code null} pops all
-     * @param withHistory whether to also pop from history
-     * @return the popped messages
-     * @since 0.1.7
-     */
     public List<BaseMessage> popBack(Integer size, boolean withHistory) {
         List<BaseMessage> poppedMessages = getBack(size, withHistory);
         int poppedSize = poppedMessages.size();
@@ -132,51 +80,34 @@ public class ContextMessageBuffer {
         return poppedMessages;
     }
 
-    /**
-     * Replace messages in the buffer.
-     * 
-     * @param messages the new messages
-     * @param withHistory if true, isReplace entire buffer; if false, only isReplace non-history part
-     * @since 0.1.7
-     */
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         if (withHistory) {
             contextMessages = new ArrayList<>(messages);
             historyMessagesSize = 0;
             return;
         }
-        List<BaseMessage> historyMessages =
-            new ArrayList<>(contextMessages.subList(0, Math.min(historyMessagesSize, contextMessages.size())));
-        contextMessages = new ArrayList<>(historyMessages);
-        contextMessages.addAll(messages);
+        List<BaseMessage> historyMessages = new ArrayList<>(contextMessages.subList(0,
+                Math.min(historyMessagesSize, contextMessages.size())));
+        historyMessages.addAll(messages);
+        contextMessages = historyMessages;
     }
 
-    /**
-     * Rebuild the buffer from a new list of history messages.
-     * 
-     * @param historyMessages historyMessages
-     * @since 0.1.7
-     */
-    public void rebuild(List<BaseMessage> historyMessages) {
-        if (historyMessages == null) {
-            historyMessages = new ArrayList<>();
-        }
+    public void rebulid(List<BaseMessage> historyMessages) {
+        List<BaseMessage> safeHistoryMessages = historyMessages == null ? List.of() : historyMessages;
         if (maxBufferSize != null) {
-            int start = Math.max(0, historyMessages.size() - maxBufferSize);
-            contextMessages = new ArrayList<>(historyMessages.subList(start, historyMessages.size()));
+            contextMessages = tail(safeHistoryMessages, maxBufferSize);
             historyMessagesSize = Math.min(contextMessages.size(), maxBufferSize);
-        } else {
-            contextMessages = new ArrayList<>(historyMessages);
-            historyMessagesSize = contextMessages.size();
+            return;
         }
+        contextMessages = new ArrayList<>(safeHistoryMessages);
+        historyMessagesSize = contextMessages.size();
     }
 
-    /**
-     * ifNeedResize.
-     * 
-     * @since 0.1.7
-     */
-    private void ifNeedResize() {
+    public void rebuild(List<BaseMessage> historyMessages) {
+        rebulid(historyMessages);
+    }
+
+    private void resizeIfNeeded() {
         if (maxBufferSize == null) {
             return;
         }
@@ -188,6 +119,14 @@ public class ContextMessageBuffer {
             historyMessagesSize = 0;
             return;
         }
-        historyMessagesSize = historyMessagesSize - maxBufferSize;
+        historyMessagesSize -= maxBufferSize;
+    }
+
+    private static List<BaseMessage> tail(List<BaseMessage> messages, int size) {
+        if (size <= 0) {
+            return new ArrayList<>();
+        }
+        int start = Math.max(0, messages.size() - size);
+        return new ArrayList<>(messages.subList(start, messages.size()));
     }
 }

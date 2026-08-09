@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.GatewayInvokeRequest;
@@ -14,9 +16,11 @@ import java.util.Map;
 
 /**
  * Client wrapper for sandbox gateway full-chain routing.
- * 
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient}.
  * @since 0.1.7
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class SandboxGatewayClient {
     private final SandboxGatewayConfig config;
     private final String isolationKey;

@@ -4,13 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
-/** Result type for search files operation. */
-@NoArgsConstructor
+/**
+ * Mirrors Python's {@code SearchFilesResult} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ */
 public class SearchFilesResult extends BaseResult<SearchFilesData> {
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public SearchFilesResult(int code, String message, SearchFilesData data) { setCode(code); setMessage(message); setData(data); }
+
+    public SearchFilesResult() {
+    }
+
+    public SearchFilesResult(int code, String message, SearchFilesData data) {
+        setCode(code);
+        setMessage(message);
+        setData(data);
+    }
 }

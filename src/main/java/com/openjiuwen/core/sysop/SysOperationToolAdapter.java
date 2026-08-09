@@ -6,332 +6,352 @@ package com.openjiuwen.core.sysop;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.sysop.registry.OperationRegistry;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Flow;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Adapter for converting SysOperation to LocalFunction tools.
- * <p>
- * Mirrors Python's {@code SysOperationToolAdapter} in {@code sys_operation/tool_adapter.py}.
- * 
- * @since 0.1.7
+ * Adapter for converting {@link SysOperation} operations to local-function tools.
+ *
+ * <p>Mirrors Python's {@code SysOperationToolAdapter} in
+ * {@code openjiuwen/core/sys_operation/tool_adapter.py}.</p>
  */
 public final class SysOperationToolAdapter {
-    /**
-     * SysOperationToolAdapter.
-     * 
-     * @since 0.1.7
-     */
+
     private SysOperationToolAdapter() {
     }
 
     /**
-     * A tuple of (toolId, LocalFunction).
-     * 
-     * @since 0.1.7
+     * Legacy alias for {@link ToolBinding}.
      */
     public record ToolEntry(String toolId, LocalFunction localFunction) {
+        public ToolBinding toBinding() {
+            return new ToolBinding(toolId, localFunction);
+        }
     }
 
-    /**
-     * Extract all tools from SysOperation and wrap them as LocalFunction instances.
-     * 
-     * @param card SysOperationCard containing operation metadata
-     * @param instance SysOperation instance to extract tools from
-     * @return list of (toolId, LocalFunction) entries ready for registration
-     * @since 0.1.7
-     */
-    public static List<ToolEntry> extractTools(SysOperationCard card, SysOperation instance) {
-        List<ToolEntry> tools = new ArrayList<>();
+    public static List<ToolBinding> extractTools(SysOperationCard card, SysOperation instance) {
+        return buildToolBindings(card, instance);
+    }
 
-        for (String opType : OperationRegistry.getSupportedOperations(
-                com.openjiuwen.core.sysop.OperationMode.fromNewMode(card.getMode()))) {
-            BaseOperation subOp = instance.getOperation(opType);
-            if (subOp == null) {
+    private static List<ToolBinding> buildToolBindings(SysOperationCard card, SysOperation instance) {
+        List<ToolBinding> tools = new ArrayList<>();
+        for (String opType : OperationRegistry.getToolExtractionOperationNames(card.getMode())) {
+            BaseOperation subOperation = instance.getOperation(opType);
+            if (subOperation == null) {
                 continue;
             }
-
-            List<ToolCard> toolCards = subOp.listTools();
+            List<ToolCard> toolCards = subOperation.listTools();
             if (toolCards == null || toolCards.isEmpty()) {
                 continue;
             }
-
             for (ToolCard toolCard : toolCards) {
-                Method method = findToolMethod(subOp.getClass(), toolCard.getName());
-                if (method == null) {
+                String toolId = SysOperationCard.generateToolId(card.getId(), opType, toolCard.getName());
+                ToolCard newCard = ToolCard.builder()
+                        .id(toolId)
+                        .name(toolCard.getName())
+                        .description(toolCard.getDescription())
+                        .inputParams(toolCard.getInputParams())
+                        .properties(toolCard.getProperties())
+                        .build();
+                List<Method> methods = resolveMethods(subOperation, toolCard.getName());
+                if (methods.isEmpty()) {
                     continue;
                 }
-
-                String toolId = SysOperationCard.generateToolId(card.getId(), opType, toolCard.getName());
-                ToolCard newCard = ToolCard.builder().id(toolId).name(toolCard.getName())
-                        .description(toolCard.getDescription()).inputParams(toolCard.getInputParams()).build();
-
-                LocalFunction localFunc = new LocalFunction(newCard,
-                        inputs -> invokeToolMethod(subOp, method, inputs != null ? inputs : Map.of()));
-                tools.add(new ToolEntry(toolId, localFunc));
+                LocalFunction localFunction = new LocalFunction(
+                        newCard,
+                        inputs -> invokeMethod(subOperation, methods, inputs)
+                );
+                tools.add(new ToolBinding(toolId, localFunction));
             }
         }
-
         return tools;
     }
 
-    /**
-     * Get tool ID prefix for a sys operation.
-     * 
-     * @param sysOperationId the sys operation card ID
-     * @return prefix string ending with "."
-     * @since 0.1.7
-     */
     public static String getToolIdPrefix(String sysOperationId) {
         return sysOperationId + ".";
     }
 
-    /**
-     * Get tool ID prefixes for multiple sys operations.
-     * <p>
-     * Mirrors Python's {@code get_tool_id_prefix(sys_operation_id: List[str])} overload.
-     * 
-     * @param sysOperationIds list of sys operation card IDs
-     * @return list of prefix strings, each ending with "."
-     * @since 0.1.7
-     */
     public static List<String> getToolIdPrefix(List<String> sysOperationIds) {
-        return sysOperationIds.stream().map(id -> id + ".").toList();
+        return sysOperationIds.stream().map(SysOperationToolAdapter::getToolIdPrefix).toList();
     }
 
-    /**
-     * findToolMethod.
-     * 
-     * @param operationClass operationClass
-     * @param methodName methodName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Method findToolMethod(Class<?> operationClass, String methodName) {
-        for (Method method : operationClass.getMethods()) {
-            if (method.getName().equals(methodName)) {
-                return method;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * invokeToolMethod.
-     * 
-     * @param operation operation
-     * @param method method
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object invokeToolMethod(BaseOperation operation, Method method, Map<String, Object> inputs) {
-        Object[] args = buildArguments(method, inputs);
+    private static Object invokeMethod(BaseOperation target, List<Method> methods, Map<String, Object> inputs) {
+        Method method = selectMethod(methods, inputs);
         try {
-            return method.invoke(operation, args);
-        } catch (InvocationTargetException e) {
-            Throwable target = e.getTargetException();
-            if (target instanceof RuntimeException runtimeException) {
+            return adaptResult(method.invoke(target, resolveArguments(method, inputs)));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Cannot invoke operation method " + method.getName()
+                    + " with inputs " + inputs, exception);
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Cannot access operation method " + method.getName(), exception);
+        } catch (InvocationTargetException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
-            if (target instanceof Error error) {
-                throw error;
-            }
-            throw new RuntimeException(target);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to invoke sys operation method " + method.getName(), e);
+            throw new IllegalStateException("Operation method failed: " + method.getName(), cause);
         }
     }
 
-    /**
-     * buildArguments.
-     * 
-     * @param method method
-     * @param inputs inputs
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object[] buildArguments(Method method, Map<String, Object> inputs) {
+    private static List<Method> resolveMethods(BaseOperation operation, String methodName) {
+        String javaName = BaseOperation.snakeToCamel(methodName);
+        List<Method> methods = new ArrayList<>();
+        for (Method method : operation.getClass().getMethods()) {
+            if (method.getName().equals(javaName) || method.getName().equals(methodName)) {
+                methods.add(method);
+            }
+        }
+        return methods;
+    }
+
+    private static Method selectMethod(List<Method> methods, Map<String, Object> inputs) {
+        Method bestMethod = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Method method : methods) {
+            try {
+                resolveArguments(method, inputs);
+            } catch (IllegalArgumentException exception) {
+                continue;
+            }
+            int score = compatibilityScore(method, inputs);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMethod = method;
+            }
+        }
+        if (bestMethod == null) {
+            throw new IllegalArgumentException("No compatible operation method for inputs " + inputs);
+        }
+        return bestMethod;
+    }
+
+    private static int compatibilityScore(Method method, Map<String, Object> inputs) {
+        int score = 0;
+        for (Parameter parameter : method.getParameters()) {
+            if (inputs == null || !inputs.containsKey(parameter.getName())) {
+                continue;
+            }
+            Object value = inputs.get(parameter.getName());
+            Class<?> targetType = wrapPrimitive(parameter.getType());
+            if (value != null && targetType.isInstance(value)) {
+                score += 3;
+            } else {
+                score += 1;
+            }
+        }
+        return score;
+    }
+
+    private static Object[] resolveArguments(Method method, Map<String, Object> inputs) {
         Parameter[] parameters = method.getParameters();
+        if (parameters.length == 0) {
+            return new Object[0];
+        }
+        if (parameters.length == 1 && Map.class.isAssignableFrom(parameters[0].getType())) {
+            return new Object[]{inputs};
+        }
         Object[] args = new Object[parameters.length];
-        for (int i = 0; i < parameters.length; i++) {
-            Parameter parameter = parameters[i];
-            args[i] =
-                convertValue(inputs.get(parameter.getName()), parameter.getType(), parameter.getParameterizedType());
+        for (int index = 0; index < parameters.length; index += 1) {
+            Parameter parameter = parameters[index];
+            Object value = inputs == null ? null : inputs.get(parameter.getName());
+            if (value == null) {
+                value = defaultValue(parameter.getType());
+            } else {
+                value = convertArgument(value, parameter.getType());
+            }
+            args[index] = value;
         }
         return args;
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * convertValue.
-     * 
-     * @param rawValue rawValue
-     * @param targetType targetType
-     * @param genericType genericType
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object convertValue(Object rawValue, Class<?> targetType, Type genericType) {
-        if (rawValue == null) {
-            return defaultValue(targetType);
+    private static Object convertArgument(Object value, Class<?> targetType) {
+        Class<?> expectedType = wrapPrimitive(targetType);
+        if (value == null || expectedType.isInstance(value)) {
+            return value;
         }
-        if (targetType.isInstance(rawValue)) {
-            return rawValue;
+        if (targetType.isEnum() && value instanceof String text) {
+            return convertEnumValue(targetType, text);
         }
-        if (targetType == String.class) {
-            return String.valueOf(rawValue);
-        }
-        if (targetType == int.class || targetType == Integer.class) {
-            return rawValue instanceof Number
-                    ? ((Number) rawValue).intValue()
-                    : Integer.parseInt(String.valueOf(rawValue));
-        }
-        if (targetType == long.class || targetType == Long.class) {
-            return rawValue instanceof Number
-                    ? ((Number) rawValue).longValue()
-                    : Long.parseLong(String.valueOf(rawValue));
-        }
-        if (targetType == double.class || targetType == Double.class) {
-            return rawValue instanceof Number
-                    ? ((Number) rawValue).doubleValue()
-                    : Double.parseDouble(String.valueOf(rawValue));
-        }
-        if (targetType == boolean.class || targetType == Boolean.class) {
-            if (rawValue instanceof Boolean) {
-                return rawValue;
-            }
-            return Boolean.parseBoolean(String.valueOf(rawValue));
-        }
-        if (targetType == int[].class) {
-            if (rawValue instanceof List<?> list) {
-                int[] result = new int[list.size()];
-                for (int i = 0; i < list.size(); i++) {
-                    Object item = list.get(i);
-                    result[i] =
-                        item instanceof Number ? ((Number) item).intValue() : Integer.parseInt(String.valueOf(item));
-                }
-                return result;
-            }
-            return rawValue;
-        }
-        if (Map.class.isAssignableFrom(targetType) && rawValue instanceof Map<?, ?> mapValue) {
-            return convertMap(mapValue, genericType);
-        }
-        if (List.class.isAssignableFrom(targetType) && rawValue instanceof List<?> listValue) {
-            return convertList(listValue, genericType);
-        }
-        if (Iterator.class.isAssignableFrom(targetType)) {
-            if (rawValue instanceof Iterator<?>) {
-                return rawValue;
-            }
-            if (rawValue instanceof Iterable<?> iterable) {
-                return iterable.iterator();
-            }
-        }
-        return rawValue;
+        throw new IllegalArgumentException("Value " + value + " is not compatible with "
+                + targetType.getSimpleName());
     }
 
-    /**
-     * defaultValue.
-     * 
-     * @param targetType targetType
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object defaultValue(Class<?> targetType) {
-        if (!targetType.isPrimitive()) {
+    private static Object convertEnumValue(Class<?> targetType, String value) {
+        try {
+            Method fromValue = targetType.getMethod("fromValue", String.class);
+            return fromValue.invoke(null, value);
+        } catch (NoSuchMethodException exception) {
+            // Fall through to enum-name matching for enum types without a Python literal helper.
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            throw new IllegalArgumentException("Cannot convert enum value " + value
+                    + " to " + targetType.getSimpleName(), exception);
+        }
+        for (Object constant : targetType.getEnumConstants()) {
+            Enum<?> enumValue = (Enum<?>) constant;
+            if (enumValue.name().equalsIgnoreCase(value)) {
+                return enumValue;
+            }
+        }
+        throw new IllegalArgumentException("No enum constant " + targetType.getSimpleName() + " for value " + value);
+    }
+
+    private static Class<?> wrapPrimitive(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == boolean.class) {
+            return Boolean.class;
+        }
+        if (type == byte.class) {
+            return Byte.class;
+        }
+        if (type == short.class) {
+            return Short.class;
+        }
+        if (type == int.class) {
+            return Integer.class;
+        }
+        if (type == long.class) {
+            return Long.class;
+        }
+        if (type == float.class) {
+            return Float.class;
+        }
+        if (type == double.class) {
+            return Double.class;
+        }
+        if (type == char.class) {
+            return Character.class;
+        }
+        return type;
+    }
+
+    private static Object adaptResult(Object result) {
+        if (result instanceof Flow.Publisher<?> publisher) {
+            return publisherIterator(publisher);
+        }
+        return result;
+    }
+
+    private static Iterator<Object> publisherIterator(Flow.Publisher<?> publisher) {
+        Object end = new Object();
+        BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        Flow.Publisher<Object> typedPublisher = (Flow.Publisher) publisher;
+        typedPublisher.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(Object item) {
+                queue.offer(item);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                error.set(throwable);
+                queue.offer(end);
+            }
+
+            @Override
+            public void onComplete() {
+                queue.offer(end);
+            }
+        });
+        return new Iterator<>() {
+            private Object next;
+            private boolean finished;
+
+            @Override
+            public boolean hasNext() {
+                if (finished) {
+                    return false;
+                }
+                if (next != null) {
+                    return true;
+                }
+                next = takeNext();
+                if (next != end) {
+                    return true;
+                }
+                finished = true;
+                Throwable throwable = error.get();
+                if (throwable != null) {
+                    throw new IllegalStateException("Stream publisher failed", throwable);
+                }
+                return false;
+            }
+
+            @Override
+            public Object next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                Object value = next;
+                next = null;
+                return value;
+            }
+
+            private Object takeNext() {
+                try {
+                    return queue.take();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while waiting for stream publisher", exception);
+                }
+            }
+        };
+    }
+
+    private static Object defaultValue(Class<?> type) {
+        if (!type.isPrimitive()) {
             return null;
         }
-        if (targetType == boolean.class) {
+        if (type == boolean.class) {
             return false;
         }
-        if (targetType == int.class) {
-            return 0;
-        }
-        if (targetType == long.class) {
-            return 0L;
-        }
-        if (targetType == double.class) {
-            return 0D;
-        }
-        if (targetType == float.class) {
-            return 0F;
-        }
-        if (targetType == short.class) {
-            return (short) 0;
-        }
-        if (targetType == byte.class) {
+        if (type == byte.class) {
             return (byte) 0;
         }
-        if (targetType == char.class) {
+        if (type == short.class) {
+            return (short) 0;
+        }
+        if (type == int.class) {
+            return 0;
+        }
+        if (type == long.class) {
+            return 0L;
+        }
+        if (type == float.class) {
+            return 0.0f;
+        }
+        if (type == double.class) {
+            return 0.0d;
+        }
+        if (type == char.class) {
             return '\0';
         }
         return null;
     }
 
     /**
-     * convertMap.
-     * 
-     * @param rawMap rawMap
-     * @param genericType genericType
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's tuple {@code (tool_id, LocalFunction)} from
+     * {@code openjiuwen/core/sys_operation/tool_adapter.py}.
      */
-    private static Map<?, ?> convertMap(Map<?, ?> rawMap, Type genericType) {
-        Type valueType = getGenericArgument(genericType, 1);
-        if (valueType == String.class) {
-            Map<String, String> converted = new LinkedHashMap<>();
-            rawMap.forEach(
-                    (key, value) -> converted.put(String.valueOf(key), value == null ? null : String.valueOf(value)));
-            return converted;
-        }
-        Map<String, Object> converted = new LinkedHashMap<>();
-        rawMap.forEach((key, value) -> converted.put(String.valueOf(key), value));
-        return converted;
-    }
-
-    /**
-     * convertList.
-     * 
-     * @param rawList rawList
-     * @param genericType genericType
-     * @return the result
-     * @since 0.1.7
-     */
-    private static List<?> convertList(List<?> rawList, Type genericType) {
-        Type itemType = getGenericArgument(genericType, 0);
-        if (itemType == String.class) {
-            return rawList.stream().map(String::valueOf).toList();
-        }
-        return rawList;
-    }
-
-    /**
-     * getGenericArgument.
-     * 
-     * @param genericType genericType
-     * @param index index
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Type getGenericArgument(Type genericType, int index) {
-        if (genericType instanceof ParameterizedType parameterizedType) {
-            Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
-            if (index >= 0 && index < actualTypeArguments.length) {
-                return actualTypeArguments[index];
-            }
-        }
-        return Object.class;
+    public record ToolBinding(String toolId, LocalFunction localFunction) {
     }
 }

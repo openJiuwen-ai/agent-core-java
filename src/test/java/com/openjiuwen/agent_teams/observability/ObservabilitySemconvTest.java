@@ -58,5 +58,17 @@ class ObservabilitySemconvTest {
     void deepAgentKeysMatchPythonConstants() {
         assertThat(ObservabilitySemconv.DA_TASK_ITERATION).isEqualTo("deepagent.task.iteration");
         assertThat(ObservabilitySemconv.DA_TASK_IS_FOLLOW_UP).isEqualTo("deepagent.task.is_follow_up");
+        assertThat(ObservabilitySemconv.DA_TASK_LOOP_EVENT).isEqualTo("deepagent.task.loop_event");
+    }
+
+    @Test
+    void extendedKeysMatchPythonConstants() {
+        assertThat(ObservabilitySemconv.GEN_AI_OPERATION_NAME).isEqualTo("gen_ai.operation.name");
+        assertThat(ObservabilitySemconv.GEN_AI_PROVIDER_NAME).isEqualTo("gen_ai.provider.name");
+        assertThat(ObservabilitySemconv.AT_TEAM_ID).isEqualTo("agentteam.team.id");
+        assertThat(ObservabilitySemconv.AT_SESSION_ID).isEqualTo("agentteam.session.id");
+        assertThat(ObservabilitySemconv.LANGFUSE_SESSION_ID).isEqualTo("session.id");
+        assertThat(ObservabilitySemconv.LANGFUSE_GEN_AI_PROMPT).isEqualTo("langfuse.gen_ai.prompt");
+        assertThat(ObservabilitySemconv.LANGFUSE_GEN_AI_COMPLETION).isEqualTo("langfuse.gen_ai.completion");
     }
 }

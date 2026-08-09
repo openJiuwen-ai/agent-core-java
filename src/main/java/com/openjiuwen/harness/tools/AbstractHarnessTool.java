@@ -32,13 +32,23 @@ public abstract class AbstractHarnessTool extends Tool {
     }
 
     protected static ToolCard toolCard(String id, String name, String description) {
+        return toolCard(id, name, description, "en");
+    }
+
+    protected static ToolCard toolCard(String id, String name, String description, String language) {
         String resolvedDescription = description == null ? "" : description;
         Map<String, Object> inputParams = emptySchema();
+        String resolvedLanguage = language == null || language.isBlank() ? "en" : language;
         try {
-            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, "en");
-            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, "en");
-        } catch (RuntimeException ignored) {
-            // Some internal helper tools intentionally have no prompt metadata provider.
+            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, resolvedLanguage);
+            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, resolvedLanguage);
+        } catch (RuntimeException ignoredById) {
+            try {
+                resolvedDescription = HarnessPromptToolsPackage.getToolDescription(name, resolvedLanguage);
+                inputParams = HarnessPromptToolsPackage.getToolInputParams(name, resolvedLanguage);
+            } catch (RuntimeException ignoredByName) {
+                // Some internal helper tools intentionally have no prompt metadata provider.
+            }
         }
         return ToolCard.builder()
                 .id(id)

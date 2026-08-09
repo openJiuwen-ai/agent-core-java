@@ -5,6 +5,7 @@
 package com.openjiuwen.core.sysop.sandbox.providers;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.core.sysop.result.DownloadFileResult;
 import com.openjiuwen.core.sysop.result.DownloadFileStreamResult;
 import com.openjiuwen.core.sysop.result.ListDirsResult;
@@ -15,226 +16,204 @@ import com.openjiuwen.core.sysop.result.SearchFilesResult;
 import com.openjiuwen.core.sysop.result.UploadFileResult;
 import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Abstract base class for file system providers in the sandbox environment.
- * Defines the SPI contract for file read, write, upload, download, list, and search operations.
- * 
- * @version 1.0
- * @since 0.1.7
+ * Mirrors Python's {@code BaseFSProvider} in
+ * {@code openjiuwen/core/sys_operation/sandbox/providers/base_provider.py}.
  */
-public abstract class BaseFSProvider {
-    /**
-     * endpoint.
-     * 
-     * @since 0.1.7
-     */
-    protected final SandboxEndpoint endpoint;
+public abstract class BaseFsProvider extends BaseFsProtocal {
 
-    /**
-     * config.
-     * 
-     * @since 0.1.7
-     */
-    protected final SandboxGatewayConfig config;
+    private final SandboxEndpoint endpoint;
 
-    /**
-     * Constructs a BaseFSProvider with the given endpoint and config.
-     * 
-     * @param endpoint the sandbox endpoint
-     * @param config the sandbox gateway configuration
-     * @since 0.1.7
-     */
-    protected BaseFSProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
+    private final SandboxGatewayConfig config;
+
+    protected BaseFsProvider(SandboxEndpoint endpoint) {
+        this(endpoint, null);
+    }
+
+    protected BaseFsProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         this.endpoint = endpoint;
         this.config = config;
     }
 
-    /**
-     * Reads a file from the sandbox and returns the result.
-     * 
-     * @param path the file path to read
-     * @param mode the read mode
-     * @param head the number of lines to read from the head
-     * @param tail the number of lines to read from the tail
-     * @param lineRange the line range to read
-     * @param encoding the file encoding
-     * @param chunkSize the chunk size for streaming
-     * @param options additional options map
-     * @return the read file result
-     * @since 0.1.7
-     */
-    public ReadFileResult readFile(String path, String mode, Integer head, Integer tail, int[] lineRange,
-            String encoding, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".readFile is not implemented");
+    public SandboxEndpoint getEndpoint() {
+        return endpoint;
     }
 
-    /**
-     * Reads a file from the sandbox as a stream of chunks.
-     * 
-     * @param path the file path to read
-     * @param mode the read mode
-     * @param head the number of lines to read from the head
-     * @param tail the number of lines to read from the tail
-     * @param lineRange the line range to read
-     * @param encoding the file encoding
-     * @param chunkSize the chunk size for streaming
-     * @param options additional options map
-     * @return an iterator of read file stream results
-     * @since 0.1.7
-     */
-    public Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head, Integer tail,
-            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".readFileStream is not implemented");
+    public SandboxGatewayConfig getConfig() {
+        return config;
     }
 
-    /**
-     * Writes content to a file in the sandbox.
-     * 
-     * @param path the file path to write
-     * @param content the content to write
-     * @param mode the write mode
-     * @param isPrependNewline whether to prepend a newline before content
-     * @param isAppendNewline whether to append a newline after content
-     * @param isCreateIfMissing whether to create the file if it does not exist
-     * @param permissions the file permissions
-     * @param encoding the file encoding
-     * @param options additional options map
-     * @return the write file result
-     * @since 0.1.7
-     */
-    public WriteFileResult writeFile(String path, Object content, String mode, boolean isPrependNewline,
-            boolean isAppendNewline, boolean isCreateIfMissing, String permissions, String encoding,
+    @Override
+    public CompletableFuture<ReadFileResult> readFile(
+            String path,
+            String mode,
+            Integer head,
+            Integer tail,
+            LineRange lineRange,
+            String encoding,
+            int chunkSize,
             Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".writeFile is not implemented");
+        return failedFuture("readFile");
     }
 
-    /**
-     * Uploads a local file to the sandbox.
-     * 
-     * @param localPath the local file path
-     * @param targetPath the target path in the sandbox
-     * @param isOverwrite whether to overwrite existing files
-     * @param isCreateParentDirs whether to create parent directories
-     * @param isPreservePermissions whether to preserve file permissions
-     * @param chunkSize the chunk size for upload
-     * @param options additional options map
-     * @return the upload file result
-     * @since 0.1.7
-     */
-    public UploadFileResult uploadFile(String localPath, String targetPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".uploadFile is not implemented");
-    }
-
-    /**
-     * Uploads a local file to the sandbox as a stream of chunks.
-     * 
-     * @param localPath the local file path
-     * @param targetPath the target path in the sandbox
-     * @param isOverwrite whether to overwrite existing files
-     * @param isCreateParentDirs whether to create parent directories
-     * @param isPreservePermissions whether to preserve file permissions
-     * @param chunkSize the chunk size for upload
-     * @param options additional options map
-     * @return an iterator of upload file stream results
-     * @since 0.1.7
-     */
-    public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".uploadFileStream is not implemented");
-    }
-
-    /**
-     * Downloads a file from the sandbox to a local path.
-     * 
-     * @param sourcePath the source path in the sandbox
-     * @param localPath the local file path to download to
-     * @param isOverwrite whether to overwrite existing local files
-     * @param isCreateParentDirs whether to create parent directories locally
-     * @param isPreservePermissions whether to preserve file permissions
-     * @param chunkSize the chunk size for download
-     * @param options additional options map
-     * @return the download file result
-     * @since 0.1.7
-     */
-    public DownloadFileResult downloadFile(String sourcePath, String localPath, boolean isOverwrite,
-            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".downloadFile is not implemented");
-    }
-
-    /**
-     * Downloads a file from the sandbox as a stream of chunks.
-     * 
-     * @param sourcePath the source path in the sandbox
-     * @param localPath the local file path to download to
-     * @param isOverwrite whether to overwrite existing local files
-     * @param isCreateParentDirs whether to create parent directories locally
-     * @param isPreservePermissions whether to preserve file permissions
-     * @param chunkSize the chunk size for download
-     * @param options additional options map
-     * @return an iterator of download file stream results
-     * @since 0.1.7
-     */
-    public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
-            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize,
+    @Override
+    public Flow.Publisher<ReadFileStreamResult> readFileStream(
+            String path,
+            String mode,
+            Integer head,
+            Integer tail,
+            LineRange lineRange,
+            String encoding,
+            int chunkSize,
             Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".downloadFileStream is not implemented");
+        return failedPublisher("readFileStream");
     }
 
-    /**
-     * Lists files in a sandbox directory with optional filtering and sorting.
-     * 
-     * @param path the directory path to list
-     * @param isRecursive whether to list recursively
-     * @param maxDepth the maximum recursion depth
-     * @param sortBy the sort field
-     * @param isSortDescending whether to sort in descending order
-     * @param fileTypes the file type filters
-     * @param options additional options map
-     * @return the list files result
-     * @since 0.1.7
-     */
-    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth, String sortBy,
-            boolean isSortDescending, List<String> fileTypes, Map<String, Object> options) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".listFiles is not implemented");
+    @Override
+    public CompletableFuture<WriteFileResult> writeFile(
+            String path,
+            String content,
+            String mode,
+            boolean prependNewline,
+            boolean appendNewline,
+            boolean append,
+            boolean createIfNotExist,
+            String permissions,
+            String encoding,
+            Map<String, Object> options) {
+        return failedFuture("writeFile");
     }
 
-    /**
-     * Lists directories in a sandbox directory with optional filtering and sorting.
-     * 
-     * @param path the directory path to list
-     * @param isRecursive whether to list recursively
-     * @param maxDepth the maximum recursion depth
-     * @param sortBy the sort field
-     * @param isSortDescending whether to sort in descending order
-     * @param options additional options map
-     * @return the list directories result
-     * @since 0.1.7
-     */
-    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth, String sortBy,
-            boolean isSortDescending, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".listDirectories is not implemented");
+    @Override
+    public CompletableFuture<WriteFileResult> writeFile(
+            String path,
+            byte[] content,
+            String mode,
+            boolean prependNewline,
+            boolean appendNewline,
+            boolean append,
+            boolean createIfNotExist,
+            String permissions,
+            String encoding,
+            Map<String, Object> options) {
+        return failedFuture("writeFile");
     }
 
-    /**
-     * Searches files in a sandbox directory by pattern with optional exclusion patterns.
-     * 
-     * @param path the directory path to search
-     * @param pattern the search pattern
-     * @param excludePatterns the patterns to exclude from results
-     * @return the search files result
-     * @since 0.1.7
-     */
-    public SearchFilesResult searchFiles(String path, String pattern, List<String> excludePatterns) {
-        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".searchFiles is not implemented");
+    @Override
+    public CompletableFuture<UploadFileResult> uploadFile(
+            String localPath,
+            String targetPath,
+            boolean overwrite,
+            boolean createParentDirs,
+            boolean preservePermissions,
+            int chunkSize,
+            Map<String, Object> options) {
+        return failedFuture("uploadFile");
+    }
+
+    @Override
+    public Flow.Publisher<UploadFileStreamResult> uploadFileStream(
+            String localPath,
+            String targetPath,
+            boolean overwrite,
+            boolean createParentDirs,
+            boolean preservePermissions,
+            int chunkSize,
+            Map<String, Object> options) {
+        return failedPublisher("uploadFileStream");
+    }
+
+    @Override
+    public CompletableFuture<DownloadFileResult> downloadFile(
+            String sourcePath,
+            String localPath,
+            boolean overwrite,
+            boolean createParentDirs,
+            boolean preservePermissions,
+            int chunkSize,
+            Map<String, Object> options) {
+        return failedFuture("downloadFile");
+    }
+
+    @Override
+    public Flow.Publisher<DownloadFileStreamResult> downloadFileStream(
+            String sourcePath,
+            String localPath,
+            boolean overwrite,
+            boolean createParentDirs,
+            boolean preservePermissions,
+            int chunkSize,
+            Map<String, Object> options) {
+        return failedPublisher("downloadFileStream");
+    }
+
+    @Override
+    public CompletableFuture<ListFilesResult> listFiles(
+            String path,
+            boolean recursive,
+            Integer maxDepth,
+            String sortBy,
+            boolean sortDescending,
+            List<String> fileTypes,
+            Map<String, Object> options) {
+        return failedFuture("listFiles");
+    }
+
+    @Override
+    public CompletableFuture<ListDirsResult> listDirectories(
+            String path,
+            boolean recursive,
+            Integer maxDepth,
+            String sortBy,
+            boolean sortDescending,
+            Map<String, Object> options) {
+        return failedFuture("listDirectories");
+    }
+
+    @Override
+    public CompletableFuture<SearchFilesResult> searchFiles(
+            String path,
+            String pattern,
+            List<String> excludePatterns) {
+        return failedFuture("searchFiles");
+    }
+
+    private <T> CompletableFuture<T> failedFuture(String methodName) {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(notImplementedMessage(methodName)));
+    }
+
+    private <T> Flow.Publisher<T> failedPublisher(String methodName) {
+        UnsupportedOperationException error = new UnsupportedOperationException(notImplementedMessage(methodName));
+        return subscriber -> {
+            Objects.requireNonNull(subscriber, "subscriber");
+            subscriber.onSubscribe(new Flow.Subscription() {
+                private final AtomicBoolean done = new AtomicBoolean(false);
+
+                @Override
+                public void request(long itemCount) {
+                    if (done.compareAndSet(false, true)) {
+                        subscriber.onError(error);
+                    }
+                }
+
+                @Override
+                public void cancel() {
+                    done.set(true);
+                }
+            });
+        };
+    }
+
+    private String notImplementedMessage(String methodName) {
+        return getClass().getSimpleName() + "." + methodName + " is not implemented";
     }
 }

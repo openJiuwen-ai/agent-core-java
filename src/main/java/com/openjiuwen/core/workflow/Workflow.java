@@ -3,7 +3,7 @@
  */
 
 package com.openjiuwen.core.workflow;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +14,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.CompiledGraph;
 import com.openjiuwen.core.common.utils.SchemaUtils;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
@@ -25,7 +25,7 @@ import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.constants.SessionConstants;
@@ -80,7 +80,8 @@ import java.util.function.Function;
 public class Workflow {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ExecutorService STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", false);
     private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
     private static final String WORKFLOW_INTERACTION_OUTPUTS_KEY = "__workflow_interaction_outputs__";
     private static final String WORKFLOW_INTERACTION_INPUT_HISTORY_KEY = "__workflow_interaction_input_history__";
@@ -702,8 +703,8 @@ public class Workflow {
         AtomicBoolean executionTimedOut = new AtomicBoolean(false);
         AtomicBoolean executionCompleted = new AtomicBoolean(false);
         AtomicBoolean terminated = new AtomicBoolean(false);
-        AsyncStreamQueue streamQueue = workflowSession.runtimeStreamWriterManager() != null
-                ? workflowSession.runtimeStreamWriterManager().getStreamEmitter().getStreamQueue()
+        AsyncStreamQueue streamQueue = workflowSession.streamWriterManager() != null
+                ? workflowSession.streamWriterManager().getStreamEmitter().getStreamQueue()
                 : null;
 
         CompletableFuture<Void> executionFuture = CompletableFuture.runAsync(() -> {
@@ -943,7 +944,7 @@ public class Workflow {
         if (!isInterrupted(graphResult, List.of())) {
             return;
         }
-        StreamWriterManager writerManager = workflowSession.runtimeStreamWriterManager();
+        StreamWriterManager writerManager = workflowSession.streamWriterManager();
         if (writerManager == null || writerManager.getOutputWriter() == null) {
             return;
         }
@@ -1435,7 +1436,7 @@ public class Workflow {
             parent = workflowSession.parent();
             sessionId = workflowSession.sessionId();
             envs = workflowSession.config() != null ? workflowSession.config().getEnvs() : null;
-        } else if (session instanceof WorkflowSessionApi workflowSessionApi) {
+        } else if (session instanceof WorkflowSession workflowSessionApi) {
             parent = workflowSessionApi.getParent();
             sessionId = workflowSessionApi.getSessionId();
             envs = workflowSessionApi.getEnvs();
@@ -1476,7 +1477,7 @@ public class Workflow {
             workflowSession.setCheckpointer(resolveGraphCheckpointer(session, parent));
         }
         workflowSession.config().addWorkflowConfig(card.getId(), internal.getConfig());
-        if (workflowSession.runtimeStreamWriterManager() == null) {
+        if (workflowSession.streamWriterManager() == null) {
             workflowSession.setStreamWriterManager(new StreamWriterManager(new StreamEmitter(), streamModes));
         }
         workflowSession.setActorManager(buildActorManager(workflowSession, false));
@@ -1581,9 +1582,9 @@ public class Workflow {
     }
 
     private void closeStreamEmitter(WorkflowRuntimeSession workflowSession) {
-        if (workflowSession.runtimeStreamWriterManager() != null
-                && !workflowSession.runtimeStreamWriterManager().getStreamEmitter().isClosed()) {
-            workflowSession.runtimeStreamWriterManager().getStreamEmitter().close();
+        if (workflowSession.streamWriterManager() != null
+                && !workflowSession.streamWriterManager().getStreamEmitter().isClosed()) {
+            workflowSession.streamWriterManager().getStreamEmitter().close();
         }
     }
 
@@ -1663,10 +1664,10 @@ public class Workflow {
     }
 
     private List<Object> collectOutputChunks(WorkflowRuntimeSession workflowSession) {
-        if (workflowSession.runtimeStreamWriterManager() == null) {
+        if (workflowSession.streamWriterManager() == null) {
             return List.of();
         }
-        return workflowSession.runtimeStreamWriterManager().collectStreamOutput();
+        return workflowSession.streamWriterManager().collectStreamOutput();
     }
 
     private static List<Object> visibleOutputChunks(List<Object> outputChunks) {
@@ -2217,6 +2218,10 @@ public class Workflow {
         if (parent instanceof BaseSession baseParent) {
             return baseParent;
         }
+        Object getInner = invokeNoArg(session, "getInner");
+        if (getInner instanceof BaseSession innerSession) {
+            return innerSession;
+        }
         Object inner = invokeNoArg(session, "inner");
         if (inner instanceof BaseSession baseInner) {
             return baseInner;
@@ -2293,7 +2298,7 @@ public class Workflow {
         if (session != null) {
             return session;
         }
-        return WorkflowSessionApi.create(null, card.getId(), null);
+        return WorkflowSession.create(null, card.getId(), null);
     }
 
     private Object validateInputs(Object inputs, boolean skipInputsValidate) {

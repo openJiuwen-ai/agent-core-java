@@ -2,16 +2,16 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl;
+package com.openjiuwen.agentevolving.agent_rl;
 
-import com.openjiuwen.agent_evolving.agent_rl.config.RLConfig;
-import com.openjiuwen.agent_evolving.agent_rl.online.rail.RLOnlineRail;
-import com.openjiuwen.agent_evolving.agent_rl.optimizer.OfflineRLOptimizer;
-import com.openjiuwen.agent_evolving.agent_rl.optimizer.OnlineRLOptimizer;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.Rollout;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutWithReward;
+import com.openjiuwen.agentevolving.agent_rl.config.RLConfig;
+import com.openjiuwen.agentevolving.agent_rl.online.rail.RLOnlineRail;
+import com.openjiuwen.agentevolving.agent_rl.optimizer.OfflineRLOptimizer;
+import com.openjiuwen.agentevolving.agent_rl.optimizer.OnlineRLOptimizer;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RLTask;
+import com.openjiuwen.agentevolving.agent_rl.schemas.Rollout;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RolloutMessage;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RolloutWithReward;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

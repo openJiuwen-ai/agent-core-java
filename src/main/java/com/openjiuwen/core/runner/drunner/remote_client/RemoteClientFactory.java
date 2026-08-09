@@ -11,7 +11,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolves remote-client implementations by built-in name, explicit registration, or service provider.
+ * Production (async {@link RemoteClient}) factory for remote-client implementations.
+ *
+ * <p>Built-in MQ/A2A paths stay here. Additional SPI providers are discovered from
+ * {@code com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider}
+ * (ServiceLoader) and mapped onto this async API for known protocols.</p>
  *
  * <p>Mirrors Python's module functions in
  * {@code openjiuwen/core/runner/drunner/remote_client/__init__.py}.</p>
@@ -57,6 +61,11 @@ public final class RemoteClientFactory {
             return customFactory.create(config);
         }
 
+        RemoteClient fromSpi = resolveRemoteclientSpi(normalizedProtocol, config);
+        if (fromSpi != null) {
+            return fromSpi;
+        }
+
         return resolveEntryPoint(normalizedProtocol, config);
     }
 
@@ -95,6 +104,35 @@ public final class RemoteClientFactory {
             }
             throw new IllegalStateException(cause);
         }
+    }
+
+    /**
+     * Bridge SPI providers under {@code remoteclient} onto the production async API.
+     * Known protocols create native {@code remote_client} implementations; unknown
+     * protocols remain on the SPI package's own factory.
+     */
+    private static RemoteClient resolveRemoteclientSpi(String protocol, RemoteClientConfig config) {
+        try {
+            for (com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider provider
+                    : ServiceLoader.load(com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider.class)) {
+                if (!protocol.equals(normalizeProtocol(provider.typeName()))) {
+                    continue;
+                }
+                if (ProtocolEnum.MQ.name().equals(protocol)) {
+                    return new MqRemoteClient(config);
+                }
+                if (ProtocolEnum.A2A.name().equals(protocol)) {
+                    bootstrapOfficialRemoteClient(protocol);
+                    RemoteClientCreator creator = CUSTOM_REMOTE_CLIENTS.get(protocol);
+                    if (creator != null) {
+                        return creator.create(config);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+        return null;
     }
 
     private static RemoteClient resolveEntryPoint(String protocol, RemoteClientConfig config) {

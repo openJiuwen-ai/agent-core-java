@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.checkpointing;
+package com.openjiuwen.agentevolving.checkpointing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 

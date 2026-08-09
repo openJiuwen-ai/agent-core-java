@@ -28,7 +28,7 @@ public class AgentTeamSession extends BaseSession {
     private final Config config;
     private final AgentStateCollection state = new AgentStateCollection();
     private final StreamWriterManager streamWriterManager;
-    private final Tracer tracer = new Tracer();
+    private final Tracer tracer;
     private final Checkpointer checkpointer;
     private final TraceAgentSpan teamSpan;
 
@@ -52,6 +52,7 @@ public class AgentTeamSession extends BaseSession {
         this.streamWriterManager = streamWriterManager == null
                 ? new StreamWriterManager(new StreamEmitter())
                 : streamWriterManager;
+        this.tracer = new Tracer(sessionId);
         tracer.init(this.streamWriterManager);
         this.checkpointer = checkpointer == null ? CheckpointerFactory.getCheckpointer() : checkpointer;
         this.teamSpan = tracer.getTracerAgentSpanManager().createAgentSpan();

@@ -7,11 +7,12 @@ package com.openjiuwen.harness.tools.worktree;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sys_operation.Cwd;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,6 +41,23 @@ class WorktreeRailsMissingTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void worktreeRailUsesAgentLanguageForPromptMetadata() {
+        resetState();
+        try {
+            DeepAgent agent = agent("lang-agent");
+            agent.deepConfig().setLanguage("en");
+            WorktreeRails.WorktreeRail rail = new WorktreeRails.WorktreeRail();
+
+            rail.init(agent);
+
+            assertThat(rail.getTools()).isNotEmpty();
+            assertThat(rail.getTools().get(0).getCard().getDescription()).contains("When to Use");
+        } finally {
+            resetState();
+        }
+    }
 
     @TestFactory
     Collection<DynamicTest> pythonWorktreeRailCases() {

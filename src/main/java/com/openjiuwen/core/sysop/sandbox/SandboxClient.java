@@ -5,12 +5,16 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
 
 /**
  * Legacy Java sandbox client facade backed by gateway-routed sandbox operations.
- * 
+ *
+ * @deprecated Prefer {@link com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient}
+ *     or {@code SysOperation} sandbox operations.
  * @since 0.1.7
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class SandboxClient {
     private final SandboxGatewayConfig config;
     private final SandboxFsOperation fsOperation;

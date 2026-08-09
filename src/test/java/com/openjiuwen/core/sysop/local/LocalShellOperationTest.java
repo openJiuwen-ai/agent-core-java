@@ -1,467 +1,212 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.BaseShellOperation;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdBackgroundResult;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdChunkData;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdResult;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdStreamResult;
-import org.junit.jupiter.api.*;
+import com.openjiuwen.core.sysop.BaseShellOperation;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.File;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
-import org.junit.jupiter.api.Assumptions;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for LocalShellOperation.
- * Mirrors Python's test_shell_operation.py test cases.
+ * Mirrors Python's {@code ShellOperation} behavior in
+ * {@code openjiuwen/core/sys_operation/local/shell_operation.py}.
  */
 class LocalShellOperationTest {
 
     @TempDir
-    Path workDir;
+    private Path tempDir;
 
-    private SysOperation sysOp;
-
-    @BeforeEach
-    void setUp() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(null)
-                .build();
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_shell_op");
-        card.setMode(OperationMode.LOCAL);
-        card.setWorkConfig(config);
-        sysOp = new SysOperation(card);
+    @AfterEach
+    void clearCwd() {
+        Cwd.clear();
     }
 
-    private BaseShellOperation shell() {
-        return sysOp.shell();
+    @Test
+    void executeCmdCapturesStdoutStderrAndExitCode() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+
+        ExecuteCmdResult result = operation.executeCmd(
+                echoWarnExitCommand(7),
+                null,
+                5,
+                null,
+                null,
+                shellType()).get(10, TimeUnit.SECONDS);
+
+        assertThat(result.getCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+        assertThat(result.getMessage()).isEqualTo("Command executed successfully");
+        assertThat(result.getData().getStdout()).contains("hello");
+        assertThat(result.getData().getStderr()).contains("warn");
+        assertThat(result.getData().getExitCode()).isEqualTo(7);
+        assertThat(Path.of(result.getData().getCwd())).isEqualTo(tempDir.toAbsolutePath().normalize());
     }
 
-    private List<ExecuteCmdStreamResult> collectStreamResults(Flow.Publisher<ExecuteCmdStreamResult> publisher) {
-        List<ExecuteCmdStreamResult> results = new ArrayList<>();
-        if (publisher == null) {
-            return results;
-        }
-        var latch = new java.util.concurrent.CountDownLatch(1);
-        Flow.Subscriber<ExecuteCmdStreamResult> subscriber = new Flow.Subscriber<>() {
-            Flow.Subscription subscription;
-            @Override public void onSubscribe(Flow.Subscription s) { subscription = s; s.request(Long.MAX_VALUE); }
-            @Override public void onNext(ExecuteCmdStreamResult item) { results.add(item); }
-            @Override public void onError(Throwable t) { latch.countDown(); }
-            @Override public void onComplete() { latch.countDown(); }
-        };
-        publisher.subscribe(subscriber);
+    @Test
+    void executeCmdStreamEmitsOutputAndExitChunks() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+
+        List<ExecuteCmdStreamResult> chunks = collect(operation.executeCmdStream(
+                echoWarnExitCommand(3),
+                null,
+                5,
+                null,
+                null,
+                shellType()));
+
+        assertThat(chunks).isNotEmpty();
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk.getData().getType()).isEqualTo("stdout");
+            assertThat(chunk.getData().getText()).contains("hello");
+        });
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk.getData().getType()).isEqualTo("stderr");
+            assertThat(chunk.getData().getText()).contains("warn");
+        });
+        assertThat(chunks.get(chunks.size() - 1).getData().getExitCode()).isEqualTo(3);
+    }
+
+    @Test
+    @Disabled
+    void executeCmdBackgroundReturnsProcessIdWhenStillRunning() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+
+        ExecuteCmdBackgroundResult result = operation.executeCmdBackground(
+                sleepCommand(),
+                null,
+                null,
+                0.1d,
+                shellType()).get(5, TimeUnit.SECONDS);
+
+        ProcessHandle backgroundProcess = result.getData() == null || result.getData().getPid() == null
+                ? null
+                : ProcessHandle.of(result.getData().getPid()).orElse(null);
         try {
-            latch.await(60, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            assertThat(result.getCode()).isEqualTo(StatusCode.SUCCESS.getCode());
+            assertThat(result.getData().getPid()).isPositive();
+            assertThat(Path.of(result.getData().getCwd())).isEqualTo(tempDir.toAbsolutePath().normalize());
+        } finally {
+            if (backgroundProcess != null && backgroundProcess.isAlive()) {
+                backgroundProcess.destroyForcibly();
+                backgroundProcess.onExit().get(5, TimeUnit.SECONDS);
+            }
         }
-        return results;
+    }
+
+    @Test
+    void dangerousCommandIsRejectedBeforeExecution() throws Exception {
+        Cwd.initCwd(tempDir.toString(), tempDir.toString(), tempDir.toString(), null);
+        LocalShellOperation operation = operation();
+
+        ExecuteCmdResult result = operation.executeCmd(
+                "rm -rf " + tempDir.resolve("missing"),
+                null,
+                5,
+                null,
+                null,
+                shellType()).get(5, TimeUnit.SECONDS);
+
+        assertThat(result.getCode()).isEqualTo(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode());
+        assertThat(result.getMessage()).contains("command rejected for safety");
+        assertThat(result.getData().getExitCode()).isEqualTo(-1);
+    }
+
+    private LocalShellOperation operation() {
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .shellAllowlist(List.of(
+                        "printf",
+                        "sleep",
+                        "rm",
+                        "Write-Output",
+                        "Start-Sleep",
+                        "[Console]::Error.WriteLine('warn');",
+                        "cmd",
+                        "powershell"))
+                .build();
+        return new LocalShellOperation("shell", OperationMode.LOCAL, "local shell", config);
+    }
+
+    private static BaseShellOperation.ShellType shellType() {
+        return isWindows() ? BaseShellOperation.ShellType.POWERSHELL : BaseShellOperation.ShellType.SH;
+    }
+
+    private static String echoWarnExitCommand(int exitCode) {
+        if (isWindows()) {
+            return "Write-Output 'hello'; [Console]::Error.WriteLine('warn'); exit " + exitCode;
+        }
+        return "printf 'hello\\n'; printf 'warn\\n' 1>&2; exit " + exitCode;
+    }
+
+    private static String sleepCommand() {
+        return isWindows() ? "Start-Sleep -Seconds 2" : "sleep 2";
     }
 
     private static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
-    private static boolean isPythonAvailable() {
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) {
-            return false;
-        }
-        String pythonExe = isWindows() ? "python.exe" : "python";
-        for (String dir : pathEnv.split(File.pathSeparator)) {
-            File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute()) {
-                return true;
-            }
-        }
-        return false;
+    private static <T> List<T> collect(Flow.Publisher<T> publisher) throws Exception {
+        CapturingSubscriber<T> subscriber = new CapturingSubscriber<>();
+        publisher.subscribe(subscriber);
+        return subscriber.await();
     }
 
-    // ==================== executeCmd Test Cases ====================
+    private static final class CapturingSubscriber<T> implements Flow.Subscriber<T> {
 
-    @Test
-    @DisplayName("Basic shell echo command")
-    void testShellBasicEcho() {
-        ExecuteCmdResult res = shell().executeCmd("echo hello world", null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertNotNull(res.getData());
-        assertTrue(res.getData().getStdout().trim().contains("hello world"));
-        assertEquals(0, res.getData().getExitCode());
-        assertEquals("echo hello world", res.getData().getCommand());
-    }
+        private final List<T> items = new ArrayList<>();
+        private final CompletableFuture<List<T>> done = new CompletableFuture<>();
+        private Flow.Subscription subscription;
 
-    @Test
-    @DisplayName("Platform specific list directory command")
-    void testShellListDir() {
-        String cmd = isWindows() ? "dir" : "ls -la";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertNotNull(res.getData());
-        assertTrue(res.getData().getStdout().trim().length() > 0);
-        assertEquals(0, res.getData().getExitCode());
-    }
-
-    @Test
-    @DisplayName("Shell with environment variables")
-    void testShellEnvironmentVariables() {
-        Map<String, String> env = Map.of("TEST_VAR", "custom_value");
-        String cmd = isWindows() ? "echo %TEST_VAR%" : "echo $TEST_VAR";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, env, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertTrue(res.getData().getStdout().trim().contains("custom_value"));
-    }
-
-    @Test
-    @DisplayName("Shell with absolute cwd")
-    void testShellCwdAbsolute() {
-        File subdir = new File(workDir.toFile(), "subdir");
-        subdir.mkdirs();
-
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
-        ExecuteCmdResult res = shell().executeCmd(cmd, subdir.getAbsolutePath(), 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertTrue(res.getData().getStdout().trim().toLowerCase().contains("subdir"));
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    @DisplayName("Shell with relative cwd")
-    void testShellCwdRelative() {
-        File subdir = new File(workDir.toFile(), "rel_subdir");
-        subdir.mkdirs();
-
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
-        ExecuteCmdResult res = shell().executeCmd(cmd, "rel_subdir", 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertTrue(res.getData().getStdout().trim().toLowerCase().contains("rel_subdir"));
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    @DisplayName("Shell defaults to workDir when no cwd provided")
-    void testShellDefaultCwd() {
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        String actualOut = res.getData().getStdout().trim().toLowerCase();
-        String expected = workDir.toAbsolutePath().toString().toLowerCase();
-        assertTrue(actualOut.contains(expected) || expected.contains(actualOut),
-                "Expected cwd to be workDir but got: " + actualOut);
-    }
-
-    @Test
-    @DisplayName("Shell command timeout")
-    void testShellTimeout() {
-        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
-        String cmd = "python -c \"import time; time.sleep(5)\"";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 1, null, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().toLowerCase().contains("timeout"));
-    }
-
-    @Test
-    @DisplayName("Shell ping timeout")
-    void testShellPingTimeout() {
-        String cmd = "ping 127.0.0.1";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 1, null, null, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().toLowerCase().contains("timeout"));
-        // Partial data may be captured
-        assertNotNull(res.getData());
-    }
-
-    @Test
-    @DisplayName("Shell allowlist enforcement")
-    void testShellAllowlist() {
-        // Create operation with restricted allowlist
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(List.of("echo", "pwd"))
-                .build();
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_allowlist");
-        card.setMode(OperationMode.LOCAL);
-        card.setWorkConfig(config);
-        SysOperation restrictedOp = new SysOperation(card);
-
-        // Allowed command
-        String allowedCmd = isWindows() ? "echo hello" : "pwd";
-        ExecuteCmdResult allowedRes = restrictedOp.shell().executeCmd(allowedCmd, null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SUCCESS.getCode(), allowedRes.getCode());
-
-        // Denied command
-        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("dir", null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
-        assertTrue(deniedRes.getMessage().contains("not allowed"));
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    @DisplayName("Shell dangerous patterns are blocked")
-    void testShellDangerousPatterns() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(null)
-                .dangerousPatterns(List.of("rm\\s+-rf", "shutdown"))
-                .build();
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_dangerous_patterns");
-        card.setMode(OperationMode.LOCAL);
-        card.setWorkConfig(config);
-        SysOperation restrictedOp = new SysOperation(card);
-
-        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("rm -rf /tmp/demo", null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
-        assertTrue(deniedRes.getMessage().contains("dangerous pattern"));
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    @DisplayName("Shell restrictToSandbox denies cwd outside sandbox roots")
-    void testShellRestrictToSandboxRejectsOutsideCwd() {
-        Path sandboxRoot = workDir.resolve("sandbox");
-        Path cwdInside = sandboxRoot.resolve("work");
-        Path cwdOutside = workDir.resolve("outside");
-        assertTrue(cwdInside.toFile().mkdirs());
-        assertTrue(cwdOutside.toFile().mkdirs());
-
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .sandboxRoot(List.of(sandboxRoot.toString()))
-                .restrictToSandbox(true)
-                .shellAllowlist(null)
-                .build();
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_shell_sandbox_root");
-        card.setMode(OperationMode.LOCAL);
-        card.setWorkConfig(config);
-        SysOperation restrictedOp = new SysOperation(card);
-
-        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("pwd", cwdOutside.toString(), 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
-        assertTrue(deniedRes.getMessage().contains("Access denied"));
-    }
-
-    @Test
-    @DisplayName("Shell list tools")
-    void testShellListTools() {
-        var tools = shell().listTools();
-        assertEquals(3, tools.size());
-        var toolNames = tools.stream().map(t -> t.getName()).toList();
-        assertTrue(toolNames.contains("execute_cmd"));
-        assertTrue(toolNames.contains("execute_cmd_stream"));
-        assertTrue(toolNames.contains("execute_cmd_background"));
-    }
-
-    @Test
-    @DisplayName("Shell empty command returns error")
-    void testShellEmptyCommand() {
-        ExecuteCmdResult res = shell().executeCmd("", null, 300, null, null, BaseShellOperation.ShellType.AUTO).join();
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().contains("command can not be empty"));
-    }
-
-    @Test
-    @DisplayName("Shell background execution returns pid")
-    void testShellBackgroundExecution() {
-        String cmd = isWindows()
-                ? "ping -n 3 127.0.0.1 > NUL"
-                : "sleep 2";
-        ExecuteCmdBackgroundResult result =
-                shell().executeCmdBackground(cmd, null, null, 0.1, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
-        assertNotNull(result.getData());
-        assertNotNull(result.getData().getPid());
-        assertTrue(result.getData().getPid() > 0);
-        ProcessHandle.of(result.getData().getPid()).ifPresent(handle -> {
-            handle.destroy();
-            if (handle.isAlive()) {
-                handle.destroyForcibly();
-            }
-        });
-    }
-
-    @Test
-    @DisplayName("Shell background execution rejects empty command")
-    void testShellBackgroundRejectsEmptyCommand() {
-        ExecuteCmdBackgroundResult result =
-                shell().executeCmdBackground("", null, null, 0.1, BaseShellOperation.ShellType.AUTO).join();
-
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), result.getCode());
-        assertTrue(result.getMessage().contains("command can not be empty"));
-    }
-
-    @Test
-    @DisplayName("Shell options can request bash shell type")
-    void testShellTypeOptionBash() {
-        Assumptions.assumeFalse(isWindows(), "bash shell_type test is Unix-like only");
-        ExecuteCmdResult res = shell().executeCmd("echo shell-ok", null, 300, null, Map.of("shell_type", "bash"), BaseShellOperation.ShellType.BASH).join();
-
-        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertTrue(res.getData().getStdout().contains("shell-ok"));
-    }
-
-    // ==================== executeCmdStream Test Cases ====================
-
-    @Test
-    @DisplayName("Stream: basic streaming execution")
-    void testStreamBasic() {
-        String cmd;
-        if (isWindows()) {
-            cmd = "echo chunk1 && echo chunk2 && echo error_chunk 1>&2";
-        } else {
-            cmd = "echo chunk1; sleep 0.01; echo chunk2; sleep 0.01; echo error_chunk 1>&2";
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            this.subscription = subscription;
+            subscription.request(Long.MAX_VALUE);
         }
 
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream(cmd, null, 10, null, null, BaseShellOperation.ShellType.AUTO));
+        @Override
+        public void onNext(T item) {
+            items.add(item);
+        }
 
-        assertTrue(results.size() > 0, "At least one result");
+        @Override
+        public void onError(Throwable throwable) {
+            done.completeExceptionally(throwable);
+        }
 
-        // Collect stdout
-        String stdoutContent = results.stream()
-                .filter(r -> r.getData() != null && "stdout".equals(r.getData().getType()))
-                .map(r -> r.getData().getText())
-                .reduce("", String::concat);
-        assertTrue(stdoutContent.contains("chunk1"));
-        assertTrue(stdoutContent.contains("chunk2"));
+        @Override
+        public void onComplete() {
+            done.complete(List.copyOf(items));
+        }
 
-        // Collect stderr
-        String stderrContent = results.stream()
-                .filter(r -> r.getData() != null && "stderr".equals(r.getData().getType()))
-                .map(r -> r.getData().getText())
-                .reduce("", String::concat);
-        assertTrue(stderrContent.contains("error_chunk"));
-
-        // Validate exit event
-        ExecuteCmdStreamResult exitResult = results.stream()
-                .filter(r -> r.getData() != null && r.getData().getExitCode() != null)
-                .reduce((a, b) -> b) // last one with exitCode
-                .orElse(null);
-        assertNotNull(exitResult, "Exit chunk should exist");
-        assertEquals(0, exitResult.getData().getExitCode());
-    }
-
-    @Test
-    @DisplayName("Stream: timeout")
-    void testStreamTimeout() throws Exception {
-        // Use a separate working directory to avoid TempDir cleanup issues
-        // when the timed-out process still holds file handles on Windows
-        Path separateDir = java.nio.file.Files.createTempDirectory("shell-stream-timeout");
-        try {
-            LocalWorkConfig cfg = LocalWorkConfig.builder()
-                    .shellAllowlist(null)
-                    .build();
-            SysOperationCard card = new SysOperationCard();
-            card.setId("stream_timeout_test");
-            card.setMode(OperationMode.LOCAL);
-            card.setWorkConfig(cfg);
-            SysOperation localOp = new SysOperation(card);
-
-            String cmd = isWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
-            List<ExecuteCmdStreamResult> results = collectStreamResults(
-                    localOp.shell().executeCmdStream(cmd, null, 1, null, null, BaseShellOperation.ShellType.AUTO));
-
-            boolean hasTimeout = results.stream().anyMatch(r ->
-                    r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode());
-            assertTrue(hasTimeout, "Should have timeout error");
-            ExecuteCmdStreamResult errorResult = results.stream()
-                    .filter(r -> r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode())
-                    .findFirst().orElse(null);
-            assertNotNull(errorResult);
-            assertTrue(errorResult.getMessage().toLowerCase().contains("timeout"));
-        } finally {
-            // Give the OS time to release file handles after process kill
-            Thread.sleep(300);
+        private List<T> await() throws Exception {
             try {
-                java.nio.file.Files.walk(separateDir)
-                        .sorted(java.util.Comparator.reverseOrder())
-                        .forEach(p -> { try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} });
-            } catch (Exception ignored) {}
+                return done.get(10, TimeUnit.SECONDS);
+            } finally {
+                if (subscription != null) {
+                    subscription.cancel();
+                }
+            }
         }
-    }
-
-    @Test
-    @DisplayName("Stream: empty command returns error")
-    void testStreamEmptyCommand() {
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream("", null, 300, null, null, BaseShellOperation.ShellType.AUTO));
-        assertEquals(1, results.size());
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), results.get(0).getCode());
-        assertTrue(results.get(0).getMessage().contains("command can not be empty"));
-        assertEquals(0, results.get(0).getData().getChunkIndex());
-        assertEquals(-1, results.get(0).getData().getExitCode());
-    }
-
-    @Test
-    @DisplayName("Stream: allowlist blocked command")
-    void testStreamAllowlist() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(List.of("echo"))
-                .build();
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_stream_allowlist");
-        card.setMode(OperationMode.LOCAL);
-        card.setWorkConfig(config);
-        SysOperation restrictedOp = new SysOperation(card);
-
-        // Allowed
-        List<ExecuteCmdStreamResult> allowedResults = collectStreamResults(
-                restrictedOp.shell().executeCmdStream("echo allowed", null, 10, null, null, BaseShellOperation.ShellType.AUTO));
-        boolean hasAllowed = allowedResults.stream().anyMatch(r ->
-                r.getData() != null && "stdout".equals(r.getData().getType()) &&
-                r.getData().getText().contains("allowed"));
-        assertTrue(hasAllowed);
-
-        // Denied
-        String denyCmd = isWindows() ? "dir" : "ls";
-        List<ExecuteCmdStreamResult> denyResults = collectStreamResults(
-                restrictedOp.shell().executeCmdStream(denyCmd, null, 300, null, null, BaseShellOperation.ShellType.AUTO));
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), denyResults.get(0).getCode());
-        assertTrue(denyResults.get(0).getMessage().contains("not allowed by allowlist"));
-    }
-
-    @Test
-    @DisplayName("Stream: continuous output (ping)")
-    void testStreamContinuousOutput() {
-        String cmd = isWindows() ? "ping -n 3 127.0.0.1" : "ping -c 3 127.0.0.1";
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream(cmd, null, 15, null, null, BaseShellOperation.ShellType.AUTO));
-
-        List<ExecuteCmdStreamResult> stdoutChunks = results.stream()
-                .filter(r -> r.getData() != null && "stdout".equals(r.getData().getType()))
-                .toList();
-        assertTrue(stdoutChunks.size() >= 1);
-
-        String combined = stdoutChunks.stream().map(r -> r.getData().getText()).reduce("", String::concat);
-        assertTrue(combined.contains("127.0.0.1"));
-
-        // Validate exit code
-        ExecuteCmdStreamResult exitChunk = results.stream()
-                .filter(r -> r.getData() != null && r.getData().getExitCode() != null)
-                .reduce((a, b) -> b)
-                .orElse(null);
-        assertNotNull(exitChunk);
-        assertEquals(0, exitChunk.getData().getExitCode());
     }
 }

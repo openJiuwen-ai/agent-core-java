@@ -7,7 +7,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.constants.SessionConstants;
@@ -92,7 +92,7 @@ class WorkflowInterruptSystemTest {
         try {
             WorkflowOutput interrupted = workflow.invoke(
                     Map.of("prompt", "Need user input"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
@@ -113,7 +113,7 @@ class WorkflowInterruptSystemTest {
 
             WorkflowOutput resumed = workflow.invoke(
                     resumeInputs,
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
@@ -137,14 +137,14 @@ class WorkflowInterruptSystemTest {
         try {
             WorkflowOutput firstRun = workflow.invoke(
                     Map.of("prompt", "Need user input"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, firstRun.getState());
             assertEquals(1, startCount.get());
 
             WorkflowOutput restartedRun = workflow.invoke(
                     Map.of("prompt", "Need user input"),
-                    new WorkflowSessionApi(
+                    new WorkflowSession(
                             null,
                             sessionId,
                             Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true)),
@@ -175,7 +175,7 @@ class WorkflowInterruptSystemTest {
         try {
             WorkflowOutput interrupted = workflow.invoke(
                     Map.of("prompt", "Need nested user input"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
@@ -196,7 +196,7 @@ class WorkflowInterruptSystemTest {
 
             WorkflowOutput resumed = workflow.invoke(
                     resumeInputs,
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
@@ -222,14 +222,14 @@ class WorkflowInterruptSystemTest {
         try {
             WorkflowOutput interrupted = workflow.invoke(
                     Map.of("prompt", "Need raw input"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
 
             WorkflowOutput resumed = workflow.invoke(
                     new InteractiveInput("done"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());
@@ -258,7 +258,7 @@ class WorkflowInterruptSystemTest {
         try {
             WorkflowOutput interrupted = workflow.invoke(
                     Map.of("prompt", "Need loop nested input"),
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.INPUT_REQUIRED, interrupted.getState());
@@ -279,7 +279,7 @@ class WorkflowInterruptSystemTest {
 
             WorkflowOutput resumed = workflow.invoke(
                     resumeInputs,
-                    new WorkflowSessionApi(null, sessionId, Map.of()),
+                    new WorkflowSession(null, sessionId, Map.of()),
                     null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, resumed.getState());

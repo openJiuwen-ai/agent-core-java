@@ -4,8 +4,10 @@
 
 package com.openjiuwen.harness.rails.skills;
 
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.prompts.sections.SkillsSection;
 import com.openjiuwen.harness.rails.CallbackContext;
@@ -52,8 +54,32 @@ public class SkillUseRail extends DeepAgentRail {
     private final Map<String, String> evolutionTexts = new LinkedHashMap<>();
     private String language = "cn";
 
+    public SkillUseRail() {
+        this("", SKILL_MODE_AUTO_LIST, true, true, null, null);
+    }
+
     public SkillUseRail(String skillsDir) {
         this(skillsDir, SKILL_MODE_AUTO_LIST, true, true, null, null);
+    }
+
+    public SkillUseRail(List<String> skillDirectories, String skillMode) {
+        this(skillDirectories, skillMode, null, null);
+    }
+
+    public SkillUseRail(
+            List<String> skillDirectories,
+            String skillMode,
+            Iterable<String> enabledSkills,
+            Iterable<String> disabledSkills
+    ) {
+        this(
+                skillDirectories == null ? "" : String.join(",", skillDirectories),
+                skillMode == null || skillMode.isBlank() ? SKILL_MODE_AUTO_LIST : skillMode,
+                true,
+                true,
+                enabledSkills,
+                disabledSkills
+        );
     }
 
     public SkillUseRail(
@@ -117,12 +143,7 @@ public class SkillUseRail extends DeepAgentRail {
         reloadSkills();
         String resolvedLanguage = String.valueOf(ctx.getValues().getOrDefault("language", language));
         PromptSection section = buildSkillsSection(resolvedLanguage);
-        if (section == null) {
-            ctx.put(SectionName.SKILLS, null);
-            return;
-        }
-        ctx.put("skills_section", section);
-        ctx.put("skills", dumpSkills());
+        applySkillsSection(ctx, section);
     }
 
     public List<SkillDescriptor> getSkillsMeta() {
@@ -131,6 +152,14 @@ public class SkillUseRail extends DeepAgentRail {
 
     public List<String> getSkillDirs() {
         return skillDirs.stream().map(Path::toString).toList();
+    }
+
+    public String getSkillMode() {
+        return skillMode;
+    }
+
+    public Set<String> getEnabledSkills() {
+        return new LinkedHashSet<>(enabledSkills);
     }
 
     public void prependSkillDirs(List<String> dirs) {
@@ -170,16 +199,42 @@ public class SkillUseRail extends DeepAgentRail {
         return new LinkedHashSet<>(ownedToolIds);
     }
 
-    public String getSkillMode() {
-        return skillMode;
-    }
-
     public boolean isIncludeTools() {
         return includeTools;
     }
 
     public Map<String, String> getEvolutionTexts() {
         return new LinkedHashMap<>(evolutionTexts);
+    }
+
+    private void applySkillsSection(CallbackContext ctx, PromptSection section) {
+        if (ctx != null) {
+            if (section == null) {
+                ctx.put(SectionName.SKILLS, null);
+            } else {
+                ctx.put("skills_section", section);
+                ctx.put("skills", dumpSkills());
+            }
+        }
+        SystemPromptBuilder builder = resolvePromptBuilder(ctx);
+        if (builder == null) {
+            return;
+        }
+        builder.removeSection(SectionName.SKILLS);
+        if (section != null) {
+            builder.addSection(section);
+        }
+    }
+
+    private static SystemPromptBuilder resolvePromptBuilder(CallbackContext ctx) {
+        if (ctx == null || ctx.getAgent() == null) {
+            return null;
+        }
+        Object react = ctx.getAgent().reactAgent();
+        if (react instanceof ReActAgent reactAgent) {
+            return reactAgent.getPromptBuilder();
+        }
+        return null;
     }
 
     private PromptSection buildSkillsSection(String resolvedLanguage) {

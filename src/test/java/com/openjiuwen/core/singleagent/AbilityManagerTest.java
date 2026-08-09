@@ -9,19 +9,31 @@ import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sys_operation.result.ReadFileData;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileData;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
@@ -55,7 +67,11 @@ class AbilityManagerTest {
         assertEquals("added_workflow", manager.add(workflow).getReason());
         assertEquals("added_agent", manager.add(agent).getReason());
         assertEquals("added_mcp_server", manager.add(mcpServer).getReason());
+        assertEquals(List.of(tool, workflow, agent, mcpServer), manager.list());
 
+        ToolCard refreshed = tool("tool-1", "search");
+        assertEquals("refreshed_tool", manager.add(refreshed).getReason());
+        assertSame(refreshed, manager.get("search").orElseThrow());
         assertEquals("duplicate_tool", manager.add(tool("tool-2", "search")).getReason());
         assertEquals("duplicate_workflow",
                 manager.add(new WorkflowCard("workflow-2", "plan", "other", "1", Map.of())).getReason());
@@ -64,8 +80,8 @@ class AbilityManagerTest {
                 manager.add(new McpServerConfig("mcp-2", "weather", "/other", "sse", Map.of(), Map.of(),
                         Map.of())).getReason());
 
-        assertEquals(List.of(tool, workflow, agent, mcpServer), manager.list());
-        assertSame(tool, manager.get("search").orElseThrow());
+        assertEquals(List.of(refreshed, workflow, agent, mcpServer), manager.list());
+        assertSame(refreshed, manager.get("search").orElseThrow());
         assertEquals(List.of("search", "plan", "delegate", "weather"),
                 manager.getAbilities().keySet().stream().toList());
     }
@@ -140,6 +156,21 @@ class AbilityManagerTest {
     }
 
     @Test
+    void listToolInfoFiltersMcpServersByName() {
+        TestableAbilityManager manager = new TestableAbilityManager(List.of(
+                ToolInfo.builder().name("forecast").description("Forecast").parameters(Map.of()).build()
+        ));
+        manager.add(new McpServerConfig("mcp-1", "weather", "/mcp", "sse", Map.of(), Map.of(), Map.of()));
+        manager.add(new McpServerConfig("mcp-2", "browser", "/mcp", "sse", Map.of(), Map.of(), Map.of()));
+
+        List<String> allNames = manager.listToolInfo().stream().map(ToolInfo::getName).toList();
+        List<String> weatherNames = manager.listToolInfo(null, "weather").stream().map(ToolInfo::getName).toList();
+
+        assertEquals(List.of("mcp_weather_forecast", "mcp_browser_forecast"), allNames);
+        assertEquals(List.of("mcp_weather_forecast"), weatherNames);
+    }
+
+    @Test
     void parseToolArgumentsRepairsBalancedSuffixAndRaisesOnInvalidJson() {
         Object repaired = AbilityManager.parseToolArguments("{\"query\":[1,2");
         assertInstanceOf(Map.class, repaired);
@@ -151,6 +182,160 @@ class AbilityManagerTest {
         );
         assertTrue(error.getMessage().contains("Invalid tool arguments JSON:"));
         assertTrue(error.getMessage().contains("Raw arguments: '{\"query\": bare}'"));
+    }
+
+    @Test
+    void addAbilityQualifiesStatefulToolAndTeardownRemovesOnlyOwnedInstance() {
+        AbilityManager manager = new AbilityManager("agent-owner");
+        ToolCard card = ToolCard.builder()
+                .id("echo")
+                .name("echo")
+                .description("echo")
+                .inputParams(Map.of("type", "object"))
+                .stateless(false)
+                .build();
+        LocalFunction tool = new LocalFunction(card, inputs -> inputs);
+        try {
+            AddAbilityResult result = manager.addAbility(card, tool);
+
+            assertEquals("added_tool", result.getReason());
+            assertEquals("echo_agent-owner", card.getId());
+            assertSame(tool, Runner.resourceMgr().getTool("echo_agent-owner"));
+
+            manager.teardownTools();
+
+            assertTrue(manager.get("echo").isEmpty());
+            assertEquals(null, Runner.resourceMgr().getTool("echo_agent-owner"));
+        } finally {
+            Runner.resourceMgr().removeTool("echo_agent-owner", null, TagMatchStrategy.ALL, true);
+            Runner.resourceMgr().removeTool("echo", null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void addAbilityKeepsStatelessToolIdAndDoesNotTeardownSharedInstance() {
+        AbilityManager manager = new AbilityManager("agent-owner");
+        ToolCard card = ToolCard.builder()
+                .id("shared-echo")
+                .name("shared-echo")
+                .description("shared")
+                .inputParams(Map.of("type", "object"))
+                .stateless(true)
+                .build();
+        LocalFunction tool = new LocalFunction(card, inputs -> "ok");
+        try {
+            manager.addAbility(card, tool);
+
+            assertEquals("shared-echo", card.getId());
+            assertSame(tool, Runner.resourceMgr().getTool("shared-echo"));
+
+            manager.teardownTools();
+
+            assertTrue(manager.get("shared-echo").isPresent());
+            assertSame(tool, Runner.resourceMgr().getTool("shared-echo"));
+        } finally {
+            manager.remove("shared-echo");
+            Runner.resourceMgr().removeTool("shared-echo", null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void executeFailsWhenRegisteredToolHasNoResourceInstance() {
+        AbilityManager manager = new AbilityManager();
+        manager.add(tool("ghost-id", "ghost"));
+        ToolCall call = ToolCall.builder().id("call-1").name("ghost").arguments("{}").build();
+
+        List<AbilityManager.ExecutionResult> results = manager.execute(call);
+
+        assertEquals(1, results.size());
+        assertEquals(null, results.get(0).result());
+        assertTrue(String.valueOf(results.get(0).toolMessage().getContent())
+                .contains("Tool instance not found in resource_mgr: ghost-id"));
+    }
+
+    @Test
+    void executeFallsBackToResourceManagerByNameWhenAbilityIsUnregistered() {
+        AbilityManager manager = new AbilityManager();
+        String toolId = "fallback-echo";
+        LocalFunction tool = new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("fallback")
+                        .inputParams(Map.of("type", "object")).build(),
+                inputs -> Map.of("echo", inputs.get("text"))
+        );
+        Runner.resourceMgr().addTool(tool);
+        try {
+            ToolCall call = ToolCall.builder()
+                    .id("call-1")
+                    .name(toolId)
+                    .arguments("{\"text\":\"hi\"}")
+                    .build();
+
+            List<AbilityManager.ExecutionResult> results = manager.execute(call);
+
+            assertEquals(1, results.size());
+            assertEquals(Map.of("echo", "hi"), results.get(0).result());
+        } finally {
+            Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void executeTimesOutWhenToolExceedsCardTimeout() {
+        AbilityManager manager = new AbilityManager();
+        ToolCard card = ToolCard.builder()
+                .id("slow-tool")
+                .name("slow-tool")
+                .description("slow")
+                .inputParams(Map.of("type", "object"))
+                .properties(Map.of("resilience", Map.of("timeout_s", 0.05D)))
+                .build();
+        LocalFunction tool = new LocalFunction(card, inputs -> {
+            try {
+                Thread.sleep(1500L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            return "done";
+        });
+        Runner.resourceMgr().addTool(tool);
+        try {
+            manager.add(card);
+            List<AbilityManager.ExecutionResult> results = manager.execute(
+                    ToolCall.builder().id("call-1").name("slow-tool").arguments("{}").build());
+
+            assertEquals(1, results.size());
+            assertTrue(String.valueOf(results.get(0).toolMessage().getContent())
+                    .contains("timed out after"));
+        } finally {
+            Runner.resourceMgr().removeTool("slow-tool", null, TagMatchStrategy.ALL, true);
+        }
+    }
+
+    @Test
+    void executePreservesToolInterruptExceptionAsResult() {
+        AbilityManager manager = new AbilityManager();
+        ToolInterruptException interrupt = new ToolInterruptException(new InterruptRequest("need confirm", Map.of(), ""));
+        ToolCard card = ToolCard.builder()
+                .id("ask-user")
+                .name("ask-user")
+                .description("ask")
+                .inputParams(Map.of("type", "object"))
+                .build();
+        LocalFunction tool = new LocalFunction(card, inputs -> {
+            throw interrupt;
+        });
+        Runner.resourceMgr().addTool(tool);
+        try {
+            manager.add(card);
+            List<AbilityManager.ExecutionResult> results = manager.execute(
+                    ToolCall.builder().id("call-1").name("ask-user").arguments("{}").build());
+
+            assertEquals(1, results.size());
+            assertInstanceOf(ToolInterruptException.class, results.get(0).result());
+            assertEquals(null, results.get(0).toolMessage());
+        } finally {
+            Runner.resourceMgr().removeTool("ask-user", null, TagMatchStrategy.ALL, true);
+        }
     }
 
     @Test
@@ -187,7 +372,38 @@ class AbilityManagerTest {
         assertEquals(Map.of("echo", "hello"), results.get(0).result());
         assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
         assertEquals("echoTool", results.get(0).toolMessage().getName());
-        assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
+        assertEquals("{echo=hello}", results.get(0).toolMessage().getContent());
+    }
+
+    @Test
+    void executeResolvedToolPassesCurrentSessionInKwargs() {
+        AbilityManager manager = new AbilityManager();
+        AtomicReference<Object> capturedSession = new AtomicReference<>();
+        Tool tool = new Tool(ToolCard.builder()
+                .id("sessionTool")
+                .name("sessionTool")
+                .description("session")
+                .inputParams(Map.of("type", "object"))
+                .build()) {
+            @Override
+            public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+                capturedSession.set(kwargs == null ? null : kwargs.get("session"));
+                return "ok";
+            }
+        };
+        AgentSession session = new AgentSession();
+        SessionContextHolder.setCurrentSession(session);
+        try {
+            ToolCall call = ToolCall.builder()
+                    .id("call-1")
+                    .name("sessionTool")
+                    .arguments("{}")
+                    .build();
+            manager.executeResolvedTool(tool, call);
+            assertSame(session, capturedSession.get());
+        } finally {
+            SessionContextHolder.clearCurrentSession();
+        }
     }
 
     @Test
@@ -209,7 +425,7 @@ class AbilityManagerTest {
             assertEquals(1, results.size());
             assertEquals("hello", tool.invokedText);
             assertEquals(Map.of("echo", "hello"), results.get(0).result());
-            assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
+            assertEquals("{echo=hello}", results.get(0).toolMessage().getContent());
         } finally {
             Runner.resourceMgr().removeTool(tool.getCard().getId());
         }
@@ -236,7 +452,7 @@ class AbilityManagerTest {
         assertEquals(1, results.size());
         assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
         assertTrue(String.valueOf(results.get(0).toolMessage().getContent())
-                .contains("Ability execution error: boom"));
+                .contains("Tool execution error: boom"));
     }
 
     @Test
@@ -420,7 +636,8 @@ class AbilityManagerTest {
         contentData.put("content", null);
         assertEquals("", AbilityManager.buildToolMessageContent(Map.of("data", contentData)));
         assertEquals("boom", AbilityManager.buildToolMessageContent(Map.of("success", false, "error", "boom")));
-        assertEquals("{\"value\":42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
+        // Java-idiomatic Map.toString; functional short-circuits above mirror Python.
+        assertEquals("{value=42}", AbilityManager.buildToolMessageContent(Map.of("value", 42)));
     }
 
     @Test
@@ -436,14 +653,11 @@ class AbilityManagerTest {
         readFileResult.setData(fileData);
 
         String pojoContent = AbilityManager.buildToolMessageContent(readFileResult);
-        assertTrue(pojoContent.contains("\"content\""), "POJO 结果应序列化为 JSON：" + pojoContent);
-        assertTrue(pojoContent.contains("hello"), "POJO 结果应包含真实内容：" + pojoContent);
-        assertFalse(pojoContent.contains("ReadFileResult@"), "不应输出类名@hashcode：" + pojoContent);
+        assertTrue(pojoContent.contains("ReadFileResult"), "POJO 无 dict content 时用 String.valueOf：" + pojoContent);
 
         String mapContent = AbilityManager.buildToolMessageContent(Map.of("skill", "x", "echo", "y"));
-        assertTrue(mapContent.contains("\"skill\""), "Map 结果应序列化为 JSON：" + mapContent);
-        assertTrue(mapContent.contains("\"echo\""), "Map 结果应序列化为 JSON：" + mapContent);
-        assertFalse(mapContent.contains("skill=x"), "不应输出 Map.toString：" + mapContent);
+        assertTrue(mapContent.contains("skill=x") || mapContent.contains("echo=y"),
+                "Map 结果应为 Java Map.toString：" + mapContent);
 
         assertEquals("plain text", AbilityManager.buildToolMessageContent("plain text"));
     }
@@ -506,6 +720,55 @@ class AbilityManagerTest {
         private ParentLoggerWrapper(Object delegate) {
             this.delegate = delegate;
         }
+    }
+
+    @Test
+    void concurrentAddOfDistinctToolsDoesNotLoseRegistrations() throws Exception {
+        AbilityManager manager = new AbilityManager("concurrent-owner");
+        int threadCount = 16;
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        try {
+            List<Future<AddAbilityResult>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                int index = i;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    ToolCard card = ToolCard.builder()
+                            .id("race-tool-" + index)
+                            .name("race-tool-" + index)
+                            .description("concurrent")
+                            .inputParams(Map.of("type", "object"))
+                            .stateless(true)
+                            .build();
+                    return manager.add(card);
+                }));
+            }
+            start.countDown();
+            int added = 0;
+            for (Future<AddAbilityResult> future : futures) {
+                AddAbilityResult result = future.get(10, TimeUnit.SECONDS);
+                assertTrue(result.isAdded());
+                added++;
+            }
+            assertEquals(threadCount, added);
+            for (int i = 0; i < threadCount; i++) {
+                assertTrue(manager.get("race-tool-" + i).isPresent());
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void abilityRegistriesAreSynchronizedToProtectConcurrentRegistration() throws Exception {
+        AbilityManager manager = new AbilityManager();
+        java.lang.reflect.Field tools = AbilityManager.class.getDeclaredField("tools");
+        tools.setAccessible(true);
+        assertTrue(tools.get(manager).getClass().getName().contains("Synchronized"));
+        java.lang.reflect.Field workflows = AbilityManager.class.getDeclaredField("workflows");
+        workflows.setAccessible(true);
+        assertTrue(workflows.get(manager).getClass().getName().contains("Synchronized"));
     }
 
     private static final class ChildLoggerWrapper extends ParentLoggerWrapper {

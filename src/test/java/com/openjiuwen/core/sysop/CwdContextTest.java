@@ -4,7 +4,7 @@ package com.openjiuwen.core.sysop;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.sysop.cwd.CwdContext;
-import com.openjiuwen.core.sysop.cwd.CwdState;
+import com.openjiuwen.core.sysop.CwdState;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

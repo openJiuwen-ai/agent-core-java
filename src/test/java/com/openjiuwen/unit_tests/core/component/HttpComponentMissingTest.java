@@ -4,6 +4,7 @@
 
 package com.openjiuwen.unit_tests.core.component;
 
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.component.tool.http.HTTPRequestComponent;
 import com.openjiuwen.core.workflow.component.tool.http.HttpAdvancedOptionsConfig;
 import com.openjiuwen.core.workflow.component.tool.http.HttpComponentConfig;
@@ -55,7 +56,7 @@ class HttpComponentMissingTest {
             HttpComponentConfig config = config(server.url("/get?test=value"), "GET");
             HTTPRequestComponent component = new HTTPRequestComponent(config);
 
-            Object result = component.getExecutable().invoke(Map.of(), null, null);
+            Object result = component.getExecutable().invoke(Map.of(), (BaseSession) null, null);
 
             assertThat(result).isNotNull();
             Map<String, Object> output = (Map<String, Object>) result;
@@ -90,7 +91,7 @@ class HttpComponentMissingTest {
                     .build());
             HTTPRequestComponent component = new HTTPRequestComponent(config);
 
-            Object result = component.getExecutable().invoke(Map.of(), null, null);
+            Object result = component.getExecutable().invoke(Map.of(), (BaseSession) null, null);
 
             assertThat(config.getRequestParams().getTimeout()).isEqualTo(5.0);
             assertThat(config.getRequestParams().getAdvancedOptions().getTimeout()).isEqualTo(10000);

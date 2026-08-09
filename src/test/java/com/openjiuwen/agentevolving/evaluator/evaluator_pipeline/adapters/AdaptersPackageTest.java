@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.adapters;
+package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters;
 
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.AdapterRegistry;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.BaseAgentAdapter;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.BaseBenchAdapter;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.adapters.agents.JiuWenSwarmAgent;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.adapters.benchmarks.SkillsBenchAdapter;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.AdapterRegistry;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.BaseAgentAdapter;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.BaseBenchAdapter;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.agents.JiuWenSwarmAgent;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.benchmarks.SkillsBenchAdapter;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

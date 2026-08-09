@@ -23,7 +23,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -335,7 +335,7 @@ public class WorkflowController {
 
     private Object workflowSession(AgentSessionApi activeSession) {
         if (activeSession == null) {
-            return WorkflowSessionApi.create(null, null, null);
+            return WorkflowSession.create(null, null, null);
         }
         try {
             Method method = activeSession.getClass().getMethod("createWorkflowSession");
@@ -346,7 +346,7 @@ public class WorkflowController {
         } catch (ReflectiveOperationException ignored) {
             // Older session facades expose only AgentSessionApi; fall back to a standalone workflow session.
         }
-        return WorkflowSessionApi.create(null, activeSession.getSessionId(), null);
+        return WorkflowSession.create(null, activeSession.getSessionId(), null);
     }
 
     public void setWorkflowDetector(WorkflowDetector workflowDetector) {

@@ -4,24 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
 /**
- * Result type for background shell command execution.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ExecuteCmdBackgroundResult} in
+ * {@code openjiuwen/core/sys_operation/result/shell_operation_result.py}.
  */
-@NoArgsConstructor
 public class ExecuteCmdBackgroundResult extends BaseResult<ExecuteCmdBackgroundData> {
-    /**
-     * ExecuteCmdBackgroundResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
-     */
+
+    public ExecuteCmdBackgroundResult() {
+    }
+
     public ExecuteCmdBackgroundResult(int code, String message, ExecuteCmdBackgroundData data) {
-        setCode(code); setMessage(message); setData(data);
+        setCode(code);
+        setMessage(message);
+        setData(data);
     }
 }

@@ -1,0 +1,77 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+package com.openjiuwen.core.singleagent;
+
+// =================================================================
+// TEMPLATE NOTES:
+//   1. Replace {{ClassName}} with your target class name.
+//   2. Replace {{ConfigClass}} and its import with the actual config class (or remove).
+//   3. Replace {{StatusCode}} with the matching StatusCode for your module.
+//   4. Replace {{Logger}} (Loggers.AGENT, Loggers.TOOL, etc.) to match your subsystem.
+//   5. Adjust extends clause (BaseAgent or other base) to match your hierarchy.
+// =================================================================
+
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Description of the service responsibility.
+ *
+ * <p>Typical usage: [how this class is constructed and called].
+ */
+public class {{ClassName}} extends BaseAgent {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private final {{ConfigClass}} config;
+    private final Map<String, Object> registry = new ConcurrentHashMap<>();
+
+    public {{ClassName}}(AgentCard card, {{ConfigClass}} config) {
+        super(card);
+        this.config = config != null ? config : new {{ConfigClass}}();
+    }
+
+    /**
+     * invoke.
+     *
+     * @param input input
+     * @param session session
+     * @return the result
+     */
+    public Object invoke(String input, Session session) {
+        if (input == null || input.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.{{StatusCode}},
+                    "error_msg", "input is required");
+        }
+        if (session == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.{{StatusCode}},
+                    "error_msg", "session is required");
+        }
+        try {
+            // Business logic here
+            return doInvoke(input, session);
+        } catch (BaseError e) {
+            throw e;
+        } catch (RuntimeException e) {
+            Loggers.{{Logger}}.error("{{ClassName}} invoke error: " + e.getMessage());
+            throw ErrorHelper.buildError(
+                    StatusCode.{{StatusCode}},
+                    "error_msg", e.getMessage());
+        }
+    }
+
+    private Object doInvoke(String input, Session session) {
+        // Implementation
+        return null;
+    }
+}

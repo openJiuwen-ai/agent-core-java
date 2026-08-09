@@ -10,7 +10,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.AgentProvider;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,7 +62,7 @@ public class TeamRuntime {
      * 
      * @since 0.1.7
      */
-    private final Map<String, AgentGroupSessionApi> teamSessions = new LinkedHashMap<>();
+    private final Map<String, AgentGroupSession> teamSessions = new LinkedHashMap<>();
 
     /**
      * TeamRuntime.
@@ -185,7 +185,7 @@ public class TeamRuntime {
      * @param session session
      * @since 0.1.7
      */
-    public void bindTeamSession(AgentGroupSessionApi session) {
+    public void bindTeamSession(AgentGroupSession session) {
         if (session != null) {
             teamSessions.put(session.getSessionId(), session);
         }
@@ -210,7 +210,7 @@ public class TeamRuntime {
      * @return the result
      * @since 0.1.7
      */
-    public AgentGroupSessionApi getTeamSession(String sessionId) {
+    public AgentGroupSession getTeamSession(String sessionId) {
         return sessionId == null ? null : teamSessions.get(sessionId);
     }
 
@@ -226,7 +226,7 @@ public class TeamRuntime {
      * @since 0.1.7
      */
     public Object send(Object message, String recipient, String sender, String sessionId,
-            AgentGroupSessionApi session) {
+            AgentGroupSession session) {
         if (sender == null || sender.isBlank()) {
             throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
                     "sender is required for team runtime messages");
@@ -234,7 +234,7 @@ public class TeamRuntime {
         BaseAgent agent = resolveAgent(recipient);
         MessageEnvelope envelope = MessageEnvelope.builder().messageId(UUID.randomUUID().toString()).message(message)
                 .sender(sender).recipient(recipient).sessionId(sessionId).build();
-        AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
+        AgentGroupSession resolvedSession = resolveSession(sessionId, session);
         int depth = 0;
         String rootSender = sender;
         String rootRecipient = recipient;
@@ -290,14 +290,14 @@ public class TeamRuntime {
      * @param session session
      * @since 0.1.7
      */
-    public void publish(Object message, String topicId, String sender, String sessionId, AgentGroupSessionApi session) {
+    public void publish(Object message, String topicId, String sender, String sessionId, AgentGroupSession session) {
         if (topicId == null || topicId.isBlank()) {
             throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
                     "topic_id is required for publish");
         }
         MessageEnvelope envelope = MessageEnvelope.builder().messageId(UUID.randomUUID().toString()).message(message)
                 .sender(sender).topicId(topicId).sessionId(sessionId).build();
-        AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
+        AgentGroupSession resolvedSession = resolveSession(sessionId, session);
         for (String subscriber : subscriptionManager.getSubscribers(topicId)) {
             if (resolvedSession != null) {
                 resolvedSession.setCurrentAgentId(subscriber);
@@ -394,16 +394,16 @@ public class TeamRuntime {
      * @return the result
      * @since 0.1.7
      */
-    private AgentGroupSessionApi resolveSession(String sessionId, AgentGroupSessionApi session) {
+    private AgentGroupSession resolveSession(String sessionId, AgentGroupSession session) {
         if (session != null) {
             bindTeamSession(session);
             return session;
         }
-        AgentGroupSessionApi existing = getTeamSession(sessionId);
+        AgentGroupSession existing = getTeamSession(sessionId);
         if (existing != null) {
             return existing;
         }
-        AgentGroupSessionApi created = new AgentGroupSessionApi(sessionId);
+        AgentGroupSession created = new AgentGroupSession(sessionId);
         bindTeamSession(created);
         return created;
     }

@@ -14,10 +14,8 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.StringJoiner;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -165,62 +163,28 @@ public class TextableVariable extends Variable {
     }
 
     private String pythonString(Object rawValue, boolean nestedPlaceholder) {
+        // Absorb Python substitution semantics (recurse into messages) with Java toString rendering.
         if (rawValue == null) {
-            return "None";
-        }
-        if (nestedPlaceholder && rawValue instanceof Boolean bool) {
-            return Boolean.TRUE.equals(bool) ? "True" : "False";
-        }
-        if (usesPythonMessageRepr(rawValue)) {
-            return pythonRepr(rawValue);
-        }
-        return String.valueOf(rawValue);
-    }
-
-    private String pythonRepr(Object rawValue) {
-        if (rawValue == null) {
-            return "None";
+            return "null";
         }
         if (rawValue instanceof BaseMessage message) {
-            return pythonRepr(message.modelDump());
-        }
-        if (rawValue instanceof String text) {
-            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
-        }
-        if (rawValue instanceof Boolean bool) {
-            return Boolean.TRUE.equals(bool) ? "True" : "False";
+            return String.valueOf(message.modelDump());
         }
         if (rawValue instanceof List<?> list) {
-            StringJoiner joiner = new StringJoiner(", ", "[", "]");
+            List<Object> normalized = new ArrayList<>(list.size());
             for (Object item : list) {
-                joiner.add(pythonRepr(item));
+                if (item instanceof BaseMessage message) {
+                    normalized.add(message.modelDump());
+                } else {
+                    normalized.add(item);
+                }
             }
-            return joiner.toString();
+            return String.valueOf(normalized);
         }
-        if (rawValue instanceof Map<?, ?> map) {
-            StringJoiner joiner = new StringJoiner(", ", "{", "}");
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                joiner.add(pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()));
-            }
-            return joiner.toString();
+        if (nestedPlaceholder && rawValue instanceof Boolean) {
+            return String.valueOf(rawValue);
         }
         return String.valueOf(rawValue);
-    }
-
-    private boolean usesPythonMessageRepr(Object rawValue) {
-        if (rawValue instanceof BaseMessage) {
-            return true;
-        }
-        if (rawValue instanceof List<?> list) {
-            return !list.isEmpty() && list.stream().allMatch(this::usesPythonMessageRepr);
-        }
-        if (!(rawValue instanceof Map<?, ?> map)) {
-            return false;
-        }
-        if (map instanceof LinkedHashMap<?, ?> && map.containsKey("role") && map.containsKey("content")) {
-            return true;
-        }
-        return false;
     }
 
     public String getText() {

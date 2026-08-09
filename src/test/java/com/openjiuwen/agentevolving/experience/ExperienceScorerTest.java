@@ -2,12 +2,12 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.experience;
+package com.openjiuwen.agentevolving.experience;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.checkpointing.UsageStats;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.checkpointing.UsageStats;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 

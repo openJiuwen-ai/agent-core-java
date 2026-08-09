@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.signal;
+package com.openjiuwen.agentevolving.signal;
 
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

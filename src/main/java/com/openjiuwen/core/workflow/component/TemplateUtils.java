@@ -103,12 +103,18 @@ public class TemplateUtils {
     }
 
     static String stringifyTemplateValue(Object value) {
-        if (value == null) {
-            return "None";
-        }
         if (value instanceof String text) {
             return text;
         }
+        // Java-idiomatic rendering (Map/List toString); keep pythonRepr for explicit callers.
+        return String.valueOf(value);
+    }
+
+    /**
+     * Format a value like Python {@code str(...)} / {@code repr} for containers
+     * (single-quoted strings, {@code True}/{@code False}/{@code None}).
+     */
+    public static String toPythonRepr(Object value) {
         return pythonRepr(value);
     }
 

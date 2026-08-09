@@ -4,86 +4,107 @@
 
 package com.openjiuwen.core.sysop;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
-import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
 
 /**
- * Base shell operation — abstract class for shell command execution.
- * <p>
- * Mirrors Python's {@code BaseShellOperation} in {@code sys_operation/shell.py}.
- * 
- * @since 0.1.7
+ * Base shell operation contract.
+ *
+ * <p>Mirrors Python's {@code BaseShellOperation} and {@code ShellType} in
+ * {@code openjiuwen/core/sys_operation/shell.py}.</p>
  */
 public abstract class BaseShellOperation extends BaseOperation {
-    /**
-     * BaseShellOperation.
-     * 
-     * @param name name
-     * @param mode mode
-     * @param description description
-     * @param runConfig runConfig
-     * @since 0.1.7
-     */
+
     protected BaseShellOperation(String name, OperationMode mode, String description, Object runConfig) {
-        super(name, mode.toNewMode(), description, runConfig);
+        super(name, mode, description, runConfig);
     }
 
-    /**
-     * listTools.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public List<ToolCard> listTools() {
-        return generateToolCards(List.of("executeCmd", "executeCmdStream", "executeCmdBackground"));
+        return generateToolCards(List.of("execute_cmd", "execute_cmd_stream", "execute_cmd_background"));
     }
 
-    /**
-     * Execute a shell command.
-     * 
-     * @param command command to execute
-     * @param cwd working directory (default: current directory)
-     * @param timeout command execution timeout in seconds (default 300)
-     * @param environment custom environment variables
-     * @param options additional execution configuration
-     * @return execution result
-     * @since 0.1.7
-     */
-    public abstract ExecuteCmdResult executeCmd(String command, String cwd, int timeout,
-            Map<String, String> environment, Map<String, Object> options);
+    public abstract CompletableFuture<ExecuteCmdResult> executeCmd(
+            String command,
+            String cwd,
+            Integer timeout,
+            Map<String, String> environment,
+            Map<String, Object> options,
+            ShellType shellType);
 
     /**
-     * Execute a shell command with streaming output.
-     * 
-     * @param command command to execute
-     * @param cwd working directory (default: current directory)
-     * @param timeout command execution timeout in seconds (default 300)
-     * @param environment custom environment variables
-     * @param options additional execution configuration
-     * @return iterator of streaming results
-     * @since 0.1.7
+     * Legacy sync overload used by compatibility tests and reflective providers.
      */
-    public abstract Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
-            Map<String, String> environment, Map<String, Object> options);
+    public ExecuteCmdResult executeCmd(
+            String command,
+            String cwd,
+            int timeout,
+            Map<String, String> environment,
+            Map<String, Object> options) {
+        return executeCmd(command, cwd, timeout, environment, options, null).join();
+    }
+
+    public Flow.Publisher<ExecuteCmdStreamResult> executeCmdStream(
+            String command,
+            String cwd,
+            Integer timeout,
+            Map<String, String> environment,
+            Map<String, Object> options,
+            ShellType shellType) {
+        return null;
+    }
+
+    public abstract CompletableFuture<ExecuteCmdBackgroundResult> executeCmdBackground(
+            String command,
+            String cwd,
+            Map<String, String> environment,
+            double grace,
+            ShellType shellType);
 
     /**
-     * Execute a shell command in the background and return its PID.
-     * 
-     * @param command command
-     * @param cwd cwd
-     * @param environment environment
-     * @param grace grace
-     * @param options options
-     * @return the result
-     * @since 0.1.7
+     * Mirrors Python's {@code ShellType} in
+     * {@code openjiuwen/core/sys_operation/shell.py}.
      */
-    public abstract ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd,
-            Map<String, String> environment, double grace, Map<String, Object> options);
+    public enum ShellType {
+        AUTO("auto"),
+        CMD("cmd"),
+        POWERSHELL("powershell"),
+        BASH("bash"),
+        SH("sh");
+
+        private final String value;
+
+        ShellType(String value) {
+            this.value = value;
+        }
+
+        @JsonValue
+        public String value() {
+            return value;
+        }
+
+        @JsonCreator
+        public static ShellType fromValue(String value) {
+            if (value == null) {
+                return AUTO;
+            }
+            String normalized = value.trim().toLowerCase(Locale.ROOT);
+            for (ShellType shellType : values()) {
+                if (shellType.value.equals(normalized)) {
+                    return shellType;
+                }
+            }
+            return AUTO;
+        }
+    }
 }

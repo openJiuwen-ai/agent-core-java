@@ -68,18 +68,14 @@ public abstract class StateSession extends WrappedSession {
 
     @Override
     public StreamWriter<?> streamWriter() {
-        Object manager = innerSession.streamWriterManager();
-        return manager instanceof StreamWriterManager streamWriterManager
-                ? streamWriterManager.getOutputWriter()
-                : null;
+        StreamWriterManager manager = innerSession.streamWriterManager();
+        return manager == null ? null : manager.getOutputWriter();
     }
 
     @Override
     public StreamWriter<?> customWriter() {
-        Object manager = innerSession.streamWriterManager();
-        return manager instanceof StreamWriterManager streamWriterManager
-                ? streamWriterManager.getCustomWriter()
-                : null;
+        StreamWriterManager manager = innerSession.streamWriterManager();
+        return manager == null ? null : manager.getCustomWriter();
     }
 
     @Override

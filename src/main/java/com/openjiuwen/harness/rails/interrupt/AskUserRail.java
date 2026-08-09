@@ -8,7 +8,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
 import com.openjiuwen.harness.rails.CallbackContext;
+import com.openjiuwen.harness.tools.AskUserTool;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,8 +30,31 @@ public class AskUserRail extends BaseInterruptRail {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
+    private AskUserTool askUserTool;
+
     public AskUserRail() {
         super(List.of("ask_user"));
+    }
+
+    @Override
+    public void init(DeepAgent agent) {
+        super.init(agent);
+        if (agent == null) {
+            return;
+        }
+        String language = HarnessPromptsPackage.resolveLanguage(
+                agent.deepConfig() == null ? null : agent.deepConfig().getLanguage());
+        String agentId = agent.getCard() == null ? null : agent.getCard().getId();
+        askUserTool = new AskUserTool(language, agentId);
+        agent.registerTool(askUserTool);
+    }
+
+    @Override
+    public void uninit(DeepAgent agent) {
+        if (agent != null && askUserTool != null && askUserTool.getCard() != null) {
+            agent.unregisterTool(askUserTool.getCard().getName());
+        }
+        askUserTool = null;
     }
 
     @Override
@@ -104,11 +130,98 @@ public class AskUserRail extends BaseInterruptRail {
     }
 
     private AskUserRequest buildAskRequest(ToolCall toolCall) {
+        List<Map<String, Object>> questionList = questions(toolCall);
         AskUserRequest request = new AskUserRequest();
-        request.setMessage("");
+        // Fill message for apps that only read InterruptRequest.message.
+        request.setMessage(formatMessageFromQuestions(questionList));
         request.setPayloadSchema(AskUserPayload.toSchema());
-        request.setQuestions(questions(toolCall));
+        request.setQuestions(questionList);
         return request;
+    }
+
+    /**
+     * Render structured questions into a human-readable interrupt message.
+     *
+     * @param questions normalized ask_user questions; may be null/empty
+     * @return concatenated message, or empty string when there is no usable content
+     */
+    static String formatMessageFromQuestions(List<Map<String, Object>> questions) {
+        if (questions == null || questions.isEmpty()) {
+            return "";
+        }
+        List<String> blocks = new ArrayList<>();
+        for (Map<String, Object> question : questions) {
+            if (question == null || question.isEmpty()) {
+                continue;
+            }
+            StringBuilder block = new StringBuilder();
+            String header = stringField(question, "header").trim();
+            String questionText = stringField(question, "question").trim();
+            if (!header.isEmpty() && !questionText.isEmpty()) {
+                block.append('[').append(header).append("] ").append(questionText);
+            } else if (!questionText.isEmpty()) {
+                block.append(questionText);
+            } else if (!header.isEmpty()) {
+                block.append(header);
+            }
+
+            Object optionsObj = question.get("options");
+            if (optionsObj instanceof List<?> options && !options.isEmpty()) {
+                List<String> optionLines = new ArrayList<>();
+                for (Object option : options) {
+                    String line = formatOptionLine(option);
+                    if (!line.isEmpty()) {
+                        optionLines.add(line);
+                    }
+                }
+                if (!optionLines.isEmpty()) {
+                    if (block.length() > 0) {
+                        block.append('\n');
+                    }
+                    block.append(String.join("\n", optionLines));
+                }
+            }
+
+            Object multiSelect = question.get("multi_select");
+            if (Boolean.TRUE.equals(multiSelect) || "true".equalsIgnoreCase(String.valueOf(multiSelect))) {
+                if (block.length() > 0) {
+                    block.append('\n');
+                }
+                block.append("(multi-select)");
+            }
+
+            if (block.length() > 0) {
+                blocks.add(block.toString());
+            }
+        }
+        return String.join("\n\n", blocks);
+    }
+
+    private static String formatOptionLine(Object option) {
+        if (option instanceof Map<?, ?> map) {
+            String label = stringField(map, "label").trim();
+            String description = stringField(map, "description").trim();
+            if (!label.isEmpty() && !description.isEmpty()) {
+                return "- " + label + ": " + description;
+            }
+            if (!label.isEmpty()) {
+                return "- " + label;
+            }
+            if (!description.isEmpty()) {
+                return "- " + description;
+            }
+            return "";
+        }
+        if (option == null) {
+            return "";
+        }
+        String text = String.valueOf(option).trim();
+        return text.isEmpty() ? "" : "- " + text;
+    }
+
+    private static String stringField(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        return value == null ? "" : String.valueOf(value);
     }
 
     private List<Map<String, Object>> questions(ToolCall toolCall) {

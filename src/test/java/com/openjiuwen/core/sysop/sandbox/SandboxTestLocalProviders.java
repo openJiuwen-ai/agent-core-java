@@ -1,6 +1,7 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 import com.openjiuwen.core.sysop.local.LocalCodeOperation;
 import com.openjiuwen.core.sysop.local.LocalFsOperation;
 import com.openjiuwen.core.sysop.local.LocalShellOperation;
@@ -39,13 +40,13 @@ final class SandboxTestLocalProviders {
 
     public static final class TestLocalFsProvider extends LocalFsOperation {
 
-        private final com.openjiuwen.core.sys_operation.local.LocalFsOperation newDelegate;
+        private final com.openjiuwen.core.sysop.local.LocalFsOperation newDelegate;
 
         public TestLocalFsProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
             super(SandboxOperationSupport.toLocalWorkConfig(config));
-            this.newDelegate = new com.openjiuwen.core.sys_operation.local.LocalFsOperation(
+            this.newDelegate = new com.openjiuwen.core.sysop.local.LocalFsOperation(
                     "fs",
-                    com.openjiuwen.core.sys_operation.OperationMode.LOCAL,
+                    com.openjiuwen.core.sysop.OperationMode.LOCAL,
                     "local fs operation",
                     SandboxOperationSupport.toLocalWorkConfig(config));
         }
@@ -57,11 +58,11 @@ final class SandboxTestLocalProviders {
                                          boolean isPrependNewline, boolean isAppendNewline,
                                          boolean isCreateIfMissing, String permissions,
                                          String encoding, Map<String, Object> options) {
-            com.openjiuwen.core.sys_operation.result.WriteFileResult newResult =
+            com.openjiuwen.core.sysop.result.WriteFileResult newResult =
                     newDelegate.writeFile(
                             path,
                             content == null ? null : String.valueOf(content),
-                            com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode.fromValue(mode),
+                            com.openjiuwen.core.sysop.BaseFsOperation.FileMode.fromValue(mode),
                             isPrependNewline,
                             isAppendNewline,
                             false,
@@ -89,13 +90,13 @@ final class SandboxTestLocalProviders {
                                                               Integer head, Integer tail,
                                                               int[] lineRange, String encoding,
                                                               int chunkSize, Map<String, Object> options) {
-            com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode fileMode =
-                    com.openjiuwen.core.sys_operation.BaseFsOperation.FileMode.fromValue(mode);
-            com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal.LineRange lr =
+            com.openjiuwen.core.sysop.BaseFsOperation.FileMode fileMode =
+                    com.openjiuwen.core.sysop.BaseFsOperation.FileMode.fromValue(mode);
+            com.openjiuwen.core.sysop.protocal.BaseFsProtocal.LineRange lr =
                     lineRange != null && lineRange.length >= 2
-                            ? new com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal.LineRange(lineRange[0], lineRange[1])
+                            ? new com.openjiuwen.core.sysop.protocal.BaseFsProtocal.LineRange(lineRange[0], lineRange[1])
                             : null;
-            Flow.Publisher<com.openjiuwen.core.sys_operation.result.ReadFileStreamResult> publisher =
+            Flow.Publisher<com.openjiuwen.core.sysop.result.ReadFileStreamResult> publisher =
                     newDelegate.readFileStream(path, fileMode, head, tail, lr, encoding, chunkSize, options);
             java.util.List<ReadFileStreamResult> items = new java.util.ArrayList<>();
             publisher.subscribe(new Flow.Subscriber<>() {
@@ -106,7 +107,7 @@ final class SandboxTestLocalProviders {
                     s.request(Long.MAX_VALUE);
                 }
                 @Override
-                public void onNext(com.openjiuwen.core.sys_operation.result.ReadFileStreamResult item) {
+                public void onNext(com.openjiuwen.core.sysop.result.ReadFileStreamResult item) {
                     ReadFileStreamResult legacy = new ReadFileStreamResult();
                     legacy.setCode(item.getCode());
                     legacy.setMessage(item.getMessage());
@@ -134,47 +135,24 @@ final class SandboxTestLocalProviders {
         }
 
         /**
-         * Search files - delegates to new implementation and unwraps CompletableFuture.
+         * Search files - delegates to new implementation.
          */
-        public SearchFilesResult searchFiles(String path, String pattern, List<String> excludePatterns) {
-            com.openjiuwen.core.sys_operation.result.SearchFilesResult newResult =
-                    newDelegate.searchFiles(path, pattern, excludePatterns).join();
-            SearchFilesResult result = new SearchFilesResult();
-            result.setCode(newResult.getCode());
-            result.setMessage(newResult.getMessage());
-            if (newResult.getData() != null) {
-                com.openjiuwen.core.sysop.result.SearchFilesData data = new com.openjiuwen.core.sysop.result.SearchFilesData();
-                data.setTotalMatches(newResult.getData().getTotalMatches());
-                data.setSearchPath(newResult.getData().getSearchPath());
-                data.setSearchPattern(newResult.getData().getSearchPattern());
-                data.setExcludePatterns(newResult.getData().getExcludePatterns());
-                if (newResult.getData().getMatchingFiles() != null) {
-                    data.setMatchingFiles(newResult.getData().getMatchingFiles().stream().map(item -> {
-                        com.openjiuwen.core.sysop.result.FileSystemItem fi = new com.openjiuwen.core.sysop.result.FileSystemItem();
-                        fi.setName(item.getName());
-                        fi.setPath(item.getPath());
-                        fi.setSize(item.getSize());
-                        fi.setModifiedTime(item.getModifiedTime());
-                        fi.setDirectory(item.isDirectory());
-                        fi.setType(item.getType());
-                        return fi;
-                    }).toList());
-                }
-                result.setData(data);
-            }
-            return result;
+        @Override
+        public java.util.concurrent.CompletableFuture<SearchFilesResult> searchFiles(
+                String path, String pattern, List<String> excludePatterns) {
+            return newDelegate.searchFiles(path, pattern, excludePatterns);
         }
     }
 
     public static final class TestLocalShellProvider extends LocalShellOperation {
 
-        private final com.openjiuwen.core.sys_operation.local.LocalShellOperation newDelegate;
+        private final com.openjiuwen.core.sysop.local.LocalShellOperation newDelegate;
 
         public TestLocalShellProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
             super(SandboxOperationSupport.toLocalWorkConfig(config));
-            this.newDelegate = new com.openjiuwen.core.sys_operation.local.LocalShellOperation(
+            this.newDelegate = new com.openjiuwen.core.sysop.local.LocalShellOperation(
                     "shell",
-                    com.openjiuwen.core.sys_operation.OperationMode.LOCAL,
+                    com.openjiuwen.core.sysop.OperationMode.LOCAL,
                     "local shell operation",
                     SandboxOperationSupport.toLocalWorkConfig(config));
         }
@@ -185,20 +163,19 @@ final class SandboxTestLocalProviders {
         public ExecuteCmdBackgroundResult executeCmdBackground(String command, String cwd,
                                                                 Map<String, String> environment,
                                                                 double grace, Map<String, Object> options) {
-            com.openjiuwen.core.sys_operation.result.ExecuteCmdBackgroundResult newResult =
+            com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult newResult =
                     newDelegate.executeCmdBackground(
                             command,
                             cwd,
                             environment,
                             grace,
-                            com.openjiuwen.core.sys_operation.BaseShellOperation.ShellType.AUTO).join();
+                            com.openjiuwen.core.sysop.BaseShellOperation.ShellType.AUTO).join();
             ExecuteCmdBackgroundData legacyData = null;
             if (newResult.getData() != null) {
                 legacyData = ExecuteCmdBackgroundData.builder()
                         .command(newResult.getData().getCommand())
                         .cwd(newResult.getData().getCwd())
-                        .pid(newResult.getData().getPid() != null
-                                ? newResult.getData().getPid().longValue() : null)
+                        .pid(newResult.getData().getPid())
                         .build();
             }
             return new ExecuteCmdBackgroundResult(newResult.getCode(), newResult.getMessage(), legacyData);
@@ -210,14 +187,14 @@ final class SandboxTestLocalProviders {
         public Iterator<com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult> executeCmdStream(
                 String command, String cwd, int timeout,
                 Map<String, String> environment, Map<String, Object> options) {
-            Flow.Publisher<com.openjiuwen.core.sys_operation.result.ExecuteCmdStreamResult> publisher =
+            Flow.Publisher<com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult> publisher =
                     newDelegate.executeCmdStream(
                             command,
                             cwd,
                             timeout,
                             environment,
                             options,
-                            com.openjiuwen.core.sys_operation.BaseShellOperation.ShellType.AUTO);
+                            com.openjiuwen.core.sysop.BaseShellOperation.ShellType.AUTO);
             java.util.List<com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult> items = new java.util.ArrayList<>();
             publisher.subscribe(new Flow.Subscriber<>() {
                 Flow.Subscription subscription;
@@ -227,7 +204,7 @@ final class SandboxTestLocalProviders {
                     s.request(Long.MAX_VALUE);
                 }
                 @Override
-                public void onNext(com.openjiuwen.core.sys_operation.result.ExecuteCmdStreamResult item) {
+                public void onNext(com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult item) {
                     com.openjiuwen.core.sysop.result.ExecuteCmdChunkData legacyData = null;
                     if (item.getData() != null) {
                         legacyData = com.openjiuwen.core.sysop.result.ExecuteCmdChunkData.builder()
@@ -262,23 +239,9 @@ final class SandboxTestLocalProviders {
             this.config = config;
         }
 
-        @Override
         public ExecuteCodeResult executeCode(String code, String language, int timeout,
                                              Map<String, String> environment, Map<String, Object> options) {
             return super.executeCode(
-                    SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config),
-                    language,
-                    timeout,
-                    environment,
-                    options
-            );
-        }
-
-        @Override
-        public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
-                                                                   Map<String, String> environment,
-                                                                   Map<String, Object> options) {
-            return super.executeCodeStream(
                     SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config),
                     language,
                     timeout,

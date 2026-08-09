@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.sandbox.SandboxShellOperation
+# com.openjiuwen.core.sysop.sandbox.SandboxShellOperation
 
 ## 类 SandboxShellOperation
 

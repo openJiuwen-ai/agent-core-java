@@ -7,7 +7,7 @@ package com.openjiuwen.core.singleagent.skills;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.sys_operation.BaseFsOperation;
+import com.openjiuwen.core.sysop.BaseFsOperation;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -17,6 +17,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -185,6 +187,13 @@ public class RemoteSkillUtil {
     private Object uploadSkillFromGithubResult(GitHubTree tree, String skillsDir, String token) {
         SearchResult result = searchGitHubForSkills(tree, token);
         List<Path> skillPaths = result.skillPaths();
+        Path baseDir = skillsDir == null || skillsDir.isBlank() ? Path.of("") : Path.of(skillsDir);
+        try {
+            Files.createDirectories(baseDir);
+            baseDir = baseDir.toRealPath();
+        } catch (IOException e) {
+            throw new GitHubError("Failed to resolve local skills directory: " + baseDir, e);
+        }
         for (SkillFile file : result.files()) {
             byte[] data = downloadFileFromGithub(tree, file.path(), token);
             Loggers.AGENT.info("Uploading file to " + file.relativePath());
@@ -194,7 +203,12 @@ public class RemoteSkillUtil {
                 return "sys_operation is not available";
             }
 
-            Path fullPath = resolveSkillPath(skillsDir, file.relativePath());
+            Path fullPath;
+            try {
+                fullPath = resolveSafeTarget(baseDir, file.relativePath().toString());
+            } catch (IOException e) {
+                throw new GitHubError("Failed to resolve safe target for " + file.relativePath(), e);
+            }
             try {
                 fs.writeFile(
                         fullPath.toString(),
@@ -214,6 +228,65 @@ public class RemoteSkillUtil {
             }
         }
         return skillPaths;
+    }
+
+    /**
+     * Resolves a download target within a trusted skills base directory.
+     *
+     * @param baseDir trusted skills root
+     * @param relativePath relative path from the remote repository
+     * @return safe target path within {@code baseDir}
+     * @throws IOException if parent directories cannot be created
+     * @throws SecurityException if the path escapes the base directory
+     */
+    static Path resolveSafeTarget(Path baseDir, String relativePath) throws IOException {
+        if (baseDir == null || relativePath == null || relativePath.isBlank()) {
+            throw new IllegalArgumentException("Skill base directory and relative path must not be blank.");
+        }
+
+        Path realBaseDir = baseDir.toRealPath();
+        Path requestedPath = Path.of(relativePath);
+        if (requestedPath.isAbsolute()) {
+            throw new SecurityException("Remote skill path must be relative: " + relativePath);
+        }
+        for (Path segment : requestedPath) {
+            if ("..".equals(segment.toString())) {
+                throw new SecurityException("Remote skill path must not contain '..': " + relativePath);
+            }
+        }
+
+        Path target = realBaseDir.resolve(requestedPath).normalize();
+        if (!target.startsWith(realBaseDir)) {
+            throw new SecurityException("Remote skill path is outside the skills directory: " + relativePath);
+        }
+
+        Path parent = target.getParent();
+        if (parent == null) {
+            throw new SecurityException("Remote skill path has no parent: " + relativePath);
+        }
+        Path existingAncestor = parent;
+        while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            existingAncestor = existingAncestor.getParent();
+        }
+        if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realBaseDir)) {
+            throw new SecurityException("Remote skill path is outside the skills directory: " + relativePath);
+        }
+
+        Files.createDirectories(parent);
+        Path realParent = parent.toRealPath();
+        if (!realParent.startsWith(realBaseDir)) {
+            throw new SecurityException("Remote skill path is outside the skills directory: " + relativePath);
+        }
+
+        Path safeTarget = realParent.resolve(target.getFileName()).normalize();
+        if (Files.exists(safeTarget, LinkOption.NOFOLLOW_LINKS)) {
+            Path realTarget = safeTarget.toRealPath();
+            if (!realTarget.startsWith(realBaseDir)) {
+                throw new SecurityException("Remote skill path is outside the skills directory: " + relativePath);
+            }
+            return realTarget;
+        }
+        return safeTarget;
     }
 
     private BaseFsOperation getFsOperation() {

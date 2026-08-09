@@ -1,23 +1,19 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.context.processor.offloader;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.context.schema.OffloadMessages;
-import com.openjiuwen.core.context_engine.schema.OffloadToolMessage;
-import com.openjiuwen.core.context_engine.context.SessionModelContext;
+import com.openjiuwen.core.context.schema.OffloadMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.harness.workspace.Workspace;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,287 +23,461 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Focused parity tests for tool-result budget offloading.
+ *
+ * <p>Mirrors Python's {@code ToolResultBudgetProcessor} in
+ * {@code openjiuwen/core/context_engine/processor/offloader/tool_result_budget_processor.py}.</p>
+ *
+ * <p>Mirrors Python's related tests in
+ * {@code tests/unit_tests/core/context_engine/test_tool_result_budget_processor.py}.</p>
+ */
 class ToolResultBudgetProcessorTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    @TempDir
+    Path tempDir;
 
-    private static List<ToolCall> createToolCallList(String... ids) {
-        return java.util.Arrays.stream(ids)
-                .map(id -> ToolCall.builder().id(id).name("test-tool").type("function").arguments("").build())
-                .toList();
-    }
+    @Test
+    void defaultConfigValuesMatchPython() {
+        ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();
 
-    private static ContextEngine engine(Workspace workspace, SysOperation sysOperation) {
-        return new ContextEngine(
-                ContextEngineConfig.builder().defaultWindowMessageNum(100).build(),
-                workspace,
-                sysOperation
-        );
-    }
-
-    private static SysOperation realSysOperation(Path workspaceRoot) {
-        SysOperationCard card = new SysOperationCard();
-        card.setId("test_real_sys_op");
-        card.setMode(com.openjiuwen.core.sys_operation.OperationMode.LOCAL);
-        com.openjiuwen.core.sysop.config.LocalWorkConfig workConfig = new com.openjiuwen.core.sysop.config.LocalWorkConfig();
-        workConfig.setSandboxRoot(List.of(workspaceRoot.toString()));
-        workConfig.setRestrictToSandbox(true);
-        workConfig.setWorkDir(workspaceRoot.toString());
-        card.setWorkConfig(workConfig);
-        return new SysOperation(card);
-    }
-
-    private static com.openjiuwen.core.session.AgentSessionApi session(String sessionId) {
-        return new com.openjiuwen.core.session.AgentSessionApi() {
-            @Override
-            public String getSessionId() {
-                return sessionId;
-            }
-
-            @Override
-            public Object getState(String key) {
-                return null;
-            }
-
-            @Override
-            public void updateState(java.util.Map<String, Object> state) {
-            }
-
-            @Override
-            public void writeStream(Object data) {
-            }
-
-            @Override
-            public java.util.Iterator<Object> streamIterator() {
-                return java.util.List.of().iterator();
-            }
-        };
+        assertThat(config.getTokensThreshold()).isEqualTo(50000);
+        assertThat(config.getLargeMessageThreshold()).isEqualTo(10000);
+        assertThat(config.getTrimSize()).isEqualTo(3000);
+        assertThat(config.getToolNameAllowlist()).isNull();
+        assertThat(config.getOffloadMessageType()).containsExactly("tool");
+        assertThat(config.getOffloadFilePrefix()).isEqualTo("ToolResultBudgetProcessor");
+        assertThat(config.getMessagesThreshold()).isNull();
+        assertThat(config.getMessagesToKeep()).isNull();
     }
 
     @Test
-    @DisplayName("triggerAddMessages returns false when below threshold")
-    void testTriggerAddMessagesFalseWhenBelowThreshold() {
-        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(
-                ToolResultBudgetProcessorConfig.builder()
-                        .tokensThreshold(100000)
-                        .largeMessageThreshold(100)
-                        .trimSize(20)
-                        .build()
-        );
-        ModelContext context = engine(null, null).createContext(
-                "test_ctx",
-                null,
-                null,
-                List.of(
-                        new UserMessage("short"),
-                        ToolMessage.builder().content("short").toolCallId("tc-1").build()
-                ),
-                null
-        );
+    void customConfigValuesAreRetained() {
+        ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();
+        config.setTokensThreshold(500);
+        config.setLargeMessageThreshold(30);
+        config.setTrimSize(12);
+        config.setToolNameAllowlist(List.of("grep", "read_file"));
+        config.setOffloadFilePrefix("CustomPrefix");
+        config.setMessagesThreshold(10);
+        config.setMessagesToKeep(3);
 
-        Map<String, Object> kwargs = Map.of();
-        boolean triggered = processor.triggerAddMessages(
-                (SessionModelContext) ((com.openjiuwen.core.context.context.SessionModelContext) context).unwrap(),
-                List.of(new UserMessage("more")),
-                kwargs).toCompletableFuture().join();
+        assertThat(config.getTokensThreshold()).isEqualTo(500);
+        assertThat(config.getLargeMessageThreshold()).isEqualTo(30);
+        assertThat(config.getTrimSize()).isEqualTo(12);
+        assertThat(config.getToolNameAllowlist()).containsExactly("grep", "read_file");
+        assertThat(config.getOffloadFilePrefix()).isEqualTo("CustomPrefix");
+        assertThat(config.getMessagesThreshold()).isEqualTo(10);
+        assertThat(config.getMessagesToKeep()).isEqualTo(3);
+    }
+
+    @Test
+    void invalidPositiveFieldsAreRejected() {
+        ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();
+
+        assertThatThrownBy(() -> config.setTokensThreshold(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.setLargeMessageThreshold(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.setTrimSize(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.setMessagesThreshold(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.setMessagesToKeep(0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nonToolOffloadRolesAreRejected() {
+        ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();
+
+        assertThatThrownBy(() -> config.setOffloadMessageType(List.of("assistant")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void registeredProcessorNameIsAvailableAfterClassLoad() {
+        new ToolResultBudgetProcessor(new ToolResultBudgetProcessorConfig());
+
+        assertThat(ContextEngine.registeredProcessorTypes()).contains("ToolResultBudgetProcessor");
+    }
+
+    @Test
+    void triggerReturnsFalseWhenRoundIsBelowBudget() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(1000, 10, 5));
+        SessionModelContext context = contextWithoutProcessor(null);
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-1", "grep", "{}"),
+                new ToolMessage("x".repeat(30), "tc-1"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        boolean triggered = processor.triggerAddMessages(context, List.<BaseMessage>of(), Map.of())
+                .toCompletableFuture().join();
+
         assertThat(triggered).isFalse();
     }
 
     @Test
-    @DisplayName("triggerAddMessages returns true when above threshold")
-    void testTriggerAddMessagesTrueWhenAboveThreshold() {
-        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(
-                ToolResultBudgetProcessorConfig.builder()
-                        .tokensThreshold(100)
-                        .largeMessageThreshold(50)
-                        .trimSize(20)
-                        .build()
-        );
-        ModelContext context = engine(null, null).createContext(
-                "test_ctx",
-                null,
-                null,
-                List.of(
-                        new UserMessage("task"),
-                        AssistantMessage.builder().content("").toolCalls(createToolCallList("tc-1")).build(),
-                        ToolMessage.builder().content("x".repeat(600)).toolCallId("tc-1").name("grep").build(),
-                        new AssistantMessage("done")
-                ),
-                null
-        );
+    void triggerReturnsTrueWhenRoundExceedsBudgetAndHasCandidate() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(100, 50, 20));
+        SessionModelContext context = contextWithoutProcessor(null);
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-1", "grep", "{}"),
+                new ToolMessage("x".repeat(600), "tc-1"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
 
-        Map<String, Object> kwargs2 = Map.of();
-        boolean triggered = processor.triggerAddMessages(
-                (SessionModelContext) ((com.openjiuwen.core.context.context.SessionModelContext) context).unwrap(),
-                List.of(),
-                kwargs2).toCompletableFuture().join();
+        boolean triggered = processor.triggerAddMessages(context, List.<BaseMessage>of(), Map.of())
+                .toCompletableFuture().join();
+
         assertThat(triggered).isTrue();
     }
 
     @Test
-    @DisplayName("allowlisted tools are not offloaded")
-    void testAllowlistRespected() {
-        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(
-                ToolResultBudgetProcessorConfig.builder()
-                        .toolNameAllowlist(List.of("important_tool"))
-                        .build()
-        );
-        List<BaseMessage> messages = List.of(
-                AssistantMessage.builder().content("").toolCalls(List.of(
-                        ToolCall.builder().id("tc-1").name("important_tool").type("function").arguments("").build()
-                )).build(),
-                ToolMessage.builder().content("x".repeat(500)).toolCallId("tc-1").name("important_tool").build()
-        );
-        ModelContext context = engine(null, null).createContext("test_ctx", null, null, messages, null);
+    void addingMessagesOffloadsLargeToolResultToFilesystemWhenWorkspaceExists() throws Exception {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 20));
+        SessionModelContext context = contextWith(processor, null, tempDir);
+        String content = "UNIQUE_CONTENT_" + "x".repeat(500) + "_END_MARKER";
 
-        boolean shouldOffload = processor.isAlreadyOffloaded((ToolMessage) messages.get(1));
-        assertThat(shouldOffload).isFalse();
-    }
-
-    @Test
-    @DisplayName("already offloaded tool message is detected")
-    void testAlreadyOffloadedDetection() {
-        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(ToolResultBudgetProcessorConfig.builder().build());
-        OffloadToolMessage offloaded = new OffloadToolMessage(
-                ToolResultBudgetProcessor.PERSISTED_OUTPUT_TAG + "\nOutput too large...",
-                "fake-handle",
-                "filesystem",
-                "tc-x");
-
-        assertThat(processor.isAlreadyOffloaded(offloaded)).isTrue();
-        assertThat(processor.isAlreadyOffloaded(ToolMessage.builder().content("normal").toolCallId("tc-y").build())).isFalse();
-    }
-
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    @DisplayName("filesystem offload writes real file and preserves original content")
-    void testFilesystemOffloadWritesRealFile(@TempDir Path tempDir) throws Exception {
-        Workspace workspace = new Workspace(tempDir.resolve("workspace").toString(), "en");
-        ContextEngine engine = engine(workspace, realSysOperation(tempDir.resolve("workspace")));
-        String sessionId = "real_fs_test_session";
-        ModelContext context = engine.createContext(
-                "test_ctx",
-                session(sessionId),
-                List.of(new ContextEngine.ProcessorSpec(
-                        "ToolResultBudgetProcessor",
-                        ToolResultBudgetProcessorConfig.builder()
-                                .tokensThreshold(50)
-                                .largeMessageThreshold(50)
-                                .trimSize(20)
-                                .build()
-                )),
-                List.of(),
-                null
-        );
-
-        String largeContent = "UNIQUE_CONTENT_" + "x".repeat(500) + "_END_MARKER";
         context.addMessages(List.of(
-                new UserMessage("Run grep on large file"),
-                AssistantMessage.builder().content("").toolCalls(createToolCallList("tc-1")).build(),
-                ToolMessage.builder().content(largeContent).toolCallId("tc-1").name("grep").build(),
-                new AssistantMessage("Found results in the file.")
-        ));
+                new UserMessage("Run grep"),
+                assistantToolCall("tc-file", "grep", "{}"),
+                new ToolMessage(content, "tc-file"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
 
-        BaseMessage toolMessage = context.getMessages().get(2);
-        assertThat(toolMessage.getContentAsString()).startsWith(ToolResultBudgetProcessor.PERSISTED_OUTPUT_TAG);
-        assertThat(toolMessage).isInstanceOf(OffloadToolMessage.class);
-        OffloadToolMessage offloadToolMessage = (OffloadToolMessage) toolMessage;
-        assertThat(offloadToolMessage.getOffloadType()).isEqualTo("filesystem");
+        BaseMessage result = context.getMessages().get(2);
+        assertThat(result).isInstanceOf(OffloadMessage.class);
+        assertThat(result).isInstanceOf(ToolMessage.class);
+        assertThat(result.getContentAsString())
+                .startsWith(ToolResultBudgetProcessor.PERSISTED_OUTPUT_TAG)
+                .contains("Output too large (" + content.length() + " bytes).")
+                .contains("Preview (first 20 chars):")
+                .contains(content.substring(0, 20))
+                .contains("[[OFFLOAD: handle=")
+                .contains("type=filesystem")
+                .contains(ToolResultBudgetProcessor.PERSISTED_OUTPUT_CLOSING_TAG);
+        OffloadMessage marker = (OffloadMessage) result;
+        assertThat(((ToolMessage) result).getToolCallId()).isEqualTo("tc-file");
 
-        Path offloadFile = workspace.root()
-                .resolve("context")
-                .resolve(sessionId + "_context")
-                .resolve("offload")
-                .resolve("ToolResultBudgetProcessor_" + offloadToolMessage.getOffloadHandle() + ".json");
+        Path offloadFile = tempDir.resolve("context/session_context/offload/ToolResultBudgetProcessor_"
+                + marker.getOffloadHandle() + ".json");
         assertThat(Files.exists(offloadFile)).isTrue();
-
-        String payloadJson = Files.readString(offloadFile);
-        var payload = MAPPER.readTree(payloadJson);
-        assertThat(payload.get("offload_handle").asText()).isEqualTo(offloadToolMessage.getOffloadHandle());
-        assertThat(payload.get("messages").get(0).get("content").asText()).isEqualTo(largeContent);
+        assertThat(Files.readString(offloadFile)).contains("UNIQUE_CONTENT_").contains("_END_MARKER");
     }
 
     @Test
-    @DisplayName("filesystem offload reloads original content")
-    void testFilesystemReload(@TempDir Path tempDir) {
-        Workspace workspace = new Workspace(tempDir.resolve("workspace").toString(), "en");
-        ContextEngine engine = engine(workspace, realSysOperation(tempDir.resolve("workspace")));
-        String sessionId = "reload_test_session";
-        ModelContext context = engine.createContext(
-                "test_ctx",
-                session(sessionId),
-                List.of(new ContextEngine.ProcessorSpec(
-                        "ToolResultBudgetProcessor",
-                        ToolResultBudgetProcessorConfig.builder()
-                                .tokensThreshold(50)
-                                .largeMessageThreshold(50)
-                                .trimSize(20)
-                                .build()
-                )),
-                List.of(),
-                null
-        );
+    void reloadFromFilesystemFindsProcessorPrefixedFile() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 20));
+        SessionModelContext.SysOperationPort sysOperation = path -> {
+            try {
+                return Files.exists(Path.of(path)) ? java.util.Optional.of(Files.readString(Path.of(path)))
+                        : java.util.Optional.empty();
+            } catch (java.io.IOException ex) {
+                return java.util.Optional.empty();
+            }
+        };
+        SessionModelContext context = contextWith(processor, null, tempDir, sysOperation);
+        String content = "ORIGINAL_TOOL_CONTENT_" + "x".repeat(500) + "_END_MARKER";
 
-        String originalContent = "ORIGINAL_TOOL_CONTENT_" + "x".repeat(500) + "_END_MARKER";
         context.addMessages(List.of(
-                new UserMessage("Get detailed output"),
-                AssistantMessage.builder().content("").toolCalls(createToolCallList("tc-reload")).build(),
-                ToolMessage.builder().content(originalContent).toolCallId("tc-reload").name("grep").build(),
-                new AssistantMessage("Done.")
-        ));
+                new UserMessage("Run grep"),
+                assistantToolCall("tc-reload", "grep", "{}"),
+                new ToolMessage(content, "tc-reload"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
 
-        OffloadToolMessage toolMessage = (OffloadToolMessage) context.getMessages().get(2);
-        com.openjiuwen.core.context_engine.context.SessionModelContext delegate =
-                (com.openjiuwen.core.context_engine.context.SessionModelContext)
-                        ((com.openjiuwen.core.context.context.SessionModelContext) context).unwrap();
-        com.openjiuwen.core.context_engine.context.SessionModelContext.ReloaderTool reloader =
-                (com.openjiuwen.core.context_engine.context.SessionModelContext.ReloaderTool) delegate.reloaderTool();
-        String reloaded = reloader.reloadOriginalContextMessages(
-                toolMessage.getOffloadHandle(), toolMessage.getOffloadType());
-
-        assertThat(reloaded).contains("ORIGINAL_TOOL_CONTENT_");
-        assertThat(reloaded).contains("_END_MARKER");
+        OffloadMessage marker = (OffloadMessage) context.getMessages().get(2);
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                .contains("ORIGINAL_TOOL_CONTENT_")
+                .contains("_END_MARKER");
     }
 
     @Test
-    @DisplayName("fallback to in-memory when no workspace or sys operation")
-    void testFallbackToInMemory() {
-        ContextEngine engine = engine(null, null);
-        ModelContext context = engine.createContext(
-                "test_ctx",
-                session("inmemory_reload_session"),
-                List.of(new ContextEngine.ProcessorSpec(
-                        "ToolResultBudgetProcessor",
-                        ToolResultBudgetProcessorConfig.builder()
-                                .tokensThreshold(100)
-                                .largeMessageThreshold(50)
-                                .trimSize(20)
-                                .build()
-                )),
-                List.of(),
-                null
-        );
+    void addingMessagesFallsBackToInMemoryWithoutWorkspace() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 20));
+        SessionModelContext context = contextWith(processor, null);
+        String content = "x".repeat(500);
 
-        String originalContent = "INMEMORY_TOOL_CONTENT_" + "y".repeat(500) + "_END_MARKER";
         context.addMessages(List.of(
                 new UserMessage("Read file"),
-                AssistantMessage.builder().content("").toolCalls(createToolCallList("tc-inmem")).build(),
-                ToolMessage.builder().content(originalContent).toolCallId("tc-inmem").name("read_file").build(),
-                new AssistantMessage("Done.")
-        ));
+                assistantToolCall("tc-memory", "read_file", "{}"),
+                new ToolMessage(content, "tc-memory"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
 
-        OffloadToolMessage toolMessage = (OffloadToolMessage) context.getMessages().get(2);
-        assertThat(toolMessage.getOffloadType()).isEqualTo("in_memory");
+        BaseMessage result = context.getMessages().get(2);
+        assertThat(result).isInstanceOf(OffloadMessage.class);
+        OffloadMessage marker = (OffloadMessage) result;
+        assertThat(marker.getOffloadType()).isEqualTo("in_memory");
+        assertThat(result.getContentAsString()).contains("type=in_memory").contains("path=None");
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                .contains(content);
+    }
 
-        com.openjiuwen.core.context_engine.context.SessionModelContext delegate =
-                (com.openjiuwen.core.context_engine.context.SessionModelContext)
-                        ((com.openjiuwen.core.context.context.SessionModelContext) context).unwrap();
-        com.openjiuwen.core.context_engine.context.SessionModelContext.ReloaderTool reloader =
-                (com.openjiuwen.core.context_engine.context.SessionModelContext.ReloaderTool) delegate.reloaderTool();
-        String reloaded = reloader.reloadOriginalContextMessages(
-                toolMessage.getOffloadHandle(), toolMessage.getOffloadType());
-        assertThat(reloaded).contains("INMEMORY_TOOL_CONTENT_");
-        assertThat(reloaded).contains("_END_MARKER");
+    @Test
+    void multipleRoundsAreProcessedIndependently() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 10));
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("First task"),
+                assistantToolCall("tc-r1", "grep", "{}"),
+                new ToolMessage("a".repeat(400), "tc-r1"),
+                new AssistantMessage("Round 1 done"),
+                new UserMessage("Second task"),
+                assistantToolCall("tc-r2", "grep", "{}"),
+                new ToolMessage("b".repeat(400), "tc-r2"),
+                new AssistantMessage("Round 2 done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().stream().filter(OffloadMessage.class::isInstance)).hasSize(2);
+    }
+
+    @Test
+    void offloadsLargestCandidateFirstUntilBudgetFits() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(110, 10, 8));
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("small", "grep", "{}"),
+                new ToolMessage("s".repeat(120), "small"),
+                assistantToolCall("large", "grep", "{}"),
+                new ToolMessage("L".repeat(300), "large"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result.get(2)).isNotInstanceOf(OffloadMessage.class);
+        assertThat(result.get(4)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void keepsOffloadingUntilRoundBudgetFits() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(60, 10, 8));
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("first", "grep", "{}"),
+                new ToolMessage("A".repeat(180), "first"),
+                assistantToolCall("second", "grep", "{}"),
+                new ToolMessage("B".repeat(180), "second"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
+        assertThat(context.getMessages().get(4)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void allowlistedToolNameIsNotOffloaded() {
+        ToolResultBudgetProcessorConfig config = baseConfig(50, 10, 10);
+        config.setToolNameAllowlist(List.of("important_tool"));
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(config);
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-important", "important_tool", "{}"),
+                new ToolMessage("X".repeat(500), "tc-important"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
+        assertThat(processor.triggerAddMessages(context, List.<BaseMessage>of(), Map.of())
+                .toCompletableFuture().join()).isFalse();
+    }
+
+    @Test
+    void nonAllowlistedToolCanStillBeOffloaded() {
+        ToolResultBudgetProcessorConfig config = baseConfig(50, 10, 10);
+        config.setToolNameAllowlist(List.of("important_tool"));
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(config);
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-other", "grep", "{}"),
+                new ToolMessage("X".repeat(500), "tc-other"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void alreadyOffloadedToolMessageIsSkipped() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(20, 1, 5));
+        SessionModelContext context = contextWith(processor, null);
+        com.openjiuwen.core.context.schema.OffloadToolMessage offloaded =
+                new com.openjiuwen.core.context.schema.OffloadToolMessage(
+                        "already", "handle", "in_memory", "tc-x");
+
+        assertThat(processor.shouldOffloadMessage(offloaded, List.of(offloaded), context)).isFalse();
+    }
+
+    @Test
+    void nonStringToolContentIsSkipped() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(20, 1, 5));
+        SessionModelContext context = contextWith(processor, null);
+        ToolMessage message = new ToolMessage("", "tc-map");
+        message.setContent(Map.of("payload", "X".repeat(200)));
+
+        assertThat(processor.shouldOffloadMessage(message, List.of(message), context)).isFalse();
+    }
+
+    @Test
+    void shortToolMessageIsNotCandidate() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(20, 100, 5));
+        SessionModelContext context = contextWith(processor, null);
+        ToolMessage message = new ToolMessage("short", "tc-short");
+
+        assertThat(processor.shouldOffloadMessage(message, List.of(message), context)).isFalse();
+    }
+
+    @Test
+    void roundBudgetUsesTokenCounterWhenAvailable() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 5));
+        ModelContext.TokenCounterPort tokenCounter = messages -> messages.size() * 80;
+        SessionModelContext context = contextWith(processor, tokenCounter);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-1", "grep", "{}"),
+                new ToolMessage("small but token-expensive", "tc-1"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void tokenCounterFailureFallsBackToEstimate() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 5));
+        ModelContext.TokenCounterPort tokenCounter = messages -> {
+            throw new RuntimeException("counter unavailable");
+        };
+        SessionModelContext context = contextWith(processor, tokenCounter);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-1", "grep", "{}"),
+                new ToolMessage("x".repeat(300), "tc-1"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void persistedOutputWithoutMoreDoesNotUseEllipsisLine() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 500));
+
+        String result = processor.buildPersistedOutputMessage(3, "handle", "abc", false);
+
+        assertThat(result)
+                .contains("Preview (first 3 chars):\nabc\n")
+                .doesNotContain("\n...\n");
+    }
+
+    @Test
+    void incompleteLatestRoundIsDetectedAndOffloaded() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 5));
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("unfinished"),
+                assistantToolCall("tc-incomplete", "grep", "{}"),
+                new ToolMessage("x".repeat(300), "tc-incomplete")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void compressionHistoryRecordsModifiedMessageIndex() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(baseConfig(50, 10, 5));
+        SessionModelContext context = contextWith(processor, null);
+
+        context.addMessages(List.of(
+                new UserMessage("task"),
+                assistantToolCall("tc-stream", "grep", "{}"),
+                new ToolMessage("x".repeat(300), "tc-stream"),
+                new AssistantMessage("done")
+        )).toCompletableFuture().join();
+
+        List<Map<String, Object>> states = context.compressionHistory();
+        assertThat(states).hasSize(2);
+        assertThat(states.get(0))
+                .containsEntry("processor", "ToolResultBudgetProcessor")
+                .containsEntry("phase", "add_messages")
+                .containsEntry("status", "started");
+        assertThat(states.get(0).get("before")).isNotNull();
+        assertThat(states.get(1))
+                .containsEntry("processor", "ToolResultBudgetProcessor")
+                .containsEntry("phase", "add_messages")
+                .containsEntry("status", "completed");
+        assertThat(states.get(1).get("duration_ms")).isNotNull();
+        assertThat(String.valueOf(states.get(1).get("summary"))).contains("modified 1 messages");
+    }
+
+    @Test
+    void loadAndSaveStateAreStatelessLikePython() {
+        ToolResultBudgetProcessor processor = new ToolResultBudgetProcessor(new ToolResultBudgetProcessorConfig());
+
+        processor.loadState(Map.of("ignored", "value"));
+
+        assertThat(processor.saveState()).isEmpty();
+    }
+
+    private static ToolResultBudgetProcessorConfig baseConfig(int tokensThreshold, int largeMessageThreshold,
+                                                             int trimSize) {
+        ToolResultBudgetProcessorConfig config = new ToolResultBudgetProcessorConfig();
+        config.setTokensThreshold(tokensThreshold);
+        config.setLargeMessageThreshold(largeMessageThreshold);
+        config.setTrimSize(trimSize);
+        return config;
+    }
+
+    private static SessionModelContext contextWith(ToolResultBudgetProcessor processor,
+                                                   ModelContext.TokenCounterPort tokenCounter) {
+        return contextWith(processor, tokenCounter, null);
+    }
+
+    private static SessionModelContext contextWith(ToolResultBudgetProcessor processor,
+                                                   ModelContext.TokenCounterPort tokenCounter,
+                                                   Path workspaceRoot) {
+        return contextWith(processor, tokenCounter, workspaceRoot, null);
+    }
+
+    private static SessionModelContext contextWith(ToolResultBudgetProcessor processor,
+                                                   ModelContext.TokenCounterPort tokenCounter,
+                                                   Path workspaceRoot,
+                                                   SessionModelContext.SysOperationPort sysOperation) {
+        SessionModelContext.WorkspacePort workspace = workspaceRoot == null ? null : () -> workspaceRoot.toString();
+        return new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(processor), tokenCounter, null, workspace, sysOperation, null, null);
+    }
+
+    private static SessionModelContext contextWithoutProcessor(ModelContext.TokenCounterPort tokenCounter) {
+        return new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(), tokenCounter);
+    }
+
+    private static AssistantMessage assistantToolCall(String id, String name, String arguments) {
+        return AssistantMessage.builder()
+                .role("assistant")
+                .content("assistant")
+                .toolCalls(List.of(ToolCall.builder()
+                        .id(id)
+                        .name(name)
+                        .type("function")
+                        .arguments(arguments)
+                        .build()))
+                .build();
     }
 }

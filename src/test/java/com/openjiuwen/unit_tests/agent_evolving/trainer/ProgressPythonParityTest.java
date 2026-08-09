@@ -4,8 +4,8 @@
 
 package com.openjiuwen.unit_tests.agent_evolving.trainer;
 
-import com.openjiuwen.agent_evolving.trainer.Callbacks;
-import com.openjiuwen.agent_evolving.trainer.Progress;
+import com.openjiuwen.agentevolving.trainer.Callbacks;
+import com.openjiuwen.agentevolving.trainer.Progress;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -206,7 +206,7 @@ class ProgressPythonParityTest {
             public void onTrainBegin(
                     BaseAgent agent,
                     Progress progress,
-                    List<com.openjiuwen.agent_evolving.dataset.EvaluatedCase> evalInfo
+                    List<com.openjiuwen.agentevolving.dataset.EvaluatedCase> evalInfo
             ) {
                 calls.add("begin");
             }

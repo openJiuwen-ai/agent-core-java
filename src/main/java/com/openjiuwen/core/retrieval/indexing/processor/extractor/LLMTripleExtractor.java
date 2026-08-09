@@ -7,6 +7,7 @@ package com.openjiuwen.core.retrieval.indexing.processor.extractor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -25,10 +26,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * LLM-backed triple extractor aligned with the Python implementation.
@@ -78,27 +77,14 @@ public class LLMTripleExtractor extends Extractor {
             return List.of();
         }
         Semaphore limiter = new Semaphore(maxConcurrent);
-        ExecutorService executor = new ThreadPoolExecutor(
-                0,
-                maxConcurrent,
-                60L,
-                TimeUnit.SECONDS,
-                new SynchronousQueue<>(),
-                new ThreadFactory() {
-                    private final AtomicInteger seq = new AtomicInteger(1);
-                    @Override
-                    /**
-                     * Auto-generated for codecheck compliance.
-                     */
-                    public Thread newThread(Runnable r) {
-                        Thread t = new Thread(r);
-                        t.setName("llm-triple-extract-" + seq.getAndIncrement());
-                        t.setDaemon(false);
-                        return t;
-                    }
-                },
-                new ThreadPoolExecutor.CallerRunsPolicy()
-        );
+        ExecutorService executor = OpenJiuwenExecutors.newThreadPool("llm-triple-extract",
+                OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                        .poolSize(0, maxConcurrent)
+                        .keepAlive(60L, TimeUnit.SECONDS)
+                        .workQueue(new SynchronousQueue<>())
+                        .isDaemon(false)
+                        .rejectionHandler(new ThreadPoolExecutor.CallerRunsPolicy())
+                        .build());
 
         List<List<Triple>> results = new ArrayList<>(Collections.nCopies(chunks.size(), null));
         List<Exception> errors = new ArrayList<>(Collections.nCopies(chunks.size(), null));

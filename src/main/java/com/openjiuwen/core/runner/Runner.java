@@ -20,9 +20,13 @@ import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
-import com.openjiuwen.core.context_engine.ModelContext;
-import com.openjiuwen.core.multi_agent.BaseTeam;
-import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.multiagent.BaseTeam;
+import com.openjiuwen.core.multiagent.team_runtime.TeamRuntime;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageQueueFactory;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
@@ -40,16 +44,17 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
-import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.session.WorkflowSessionApi;
-import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -57,6 +62,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
@@ -65,6 +71,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Stream;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 /**
  * Singleton facade for the core runner.
@@ -162,6 +171,16 @@ public final class Runner {
         return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs);
     }
 
+    /**
+     * Execute a workflow with tenant context binding.
+     *
+     * @since 0.1.7
+     */
+    public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+                                     Map<String, Object> envs, TenantContext tenantCtx) {
+        return joinOrThrow(GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs, tenantCtx));
+    }
+
     public static CompletionStage<Iterator<WorkflowChunk>> runWorkflowStreaming(
             Object workflow,
             Object inputs,
@@ -170,6 +189,18 @@ public final class Runner {
             List<StreamMode> streamModes,
             Map<String, Object> envs) {
         return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
+    }
+
+    /**
+     * Execute a workflow with streaming output and tenant context binding.
+     *
+     * @since 0.1.7
+     */
+    public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+                                                               ModelContext context, List<StreamMode> streamModes,
+                                                               Map<String, Object> envs, TenantContext tenantCtx) {
+        return joinOrThrow(GLOBAL_RUNNER.runWorkflowStreaming(
+                workflow, inputs, session, context, streamModes, envs, tenantCtx));
     }
 
     public static CompletionStage<Object> runAgent(String agent, Object inputs) {
@@ -189,6 +220,16 @@ public final class Runner {
         return joinOrThrow(runAgent(agent, inputs, session, context, null));
     }
 
+    /**
+     * Execute an agent with tenant context binding.
+     *
+     * @since 0.1.7
+     */
+    public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+                                  Map<String, Object> envs, TenantContext tenantCtx) {
+        return joinOrThrow(GLOBAL_RUNNER.runAgent(agent, inputs, session, context, envs, tenantCtx));
+    }
+
     public static CompletionStage<Iterator<Object>> runAgentStreaming(Object agent, Object inputs, Object session,
                                                                       ModelContext context,
                                                                       List<StreamMode> streamModes,
@@ -199,6 +240,50 @@ public final class Runner {
     public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
                                                      List<StreamMode> streamModes) {
         return joinOrThrow(runAgentStreaming(agent, inputs, session, context, streamModes, null));
+    }
+
+    /**
+     * Execute an agent with streaming output and tenant context binding.
+     *
+     * @since 0.1.7
+     */
+    public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+                                                     List<StreamMode> streamModes, Map<String, Object> envs,
+                                                     TenantContext tenantCtx) {
+        return joinOrThrow(GLOBAL_RUNNER.runAgentStreaming(
+                agent, inputs, session, context, streamModes, envs, tenantCtx));
+    }
+
+    /**
+     * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @return Mono emitting the agent result
+     */
+    public static Mono<Object> runAgentAsync(Object agent, Object inputs, Object session,
+                                             ModelContext context, Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentAsync(agent, inputs, session, context, envs);
+    }
+
+    /**
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @return Flux emitting stream chunks
+     */
+    public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session,
+                                                      ModelContext context, List<StreamMode> streamModes,
+                                                      Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
     }
 
     public static CompletionStage<Void> release(String sessionId) {
@@ -244,6 +329,16 @@ public final class Runner {
             return GLOBAL_RUNNER.runBaseTeam(agentTeam, inputs, session, context, envs);
         }
         return GLOBAL_RUNNER.runAgentTeam(agentTeam, inputs, member, session, context, envs);
+    }
+
+    /**
+     * Execute an agent team with tenant context binding.
+     *
+     * @since 0.1.7
+     */
+    public static Object runAgentTeam(Object agentTeam, Object inputs, Object session, ModelContext context,
+                                      Map<String, Object> envs, TenantContext tenantCtx) {
+        return joinOrThrow(GLOBAL_RUNNER.runAgentTeam(agentTeam, inputs, false, session, context, envs, tenantCtx));
     }
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs) {
@@ -362,6 +457,7 @@ public final class Runner {
         private Object rootTaskGroup;
         private TeamRuntimeManager teamRuntimeManager;
         private boolean defaultCheckpointerInstalledFromConfig;
+        private TenantWorkspaceResolver workspaceResolver;
 
         private RunnerImpl(RunnerConfig config) {
             this("global", config);
@@ -409,6 +505,15 @@ public final class Runner {
                 RunnerConfig config = RunnerConfig.getRunnerConfig();
                 initializeCheckpointer(config);
                 try {
+                    if (config.isEnableTenantIsolation()) {
+                        String dataRoot = config.getTenantDataRoot();
+                        if (dataRoot == null || dataRoot.isEmpty()) {
+                            dataRoot = System.getProperty("user.dir");
+                        }
+                        workspaceResolver = new TenantWorkspaceResolver(dataRoot);
+                    } else {
+                        workspaceResolver = null;
+                    }
                     if (config.isDistributedMode()) {
                         distributedMessageQueue = MessageQueueFactory.create(config.getDistributedConfig().getMessageQueueConfig());
                         distributedMessageQueue.start();
@@ -446,11 +551,120 @@ public final class Runner {
             }
         }
 
+        private void bindTenantContext(TenantContext ctx) {
+            if (ctx != null && ctx.isTenantAware()) {
+                TenantContextHolder.setCurrentTenant(ctx);
+                if (workspaceResolver != null) {
+                    workspaceResolver.initializeTenantSpace(ctx);
+                    Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
+                    String workspace = tenantWorkspace.toString();
+                    String tenantRoot = workspaceResolver.resolveTenantRoot(ctx).toString();
+                    Cwd.setWorkspace(workspace);
+                    Cwd.setOriginalCwd(workspace);
+                    Cwd.setTenantRoot(tenantRoot);
+                    CwdContext.setWorkspace(workspace);
+                    CwdContext.setOriginalCwd(workspace);
+                    CwdContext.setTenantRoot(tenantRoot);
+                }
+            }
+        }
+
+        private void unbindTenantContext() {
+            TenantContextHolder.clearCurrentTenant();
+            Cwd.clear();
+            CwdContext.reset();
+        }
+
+        private Optional<TenantContext> resolveTenantContext(Object session, TenantContext explicitTenantCtx) {
+            if (explicitTenantCtx != null) {
+                return Optional.of(explicitTenantCtx);
+            }
+            if (session instanceof AgentSessionApi agentSession) {
+                TenantContext sessionCtx = agentSession.getTenantContext();
+                if (sessionCtx != null && sessionCtx.isTenantAware()) {
+                    return Optional.of(sessionCtx);
+                }
+            }
+            return Optional.empty();
+        }
+
+        private <T> Iterator<T> wrapTenantUnbindIterator(Iterator<T> delegate) {
+            class TenantUnbindIterator implements Iterator<T>, AutoCloseable {
+                private boolean isUnbound;
+
+                @Override
+                public boolean hasNext() {
+                    boolean hasNext = delegate != null && delegate.hasNext();
+                    if (!hasNext) {
+                        unbind();
+                    }
+                    return hasNext;
+                }
+
+                @Override
+                public T next() {
+                    try {
+                        if (delegate == null || !delegate.hasNext()) {
+                            unbind();
+                            throw new NoSuchElementException();
+                        }
+                        T next = delegate.next();
+                        if (!delegate.hasNext()) {
+                            unbind();
+                        }
+                        return next;
+                    } catch (NoSuchElementException e) {
+                        unbind();
+                        throw e;
+                    } catch (RuntimeException e) {
+                        unbind();
+                        throw e;
+                    }
+                }
+
+                private void unbind() {
+                    if (!isUnbound) {
+                        unbindTenantContext();
+                        isUnbound = true;
+                    }
+                }
+
+                @Override
+                public void close() throws Exception {
+                    try {
+                        if (delegate instanceof AutoCloseable closeable) {
+                            closeable.close();
+                        }
+                    } finally {
+                        unbind();
+                    }
+                }
+            }
+            return new TenantUnbindIterator();
+        }
+
         private CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,
                                                     ModelContext context, Map<String, Object> envs) {
+            return runWorkflow(workflow, inputs, session, context, envs, null);
+        }
+
+        private CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,
+                                                    ModelContext context, Map<String, Object> envs,
+                                                    TenantContext tenantCtx) {
             return CompletableFuture.supplyAsync(() -> {
-                PreparedWorkflow prepared = prepareWorkflow(workflow, session);
-                return prepared.workflow().invoke(inputs, prepared.session(), context);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                boolean bound = resolved.isPresent();
+                if (bound) {
+                    bindTenantContext(resolved.get());
+                }
+                try {
+                    PreparedWorkflow prepared = prepareWorkflow(workflow, session);
+                    return prepared.workflow().invoke(inputs, prepared.session(), context);
+                } finally {
+                    if (bound) {
+                        unbindTenantContext();
+                    }
+                }
             });
         }
 
@@ -461,42 +675,88 @@ public final class Runner {
                 ModelContext context,
                 List<StreamMode> streamModes,
                 Map<String, Object> envs) {
+            return runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs, null);
+        }
+
+        private CompletionStage<Iterator<WorkflowChunk>> runWorkflowStreaming(
+                Object workflow,
+                Object inputs,
+                Object session,
+                ModelContext context,
+                List<StreamMode> streamModes,
+                Map<String, Object> envs,
+                TenantContext tenantCtx) {
             return CompletableFuture.supplyAsync(() -> {
-                PreparedWorkflow prepared = prepareWorkflow(workflow, session);
-                List<StreamMode> effectiveModes = streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes;
-                return prepared.workflow().stream(inputs, prepared.session(), context, effectiveModes);
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                boolean bound = resolved.isPresent();
+                if (bound) {
+                    bindTenantContext(resolved.get());
+                }
+                boolean isSuccessful = false;
+                try {
+                    PreparedWorkflow prepared = prepareWorkflow(workflow, session);
+                    List<StreamMode> effectiveModes = streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes;
+                    Iterator<WorkflowChunk> iterator =
+                            prepared.workflow().stream(inputs, prepared.session(), context, effectiveModes);
+                    if (bound) {
+                        iterator = wrapTenantUnbindIterator(iterator);
+                    }
+                    isSuccessful = true;
+                    return iterator;
+                } finally {
+                    if (bound && !isSuccessful) {
+                        unbindTenantContext();
+                    }
+                }
             });
         }
 
         private CompletionStage<Object> runAgent(Object agent, Object inputs, Object session,
                                                  ModelContext context, Map<String, Object> envs) {
+            return runAgent(agent, inputs, session, context, envs, null);
+        }
+
+        private CompletionStage<Object> runAgent(Object agent, Object inputs, Object session,
+                                                 ModelContext context, Map<String, Object> envs,
+                                                 TenantContext tenantCtx) {
             return CompletableFuture.supplyAsync(() -> {
-                PreparedAgent prepared = prepareAgent(agent, inputs, session);
-                if (prepared.agent() instanceof RemoteAgent remoteAgent) {
-                    return await(remoteAgent.invoke(asStringObjectMap(inputs)));
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                boolean bound = resolved.isPresent();
+                if (bound) {
+                    bindTenantContext(resolved.get());
                 }
-                if (prepared.agent() instanceof BaseAgent baseAgent) {
-                    Object result = await(baseAgent.invoke(inputs, prepared.agentSession()));
-                    if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                try {
+                    PreparedAgent prepared = prepareAgent(agent, inputs, session);
+                    if (prepared.agent() instanceof RemoteAgent remoteAgent) {
+                        return await(remoteAgent.invoke(asStringObjectMap(inputs)));
                     }
-                    return result;
-                }
-                if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
-                    Object result = await(legacyAgent.invoke(asStringObjectMap(inputs), prepared.agentSession()));
-                    if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                    if (prepared.agent() instanceof BaseAgent baseAgent) {
+                        Object result = await(baseAgent.invoke(inputs, prepared.agentSession()));
+                        if (prepared.agentSessionFacade() != null) {
+                            prepared.agentSessionFacade().postRun();
+                        }
+                        return result;
                     }
-                    return result;
-                }
-                if (isDuckTypedAgent(prepared.agent())) {
-                    Object result = invokeDuckTypedAgent(prepared.agent(), inputs, prepared.agentSession(), context);
-                    if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                    if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                        Object result = await(legacyAgent.invoke(asStringObjectMap(inputs), prepared.agentSession()));
+                        if (prepared.agentSessionFacade() != null) {
+                            prepared.agentSessionFacade().postRun();
+                        }
+                        return result;
                     }
-                    return result;
+                    if (isDuckTypedAgent(prepared.agent())) {
+                        Object result = invokeDuckTypedAgent(prepared.agent(), inputs, prepared.agentSession(), context);
+                        if (prepared.agentSessionFacade() != null) {
+                            prepared.agentSessionFacade().postRun();
+                        }
+                        return result;
+                    }
+                    throw unsupportedAgent(prepared.agent());
+                } finally {
+                    if (bound) {
+                        unbindTenantContext();
+                    }
                 }
-                throw unsupportedAgent(prepared.agent());
             });
         }
 
@@ -504,28 +764,51 @@ public final class Runner {
                                                                     ModelContext context,
                                                                     List<StreamMode> streamModes,
                                                                     Map<String, Object> envs) {
+            return runAgentStreaming(agent, inputs, session, context, streamModes, envs, null);
+        }
+
+        private CompletionStage<Iterator<Object>> runAgentStreaming(Object agent, Object inputs, Object session,
+                                                                    ModelContext context,
+                                                                    List<StreamMode> streamModes,
+                                                                    Map<String, Object> envs,
+                                                                    TenantContext tenantCtx) {
             return CompletableFuture.supplyAsync(() -> {
-                PreparedAgent prepared = prepareAgent(agent, inputs, session);
-                List<StreamMode> effectiveModes = streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes;
-                if (prepared.agent() instanceof RemoteAgent remoteAgent) {
-                    return remoteAgent.stream(asStringObjectMap(inputs));
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                boolean bound = resolved.isPresent();
+                if (bound) {
+                    bindTenantContext(resolved.get());
                 }
-                if (prepared.agent() instanceof BaseAgent baseAgent) {
-                    Iterator<Object> iterator = baseAgent.stream(inputs, prepared.agentSession(), effectiveModes);
-                    if (prepared.agentSessionFacade() != null) {
-                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                boolean isSuccessful = false;
+                try {
+                    PreparedAgent prepared = prepareAgent(agent, inputs, session);
+                    List<StreamMode> effectiveModes = streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes;
+                    Iterator<Object> iterator;
+                    if (prepared.agent() instanceof RemoteAgent remoteAgent) {
+                        iterator = remoteAgent.stream(asStringObjectMap(inputs));
+                    } else if (prepared.agent() instanceof BaseAgent baseAgent) {
+                        iterator = baseAgent.stream(inputs, prepared.agentSession(), effectiveModes);
+                        if (prepared.agentSessionFacade() != null) {
+                            iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                        }
+                    } else if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                        iterator = legacyAgent.stream(
+                                asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
+                        if (prepared.agentSessionFacade() != null) {
+                            iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                        }
+                    } else {
+                        throw unsupportedAgent(prepared.agent());
                     }
-                    return iterator;
-                }
-                if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
-                    Iterator<Object> iterator = legacyAgent.stream(
-                            asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
-                    if (prepared.agentSessionFacade() != null) {
-                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                    if (bound) {
+                        iterator = wrapTenantUnbindIterator(iterator);
                     }
+                    isSuccessful = true;
                     return iterator;
+                } finally {
+                    if (bound && !isSuccessful) {
+                        unbindTenantContext();
+                    }
                 }
-                throw unsupportedAgent(prepared.agent());
             });
         }
 
@@ -563,6 +846,25 @@ public final class Runner {
                     }
                 }
             };
+        }
+
+        /**
+         * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)}.
+         */
+        Mono<Object> runAgentAsync(Object agent, Object inputs, Object session,
+                                   ModelContext context, Map<String, Object> envs) {
+            return ReactiveAdapters.fromCompletionStage(runAgent(agent, inputs, session, context, envs));
+        }
+
+        /**
+         * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}.
+         */
+        Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session,
+                                            ModelContext context, List<StreamMode> streamModes,
+                                            Map<String, Object> envs) {
+            return ReactiveAdapters.fromAutoCloseableIterator(
+                    () -> runAgentStreaming(agent, inputs, session, context, streamModes, envs)
+                            .toCompletableFuture().join());
         }
 
         private CompletionStage<SpawnedProcessHandle> spawnAgent(
@@ -617,21 +919,38 @@ public final class Runner {
         private CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs, boolean member,
                                                      Object session, ModelContext context,
                                                      Map<String, Object> envs) {
+            return runAgentTeam(agentTeam, inputs, member, session, context, envs, null);
+        }
+
+        private CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs, boolean member,
+                                                     Object session, ModelContext context,
+                                                     Map<String, Object> envs, TenantContext tenantCtx) {
             return CompletableFuture.supplyAsync(() -> {
-                if (member) {
-                    return await(runTeamMember(agentTeam, inputs, session));
+                Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+                boolean bound = resolved.isPresent();
+                if (bound) {
+                    bindTenantContext(resolved.get());
                 }
-                TeamSpecAdapter spec = resolveTeamAgentSpec(agentTeam, session);
-                AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, spec.teamName());
-                TeamRuntimeActivation activation = await(getTeamRuntimeManager().activate(spec, teamSession, inputs));
                 try {
-                    rememberActivatedTeam(spec, activation);
-                    if (isRejectKind(activation.action().kind())) {
-                        return null;
+                    if (member) {
+                        return await(runTeamMember(agentTeam, inputs, session));
                     }
-                    return await(asTeamAgentRuntime(activation.agent()).invoke(inputs, activation.session()));
+                    TeamSpecAdapter spec = resolveTeamAgentSpec(agentTeam, session);
+                    AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, spec.teamName());
+                    TeamRuntimeActivation activation = await(getTeamRuntimeManager().activate(spec, teamSession, inputs));
+                    try {
+                        rememberActivatedTeam(spec, activation);
+                        if (isRejectKind(activation.action().kind())) {
+                            return null;
+                        }
+                        return await(asTeamAgentRuntime(activation.agent()).invoke(inputs, activation.session()));
+                    } finally {
+                        finalizeTeamActivation(spec.teamName(), activation, teamSession);
+                    }
                 } finally {
-                    finalizeTeamActivation(spec.teamName(), activation, teamSession);
+                    if (bound) {
+                        unbindTenantContext();
+                    }
                 }
             });
         }
@@ -724,19 +1043,8 @@ public final class Runner {
                 try {
                     Stream<Object> stream = team.stream(inputs, executionSession);
                     List<Object> chunks = new ArrayList<>();
-                    boolean legacyTeamSession = executionSession instanceof Session;
                     if (stream != null) {
-                        if (legacyTeamSession) {
-                            stream.forEach(item -> chunks.add(normalizeLegacyTeamStreamChunk(item)));
-                        } else {
-                            stream.forEach(chunks::add);
-                        }
-                    }
-                    if (legacyTeamSession) {
-                        Session legacySession = (Session) executionSession;
-                        List<Object> legacyChunks = drainLegacySessionStream(legacySession);
-                        legacyChunks.addAll(chunks);
-                        return legacyChunks.iterator();
+                        stream.forEach(chunks::add);
                     }
                     return chunks.iterator();
                 } finally {
@@ -752,50 +1060,10 @@ public final class Runner {
                 BaseTeam team,
                 Object requestedSession,
                 AgentTeamSessionAdapter teamSession) {
-            if (team instanceof com.openjiuwen.core.multiagent.BaseTeam) {
-                return requestedSession instanceof Session legacySession ? legacySession : new Session();
+            if (requestedSession instanceof AgentSessionApi requested) {
+                return requested;
             }
-            return teamSession;
-        }
-
-        private static List<Object> drainLegacySessionStream(Session session) {
-            List<Object> chunks = new ArrayList<>();
-            Iterator<Object> iterator = session.streamIterator();
-            while (iterator.hasNext()) {
-                chunks.add(normalizeLegacyTeamStreamChunk(iterator.next()));
-            }
-            return chunks;
-        }
-
-        private static Object normalizeLegacyTeamStreamChunk(Object data) {
-            if (data instanceof OutputSchema) {
-                return data;
-            }
-            if (data instanceof Map<?, ?> map) {
-                if (map.keySet().containsAll(Set.of("type", "index", "payload"))) {
-                    return new OutputSchema(
-                            dataToString(map.get("type")),
-                            dataToInt(map.get("index")),
-                            map.get("payload")
-                    );
-                }
-                return new OutputSchema("message", 0, copyStringMap(map));
-            }
-            return new OutputSchema("message", 0, data);
-        }
-
-        private static String dataToString(Object data) {
-            return data == null ? null : String.valueOf(data);
-        }
-
-        private static int dataToInt(Object data) {
-            if (data instanceof Number number) {
-                return number.intValue();
-            }
-            if (data != null) {
-                return Integer.parseInt(String.valueOf(data));
-            }
-            return 0;
+            return teamSession.asAgentSessionApi();
         }
 
         private CompletionStage<DeliverResult> interactAgentTeam(Object payload, String teamName, String sessionId) {
@@ -1308,7 +1576,7 @@ public final class Runner {
          * {@code openjiuwen/core/runner/team_runner.py}.</p>
          */
         private static final class AgentTeamSessionAdapter implements TeamRuntimeManager.AgentTeamSessionView,
-                SessionManager.AgentTeamSessionView, AgentSessionApi {
+                SessionManager.AgentTeamSessionView {
             private final AgentTeamSession session;
 
             private AgentTeamSessionAdapter(AgentTeamSession session) {
@@ -1346,14 +1614,8 @@ public final class Runner {
                 session.updateState(data);
             }
 
-            @Override
-            public void writeStream(Object data) {
-                session.writeStream(data);
-            }
-
-            @Override
-            public Iterator<Object> streamIterator() {
-                return session.streamIterator();
+            private AgentSessionApi asAgentSessionApi() {
+                return session;
             }
         }
 
@@ -1380,10 +1642,10 @@ public final class Runner {
 
         private Object createWorkflowSession(Object session) {
             if (session == null) {
-                return new WorkflowSessionApi();
+                return new WorkflowSession();
             }
             if (session instanceof String sessionId) {
-                return new WorkflowSessionApi(null, sessionId, null);
+                return new WorkflowSession(null, sessionId, null);
             }
             if (session instanceof AgentSession agentSession) {
                 return agentSession.createWorkflowSession();

@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.tool_call;
+package com.openjiuwen.agentevolving.optimizer.tool_call;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateValue;
-import com.openjiuwen.agent_evolving.optimizer.BaseOptimizer;
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateValue;
+import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.trajectory.Updates;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.TunableSpec;
 

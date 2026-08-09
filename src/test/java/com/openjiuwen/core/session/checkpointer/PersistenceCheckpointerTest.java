@@ -299,17 +299,14 @@ class PersistenceCheckpointerTest {
             return sessionId;
         }
 
-        @Override
         public String workflowId() {
             return workflowId;
         }
 
-        @Override
         public String agentId() {
             return agentId;
         }
 
-        @Override
         public String teamId() {
             return teamId;
         }

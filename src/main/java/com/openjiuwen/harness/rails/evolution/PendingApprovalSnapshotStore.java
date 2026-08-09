@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.openjiuwen.agent_evolving.experience.PendingChange;
+import com.openjiuwen.agentevolving.experience.PendingChange;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

@@ -127,6 +127,28 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * Whether {@code clean_team} has latched the post-clean terminal state.
+     *
+     * @return true after successful team cleanup
+     * @since 0.1.14
+     */
+    public boolean isTeamCleaned() {
+        return state.isTeamCleaned();
+    }
+
+    /**
+     * Clear the post-{@code clean_team} latch so a fresh user turn can start.
+     *
+     * <p>Mirrors 730 {@code resetTeamTerminated} for issue #59 §3.5: USER_INPUT
+     * must not be dropped after cleanup.</p>
+     *
+     * @since 0.1.14
+     */
+    public void resetTeamCleaned() {
+        state.setTeamCleaned(false);
+    }
+
     public CompletionStage<Void> steer(String content) {
         MemberRuntime harness = resources.getHarness();
         return harness == null ? CompletableFuture.completedFuture(null) : harness.steer(content);

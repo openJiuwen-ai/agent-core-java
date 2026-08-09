@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -44,5 +45,15 @@ class MemorySectionTest {
 
         assertTrue(section.getContent().get("en").contains("Passive Mode"));
         assertTrue(section.getContent().get("en").contains("Only user-related memory content is allowed"));
+    }
+
+    @Test
+    void buildMemorySectionChineseIsReadableNotMojibake() {
+        PromptSection section = MemorySection.buildMemorySection("cn", true, true);
+
+        String content = section.getContent().get("cn");
+        assertTrue(content.contains("持久化存储体系"));
+        assertTrue(content.contains("只读模式"));
+        assertFalse(content.contains("鎸佷箙"));
     }
 }

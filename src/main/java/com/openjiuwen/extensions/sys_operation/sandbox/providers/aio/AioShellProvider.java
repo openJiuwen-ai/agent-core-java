@@ -5,8 +5,8 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.aio;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
-import com.openjiuwen.core.sysop.sandbox.providers.BaseShellProvider;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseShellProvider;
 
 /**
  * AIO shell provider — SPI skeleton.
@@ -14,7 +14,7 @@ import com.openjiuwen.core.sysop.sandbox.providers.BaseShellProvider;
  * @version 1.0
  * @since 0.1.7
  */
-public class AioShellProvider extends BaseShellProvider {
+public class AioShellProvider extends SyncBaseShellProvider {
     /**
      * AioShellProvider.
      * 

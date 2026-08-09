@@ -683,6 +683,10 @@ class RedisCheckpointerStorageTest {
             expiryAt.remove(key);
         }
 
+        public void set(byte[] key, byte[] value) {
+            set(new String(key, StandardCharsets.UTF_8), value);
+        }
+
         public boolean set(String key, Object value, boolean nx, Integer expiry) {
             cleanup(key);
             if (nx && values.containsKey(key)) {
@@ -700,6 +704,11 @@ class RedisCheckpointerStorageTest {
         public Object get(String key) {
             cleanup(key);
             return values.get(key);
+        }
+
+        public byte[] get(byte[] key) {
+            Object value = get(new String(key, StandardCharsets.UTF_8));
+            return value instanceof byte[] bytes ? bytes : null;
         }
 
         public long exists(String key) {

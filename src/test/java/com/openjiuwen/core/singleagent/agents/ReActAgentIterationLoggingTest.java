@@ -5,15 +5,14 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
@@ -88,7 +87,7 @@ class ReActAgentIterationLoggingTest {
                     Map.of("_streaming", true)
             );
 
-            assertThat(result).containsEntry("output", "streaming model exploded")
+            assertThat(result).containsEntry("output", "IllegalStateException: streaming model exploded")
                     .containsEntry("result_type", "error");
             assertThat(logs.reactMessages()).containsExactly(
                     "ReAct iteration 1/1 started",
@@ -428,18 +427,13 @@ class ReActAgentIterationLoggingTest {
         }
     }
 
-    private static final class CleanupFailureSession extends MemorySession implements AgentSessionLifecycle {
+    private static final class CleanupFailureSession extends MemorySession {
         private final RuntimeException failure;
         private boolean closeStreamCalled;
         private boolean commitCalled;
 
         private CleanupFailureSession(RuntimeException failure) {
             this.failure = failure;
-        }
-
-        @Override
-        public AgentSessionLifecycle preRun(Map<String, Object> kwargs) {
-            return this;
         }
 
         @Override

@@ -59,16 +59,7 @@ public class OfflineRLOptimizer extends BaseRLOptimizer {
 
     public void registerReward(Function<RolloutMessage, Map<String, Object>> fn, String name) {
         String rewardName = name != null && !name.isBlank() ? name : fn.getClass().getSimpleName();
-        RewardRegistry.rewardRegistry().register(rewardName, value -> {
-            Object arg = value;
-            if (value instanceof Object[]) {
-                Object[] arr = (Object[]) value;
-                if (arr.length > 0) {
-                    arg = arr[0];
-                }
-            }
-            return fn.apply((RolloutMessage) arg);
-        });
+        RewardRegistry.rewardRegistry().register(rewardName, value -> fn.apply((RolloutMessage) value));
         this.rewardFnName = rewardName;
         this.rewardFn = fn;
         LOGGER.info(() -> "Registered reward function: " + rewardName);

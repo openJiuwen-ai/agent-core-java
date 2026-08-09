@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.runner.spawn;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -38,7 +38,8 @@ import java.util.concurrent.TimeoutException;
 public class SpawnedProcessHandle {
 
     private static final LoggerProtocol LOGGER = Loggers.RUNNER;
-    private static final ExecutorService EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("spawn-process-manager");
+    private static final ExecutorService EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("spawn-process-manager", true);
 
     private final String processId;
     private final Process process;
@@ -281,7 +282,8 @@ public class SpawnedProcessHandle {
                 if (!isAlive() || shutdownRequested) {
                     break;
                 }
-                await(performHealthCheck());
+                // 在当前 worker 上直接执行，避免再 submit 到同一 EXECUTOR 造成自死锁
+                performHealthCheckBlocking();
             } catch (CompletionException exception) {
                 LOGGER.error("Health check error for process {}: {}", processId, exception.getMessage());
                 healthy = false;

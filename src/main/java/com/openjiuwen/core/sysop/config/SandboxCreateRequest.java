@@ -4,21 +4,27 @@
 
 package com.openjiuwen.core.sysop.config;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Request model for resolving or creating a sandbox endpoint.
- * 
- * @since 0.1.7
+ * Sandbox creation request.
+ * <p>
+ * Mirrors Python's {@code SandboxCreateRequest} in
+ * {@code openjiuwen/core/sys_operation/config.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SandboxCreateRequest {
+
+    @JsonProperty("isolation_key")
     private String isolationKey;
 
     private SandboxGatewayConfig config;

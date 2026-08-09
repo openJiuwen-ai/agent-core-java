@@ -133,7 +133,10 @@ class BashToolTest {
 
     @Test
     void testReadOnlyModeAllowsRead() throws Exception {
-        ToolOutput result = invoke(new BashTool(PermissionMode.READ_ONLY), command(isWindows() ? "dir" : "ls -la"));
+        ToolOutput result = invoke(
+                new BashTool(PermissionMode.READ_ONLY),
+                Map.of("command", isWindows() ? "dir" : "ls -la", "workdir", tempDir.toString())
+        );
 
         assertThat(result.isSuccess()).isTrue();
     }

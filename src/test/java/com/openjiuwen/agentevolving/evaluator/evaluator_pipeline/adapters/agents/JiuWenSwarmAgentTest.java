@@ -2,11 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.adapters.agents;
+package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.agents;
 
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.AgentContext;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.EvalResult;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.IterationResult;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.AgentContext;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.EvalResult;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.IterationResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

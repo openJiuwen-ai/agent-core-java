@@ -4,329 +4,216 @@
 
 package com.openjiuwen.core.context.context;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
-import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.sysop.SysOperation;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.stream.Stream;
 
 /**
- * Buffer for messages that have been offloaded from the context window.
- * Supports in-memory and filesystem storage.
- * <p>
- * Mirrors Python's {@code OffloadMessageBuffer} from {@code context_engine/context/message_buffer.py}.
- * 
- * @since 0.1.7
+ * Storage for messages offloaded from a context window.
+ *
+ * <p>Mirrors Python's {@code OffloadMessageBuffer} in
+ * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
  */
 public class OffloadMessageBuffer {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    private Map<String, List<BaseMessage>> inMemoryOffloadMessages;
-    private SysOperation sysOperation;
+    private final Map<String, List<BaseMessage>> inMemoryOffloadMessages;
+    private SysOperationPort sysOperation;
     private String workspaceDir;
     private String sessionId;
 
-    /**
-     * OffloadMessageBuffer.
-     * 
-     * @since 0.1.7
-     */
     public OffloadMessageBuffer() {
-        this.inMemoryOffloadMessages = new HashMap<>();
+        this(null);
     }
 
-    /**
-     * OffloadMessageBuffer.
-     * 
-     * @param initMessages initMessages
-     * @since 0.1.7
-     */
     public OffloadMessageBuffer(Map<String, List<BaseMessage>> initMessages) {
-        this.inMemoryOffloadMessages = initMessages != null ? new HashMap<>(initMessages) : new HashMap<>();
-    }
-
-    /**
-     * Offload messages to the specified storage.
-     * 
-     * @param offloadHandle unique identifier for the offloaded messages
-     * @param offloadType storage type (currently only "in_memory")
-     * @param messages the messages to offload
-     * @since 0.1.7
-     */
-    public void offload(String offloadHandle, String offloadType, List<BaseMessage> messages) {
-        if ("in_memory".equals(offloadType)) {
-            inMemoryOffloadMessages.put(offloadHandle, messages);
+        this.inMemoryOffloadMessages = new LinkedHashMap<>();
+        if (initMessages != null) {
+            initMessages.forEach((key, value) -> this.inMemoryOffloadMessages.put(key, copyMessages(value)));
         }
     }
 
-    /**
-     * setSysOperation.
-     * 
-     * @param sysOperation sysOperation
-     * @since 0.1.7
-     */
-    public void setSysOperation(SysOperation sysOperation) {
+    public void setSysOperation(SysOperationPort sysOperation) {
         this.sysOperation = sysOperation;
     }
 
-    /**
-     * setWorkspaceInfo.
-     * 
-     * @param workspaceDir workspaceDir
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     public void setWorkspaceInfo(String workspaceDir, String sessionId) {
-        this.workspaceDir = workspaceDir;
-        this.sessionId = sessionId;
+        this.workspaceDir = workspaceDir == null ? "" : workspaceDir;
+        this.sessionId = sessionId == null ? "" : sessionId;
     }
 
-    /**
-     * Reload offloaded messages from storage.
-     * 
-     * @param offloadHandle the handle of the messages to reload
-     * @param offloadType the storage type
-     * @return the reloaded messages, or empty list if not found
-     * @since 0.1.7
-     */
-    public List<BaseMessage> reload(String offloadHandle, String offloadType) {
+    public void offload(String offloadHandle, String offloadType, List<BaseMessage> messages) {
         if ("in_memory".equals(offloadType)) {
-            return inMemoryOffloadMessages.getOrDefault(offloadHandle, new ArrayList<>());
+            inMemoryOffloadMessages.put(offloadHandle, copyMessages(messages));
+        }
+    }
+
+    public CompletionStage<List<BaseMessage>> reload(String offloadHandle, String offloadType) {
+        if ("in_memory".equals(offloadType)) {
+            return CompletableFuture.completedFuture(
+                    copyMessages(inMemoryOffloadMessages.getOrDefault(offloadHandle, List.of())));
         }
         if ("filesystem".equals(offloadType)) {
-            return reloadFromFilesystem(offloadHandle);
+            return CompletableFuture.completedFuture(reloadFromFilesystem(offloadHandle));
         }
-        return new ArrayList<>();
+        return CompletableFuture.completedFuture(List.of());
     }
 
-    /**
-     * reloadFromFilesystem.
-     * 
-     * @param offloadHandle offloadHandle
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<BaseMessage> reloadFromFilesystem(String offloadHandle) {
-        for (String offloadPath : filesystemReloadPaths(offloadHandle)) {
-            try {
-                String payload = readOffloadPayload(offloadPath);
-                if (payload == null || payload.isBlank()) {
-                    continue;
-                }
-                Map<String, Object> data = MAPPER.readValue(payload, new TypeReference<>() {
-                });
-                Object rawMessages = data.get("messages");
-                if (!(rawMessages instanceof List<?> list) || list.isEmpty()) {
-                    continue;
-                }
-                List<BaseMessage> messages = new ArrayList<>();
-                for (Object raw : list) {
-                    if (raw instanceof Map<?, ?> map) {
-                        BaseMessage message = toMessage((Map<String, Object>) map);
-                        if (message != null) {
-                            messages.add(message);
-                        }
-                    }
-                }
-                if (!messages.isEmpty()) {
-                    return messages;
-                }
-            } catch (IOException | IllegalArgumentException ignored) {
-                // Keep Python behavior: swallow and try next candidate path.
-            }
-        }
-        return new ArrayList<>();
+    public List<BaseMessage> reloadBlocking(String offloadHandle, String offloadType) {
+        return reload(offloadHandle, offloadType).toCompletableFuture().join();
     }
 
-    /**
-     * readOffloadPayload.
-     * 
-     * @param offloadPath offloadPath
-     * @return the result
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
-    private String readOffloadPayload(String offloadPath) throws IOException {
-        if (sysOperation != null) {
-            try {
-                Object fs = sysOperation.fs();
-                java.lang.reflect.Method readFileMethod = fs.getClass().getMethod(
-                        "readFile", String.class, String.class, String.class,
-                        Integer.class, Long.class, String.class, int.class, Long.class);
-                Object result = readFileMethod.invoke(fs, offloadPath, "text", null, null, null, "utf-8", 0, null);
-                if (result != null) {
-                    java.lang.reflect.Method getCodeMethod = result.getClass().getMethod("getCode");
-                    int code = (int) getCodeMethod.invoke(result);
-                    java.lang.reflect.Method getDataMethod = result.getClass().getMethod("getData");
-                    Object data = getDataMethod.invoke(result);
-                    if (code == 0 && data != null) {
-                        java.lang.reflect.Method getContentMethod = data.getClass().getMethod("getContent");
-                        Object content = getContentMethod.invoke(data);
-                        if (content instanceof String text && !text.isBlank()) {
-                            return text;
-                        }
-                        if (content != null) {
-                            String text = String.valueOf(content);
-                            if (!text.isBlank()) {
-                                return text;
-                            }
-                        }
-                    }
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Fall back to direct file read.
-            }
-        }
-        if (offloadPath != null) {
-            Path path = Path.of(offloadPath);
-            if (Files.isRegularFile(path)) {
-                return Files.readString(path);
-            }
-        }
-        return "";
-    }
-
-    /**
-     * filesystemReloadPaths.
-     * 
-     * @param offloadHandle offloadHandle
-     * @return the result
-     * @since 0.1.7
-     */
-    private List<String> filesystemReloadPaths(String offloadHandle) {
-        if (workspaceDir == null || workspaceDir.isBlank() || sessionId == null || sessionId.isBlank()) {
-            return List.of(offloadHandle);
-        }
-        Path offloadDir = Path.of(workspaceDir, "context", sessionId + "_context", "offload");
-        List<String> candidates = new ArrayList<>();
-        candidates.add(offloadDir.resolve(offloadHandle + ".json").toString());
-        if (Files.isDirectory(offloadDir)) {
-            try (Stream<Path> stream = Files.list(offloadDir)) {
-                stream.filter(path -> path.getFileName().toString().endsWith("_" + offloadHandle + ".json"))
-                        .sorted(Comparator.comparing(Path::toString)).map(Path::toString)
-                        .filter(path -> !candidates.contains(path)).forEach(candidates::add);
-            } catch (IOException ignored) {
-                // Fall back to exact path only.
-            }
-        }
-        return candidates;
-    }
-
-    /**
-     * Clear a specific offloaded message set.
-     * 
-     * @param offloadHandle offloadHandle
-     * @param offloadType offloadType
-     * @since 0.1.7
-     */
     public void clear(String offloadHandle, String offloadType) {
         if ("in_memory".equals(offloadType)) {
             inMemoryOffloadMessages.remove(offloadHandle);
         }
     }
 
-    /**
-     * Get all offloaded messages.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public Map<String, List<BaseMessage>> getAll() {
-        return inMemoryOffloadMessages;
+        Map<String, List<BaseMessage>> result = new LinkedHashMap<>();
+        inMemoryOffloadMessages.forEach((key, value) -> result.put(key, copyMessages(value)));
+        return result;
+    }
+
+    public List<String> filesystemReloadPaths(String offloadHandle) {
+        if (isBlank(workspaceDir) || isBlank(sessionId)) {
+            return List.of(offloadHandle);
+        }
+        Path offloadDir = Path.of(workspaceDir, "context", sessionId + "_context", "offload");
+        List<String> paths = new ArrayList<>();
+        Path exactPath = offloadDir.resolve(offloadHandle + ".json");
+        paths.add(exactPath.toString());
+        if (Files.isDirectory(offloadDir)) {
+            try (Stream<Path> stream = Files.list(offloadDir)) {
+                stream.filter(path -> path.getFileName().toString().endsWith("_" + offloadHandle + ".json"))
+                        .sorted(Comparator.comparing(Path::toString))
+                        .map(Path::toString)
+                        .filter(path -> !paths.contains(path))
+                        .forEach(paths::add);
+            } catch (IOException ignored) {
+                paths.add(offloadHandle);
+                return paths;
+            }
+        }
+        paths.add(offloadHandle);
+        return paths;
+    }
+
+    private List<BaseMessage> reloadFromFilesystem(String offloadHandle) {
+        if (sysOperation == null) {
+            return List.of();
+        }
+        for (String offloadPath : filesystemReloadPaths(offloadHandle)) {
+            Optional<String> rawContent = sysOperation.readFile(offloadPath);
+            if (rawContent.isEmpty() || rawContent.get().isBlank()) {
+                continue;
+            }
+            List<BaseMessage> messages = parseMessages(rawContent.get());
+            if (!messages.isEmpty()) {
+                return messages;
+            }
+        }
+        return List.of();
+    }
+
+    private static List<BaseMessage> parseMessages(String rawContent) {
+        try {
+            Map<String, Object> payload = JSON_MAPPER.readValue(rawContent, new TypeReference<Map<String, Object>>() {
+            });
+            return asMessageList(payload.get("messages"));
+        } catch (JsonProcessingException ex) {
+            return List.of();
+        }
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * toMessage.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
-    private BaseMessage toMessage(Map<String, Object> map) {
-        String role = String.valueOf(map.getOrDefault("role", "user"));
-        Object content = map.get("content");
-        String name = map.get("name") instanceof String s ? s : null;
-        return switch (role) {
-            case "assistant" -> {
-                AssistantMessage message = new AssistantMessage();
-                message.setRole("assistant");
-                message.setContent(content);
-                message.setName(name);
-                Object toolCalls = map.get("tool_calls");
-                if (toolCalls instanceof List<?> list) {
-                    List<ToolCall> converted = new ArrayList<>();
-                    for (Object item : list) {
-                        if (item instanceof Map<?, ?> tcMap) {
-                            converted.add(ToolCall.builder().id(stringOrNull(tcMap.get("id")))
-                                    .type(tcMap.get("type") != null ? String.valueOf(tcMap.get("type")) : "function")
-                                    .name(stringOrNull(tcMap.get("name")))
-                                    .arguments(stringOrNull(tcMap.get("arguments")))
-                                    .index(tcMap.get("index") instanceof Number n ? n.intValue() : null).build());
-                        }
-                    }
-                    message.setToolCalls(converted);
-                }
-                if (map.get("finish_reason") instanceof String finishReason) {
-                    message.setFinishReason(finishReason);
-                }
-                if (map.containsKey("parser_content")) {
-                    message.setParserContent(map.get("parser_content"));
-                }
-                if (map.get("reasoning_content") instanceof String reasoningContent) {
-                    message.setReasoningContent(reasoningContent);
-                }
-                yield message;
+    private static List<BaseMessage> asMessageList(Object value) {
+        if (!(value instanceof List<?> rawMessages)) {
+            return List.of();
+        }
+        List<BaseMessage> messages = new ArrayList<>();
+        for (Object rawMessage : rawMessages) {
+            if (rawMessage instanceof BaseMessage message) {
+                messages.add(message);
+                continue;
             }
-            case "tool" -> {
-                ToolMessage message = new ToolMessage();
-                message.setRole("tool");
-                message.setContent(content);
-                message.setName(name);
-                if (map.get("tool_call_id") instanceof String toolCallId) {
-                    message.setToolCallId(toolCallId);
-                }
-                yield message;
+            BaseMessage parsed = messageFromMap(rawMessage);
+            if (parsed != null) {
+                messages.add(parsed);
             }
-            case "system" -> {
-                SystemMessage message = new SystemMessage();
-                message.setRole("system");
-                message.setContent(content);
-                message.setName(name);
-                yield message;
+        }
+        return messages;
+    }
+
+    private static BaseMessage messageFromMap(Object item) {
+        if (!(item instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        rawMap.forEach((key, value) -> map.put(String.valueOf(key), value));
+        String role = map.get("role") == null ? "user" : String.valueOf(map.get("role"));
+        Object content = map.getOrDefault("content", "");
+        BaseMessage message;
+        if ("assistant".equals(role)) {
+            AssistantMessage assistantMessage = new AssistantMessage(content == null ? "" : String.valueOf(content));
+            if (map.get("tool_calls") instanceof List<?> toolCalls) {
+                assistantMessage.setToolCallsRaw(toolCalls);
             }
-            default -> {
-                UserMessage message = new UserMessage();
-                message.setRole("user");
-                message.setContent(content);
-                message.setName(name);
-                yield message;
-            }
-        };
+            message = assistantMessage;
+        } else if ("tool".equals(role)) {
+            ToolMessage toolMessage = new ToolMessage("", map.get("tool_call_id") == null
+                    ? "" : String.valueOf(map.get("tool_call_id")));
+            toolMessage.setContent(content == null ? "" : content);
+            message = toolMessage;
+        } else if ("system".equals(role)) {
+            message = new SystemMessage(content == null ? "" : String.valueOf(content));
+        } else {
+            message = new UserMessage(content == null ? "" : String.valueOf(content));
+        }
+        if (map.get("name") instanceof String name) {
+            message.setName(name);
+        }
+        if (map.get("metadata") instanceof Map<?, ?> metadataMap) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadataMap.forEach((key, metadataValue) -> metadata.put(String.valueOf(key), metadataValue));
+            message.setMetadata(metadata);
+        }
+        return message;
+    }
+
+    private static List<BaseMessage> copyMessages(List<BaseMessage> messages) {
+        return messages == null ? new ArrayList<>() : new ArrayList<>(messages);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**
-     * stringOrNull.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
+     * Narrow file-read adapter for filesystem offload reload.
+     *
+     * <p>Mirrors Python's {@code sys_operation.fs().read_file(...)} collaborator in
+     * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
      */
-    private static String stringOrNull(Object value) {
-        return value instanceof String text ? text : null;
+    public interface SysOperationPort {
+        Optional<String> readFile(String path);
     }
 }

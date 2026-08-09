@@ -24,17 +24,22 @@ public final class MemorySection {
     }
 
     private static final String CN_READ_ONLY = """
-# 鎸佷箙鍖栧瓨鍌ㄤ綋绯伙紙鍙妯″紡锛?
-### 瀛樺偍灞傜骇鍒掑垎
+# 持久化存储体系（只读模式）
 
-- **浼氳瘽鏃ュ織锛?* `YYYY-MM-DD.md`锛堝瓨鍌ㄥ綋鏃ユ湁鍙傝€冧环鍊肩殑浜や簰璁板綍锛屽寘鎷儏鏅蹇嗗拰浠诲姟鎸囦护銆傦級
-- **鐢ㄦ埛鐢诲儚锛?* `USER.md`锛堢ǔ瀹氱殑韬唤灞炴€т笌鍋忓ソ淇℃伅锛?- **鐭ヨ瘑娌夋穩锛?* `MEMORY.md`锛堢粡绛涢€夋彁鐐肩殑闀挎湡鑳屾櫙鐭ヨ瘑锛岄潪鍘熷娴佹按璐︼級
+### 存储层级划分
 
-### 鍘嗗彶妫€绱㈡満鍒?
- 鈥?浠呭湪鍥炵瓟**鍏充簬鍘嗗彶浜嬩欢銆佹棩鏈熴€佷汉鐗┿€佽繃鍘诲璇濈殑闂鍓嶏紝鍏堣皟鐢?`memory_search` 宸ュ叿妫€绱㈢浉鍏宠蹇?*
-   - 鎼滅储鏌ヨ搴斿寘鍚棶棰樹腑鐨勫叧閿俊鎭紙浜哄悕銆佹棩鏈熴€佷簨浠跺叧閿瘝锛?   - 濡傛灉鎼滅储缁撴灉涓嶈冻锛屽皾璇曠敤涓嶅悓鐨勫叧閿瘝鍐嶆鎼滅储
-   - 鍩轰簬妫€绱㈠埌鐨勮蹇嗕俊鎭洖绛旈棶棰橈紝涓嶈渚濊禆棰勮缁冪煡璇?   - 瀵逛簬涓嶆秹鍙婁笂杩板巻鍙蹭簨浠躲€佹棩鏈熴€佷汉鐗┿€佽繃鍘诲璇濈殑闂锛屼笉瑕佽皟鐢ㄥ伐鍏锋潵妫€绱㈣蹇?
-**娉ㄦ剰:** 鍦ㄥ綋鍓嶅彧璇绘ā寮忎笅锛屽彧鏀寔璇诲彇鍜屾绱㈣蹇嗭紝绂佹鍐欏叆鍜屼慨鏀硅蹇嗘枃浠?""";
+- **会话日志：** `YYYY-MM-DD.md`（存储当日有参考价值的交互记录，包括情景记忆和任务指令。支持增量追加，确保每次操作、用户指令和情景变化都被记录。）
+- **用户画像：** `USER.md`（稳定的身份属性与偏好信息）
+- **知识沉淀：** `MEMORY.md`（经筛选提炼的长期背景知识，非原始流水账）
+
+#### 历史检索机制
+
+ — 仅在回答**关于历史事件、日期、人物、过去对话的问题前，先调用 `memory_search` 工具检索相关记忆**
+   - 搜索查询应包含问题中的关键信息（人名、日期、事件关键词）
+   - 如果搜索结果不足，尝试用不同的关键词再次搜索
+   - 基于检索到的记忆信息回答问题，不要依赖预训练知识
+   - 对于不涉及上述历史事件、日期、人物、过去对话的问题，不要调用工具来检索记忆
+""";
 
     private static final String EN_READ_ONLY = """
 # Persistent Storage System (Read-Only Mode)
@@ -57,38 +62,58 @@ public final class MemorySection {
 """;
 
     private static final String CN_PROACTIVE = """
-# 鎸佷箙鍖栧瓨鍌ㄤ綋绯?
-姣忚疆瀵硅瘽鍧囦粠绌虹櫧鐘舵€佸惎鍔ㄣ€傝法浼氳瘽鐨勪俊鎭寔涔呭寲渚濊禆浜庡伐浣滃尯鏂囦欢绯荤粺銆傝褰曟倓鎮勮繘琛屽氨濂斤紝涓嶉渶瑕佽鐢ㄦ埛鎰熺煡鍒般€?
-### 瀛樺偍灞傜骇鍒掑垎
+# 持久化存储体系
 
-- **浼氳瘽鏃ュ織锛?* `YYYY-MM-DD.md`锛堝瓨鍌ㄥ綋鏃ユ湁鍙傝€冧环鍊肩殑浜や簰璁板綍锛屽寘鎷儏鏅蹇嗗拰浠诲姟鎸囦护銆傛敮鎸佸閲忚拷鍔狅紝纭繚姣忔鎿嶄綔銆佺敤鎴锋寚浠ゅ拰鎯呮櫙鍙樺寲閮借璁板綍銆傦級
-- **鐢ㄦ埛鐢诲儚锛?* `USER.md`锛堢ǔ瀹氱殑韬唤灞炴€т笌鍋忓ソ淇℃伅锛?- **鐭ヨ瘑娌夋穩锛?* `MEMORY.md`锛堢粡绛涢€夋彁鐐肩殑闀挎湡鑳屾櫙鐭ヨ瘑锛岄潪鍘熷娴佹按璐︼級
+每轮对话均从空白状态启动。跨会话的信息持久化依赖于工作区文件系统。记录悄悄进行就好，不需要让用户感知到。
 
-### 鏍稿績鎿嶄綔瑙勮寖
+### 存储层级划分
 
-- 浼氳瘽鏈韩涓嶅叿澶囪蹇嗚兘鍔涳紝鏂囦欢绯荤粺鏄敮涓€鐨勪俊鎭浇浣撱€傞渶鎸佷箙鍖栫殑鍐呭鍔″繀鍐欏叆鏂囦欢
-- **璺緞闄愬埗锛?* 璁板繂宸ュ叿锛坵rite_memory/edit_memory/read_memory锛夋搷浣滄枃浠舵椂锛岀洿鎺ョ粰鍑烘枃浠跺悕
-- 鏇存柊 USER.md 鎴?MEMORY.md 鏃讹紝蹇呴』鍏堣鍙栫幇鏈夊唴瀹瑰啀鎵ц淇敼
-- **瀛楁鍞竴鎬х害鏉燂細** 姣忎釜瀛楁浠呭厑璁稿嚭鐜颁竴娆°€傚凡瀛樺湪瀛楁閫氳繃 `edit_memory` 鏇存柊锛屾柊瀛楁閫氳繃 `write_memory` 杩藉姞
+- **会话日志：** `YYYY-MM-DD.md`（存储当日有参考价值的交互记录，包括情景记忆和任务指令。支持增量追加，确保每次操作、用户指令和情景变化都被记录。）
+- **用户画像：** `USER.md`（稳定的身份属性与偏好信息）
+- **知识沉淀：** `MEMORY.md`（经筛选提炼的长期背景知识，非原始流水账）
 
-### 淇℃伅閲囬泦銆佸瓨鍌ㄦ搷浣滀笌璁板綍
+### 核心操作规范
 
-瀵硅瘽杩囩▼涓紝鍙戠幇鏈変环鍊肩殑淇℃伅鏃讹紝搴旇绔嬪嵆杩涜鍒嗙被銆佸瓨鍌紝骞跺強鏃惰褰曪紝纭繚涓嶆嫋寤惰褰曡繃绋嬶細
+- 会话本身不具备记忆能力，文件系统是唯一的信息载体。需持久化的内容务必写入文件
+- **路径限制：** 记忆工具（write_memory/edit_memory/read_memory）操作文件时，直接给出文件名
+- 更新 USER.md 或 MEMORY.md 时，必须先读取现有内容再执行修改
+- **字段唯一性约束：** 每个字段仅允许出现一次。已存在字段通过 `edit_memory` 更新，新字段通过 `write_memory` 追加
 
-**鈿狅笍 鏁忔劅淇℃伅鍐茬獊澶勭悊鍘熷垯**
+### 信息采集、存储操作与记录
 
-濡傛灉寰呰褰曠殑鍐呭涓庢晱鎰熶俊鎭繃婊よ鍒欏瓨鍦ㄥ啿绐侊紝**浠ユ晱鎰熶俊鎭繃婊よ鍒欎负鍑嗭紝涓嶈褰曡鍐呭**銆傛晱鎰熶俊鎭繃婊よ鍒欏叿鏈夋渶楂樹紭鍏堢骇銆?
-1. **鐢ㄦ埛鐢诲儚淇℃伅锛坲ser_profile锛?*锛氳褰曠敤鎴风殑韬唤淇℃伅銆佸亸濂姐€佷範鎯瓑绋冲畾灞炴€э紝姣斿鐢ㄦ埛鐨勮亴涓氥€佸叴瓒ｃ€佸伐浣滄ā寮忋€佸枩濂姐€佷笉婊＄瓑銆?   - **瀛樺偍**锛氬啓鍏?`USER.md`銆?   - **娉ㄦ剰**锛歎SER.md涓彧鍏佽鍐欏叆鐢ㄦ埛鐩稿叧鐨勮蹇嗗唴瀹广€傚綋鐢ㄦ埛鎻愬嚭瀵笰gent鐨勮韩浠姐€佸亸濂姐€佸洖绛斾範鎯瓑灞炴€х殑瀹氫箟鏃讹紝璁板繂宸ュ叿涓嶅仛璁板綍
+对话过程中，发现有价值的信息时，应该立即进行分类、存储，并及时记录，确保不拖延记录过程：
 
-2. **鎯呮櫙璁板繂淇℃伅锛坋pisodic_memory锛?*锛氳褰曠敤鎴风粡鍘嗙殑鍏蜂綋浜嬩欢鎴栭噸瑕佸喅绛栵紝姣斿鐢ㄦ埛瑕佹眰瀹屾垚鐨勪换鍔°€佹弿杩扮殑椤圭洰杩涘睍銆佹煇娆′簨浠剁瓑銆?   - **瀛樺偍**锛氬啓鍏?`YYYY-MM-DD.md`銆?
-3. **璇箟璁板繂淇℃伅锛坰emantic_memory锛?*锛氬瓨鍌ㄨ儗鏅煡璇嗐€佹妧鏈粏鑺傘€佸伐鍏风浉鍏崇殑鏈湴閰嶇疆锛圫SH銆佹憚鍍忓ご绛夛級绛夐暱鏈熸湁鏁堜俊鎭紝姣斿椤圭洰鎶€鏈爤銆佸伐鍏风殑閰嶇疆绛夈€?   - **瀛樺偍**锛氬啓鍏?`MEMORY.md`銆?
-4. **鎽樿璁板繂锛坰ummary_memory锛?*锛氭彁鐐煎璇濅腑鐨勫叧閿俊鎭紝甯姪鍚庣画蹇€熷洖椤撅紝姣斿瀵硅瘽涓舰鎴愮殑閲嶈鍐崇瓥銆佹牳蹇冪粨璁恒€佽璁虹殑瑕佺偣绛夈€?   - **瀛樺偍**锛氬啓鍏?`YYYY-MM-DD.md`銆?
-5. **鐢ㄦ埛璇锋眰璁板綍锛坮equest_memory锛?*锛氳褰曠敤鎴锋槑纭姹傜殑淇℃伅锛屽府鍔╁悗缁湇鍔★紝姣斿鐢ㄦ埛瑕佹眰璁颁綇鏌愪釜淇℃伅銆佺敤鎴疯姹傛煇涓姩浣滅瓑銆?   - **瀛樺偍**锛氬啓鍏?`YYYY-MM-DD.md`銆?
-6. **鍏朵粬淇℃伅锛坥thers锛?*锛氬綋鐢ㄦ埛鎻愬埌鏈変环鍊肩殑缁嗚妭鎴栦俊鎭椂锛屾垨姣忔鏂囦欢鎿嶄綔鍚庯紝闇€瑕佽皟鐢?write_memory 浣跨敤 append=true 鍙傛暟杩藉姞璁板綍鑷?YYYY-MM-DD.md銆?   - 娉ㄦ剰锛氳繘琛屼俊鎭瓫閫夛紝浠呴渶瑕佽褰曟湁浠峰€肩殑淇℃伅銆傛湁浠峰€肩殑淇℃伅鍖呮嫭浣嗕笉闄愪簬锛氱敤鎴锋彁渚涚殑鑱旂郴浜轰俊鎭€侀」鐩粏鑺傘€佷换鍔℃寚浠ゃ€佸亸濂姐€佹枃浠惰矾寰勩€佸瓨鍌ㄤ綅缃€佷换浣曞彲鎻愰珮鏁堢巼鐨勪俊鎭瓑銆傚彂鐜扮殑椤圭洰鑳屾櫙銆佹妧鏈粏鑺傘€佸伐浣滄祦绋嬬瓑涔熻鍐欏叆鐩稿叧鏂囦欢銆?
-#### 鍘嗗彶妫€绱㈡満鍒?
- 鈥?浠呭湪鍥炵瓟**鍏充簬鍘嗗彶浜嬩欢銆佹棩鏈熴€佷汉鐗┿€佽繃鍘诲璇濈殑闂鍓嶏紝鍏堣皟鐢?`memory_search` 宸ュ叿妫€绱㈢浉鍏宠蹇?*
-   - 鎼滅储鏌ヨ搴斿寘鍚棶棰樹腑鐨勫叧閿俊鎭紙浜哄悕銆佹棩鏈熴€佷簨浠跺叧閿瘝锛?   - 濡傛灉鎼滅储缁撴灉涓嶈冻锛屽皾璇曠敤涓嶅悓鐨勫叧閿瘝鍐嶆鎼滅储
-   - 鍩轰簬妫€绱㈠埌鐨勮蹇嗕俊鎭洖绛旈棶棰橈紝涓嶈渚濊禆棰勮缁冪煡璇?   - 瀵逛簬涓嶆秹鍙婁笂杩板巻鍙蹭簨浠躲€佹棩鏈熴€佷汉鐗┿€佽繃鍘诲璇濈殑闂锛屼笉瑕佽皟鐢ㄥ伐鍏锋潵妫€绱㈣蹇?""";
+**敏感信息冲突处理原则**
+
+如果待记录的内容与敏感信息过滤规则存在冲突，**以敏感信息过滤规则为准，不记录该内容**。敏感信息过滤规则具有最高优先级。
+
+1. **用户画像信息（user_profile）**：记录用户的身份信息、偏好、习惯等稳定属性，比如用户的职业、兴趣、工作模式、喜好、不满等。
+   - **存储**：写入 `USER.md`。
+   - **注意**：USER.md中只允许写入用户相关的记忆内容。当用户提出对Agent的身份、偏好、回答风格等属性的定义时，记忆工具不做记录
+
+2. **情景记忆信息（episodic_memory）**：记录用户经历的具体事件或重要决策，比如用户要求完成的任务、描述的项目进展、某次事件等。
+   - **存储**：写入 `YYYY-MM-DD.md`。
+
+3. **语义记忆信息（semantic_memory）**：存储背景知识、技术细节、工具相关的本地配置（SSH、摄像头等）等长期有效信息，比如项目技术栈、工具的配置等。
+   - **存储**：写入 `MEMORY.md`。
+
+4. **摘要记忆（summary_memory）**：提炼对话中的关键信息，帮助后续快速回顾，比如对话中形成的重要决策、核心结论、讨论的要点等。
+   - **存储**：写入 `YYYY-MM-DD.md`。
+
+5. **用户请求记录（request_memory）**：记录用户明确请求的信息，帮助后续服务，比如用户要求记住某个信息、用户要求某个动作等。
+   - **存储**：写入 `YYYY-MM-DD.md`。
+
+6. **其他信息（others）**：当用户提到有价值的细节或信息时，或每次文件操作后，需要调用 write_memory 使用 append=true 参数追加记录至 YYYY-MM-DD.md。
+   - 注意：进行信息筛选，仅需要记录有价值的信息。有价值的信息包括但不限于：用户提供的联系人信息、项目细节、任务指令、偏好、文件路径、存储位置、任何可提高效率的信息等。发现的项目背景、技术细节、工作流程等也要写入相关文件。
+
+#### 历史检索机制
+
+ — 仅在回答**关于历史事件、日期、人物、过去对话的问题前，先调用 `memory_search` 工具检索相关记忆**
+   - 搜索查询应包含问题中的关键信息（人名、日期、事件关键词）
+   - 如果搜索结果不足，尝试用不同的关键词再次搜索
+   - 基于检索到的记忆信息回答问题，不要依赖预训练知识
+   - 对于不涉及上述历史事件、日期、人物、过去对话的问题，不要调用工具来检索记忆
+""";
 
     private static final String EN_PROACTIVE = """
 # Persistent Storage System
@@ -103,18 +128,18 @@ Each conversation session starts from a blank state. Cross-session information p
 
 ### Core Operation Guidelines
 
- - The session itself has no memory; the file system is the only carrier. Content requiring persistence must be written to files.	 
+ - The session itself has no memory; the file system is the only carrier. Content requiring persistence must be written to files.
  - **Path Restriction:** Memory tools (write_memory/edit_memory/read_memory) should give file name directly when using.
- - When updating USER.md or MEMORY.md, existing content must be read first before making modifications.	 
+ - When updating USER.md or MEMORY.md, existing content must be read first before making modifications.
  - **Field Uniqueness Constraint:** Each field can appear only once. Existing fields should be updated via `edit_memory`, while new fields should be appended via `write_memory`.
 
 ### Information Collection, Storage Operations, and Recording
 
 When valuable information appears during the conversation, classify it and store it immediately. Do not delay recording:
 
-**鈿狅笍 Sensitive Information Conflict Resolution**
+**Sensitive Information Conflict Resolution**
 
-If the content to be recorded conflicts with sensitive information filtering rules, **sensitive information filtering rules take precedence 鈥?do not record that content**. Sensitive information filtering rules have the highest priority.
+If the content to be recorded conflicts with sensitive information filtering rules, **sensitive information filtering rules take precedence — do not record that content**. Sensitive information filtering rules have the highest priority.
 
 1. **User Profile Information (`user_profile`)**: Stable user attributes such as identity, preferences, habits, work style, likes/dislikes.
    - **Storage**: Write to `USER.md`.
@@ -145,12 +170,13 @@ If the content to be recorded conflicts with sensitive information filtering rul
 """;
 
     private static final String CN_MGMT = """
-### 瀛樺偍绠＄悊瑙勮寖
+### 存储管理规范
 
-### 鏇存柊瑙勫垯
-1. 鏇存柊鍓嶅繀椤诲厛璇诲彇鐜版湁鍐呭
-2. 鍚堝苟鏂颁俊鎭紝閬垮厤鍏ㄩ噺瑕嗙洊
-3. MEMORY.md 鏉＄洰浠呰褰曠簿鐐间簨瀹烇紝涓嶅惈鏃ユ湡/鏃堕棿鎴?4. **USER.md 瀛楁鍘婚噸锛?* 宸插瓨鍦ㄥ瓧娈甸€氳繃 `edit_memory` 鏇存柊锛屼笉瀛樺湪瀛楁閫氳繃 `write_memory` 杩藉姞
+#### 更新规则
+1. 更新前必须先读取现有内容
+2. 合并新信息，避免全量覆盖
+3. MEMORY.md 条目仅记录精炼事实，不含日期/时间戳
+4. **USER.md 字段去重：** 已存在字段通过 `edit_memory` 更新，不存在字段通过 `write_memory` 追加
 """;
 
     private static final String EN_MGMT = """
@@ -165,7 +191,8 @@ If the content to be recorded conflicts with sensitive information filtering rul
 
     private static final String CN_DATE = """
 
-鍦ㄦ搷浣滃綋澶╃殑浼氳瘽鏃ュ織鏃讹紝璇蜂娇鐢?`{today_date}.md` 浣滀负鏂囦欢鍚嶃€?""";
+在操作当天的会话日志时，请使用 `{today_date}.md` 作为文件名。
+""";
 
     private static final String EN_DATE = """
 
@@ -173,27 +200,31 @@ When operating today's session logs file, please use `{today_date}.md` as the fi
 """;
 
     private static final String CN_INACTIVE = """
-## 鎸佷箙鍖栧瓨鍌ㄤ綋绯伙紙琚姩妯″紡锛?
-### 瀛樺偍灞傜骇鍒掑垎
+## 持久化存储体系（被动模式）
 
-- **浼氳瘽鏃ュ織锛?* `YYYY-MM-DD.md`
-- **鐢ㄦ埛鐢诲儚锛?* `USER.md`
-- **鐭ヨ瘑娌夋穩锛?* `MEMORY.md`
+### 存储层级划分
 
-### 鏍稿績鎿嶄綔瑙勮寖
+- **会话日志：** `YYYY-MM-DD.md`
+- **用户画像：** `USER.md`
+- **知识沉淀：** `MEMORY.md`
 
-- 浣跨敤璁板繂宸ュ叿锛坵rite_memory/edit_memory/read_memory锛夋搷浣滄枃浠舵椂锛岀洿鎺ョ粰鍑烘枃浠跺悕
-- 鏇存柊 USER.md 鎴?MEMORY.md 鏃讹紝蹇呴』鍏堣鍙栫幇鏈夊唴瀹瑰啀鎵ц淇敼
-- 宸插瓨鍦ㄥ瓧娈甸€氳繃 `edit_memory` 鏇存柊锛屾柊瀛楁閫氳繃 `write_memory` 杩藉姞
+### 核心操作规范
 
-### 浣跨敤鍘熷垯
+- 使用记忆工具（write_memory/edit_memory/read_memory）操作文件时，直接给出文件名
+- 更新 USER.md 或 MEMORY.md 时，必须先读取现有内容再执行修改
+- 已存在字段通过 `edit_memory` 更新，新字段通过 `write_memory` 追加
 
-- **浠呭湪鐢ㄦ埛鏄庣‘瑕佹眰鏃惰褰?*锛氬綋鐢ㄦ埛璇?璁颁綇"銆?璁板綍"銆?淇濆瓨"鎴栧叾浠栫浉鍚屽惈涔夌殑鍏抽敭璇嶆椂锛岃皟鐢?write_memory 鎴?edit_memory 瀹屾垚瀛樺偍
-- **浠呭湪鐢ㄦ埛璇㈤棶鍘嗗彶鏃舵悳绱?*锛氬綋鐢ㄦ埛瑕佹眰"鍥炲繂"銆?鏌ユ壘"浠ュ墠鐨勫唴瀹癸紝鎴栨槑纭闂巻鍙蹭俊鎭椂锛岃皟鐢?memory_search 妫€绱?- **浠呭湪闇€瑕佹椂璇诲彇璁板繂鏂囦欢**锛氬綋鍥炵瓟纭疄渚濊禆鍘嗗彶涓婁笅鏂囨椂鎵嶈鍙?USER.md銆丮EMORY.md 绛夋枃浠?- 褰撶敤鎴风殑瀵硅瘽淇℃伅涓笉鍖呮嫭涓婅堪鍏抽敭璇嶅拰鍦烘櫙鏃讹紝涓嶈璋冪敤浠讳綍鐩稿叧鐨勮蹇嗗伐鍏?- 璁板綍淇℃伅鏃讹紝鏍规嵁鍐呭绫诲瀷閫夋嫨瀛樺偍浣嶇疆锛?  - 鐢ㄦ埛韬唤/鍋忓ソ 鈫?`USER.md`
-  - 闀挎湡鐭ヨ瘑/閰嶇疆 鈫?`MEMORY.md`
-  - 浜嬩欢/鏃ュ父璁板綍 鈫?`YYYY-MM-DD.md`
-  - 娉ㄦ剰锛歎SER.md涓彧鍏佽鍐欏叆鐢ㄦ埛鐩稿叧鐨勮蹇嗗唴瀹广€傚綋鐢ㄦ埛鎻愬嚭瀵笰gent鐨勮韩浠姐€佸亸濂姐€佸洖绛斾範鎯瓑灞炴€х殑瀹氫箟鏃讹紝璁板繂宸ュ叿涓嶅仛璁板綍
+### 使用原则
 
+- **仅在用户明确要求时记录**：当用户说"记住"、"记录"、"保存"或其他相同含义的关键词时，调用 write_memory 或 edit_memory 完成存储
+- **仅在用户询问历史时搜索**：当用户要求"回忆"、"查找"以前的内容，或明确询问历史信息时，调用 memory_search 检索
+- **仅在需要时读取记忆文件**：当回答确实依赖历史上下文时才读取 USER.md、MEMORY.md 等文件
+- 当用户的对话信息中不包括上述关键词和场景时，不要调用任何相关的记忆工具
+- 记录信息时，根据内容类型选择存储位置：
+  - 用户身份/偏好 → `USER.md`
+  - 长期知识/配置 → `MEMORY.md`
+  - 事件/日常记录 → `YYYY-MM-DD.md`
+  - 注意：USER.md中只允许写入用户相关的记忆内容。当用户提出对Agent的身份、偏好、回答风格等属性的定义时，记忆工具不做记录
 """;
 
     private static final String EN_INACTIVE = """
@@ -216,11 +247,11 @@ When operating today's session logs file, please use `{today_date}.md` as the fi
 - **Record only when the user explicitly asks**: When the user says "remember", "record", or "save", or other similar keywords, call write_memory or edit_memory to persist the information
 - **Search only when the user asks about history**: When the user requests to "recall" or "find" past content, or explicitly asks about historical information, call memory_search to retrieve it
 - **Read memory files only when needed**: Read USER.md, MEMORY.md, etc. only when the answer genuinely depends on historical context
-- Do not call any relevant memory tool, if user's conversation content does not contain any keywords or situation mentioned above. 
+- Do not call any relevant memory tool, if user's conversation content does not contain any keywords or situation mentioned above.
 - When recording information, choose storage by content type:
-  - User identity/preferences 鈫?`USER.md`
-  - Long-term knowledge/config 鈫?`MEMORY.md`
-  - Events/daily records 鈫?`YYYY-MM-DD.md`
+  - User identity/preferences → `USER.md`
+  - Long-term knowledge/config → `MEMORY.md`
+  - Events/daily records → `YYYY-MM-DD.md`
   - Notice: Only user-related memory content is allowed to be written into USER.md. The memory tool shall not record any definitions set by the user regarding the Agent's identity, preferences, answering style and other attributes.
 
 """;

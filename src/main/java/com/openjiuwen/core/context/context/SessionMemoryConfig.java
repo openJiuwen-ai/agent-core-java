@@ -4,70 +4,145 @@
 
 package com.openjiuwen.core.context.context;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import lombok.Builder;
-import lombok.Getter;
+import java.util.Locale;
 
 /**
- * Session-memory update thresholds.
- * <p>
- * Mirrors Python's {@code SessionMemoryConfig}.
- * 
- * @since 0.1.7
+ * Session-memory trigger and updater configuration.
+ *
+ * <p>Mirrors Python's {@code SessionMemoryConfig} in
+ * {@code openjiuwen/core/context_engine/context/session_memory_manager.py}.</p>
  */
-@Getter
-@Builder
 public class SessionMemoryConfig {
-    @Builder.Default
+
+    @JsonProperty("trigger_tokens")
     private int triggerTokens = 10000;
-    @Builder.Default
+
+    @JsonProperty("trigger_add_tokens")
     private int triggerAddTokens = 5000;
-    @Builder.Default
+
+    @JsonProperty("tool_min_")
     private int toolMin = 3;
+
     private ModelRequestConfig model;
+
+    @JsonProperty("model_client")
     private ModelClientConfig modelClient;
-    @Builder.Default
-    private String updateMode = "agent_edit";
-    @Builder.Default
+
+    @JsonProperty("update_mode")
+    private UpdateMode updateMode = UpdateMode.AGENT_EDIT;
+
+    @JsonProperty("direct_replace_max_retries")
     private int directReplaceMaxRetries = 2;
 
-    /**
-     * SessionMemoryConfig.
-     * 
-     * @since 0.1.7
-     */
-    public SessionMemoryConfig() {
-        this(10000, 5000, 3, null, null, "agent_edit", 2);
+    public int getTriggerTokens() {
+        return triggerTokens;
+    }
+
+    public void setTriggerTokens(int triggerTokens) {
+        if (triggerTokens <= 0) {
+            throw new IllegalArgumentException("trigger_tokens must be greater than 0");
+        }
+        this.triggerTokens = triggerTokens;
+    }
+
+    public int getTriggerAddTokens() {
+        return triggerAddTokens;
+    }
+
+    public void setTriggerAddTokens(int triggerAddTokens) {
+        if (triggerAddTokens <= 0) {
+            throw new IllegalArgumentException("trigger_add_tokens must be greater than 0");
+        }
+        this.triggerAddTokens = triggerAddTokens;
+    }
+
+    public int getToolMin() {
+        return toolMin;
+    }
+
+    public void setToolMin(int toolMin) {
+        if (toolMin <= 0) {
+            throw new IllegalArgumentException("tool_min_ must be greater than 0");
+        }
+        this.toolMin = toolMin;
+    }
+
+    public ModelRequestConfig getModel() {
+        return model;
+    }
+
+    public void setModel(ModelRequestConfig model) {
+        this.model = model;
+    }
+
+    public ModelClientConfig getModelClient() {
+        return modelClient;
+    }
+
+    public void setModelClient(ModelClientConfig modelClient) {
+        this.modelClient = modelClient;
+    }
+
+    public UpdateMode getUpdateMode() {
+        return updateMode;
+    }
+
+    public void setUpdateMode(UpdateMode updateMode) {
+        this.updateMode = updateMode == null ? UpdateMode.AGENT_EDIT : updateMode;
+    }
+
+    @JsonProperty("update_mode")
+    public void setUpdateMode(String updateMode) {
+        this.updateMode = UpdateMode.fromValue(updateMode);
+    }
+
+    public int getDirectReplaceMaxRetries() {
+        return directReplaceMaxRetries;
+    }
+
+    public void setDirectReplaceMaxRetries(int directReplaceMaxRetries) {
+        if (directReplaceMaxRetries < 0) {
+            throw new IllegalArgumentException("direct_replace_max_retries must be greater than or equal to 0");
+        }
+        this.directReplaceMaxRetries = directReplaceMaxRetries;
     }
 
     /**
-     * SessionMemoryConfig.
-     * 
-     * @param triggerTokens triggerTokens
-     * @param triggerAddTokens triggerAddTokens
-     * @param toolMin toolMin
-     * @param model model
-     * @param modelClient modelClient
-     * @param updateMode updateMode
-     * @param directReplaceMaxRetries directReplaceMaxRetries
-     * @since 0.1.7
+     * Session memory update mode literals.
+     *
+     * <p>Mirrors Python's {@code Literal["agent_edit", "direct_replace"]} in
+     * {@code openjiuwen/core/context_engine/context/session_memory_manager.py}.</p>
      */
-    public SessionMemoryConfig(int triggerTokens, int triggerAddTokens, int toolMin, ModelRequestConfig model,
-            ModelClientConfig modelClient, String updateMode, int directReplaceMaxRetries) {
-        if (triggerTokens <= 0 || triggerAddTokens <= 0 || toolMin <= 0) {
-            throw new IllegalArgumentException("session-memory thresholds must be positive");
+    public enum UpdateMode {
+        AGENT_EDIT("agent_edit"),
+        DIRECT_REPLACE("direct_replace");
+
+        private final String value;
+
+        UpdateMode(String value) {
+            this.value = value;
         }
-        if (directReplaceMaxRetries < 0) {
-            throw new IllegalArgumentException("directReplaceMaxRetries must be non-negative");
+
+        @JsonProperty
+        public String getValue() {
+            return value;
         }
-        this.triggerTokens = triggerTokens;
-        this.triggerAddTokens = triggerAddTokens;
-        this.toolMin = toolMin;
-        this.model = model;
-        this.modelClient = modelClient;
-        this.updateMode = updateMode == null || updateMode.isBlank() ? "agent_edit" : updateMode;
-        this.directReplaceMaxRetries = directReplaceMaxRetries;
+
+        public static UpdateMode fromValue(String value) {
+            if (value == null || value.isBlank()) {
+                return AGENT_EDIT;
+            }
+            String normalized = value.toLowerCase(Locale.ROOT);
+            for (UpdateMode mode : values()) {
+                if (mode.value.equals(normalized)) {
+                    return mode;
+                }
+            }
+            throw new IllegalArgumentException("Unsupported session memory update_mode: " + value);
+        }
     }
 }

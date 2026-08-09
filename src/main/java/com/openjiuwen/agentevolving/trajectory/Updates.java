@@ -15,23 +15,14 @@ import java.util.Map;
  */
 public class Updates extends HashMap<UpdateKey, Object> {
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Updates() {
         super();
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Updates(int initialCapacity) {
         super(initialCapacity);
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Updates(Map<? extends UpdateKey, ?> m) {
         super(m);
     }

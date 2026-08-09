@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.prompts;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ public class SystemPromptBuilder {
     public static final String DEFAULT_LANGUAGE = "cn";
 
     private final Map<String, PromptSection> sections = new LinkedHashMap<>();
+    private final Set<String> persistentSections = new HashSet<>();
     private String language;
 
     public SystemPromptBuilder() {
@@ -41,17 +43,31 @@ public class SystemPromptBuilder {
         this.language = Objects.requireNonNullElse(language, DEFAULT_LANGUAGE);
     }
 
-    public SystemPromptBuilder addSection(PromptSection section) {
+    public synchronized SystemPromptBuilder addSection(PromptSection section) {
         sections.put(section.getName(), section);
         return this;
     }
 
-    public SystemPromptBuilder removeSection(String name) {
-        sections.remove(name);
+    public synchronized SystemPromptBuilder addPersistentSection(PromptSection section) {
+        if (section != null && section.getName() != null && !section.getName().isBlank()) {
+            sections.put(section.getName(), section);
+            persistentSections.add(section.getName());
+        }
         return this;
     }
 
-    public Map<String, PromptSection> getAllSections() {
+    public synchronized SystemPromptBuilder removeSection(String name) {
+        sections.remove(name);
+        persistentSections.remove(name);
+        return this;
+    }
+
+    public synchronized SystemPromptBuilder clearTransient() {
+        sections.keySet().removeIf(name -> !persistentSections.contains(name));
+        return this;
+    }
+
+    public synchronized Map<String, PromptSection> getAllSections() {
         return new LinkedHashMap<>(sections);
     }
 

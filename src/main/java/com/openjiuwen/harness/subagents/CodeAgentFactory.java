@@ -8,12 +8,12 @@ import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.AgentModeRail;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.interrupt.AskUserRail;
-import com.openjiuwen.harness.rails.interrupt.ConfirmRail;
+import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.rails.memory.CodingMemoryRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -281,7 +281,7 @@ public final class CodeAgentFactory {
         addRailIfMissing(merged, SysOperationRail.class, new SysOperationRail());
         addRailIfMissing(merged, AgentModeRail.class, new AgentModeRail());
         addRailIfMissing(merged, AskUserRail.class, new AskUserRail());
-        addRailIfMissing(merged, ConfirmRail.class, new ConfirmRail());
+        addRailIfMissing(merged, ConfirmInterruptRail.class, new ConfirmInterruptRail());
         if (embeddingConfig != null && merged.stream().noneMatch(CodingMemoryRail.class::isInstance)) {
             merged.add(new CodingMemoryRail(resolveCodingMemoryDir(workspace), embeddingConfig, language));
         }

@@ -6,7 +6,7 @@ package com.openjiuwen.harness.rails.evolution;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import java.util.List;
 import java.util.Objects;

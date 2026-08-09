@@ -74,59 +74,35 @@ public class TreeNode {
     }
 
     // Getters
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getData() {
         return data;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public double getScore() {
         return score;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getResults() {
         return results;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> getHistory() {
         return new ArrayList<>(history);
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public TreeNode getParent() {
         return parent;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void setParent(TreeNode parent) {
         this.parent = parent;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<TreeNode> getChildren() {
         return new ArrayList<>(children);
     }
 
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String toString() {
         int depth = getDepth();
         StringBuilder sb = new StringBuilder();

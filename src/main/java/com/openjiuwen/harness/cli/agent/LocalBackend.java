@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.cli.agent;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.cli.rails.TokenTrackingRail;
 
 import java.nio.file.Files;

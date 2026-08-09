@@ -204,7 +204,7 @@ class WorkflowTaskExecutorTest {
 
         @Override
         protected Iterator<?> runWorkflowStreaming(Object workflow, Object inputs, Object workflowSession,
-                                                   com.openjiuwen.core.context_engine.ModelContext context) {
+                                                   com.openjiuwen.core.context.ModelContext context) {
             return stream.iterator();
         }
 

@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
 
 /**
  * Utility class providing sandbox operation support methods for configuration,
@@ -91,9 +92,8 @@ public final class SandboxOperationSupport {
      */
     public static String resolveIsolationKeyTemplate(String template) {
         if (template.contains(SESSION_ID_PLACEHOLDER)) {
-            com.openjiuwen.core.session.Session session =
-                    com.openjiuwen.core.session.SessionContextHolder.getCurrentSession();
-            String sessionId = session != null ? session.getSessionId() : null;
+            Object session = com.openjiuwen.core.session.SessionContextHolder.getCurrentSession();
+            String sessionId = com.openjiuwen.core.session.SessionContextHolder.resolveSessionId(session);
             String resolved = sessionId != null ? sessionId : "default_session";
             return template.replace(SESSION_ID_PLACEHOLDER, resolved);
         }
@@ -209,7 +209,7 @@ public final class SandboxOperationSupport {
         ExecuteCmdData cmdData = new ExecuteCmdData();
         cmdData.setCommand(command);
         cmdData.setCwd(cwd == null ? "." : cwd);
-        return com.openjiuwen.core.sys_operation.result.BaseResult.buildOperationErrorResult(
+        return com.openjiuwen.core.sysop.result.BaseResult.buildOperationErrorResult(
                 StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
                 Map.of("execution", execution, "error_msg", errorMsg),
                 ExecuteCmdResult.class,
@@ -230,7 +230,7 @@ public final class SandboxOperationSupport {
         ExecuteCodeData codeData = new ExecuteCodeData();
         codeData.setCodeContent(code);
         codeData.setLanguage(language);
-        return com.openjiuwen.core.sys_operation.result.BaseResult.buildOperationErrorResult(
+        return com.openjiuwen.core.sysop.result.BaseResult.buildOperationErrorResult(
                 StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
                 Map.of("execution", execution, "error_msg", errorMsg),
                 ExecuteCodeResult.class,
@@ -255,7 +255,7 @@ public final class SandboxOperationSupport {
         chunkData.setMetadata(Map.of(
                 "command", command,
                 "cwd", cwd == null ? "." : cwd));
-        return com.openjiuwen.core.sys_operation.result.BaseResult.buildOperationErrorResult(
+        return com.openjiuwen.core.sysop.result.BaseResult.buildOperationErrorResult(
                 StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR,
                 Map.of("execution", execution, "error_msg", errorMsg),
                 ExecuteCmdStreamResult.class,
@@ -280,7 +280,7 @@ public final class SandboxOperationSupport {
         codeChunkData.setMetadata(Map.of(
                 "code", code,
                 "language", language));
-        return com.openjiuwen.core.sys_operation.result.BaseResult.buildOperationErrorResult(
+        return com.openjiuwen.core.sysop.result.BaseResult.buildOperationErrorResult(
                 StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
                 Map.of("execution", execution, "error_msg", errorMsg),
                 ExecuteCodeStreamResult.class,

@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.sharing.backends;
+package com.openjiuwen.agentevolving.sharing.backends;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,14 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.sharing.QueryKeywords;
-import com.openjiuwen.agent_evolving.sharing.SharedExperience;
-import com.openjiuwen.agent_evolving.sharing.SharedSkillBundle;
-import com.openjiuwen.agent_evolving.sharing.SkillPackageMeta;
-import com.openjiuwen.agent_evolving.sharing.SkillSearchResult;
-import com.openjiuwen.agent_evolving.sharing.UploadResult;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.sharing.QueryKeywords;
+import com.openjiuwen.agentevolving.sharing.SharedExperience;
+import com.openjiuwen.agentevolving.sharing.SharedSkillBundle;
+import com.openjiuwen.agentevolving.sharing.SkillPackageMeta;
+import com.openjiuwen.agentevolving.sharing.SkillSearchResult;
+import com.openjiuwen.agentevolving.sharing.UploadResult;
 
 import java.nio.file.Path;
 import java.util.List;

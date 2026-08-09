@@ -6,7 +6,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.SysOperation;
+import com.openjiuwen.core.sysop.SysOperation;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

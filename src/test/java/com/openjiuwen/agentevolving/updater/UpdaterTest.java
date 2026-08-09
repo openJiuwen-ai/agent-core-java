@@ -2,11 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.updater;
+package com.openjiuwen.agentevolving.updater;
 
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.TunableSpec;
 import org.junit.jupiter.api.Test;

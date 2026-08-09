@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.DownloadFileStreamResult
+# com.openjiuwen.core.sysop.result.DownloadFileStreamResult
 
 ## 类 DownloadFileStreamResult
 

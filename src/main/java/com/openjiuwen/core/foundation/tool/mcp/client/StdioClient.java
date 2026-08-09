@@ -19,6 +19,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +50,8 @@ public class StdioClient implements McpClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> VALID_ENCODING_HANDLERS = Set.of("strict", "ignore", "replace");
+    private static final Set<String> DEFAULT_ALLOWED_COMMAND_NAMES = Set.of(
+            "java", "java.exe", "python", "python.exe", "python3", "python3.exe");
 
     private final McpServerConfig config;
     private final String name;
@@ -196,18 +200,109 @@ public class StdioClient implements McpClient {
         return config.getServerPath();
     }
 
-    StdioServerParameters buildServerParameters() {
+    StdioServerParameters buildServerParameters() throws IOException {
         String handler = stringValue(params.getOrDefault("encoding_error_handler", "strict"));
         if (!VALID_ENCODING_HANDLERS.contains(handler)) {
             handler = "strict";
         }
+        String command = resolveAllowedCommand(config);
         return new StdioServerParameters(
-                stringOrNull(params.get("command")),
+                command,
                 stringList(params.get("args")),
                 stringMap(params.get("env")),
                 stringOrNull(params.get("cwd")),
                 handler
         );
+    }
+
+    static String resolveAllowedCommand(McpServerConfig config) throws IOException {
+        if (config == null) {
+            throw new IllegalArgumentException("MCP stdio config must not be null.");
+        }
+
+        String declaredCommand = config.getServerPath() == null ? "" : config.getServerPath().trim();
+        Object configuredCommand = config.getParams() == null ? null : config.getParams().get("command");
+        String requestedCommand = configuredCommand == null
+                ? declaredCommand
+                : String.valueOf(configuredCommand).trim();
+        if (requestedCommand.isBlank()) {
+            throw new IllegalArgumentException("MCP stdio command must not be blank.");
+        }
+
+        if (declaredCommand.isBlank()) {
+            return resolveDefaultAllowedCommand(requestedCommand).toString();
+        }
+
+        ResolvedCommand allowedExecutable = resolveCommand(declaredCommand);
+        ResolvedCommand requestedExecutable = resolveCommand(requestedCommand);
+        if (!requestedExecutable.realPath().equals(allowedExecutable.realPath())) {
+            throw new SecurityException("MCP stdio command is not in the configured allowlist.");
+        }
+        return allowedExecutable.launchPath().toString();
+    }
+
+    private static Path resolveDefaultAllowedCommand(String requestedCommand) throws IOException {
+        Path requestedPath = Path.of(requestedCommand);
+        Path fileName = requestedPath.getFileName();
+        String commandName = fileName == null ? "" : fileName.toString();
+        if (!DEFAULT_ALLOWED_COMMAND_NAMES.contains(commandName)) {
+            throw new SecurityException("MCP stdio command is not in the default allowlist.");
+        }
+
+        ResolvedCommand requestedExecutable = resolveCommand(requestedCommand);
+        if (requestedPath.isAbsolute()) {
+            return requestedExecutable.launchPath();
+        }
+        if ("java".equals(commandName) || "java.exe".equals(commandName)) {
+            Path javaExecutable = Path.of(System.getProperty("java.home"), "bin", commandName);
+            if (Files.isRegularFile(javaExecutable) && Files.isExecutable(javaExecutable)
+                    && requestedExecutable.realPath().equals(validateExecutable(javaExecutable))) {
+                return requestedExecutable.launchPath();
+            }
+        }
+
+        ResolvedCommand pathExecutable = resolveCommand(commandName);
+        if (!requestedExecutable.realPath().equals(pathExecutable.realPath())) {
+            throw new SecurityException("MCP stdio command does not match the trusted PATH executable.");
+        }
+        return requestedExecutable.launchPath();
+    }
+
+    private static ResolvedCommand resolveCommand(String command) throws IOException {
+        if (command.indexOf('\0') >= 0) {
+            throw new SecurityException("MCP stdio command contains an invalid character.");
+        }
+        Path commandPath = Path.of(command);
+        if (commandPath.isAbsolute() || commandPath.getNameCount() > 1) {
+            Path launchPath = commandPath.toAbsolutePath().normalize();
+            return new ResolvedCommand(launchPath, validateExecutable(launchPath));
+        }
+
+        String systemPath = System.getenv("PATH");
+        if (systemPath == null || systemPath.isBlank()) {
+            throw new SecurityException("PATH is unavailable for resolving MCP stdio command: " + command);
+        }
+        for (String directory : systemPath.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+            if (directory.isBlank()) {
+                continue;
+            }
+            Path candidate = Path.of(directory).resolve(command).toAbsolutePath().normalize();
+            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                return new ResolvedCommand(candidate, validateExecutable(candidate));
+            }
+        }
+        throw new SecurityException("MCP stdio command is not an executable file: " + command);
+    }
+
+    private static Path validateExecutable(Path executable) throws IOException {
+        Path realExecutable = executable.toRealPath();
+        if (!Files.isRegularFile(realExecutable) || !Files.isExecutable(realExecutable)) {
+            throw new SecurityException("MCP stdio command is not an executable file: " + executable);
+        }
+        return realExecutable;
+    }
+
+    private record ResolvedCommand(Path launchPath, Path realPath) {
     }
 
     private StdioSession requireSession() {

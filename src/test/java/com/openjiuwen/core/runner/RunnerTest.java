@@ -9,13 +9,13 @@ import com.openjiuwen.agent_teams.agent.SessionManager;
 import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.agent_teams.schema.TeamAgentSpec;
 import com.openjiuwen.agent_teams.schema.TeamOutputSchema;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.ToolDecorator;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.multi_agent.BaseTeam;
-import com.openjiuwen.core.multi_agent.TeamConfig;
-import com.openjiuwen.core.multi_agent.schema.TeamCard;
+import com.openjiuwen.core.multiagent.BaseTeam;
+import com.openjiuwen.core.multiagent.TeamConfig;
+import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
 import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
@@ -74,7 +74,7 @@ class RunnerTest {
     }
 
     @Test
-    void singletonResourcesAreStableAndPackageCanResolveRunner() {
+    void singletonResourcesAreStable() {
         ResourceMgr resourceMgr = Runner.getResourceMgr();
         AsyncCallbackFramework callbackFramework = Runner.getCallbackFramework();
 
@@ -82,7 +82,6 @@ class RunnerTest {
         assertSame(resourceMgr, Runner.resourceMgr);
         assertNotNull(Runner.getPubsub());
         assertSame(callbackFramework, Runner.callbackFramework);
-        assertTrue(RunnerPackage.resolveType("Runner").isPresent());
     }
 
     @Test

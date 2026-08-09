@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness;
 
+
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -361,7 +363,7 @@ class DeepAgentSubagentMissingTest {
     private static void assertTaskPlanning() {
         DeepAgent agent = configuredAgentWithPlanMode();
 
-        Map<String, Object> result = agent.invoke(Map.of("query", "构建一个打卡系统")).join();
+        Map<String, Object> result = agent.invoke(Map.of("query", "构建一个打卡系统"));
 
         assertThat(result).containsEntry("type", "deep_agent_result");
         assertThat(agent.findRailsByType(TaskPlanningRail.class)).hasSize(1);

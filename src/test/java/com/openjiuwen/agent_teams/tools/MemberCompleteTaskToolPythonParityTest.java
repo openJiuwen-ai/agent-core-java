@@ -154,7 +154,7 @@ class MemberCompleteTaskToolPythonParityTest {
                 MemberMode.BUILD_MODE.value(),
                 "prompt",
                 "{}"
-        ).join();
+        );
     }
 
     private record Fixture(

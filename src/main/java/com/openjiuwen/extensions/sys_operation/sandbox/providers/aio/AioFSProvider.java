@@ -5,8 +5,8 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.aio;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
-import com.openjiuwen.core.sysop.sandbox.providers.BaseFSProvider;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseFSProvider;
 
 /**
  * AIO file system provider — SPI skeleton. Actual implementation will be
@@ -15,7 +15,7 @@ import com.openjiuwen.core.sysop.sandbox.providers.BaseFSProvider;
  * @version 1.0
  * @since 0.1.7
  */
-public class AioFSProvider extends BaseFSProvider {
+public class AioFSProvider extends SyncBaseFSProvider {
     /**
      * AioFSProvider.
      * 

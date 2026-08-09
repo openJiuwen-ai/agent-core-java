@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 
 /**
  * Inheritance-based Java counterpart of Python's {@code CommunicableAgent} mixin.
@@ -96,7 +96,7 @@ public abstract class CommunicableAgent extends BaseAgent {
      * @since 0.1.7
      */
     public Object send(Object message, String recipient, String sessionId, Double timeout,
-            AgentGroupSessionApi session) {
+            AgentGroupSession session) {
         return runtime().send(message, recipient, agentId(), sessionId, session);
     }
 
@@ -109,7 +109,7 @@ public abstract class CommunicableAgent extends BaseAgent {
      * @param session session
      * @since 0.1.7
      */
-    public void publish(Object message, String topicId, String sessionId, AgentGroupSessionApi session) {
+    public void publish(Object message, String topicId, String sessionId, AgentGroupSession session) {
         runtime().publish(message, topicId, agentId(), sessionId, session);
     }
 

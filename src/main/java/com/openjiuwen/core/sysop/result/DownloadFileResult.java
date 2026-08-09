@@ -4,13 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
-/** Result type for download file operation. */
-@NoArgsConstructor
+/**
+ * Mirrors Python's {@code DownloadFileResult} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ */
 public class DownloadFileResult extends BaseResult<DownloadFileData> {
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public DownloadFileResult(int code, String message, DownloadFileData data) { setCode(code); setMessage(message); setData(data); }
+
+    public DownloadFileResult() {
+    }
+
+    public DownloadFileResult(int code, String message, DownloadFileData data) {
+        setCode(code);
+        setMessage(message);
+        setData(data);
+    }
 }

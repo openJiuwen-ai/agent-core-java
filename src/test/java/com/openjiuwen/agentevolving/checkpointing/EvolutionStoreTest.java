@@ -2,15 +2,15 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.checkpointing;
+package com.openjiuwen.agentevolving.checkpointing;
 
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.result.ReadFileData;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
-import com.openjiuwen.core.sys_operation.result.WriteFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileData;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.WriteFileResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

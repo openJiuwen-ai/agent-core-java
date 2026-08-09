@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.runner.resourcemanager.ThreadSafeDict;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -52,11 +52,7 @@ public class MessageQueueInMemory extends MessageQueueBase {
     public void start() {
         if (!running) {
             running = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable);
-                thread.setName("message-queue-inmemory-" + thread.getId());
-                return thread;
-            });
+            consumerExecutor = OpenJiuwenExecutors.newSingleThreadExecutor("mq-inmemory", true);
             consumerExecutor.submit(this::consumeMessages);
         }
     }

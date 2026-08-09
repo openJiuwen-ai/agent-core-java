@@ -4,16 +4,24 @@
 
 package com.openjiuwen.harness.rails;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.TodoSection;
 import com.openjiuwen.harness.schema.task.ModelUsageRecord;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 import com.openjiuwen.harness.schema.task.TodoItem;
 import com.openjiuwen.harness.schema.task.TodoStatus;
+import com.openjiuwen.harness.tools.FileTodoStorage;
+import com.openjiuwen.harness.tools.TodoStorage;
+import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTools;
+import com.openjiuwen.spi.store.BaseKVStore;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +42,7 @@ public class TaskPlanningRail extends DeepAgentRail {
     private final Map<String, List<TodoItem>> todosCache = new LinkedHashMap<>();
     private final Map<String, ModelUsageRecord> usageRecords = new LinkedHashMap<>();
     private final List<Tool> tools = new ArrayList<>();
-    private final TodoTools.TodoStore todoStore = new InMemoryTodoStore();
+    private TodoTools.TodoStore todoStore = new InMemoryTodoStore();
     private String defaultModelId;
 
     public TaskPlanningRail() {
@@ -50,25 +58,68 @@ public class TaskPlanningRail extends DeepAgentRail {
         }
     }
 
+    /**
+     * Init against deep agent, wiring TodoStorage when configured.
+     *
+     * @param agent deep agent
+     * @since 0.1.7
+     */
     @Override
     public void init(DeepAgent agent) {
-        super.init(agent);
         if (agent == null) {
             return;
+        }
+        setWorkspace(agent.getWorkspace());
+        setSysOperation(agent.getSysOperation());
+        String todoStorageType = agent.getConfig().getTodoStorageType();
+        if (todoStorageType != null && !todoStorageType.isBlank()) {
+            TodoStorage storage = resolveTodoStorage(agent, todoStorageType);
+            todoStore = new TodoStorageStoreAdapter(storage);
         }
         if (tools.isEmpty()) {
             tools.addAll(TodoTools.createTodosTool(todoStore));
         }
-        tools.forEach(agent::registerTool);
+        tools.forEach(agent::registerHarnessTool);
+    }
+
+    private TodoStorage resolveTodoStorage(DeepAgent deepAgent,
+                                           String todoStorageType) {
+        if (TodoStorageFactory.hasProvider(todoStorageType)) {
+            Map<String, Object> conf = buildTodoStorageConfig(deepAgent, todoStorageType);
+            return TodoStorageFactory.create(todoStorageType, conf);
+        }
+        if ("kv".equals(todoStorageType)) {
+            Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, "
+                    + "falling back to file storage");
+        }
+        return new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
+    }
+
+    private static Map<String, Object> buildTodoStorageConfig(
+            DeepAgent deepAgent, String todoStorageType) {
+        Map<String, Object> conf = new HashMap<>();
+        if (!"kv".equals(todoStorageType)) {
+            conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
+            return conf;
+        }
+        BaseKVStore kvStore = deepAgent.getKvStore();
+        if (kvStore != null) {
+            conf.put("kvStoreType", "shared");
+            conf.put("sharedKvStore", kvStore);
+            return conf;
+        }
+        Map<String, Object> kvConf = deepAgent.getConfig().getKvStoreConfig();
+        if (kvConf != null) {
+            conf.put("kvStoreConf", kvConf);
+        }
+        return conf;
     }
 
     @Override
     public void uninit(DeepAgent agent) {
         if (agent != null) {
             for (Tool tool : tools) {
-                if (tool.getCard() != null) {
-                    agent.unregisterTool(tool.getCard().getName());
-                }
+                agent.unregisterHarnessTool(tool);
             }
         }
         tools.clear();
@@ -249,6 +300,10 @@ public class TaskPlanningRail extends DeepAgentRail {
     }
 
     private String sessionId(CallbackContext ctx) {
+        String fromHolder = SessionContextHolder.resolveSessionId(SessionContextHolder.getCurrentSession());
+        if (fromHolder != null && !fromHolder.isBlank()) {
+            return fromHolder;
+        }
         String sessionId = stringValue(ctx.getValues().get("session_id"));
         return sessionId == null || sessionId.isBlank() ? null : sessionId;
     }
@@ -295,20 +350,91 @@ public class TaskPlanningRail extends DeepAgentRail {
     private final class InMemoryTodoStore implements TodoTools.TodoStore {
         @Override
         public List<TodoItem> load(Map<String, Object> kwargs) {
-            String sessionId = stringValue(kwargs == null ? null : kwargs.get("session_id"));
-            if (sessionId == null || sessionId.isBlank()) {
-                sessionId = "__default__";
-            }
-            return new ArrayList<>(todosCache.getOrDefault(sessionId, List.of()));
+            return new ArrayList<>(todosCache.getOrDefault(resolveTodoSessionId(kwargs), List.of()));
         }
 
         @Override
         public void save(List<TodoItem> todos, Map<String, Object> kwargs) {
-            String sessionId = stringValue(kwargs == null ? null : kwargs.get("session_id"));
-            if (sessionId == null || sessionId.isBlank()) {
-                sessionId = "__default__";
+            todosCache.put(resolveTodoSessionId(kwargs),
+                    todos == null ? new ArrayList<>() : new ArrayList<>(todos));
+        }
+    }
+
+    /**
+     * Resolve todo storage session id: thread-bound session → kwargs → {@code default}.
+     */
+    private static String resolveTodoSessionId(Map<String, Object> kwargs) {
+        String fromHolder = SessionContextHolder.resolveSessionId(SessionContextHolder.getCurrentSession());
+        if (fromHolder != null && !fromHolder.isBlank()) {
+            return fromHolder;
+        }
+        String sessionId = stringValue(kwargs == null ? null : kwargs.get("session_id"));
+        if (sessionId == null || sessionId.isBlank()) {
+            return "default";
+        }
+        return sessionId;
+    }
+
+    /**
+     * Adapts harness.tools.TodoStorage into TodoTools.TodoStore (schema.task.TodoItem).
+     */
+    private static final class TodoStorageStoreAdapter implements TodoTools.TodoStore {
+        private final TodoStorage storage;
+
+        private TodoStorageStoreAdapter(TodoStorage storage) {
+            this.storage = Objects.requireNonNull(storage);
+        }
+
+        @Override
+        public List<TodoItem> load(Map<String, Object> kwargs) {
+            String sessionId = sessionId(kwargs);
+            try {
+                List<com.openjiuwen.harness.tools.TodoItem> loaded = storage.load(sessionId);
+                List<TodoItem> result = new ArrayList<>();
+                for (com.openjiuwen.harness.tools.TodoItem item : loaded) {
+                    if (item != null) {
+                        Map<String, Object> map = new LinkedHashMap<>();
+                        map.put("id", item.getId());
+                        map.put("content", item.getContent());
+                        map.put("active_form", item.getActiveForm());
+                        map.put("description", item.getDescription());
+                        if (item.getStatus() != null) {
+                            map.put("status", item.getStatus().name().toLowerCase());
+                        }
+                        result.add(TodoItem.fromMap(map));
+                    }
+                }
+                return result;
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to load todos", e);
             }
-            todosCache.put(sessionId, todos == null ? new ArrayList<>() : new ArrayList<>(todos));
+        }
+
+        @Override
+        public void save(List<TodoItem> todos, Map<String, Object> kwargs) {
+            String sessionId = sessionId(kwargs);
+            try {
+                List<com.openjiuwen.harness.tools.TodoItem> mapped = new ArrayList<>();
+                if (todos != null) {
+                    for (TodoItem item : todos) {
+                        if (item != null) {
+                            mapped.add(com.openjiuwen.harness.tools.TodoItem.builder()
+                                    .id(item.getId())
+                                    .content(item.getContent())
+                                    .activeForm(item.getActiveForm())
+                                    .description(item.getDescription())
+                                    .build());
+                        }
+                    }
+                }
+                storage.save(sessionId, mapped);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to save todos", e);
+            }
+        }
+
+        private static String sessionId(Map<String, Object> kwargs) {
+            return resolveTodoSessionId(kwargs);
         }
     }
 }

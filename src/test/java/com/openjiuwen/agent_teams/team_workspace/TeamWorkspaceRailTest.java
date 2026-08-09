@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.openjiuwen.agent_teams.schema.BaseEventMessage;
 import com.openjiuwen.agent_teams.schema.TeamEvent;
 import com.openjiuwen.agent_teams.schema.WorkspaceArtifactEvent;
-import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sysop.Cwd;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;

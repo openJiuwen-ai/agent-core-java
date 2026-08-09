@@ -20,9 +20,10 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageSlot;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.stages.BaseStage;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
 import java.nio.file.Path;
@@ -34,7 +35,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -369,7 +369,7 @@ public class PRTaskPipeline extends BasePipeline {
 
     private static PipelineRun runWithTimeout(Callable<PipelineRun> callable, double timeoutSecs)
             throws Exception {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor = OpenJiuwenExecutors.newSingleThreadExecutor("autoharness-task", false);
         Future<PipelineRun> future = executor.submit(callable);
         try {
             long timeoutMillis = Math.max(1L, (long) Math.ceil(timeoutSecs * 1000.0));

@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
@@ -167,7 +168,9 @@ public final class ApiRequestUtils {
     public static CompletableFuture<JsonNode> postJsonWithRetryAsync(HttpClient httpClient, String url,
             Map<String, Object> payload, Map<String, String> headers, Duration timeout, int maxRetries,
             StatusCode failureCode, String taskName, StatusCodeCallback callback) {
-        return CompletableFuture.supplyAsync(() -> postJsonWithRetry(httpClient, url, payload, headers, timeout,
-                maxRetries, failureCode, taskName, callback));
+        return OpenJiuwenExecutors.supplyBackgroundAsync(
+                () -> postJsonWithRetry(httpClient, url, payload, headers, timeout,
+                        maxRetries, failureCode, taskName, callback)
+        );
     }
 }

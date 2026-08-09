@@ -18,6 +18,8 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [3. Rail 使用](#3-rail-使用llm-调用前注入用户偏好)
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
 - [Demo 命令速查](#demo-命令速查)
+- [多租户隔离](#多租户隔离)
+- [Stream 并发与线程池](#stream-并发与线程池)
 - [注意事项](#注意事项)
 
 ---
@@ -430,6 +432,52 @@ mvn -q exec:java "-Dexec.args=list"
 
 ---
 
+## 多租户隔离
+
+DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
+
+传入 tenantId 的两种 DeepAgent 入口：
+
+```java
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.session.AgentSessionApi;
+
+TenantContext tenantCtx = TenantContext.builder().tenantId("dept-01").build();
+
+// 快捷入口：直接 bind/unbind
+Map<String, Object> result = agent.invoke(inputs, tenantCtx);
+
+// Session 内嵌（推荐）：session 携带 tenantContext，invoke(inputs, session) 自动提取
+AgentSessionApi session = AgentSessionApi.create(sessionId, null, agent.getCard())
+        .withTenantContext(tenantCtx);
+agent.invoke(inputs, session);
+```
+
+- `enableTenantIsolation=false`（默认）时行为与历史完全一致，不传 tenantId 也不会报错。
+- `tenantId` 必须匹配 `[a-zA-Z0-9_-]+`，否则 `TenantContextHolder.setCurrentTenant()` 抛 `IllegalArgumentException`。
+- DeepAgent 实现 `AutoCloseable`，`close()` 会停止 `TmpFileCleaner`，适合 try-with-resources 管理生命周期。
+
+完整的隔离资源清单、目录结构、KV 前缀、安全防护与清理接口，见 [多租户数据隔离](../多租户数据隔离.md)。
+
+---
+
+## Stream 并发与线程池
+
+DeepAgent 的 `stream()`（含开启 task loop 时的 `streamTaskLoop`）将每条 stream 会话提交到统一模块池 **`deep-agent-stream`**（`OpenJiuwenExecutors.newBoundedModulePool`），限制**同时进行中的 stream 会话数**，与 `invoke()` 路径分离。
+
+| 项 | 说明 |
+| --- | --- |
+| 默认 max | `max(16, CPU 核数 × 4)`（I/O 型 workload，随 CPU 缩放） |
+| 默认 queue | `128` |
+| 覆盖方式 | `-Dopenjiuwen.executor.deep-agent-stream.max-size=N` 或环境变量 `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE` |
+| 读取顺序 | **JVM 系统属性优先**，环境变量兜底；池创建时读取，不支持热更新 |
+
+饱和时模块池使用 `AbortPolicy`（`RejectedExecutionException`），不会无限排队。调大 stream 槽位后，仍需关注 LLM HTTP 并发（`openjiuwen.llm.http.max-requests-per-host` 等，**仅 `-D` 系统属性**）与厂商 API 配额。
+
+完整命名规则、模块默认表与其它模块池说明见 **[执行器 Runner — 运行时线程池配置](../执行器Runner.md#运行时线程池配置)**。
+
+---
+
 ## 注意事项
 
 1. **`invoke()` vs `run()`**：单轮推理请用 `run()`；仅开 task loop 时 `invoke()` 才驱动多轮循环。
@@ -438,6 +486,7 @@ mvn -q exec:java "-Dexec.args=list"
 4. **自定义 Tool**：派生 `Tool` 并实现 `invoke()` / `stream()`；`LocalFunction` 适用于简单函数包装。
 5. **权限配置**：`permissions.enabled=true` 时 `ensureInitialized()` 自动挂载 `PermissionInterruptRail`；可与自定义 Guard Rail 叠加。
 6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
+7. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
 
 ---
 

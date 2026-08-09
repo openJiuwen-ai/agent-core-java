@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.SysOperationCard
+# com.openjiuwen.core.sysop.SysOperationCard
 
 ## 类 SysOperationCard
 

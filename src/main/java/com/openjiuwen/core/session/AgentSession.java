@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
@@ -21,10 +22,8 @@ import java.util.UUID;
 /**
  * Public single-agent session facade.
  *
- * <p>Mirrors Python's {@code Session} in
- * {@code openjiuwen/core/session/agent.py}.</p>
  */
-public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
+public class AgentSession implements AgentSessionApi {
 
     private final String sessionId;
     private final Object card;
@@ -34,6 +33,7 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
     private SimpleAgentInteraction interaction;
     private final boolean closeStreamOnPostRun;
     private final Map<String, Object> sourceMetadata;
+    private TenantContext tenantContext;
 
     public AgentSession(String sessionId, Map<String, Object> envs, Object card,
                         StreamWriterManager streamWriterManager,
@@ -66,6 +66,30 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
     @Override
     public String getSessionId() {
         return sessionId;
+    }
+
+    /**
+     * Get the tenant context associated with this session.
+     *
+     * @return the tenant context, or null if not set
+     * @since 0.1.7
+     */
+    @Override
+    public TenantContext getTenantContext() {
+        return tenantContext;
+    }
+
+    /**
+     * Set the tenant context for this session (chain-style).
+     *
+     * @param ctx the tenant context to associate (nullable)
+     * @return this session for chaining
+     * @since 0.1.7
+     */
+    @Override
+    public AgentSession withTenantContext(TenantContext ctx) {
+        this.tenantContext = ctx;
+        return this;
     }
 
     public Object getEnv(String key) {
@@ -179,8 +203,8 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
         }
     }
 
-    public WorkflowSessionApi createWorkflowSession() {
-        return new WorkflowSessionApi(inner, getSessionId(), getEnvs());
+    public WorkflowSession createWorkflowSession() {
+        return new WorkflowSession(inner, getSessionId(), getEnvs());
     }
 
     public Object interact(Object value) {

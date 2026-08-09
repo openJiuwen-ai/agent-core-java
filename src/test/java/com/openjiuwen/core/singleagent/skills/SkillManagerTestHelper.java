@@ -3,7 +3,7 @@
  */
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.sys_operation.BaseFsOperation;
+import com.openjiuwen.core.sysop.BaseFsOperation;
 
 import java.util.function.Function;
 

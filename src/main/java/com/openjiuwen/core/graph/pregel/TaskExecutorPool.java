@@ -3,7 +3,7 @@
  */
 
 package com.openjiuwen.core.graph.pregel;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.graph.store.PendingNode;
 
@@ -33,7 +33,7 @@ public class TaskExecutorPool {
 
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executorService = VirtualThreadSupport.newThreadPerTaskExecutor();
+        this.executorService = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
     }
 
     /**
@@ -127,6 +127,13 @@ public class TaskExecutorPool {
         succeedMessages.clear();
         failed.clear();
         runningTasks.clear();
+    }
+
+    /**
+     * Shuts down the underlying worker executor (issue #70).
+     */
+    public void shutdown() {
+        executorService.shutdownNow();
     }
 
     public List<Message> getSucceedMessages() {

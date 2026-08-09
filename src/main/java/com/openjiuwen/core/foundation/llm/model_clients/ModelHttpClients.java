@@ -16,6 +16,10 @@ import java.time.Duration;
 
 final class ModelHttpClients {
 
+    private static final String CONNECT_TIMEOUT_SECONDS_PROPERTY =
+            "openjiuwen.llm.http.connect-timeout-seconds";
+    private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L;
+
     private final ModelClientConfig clientConfig;
     private final String targetUrl;
     private final HttpClient.Builder builder;
@@ -23,8 +27,9 @@ final class ModelHttpClients {
     private ModelHttpClients(ModelClientConfig clientConfig, String targetUrl) {
         this.clientConfig = clientConfig;
         this.targetUrl = targetUrl;
+        // Cap connect timeout so refused LLM hosts fail fast (issue #66 companion).
         this.builder = HttpClient.newBuilder()
-                .connectTimeout(timeoutDuration(clientConfig));
+                .connectTimeout(connectTimeoutDuration(clientConfig));
     }
 
     static ModelHttpClients builder(ModelClientConfig clientConfig, String targetUrl) {
@@ -110,6 +115,25 @@ final class ModelHttpClients {
         double seconds = clientConfig == null ? 60.0D : clientConfig.getTimeout();
         long millis = Math.max(1L, Math.round(seconds * 1000.0D));
         return Duration.ofMillis(millis);
+    }
+
+    /**
+     * Connect timeout is capped (default 10s, overridable) so a refused LLM host fails fast;
+     * request/read timeouts stay on the full model timeout elsewhere.
+     */
+    private static Duration connectTimeoutDuration(ModelClientConfig clientConfig) {
+        long configuredMillis = timeoutDuration(clientConfig).toMillis();
+        long capSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
+        String raw = System.getProperty(CONNECT_TIMEOUT_SECONDS_PROPERTY);
+        if (raw != null && !raw.isBlank()) {
+            try {
+                capSeconds = Math.max(1L, Long.parseLong(raw.trim()));
+            } catch (NumberFormatException ignored) {
+                capSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
+            }
+        }
+        long cappedMillis = Math.min(configuredMillis, capSeconds * 1000L);
+        return Duration.ofMillis(Math.max(1L, cappedMillis));
     }
 
     enum ProxyPortMode {

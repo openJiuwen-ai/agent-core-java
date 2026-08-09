@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Service adapters can register additional types via
  * {@link #register(String, McpClientProvider)} without modifying Core source.
  * <p>
- * Calling point: {@code ToolMgr.createClient()} delegates to this factory.
+ * Calling point: {@code ToolManager} default MCP client creation delegates to this factory.
  * 
  * @see McpClientProvider
  * @see McpClient

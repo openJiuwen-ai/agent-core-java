@@ -12,7 +12,7 @@ import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 
 import org.junit.jupiter.api.Test;
 
@@ -181,7 +181,7 @@ class T01180ToolComponentTest {
         ToolComponent returned = component.bindTool(tool);
         Executable<?, ?> executable = component.toExecutable();
         ToolExecutable toolExecutable = assertInstanceOf(ToolExecutable.class, executable);
-        Map<?, ?> output = assertInstanceOf(Map.class, toolExecutable.invoke(Map.of(), null, null));
+        Map<?, ?> output = assertInstanceOf(Map.class, toolExecutable.invoke(Map.of(), (BaseSession) null, null));
 
         assertSame(component, returned);
         assertEquals("ok", output.get("data"));
@@ -197,13 +197,8 @@ class T01180ToolComponentTest {
     }
 
     private static BaseSession nestedWorkflowSession() {
-        BaseSession inner = new BaseSession() {
-            @Override
-            public int workflowNestingDepth() {
-                return 1;
-            }
-        };
-        return new NodeSessionApi(inner);
+        WorkflowSession root = new WorkflowSession("main-workflow");
+        return WorkflowSession.nested(root, "sub-workflow");
     }
 
     private static ToolCard card(String id) {

@@ -16,7 +16,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -338,7 +338,7 @@ public class ExtendVerifyStage extends VerifyStage {
                 null
         );
         session.preRun(Map.of("inputs", Map.of("query", prompt)));
-        return VerifyStageObjectIterator.of(agent.stream(Map.of("query", prompt), session), session);
+        return VerifyStageObjectIterator.of(agent.stream(Map.<String, Object>of("query", prompt), session), session);
     }
 
     public static String buildExtAcceptanceTestPrompt(

@@ -15,7 +15,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageSlot;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact;
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.harness_config.HarnessConfig;
 import com.openjiuwen.harness.harness_config.HarnessConfigLoader;
 import com.openjiuwen.harness.harness_config.ResolvedHarnessConfig;

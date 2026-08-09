@@ -80,7 +80,8 @@ final class ToolLifecycleOutputFactory {
         String message = toolMessageContent(result);
         return result.result() == null && !message.isBlank()
                 || message.startsWith("Invalid tool arguments JSON:")
-                || message.startsWith("Ability execution error:");
+                || message.startsWith("Ability execution error:")
+                || message.startsWith("Tool execution error:");
     }
 
     private static String resolveErrorValue(AbilityManager.ExecutionResult result) {
@@ -89,10 +90,17 @@ final class ToolLifecycleOutputFactory {
         }
         Object error = attribute(result.result(), "error");
         if (error != null && !String.valueOf(error).isBlank()) {
-            return stringify(error);
+            return publicAbilityError(stringify(error));
         }
         String message = toolMessageContent(result);
-        return !message.isBlank() ? message : "Tool execution failed";
+        return !message.isBlank() ? publicAbilityError(message) : "Tool execution failed";
+    }
+
+    private static String publicAbilityError(String message) {
+        if (message != null && message.startsWith("Tool execution error:")) {
+            return "Ability execution error:" + message.substring("Tool execution error:".length());
+        }
+        return message;
     }
 
     private static String toolMessageContent(AbilityManager.ExecutionResult result) {

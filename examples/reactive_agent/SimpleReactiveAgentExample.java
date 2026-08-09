@@ -1,6 +1,6 @@
 package examples.reactive_agent;
 
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -21,7 +21,7 @@ public class SimpleReactiveAgentExample extends BaseAgent {
         super(AgentCard.builder()
                 .id(ID)
                 .name(ID)
-                .description("PR #630 响应式接口示例 Agent")
+                .description("响应式接口示例 Agent（无 LLM 依赖）")
                 .build());
     }
 
@@ -37,7 +37,7 @@ public class SimpleReactiveAgentExample extends BaseAgent {
 
     /** 模拟阻塞 LLM 调用（80ms），返回结构化答案。 */
     @Override
-    public Object invoke(Object inputs, Session session) {
+    public Object invoke(Object inputs, AgentSession session) {
         sleep(80);
         String query = extractQuery(inputs);
         return Map.of(
@@ -49,7 +49,7 @@ public class SimpleReactiveAgentExample extends BaseAgent {
 
     /** 模拟流式 LLM 输出，逐 token 返回，每个 token 间隔 60ms。 */
     @Override
-    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+    public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
         String query = extractQuery(inputs);
         String[] tokens = {"【Flux 流式】", "收到：「" + query + "」", " — ", "token-1 ", "token-2 ", "token-3 "};
         return new Iterator<>() {
@@ -62,7 +62,7 @@ public class SimpleReactiveAgentExample extends BaseAgent {
 
             @Override
             public Object next() {
-                sleep(300);
+                sleep(50);
                 // 最后一个 token 带线程名，证明迭代跑在 boundedElastic 上
                 if (i == tokens.length) {
                     i++;

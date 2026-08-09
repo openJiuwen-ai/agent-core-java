@@ -10,18 +10,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Backward-compatible upload-file chunk payload for moved sys-operation results.
- *
- * <p>Mirrors Python's {@code UploadFileChunkData} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.UploadFileChunkData}.
+ * Mirrors Python's {@code UploadFileChunkData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Deprecated(since = "0.1.14", forRemoval = false)
 public class UploadFileChunkData {
 
     private String localPath;

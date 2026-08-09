@@ -2,20 +2,24 @@ package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.launchers.LaunchedSandbox;
+import com.openjiuwen.core.sysop.sandbox.launchers.SandboxLauncher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
-import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SandboxRegistryCompatibilityTest {
 
-    public static final class DummyLauncher implements SandboxLauncher {
+    public static final class DummyLauncher extends SandboxLauncher {
         @Override
-        public LaunchedSandbox launch(SandboxLauncherConfig config, int timeoutSeconds, String isolationKey) {
-            return null;
+        public CompletableFuture<LaunchedSandbox> launch(
+                SandboxLauncherConfig config, int timeoutSeconds, String isolationKey) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 

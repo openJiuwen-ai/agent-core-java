@@ -7,6 +7,7 @@ package com.openjiuwen.agent_teams.observability;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Minimal tracer abstraction for translated observability setup.
@@ -39,6 +40,37 @@ public interface TelemetryTracer {
             synchronized (spans) {
                 return new ArrayList<>(spans);
             }
+        }
+    }
+
+    /**
+     * Tracer that appends ended spans to a {@link TraceFileExporter}.
+     *
+     * <p>Mirrors Python's {@code BatchSpanProcessor}+{@code TraceFileExporter}
+     * pairing in {@code openjiuwen/agent_teams/observability/setup.py}.</p>
+     *
+     * @since 0.1.14
+     */
+    final class FileBacked implements TelemetryTracer {
+        private final TraceFileExporter exporter;
+        private final InMemory memory = new InMemory();
+
+        FileBacked(TraceFileExporter exporter) {
+            this.exporter = Objects.requireNonNull(exporter, "exporter");
+        }
+
+        @Override
+        public TelemetrySpan startSpan(String name, TelemetrySpan.Kind kind) {
+            TelemetrySpan span = memory.startSpan(name, kind);
+            return new ExportOnEndSpan(span, exporter);
+        }
+
+        public TraceFileExporter getExporter() {
+            return exporter;
+        }
+
+        public List<TelemetrySpan> getSpans() {
+            return memory.getSpans();
         }
     }
 }

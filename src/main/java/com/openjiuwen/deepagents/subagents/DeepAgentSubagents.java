@@ -95,7 +95,7 @@ public final class DeepAgentSubagents {
       case "verification", "verification_agent" -> createVerificationAgent(language, workspace);
       default -> {
         Object host = new DeepAgentsFactory().createDeepAgent();
-        if (host instanceof com.openjiuwen.harness.DeepAgent h) {
+        if (host instanceof com.openjiuwen.harness.deep_agent.DeepAgent h) {
           yield h.createSubagent(subagentType, null);
         }
         yield null;

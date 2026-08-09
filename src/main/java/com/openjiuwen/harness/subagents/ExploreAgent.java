@@ -7,7 +7,7 @@ package com.openjiuwen.harness.subagents;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
@@ -27,15 +27,13 @@ public final class ExploreAgent {
     public static final String FACTORY_NAME = "explore_agent";
 
     public static final String DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN =
-            "你是宿主编程代理的代码库导航专家，职责是在现有代码中定位、读取并汇报信息。"
-                    + "严禁修改代码库；只执行只读检查、搜索和阅读。";
+            ExploreAgentFactory.DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN;
     public static final String DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_EN =
-            "You are a codebase navigation specialist operating on behalf of a host coding agent. "
-                    + "Your sole purpose is to locate, read, and report on existing code. Do not alter the repository.";
+            ExploreAgentFactory.DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_EN;
     public static final String DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN =
-            "以速度为优先的代码库导航子代理。";
+            ExploreAgentFactory.DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN;
     public static final String DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN =
-            "Codebase navigation agent optimized for speed.";
+            ExploreAgentFactory.DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN;
 
     private ExploreAgent() {
     }

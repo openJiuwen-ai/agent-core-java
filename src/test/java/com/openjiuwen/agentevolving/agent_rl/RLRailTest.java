@@ -2,11 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl;
+package com.openjiuwen.agentevolving.agent_rl;
 
-import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryStore;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.InMemoryTrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.harness.rails.CallbackContext;
 import org.junit.jupiter.api.Test;
 

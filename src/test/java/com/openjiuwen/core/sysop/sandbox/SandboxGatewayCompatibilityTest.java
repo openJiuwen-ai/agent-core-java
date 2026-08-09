@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;

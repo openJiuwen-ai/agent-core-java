@@ -4,11 +4,13 @@
 
 package com.openjiuwen.harness.cli;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.harness.cli.ui.CliRunner;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -38,7 +40,23 @@ public final class HarnessCli {
         opts.setRemote(stringValue(firstPresent(safe, "remote")));
         opts.setVerbose(booleanValue(firstPresent(safe, "verbose")));
         opts.setWorkspace(stringValue(firstPresent(safe, "workspace")));
+        opts.setTenantId(stringValue(firstPresent(safe, "tenant", "tenant_id", "tenantId")));
         return opts;
+    }
+
+    /**
+     * Build a TenantContext from CLI options when {@code --tenant} is provided.
+     *
+     * @param opts CLI options
+     * @return tenant context, or null when absent
+     * @since 0.1.7
+     */
+    public static TenantContext buildTenantContext(CLIOptions opts) {
+        return Optional.ofNullable(opts)
+                .map(CLIOptions::getTenantId)
+                .filter(id -> id != null && !id.isBlank())
+                .map(id -> TenantContext.builder().tenantId(id).build())
+                .orElse(null);
     }
 
     public static String resolveRunPrompt(
@@ -88,6 +106,7 @@ public final class HarnessCli {
         putIfPresent(config, "api_base", safe.getApiBase());
         putIfPresent(config, "server_url", safe.getRemote());
         putIfPresent(config, "workspace", safe.getWorkspace());
+        putIfPresent(config, "tenant_id", safe.getTenantId());
         config.put("verbose", safe.isVerbose());
         return config;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.evaluator;
@@ -14,134 +14,168 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 
 /**
- * Uses LLM as judge to evaluate model output consistency.
+ * LLM-as-judge evaluator for answer consistency.
  *
- * <p>Determines pass/fail and reasoning based on question/expected answer/model answer.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.DefaultEvaluator}.
+ * <p>Mirrors Python's {@code DefaultEvaluator} in
+ * {@code openjiuwen/agent_evolving/evaluator/evaluator.py}.</p>
  */
 public class DefaultEvaluator extends BaseEvaluator {
 
     private final Model model;
     private final PromptTemplate metricTemplate;
-    private final PromptTemplate retryTemplate;
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public DefaultEvaluator(
-            ModelRequestConfig modelConfig,
-            ModelClientConfig modelClientConfig,
-            String metric
-    ) {
-        this.model = new Model(modelClientConfig, modelConfig);
-        this.metricTemplate = PromptTemplate.builder()
-                .content(EvaluatorTemplates.LLM_METRIC_TEMPLATE)
-                .build()
-                .format(Map.of("user_metrics", metric != null ? metric : ""));
-        this.retryTemplate = PromptTemplate.builder()
-                .content(EvaluatorTemplates.LLM_METRIC_RETRY_TEMPLATE)
-                .build();
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(modelConfig, modelClientConfig, "");
     }
 
+    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig, String metric) {
+        this(new Model(modelClientConfig, modelConfig), metric);
+    }
+
+    DefaultEvaluator(Model model, String metric) {
+        this.model = Objects.requireNonNull(model, "model");
+        Map<String, Object> keyword = new LinkedHashMap<>();
+        keyword.put("user_metrics", metric == null ? "" : metric);
+        this.metricTemplate = EvaluatorTemplates.LLM_METRIC_TEMPLATE.format(keyword);
+    }
+
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
-        EvaluatedCase evaluatedCase = EvaluatedCase.builder()
-                .caseData(caseData)
-                .answer(predict)
-                .build();
+    public EvaluatedCase evaluate(Case caseValue, Map<String, Object> predict) {
+        List<BaseMessage> messages = metricTemplate.format(metricKeywords(caseValue, predict)).toMessages();
+        EvaluatedCase evaluatedCase = new EvaluatedCase(caseValue, predict, 0.0d, "", null);
+        String response;
         try {
-            AssistantMessage response = invokeModel(formatPrimaryMessages(caseData, predict));
-            Map<String, Object> evaluatedResult = extractEvaluateResult(
-                    response != null ? response.getContentAsString() : "",
-                    caseData,
-                    predict
-            );
-            if (evaluatedResult == null) {
-                evaluatedCase.setReason("Failed to evaluate case due to parsing error");
-                return evaluatedCase;
-            }
-            evaluatedCase.setScore(isPassResult(evaluatedResult.get("result")) ? 1.0 : 0.0);
-            evaluatedCase.setReason(String.valueOf(evaluatedResult.getOrDefault("reason", "")));
-            return evaluatedCase;
-        } catch (Exception e) {
+            response = invokeModel(messages);
+        } catch (RuntimeException exception) {
             evaluatedCase.setReason("Failed to evaluate case due to model error");
             return evaluatedCase;
         }
-    }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected AssistantMessage invokeModel(List<? extends BaseMessage> messages) throws Exception {
-        return model.invoke(messages, null, null, null, null, null, null, null, null, null);
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected List<? extends BaseMessage> formatPrimaryMessages(Case caseData, Map<String, Object> predict) {
-        return metricTemplate.format(Map.of(
-                "question", String.valueOf(caseData.getInputs()),
-                "expected_answer", String.valueOf(caseData.getLabel()),
-                "model_answer", String.valueOf(predict)
-        )).toMessages();
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected List<? extends BaseMessage> formatRetryMessages(String response, Case caseData, Map<String, Object> predict) {
-        return retryTemplate.format(Map.of(
-                "question", String.valueOf(caseData.getInputs()),
-                "expected_answer", String.valueOf(caseData.getLabel()),
-                "model_answer", String.valueOf(predict),
-                "nonstandard_evaluated_result", response
-        )).toMessages();
-    }
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected Map<String, Object> extractEvaluateResult(String response, Case caseData, Map<String, Object> predict) {
-        Map<String, Object> evaluatedResult = TuneUtils.parseJsonObjectFromLlmResponse(response);
-        if (evaluatedResult != null
-                && evaluatedResult.containsKey("result")
-                && evaluatedResult.containsKey("reason")) {
-            return evaluatedResult;
+        Map<String, Object> evaluatedResult = extractEvaluateResult(response, caseValue, predict);
+        if (evaluatedResult == null || evaluatedResult.isEmpty()) {
+            evaluatedCase.setReason("Failed to evaluate case due to parsing error");
+            return evaluatedCase;
         }
+        evaluatedCase.setScore(isPassResult(evaluatedResult.get("result")) ? 1.0d : 0.0d);
+        Object reason = evaluatedResult.get("reason");
+        evaluatedCase.setReason(reason == null ? "" : String.valueOf(reason));
+        return evaluatedCase;
+    }
+
+    Map<String, Object> extractEvaluateResult(String response, Case caseValue, Map<String, Object> predict) {
+        Object parsed = TuneUtils.parseJsonFromLlmResponse(response);
+        if (parsed instanceof Map<?, ?> map && map.containsKey("result") && map.containsKey("reason")) {
+            return toStringObjectMap(map);
+        }
+
+        List<BaseMessage> messages = EvaluatorTemplates.LLM_METRIC_RETRY_TEMPLATE
+                .format(retryKeywords(caseValue, predict, response))
+                .toMessages();
+        String retryResponse;
         try {
-            AssistantMessage retry = invokeModel(formatRetryMessages(response, caseData, predict));
-            return TuneUtils.parseJsonObjectFromLlmResponse(retry != null ? retry.getContentAsString() : "");
-        } catch (Exception e) {
+            retryResponse = invokeModel(messages);
+        } catch (RuntimeException exception) {
             return null;
         }
+        Object retryParsed = TuneUtils.parseJsonFromLlmResponse(retryResponse);
+        if (retryParsed instanceof Map<?, ?> retryMap) {
+            return toStringObjectMap(retryMap);
+        }
+        return null;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected boolean isPassResult(Object result) {
+    boolean isPassResult(Object result) {
         if (Boolean.TRUE.equals(result)) {
             return true;
         }
-        if (result instanceof String) {
-            return "true".equalsIgnoreCase(((String) result).trim());
+        if (result instanceof String text) {
+            return "true".equalsIgnoreCase(text.strip());
         }
         return false;
+    }
+
+    private String invokeModel(List<BaseMessage> messages) {
+        CompletionStage<AssistantMessage> stage = model.invoke(messages);
+        AssistantMessage assistantMessage = stage.toCompletableFuture().join();
+        return assistantMessage == null ? "" : assistantMessage.getContentAsString();
+    }
+
+    private static Map<String, Object> metricKeywords(Case caseValue, Map<String, Object> predict) {
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("question", pythonString(caseValue.getInputs()));
+        keywords.put("expected_answer", pythonString(caseValue.getLabel()));
+        keywords.put("model_answer", pythonString(predict));
+        return keywords;
+    }
+
+    private static Map<String, Object> retryKeywords(Case caseValue, Map<String, Object> predict, String response) {
+        Map<String, Object> keywords = metricKeywords(caseValue, predict);
+        keywords.put("nonstandard_evaluated_result", response);
+        return keywords;
+    }
+
+    private static Map<String, Object> toStringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Character character) {
+            return character.toString();
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .map(entry -> pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()))
+                    .collect(Collectors.joining(", ", "{", "}"));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<String> parts = new ArrayList<>();
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                parts.add(pythonRepr(iterator.next()));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            List<String> parts = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                parts.add(pythonRepr(Array.get(value, index)));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Character character) {
+            String text = character.toString();
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        return pythonString(value);
     }
 }

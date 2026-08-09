@@ -20,6 +20,7 @@ import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamSpec;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.WorkspaceSpec;
 import com.openjiuwen.agent_teams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agent_teams.agent.coordination.CoordinationKernel.EventListener;
+import com.openjiuwen.agent_teams.agent.coordination.handlers.AgentLifecycleHandler;
 import com.openjiuwen.agent_teams.agent.coordination.handlers.MessageHandler;
 import com.openjiuwen.agent_teams.interaction.DeliverResult;
 import com.openjiuwen.agent_teams.interaction.GodViewMessage;
@@ -49,7 +50,7 @@ import java.util.concurrent.CompletionStage;
  * <p>Mirrors Python's {@code TeamAgent} in
  * {@code openjiuwen/agent_teams/agent/team_agent.py}.</p>
  */
-public class TeamAgent implements CoordinationKernel.KernelHost {
+public class TeamAgent implements CoordinationKernel.KernelHost, AgentLifecycleHandler.TeamAgentResetView {
 
     private static final String UNKNOWN_MEMBER = "?";
 
@@ -173,6 +174,17 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
     }
 
     @Override
+    public boolean isTeamCleaned() {
+        return streamController != null && streamController.isTeamCleaned();
+    }
+
+    @Override
+    public void resetTeamCleaned() {
+        if (streamController != null) {
+            streamController.resetTeamCleaned();
+        }
+    }
+
     public StreamController getStreamController() {
         return streamController;
     }
@@ -274,6 +286,10 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
 
     @Override
     public CompletionStage<Void> deliverInput(Object content, boolean useSteer) {
+        // USER_INPUT / fresh user turns must clear the post-clean_team latch (#59 §3.5).
+        if (streamController != null && streamController.isTeamCleaned()) {
+            streamController.resetTeamCleaned();
+        }
         if (isAgentRunning()) {
             return useSteer ? steer(String.valueOf(content)) : followUp(String.valueOf(content));
         }

@@ -59,7 +59,17 @@ public final class ObservabilitySetup {
             TEAM_LOGGER.warning("observability already initialized; skipping re-init");
             return;
         }
-        provider = tracerOverride == null ? new TelemetryTracer.InMemory() : tracerOverride;
+        if (tracerOverride != null) {
+            provider = tracerOverride;
+        } else if (activeConfig.getExporter() == ObservabilityExporter.FILE) {
+            TraceFileExporter fileExporter = new TraceFileExporter(
+                    activeConfig.getTracesDir(),
+                    activeConfig.getFileRetentionDays()
+            );
+            provider = new TelemetryTracer.FileBacked(fileExporter);
+        } else {
+            provider = new TelemetryTracer.InMemory();
+        }
         callbackHandler = new OtelCallbackHandler(activeConfig, getTracer(CALLBACK_TRACER_NAME));
         monitorHandler = new OtelTeamMonitorHandler(activeConfig, getTracer(MONITOR_TRACER_NAME));
         wireCallbackHandlers(callbackHandler);

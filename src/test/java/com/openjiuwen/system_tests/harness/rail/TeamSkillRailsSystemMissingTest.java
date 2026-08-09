@@ -6,7 +6,7 @@ package com.openjiuwen.system_tests.harness.rail;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionLog;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionLog;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -14,9 +14,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.examples.agent_evolving.TeamSkillCreateRailExample;
-import com.openjiuwen.examples.agent_evolving.TeamSkillRailExample;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.skills.TeamSkillCreateRail;
 import com.openjiuwen.harness.rails.skills.TeamSkillRail;
@@ -129,18 +127,20 @@ class TeamSkillRailsSystemMissingTest {
 
     @Test
     void teamSkillCreateExampleCanLoadModelEnvFromLocalDotenv(@TempDir Path tempDir) throws IOException {
+        // Mirrors examples.agent_evolving.TeamSkillCreateRailExample#loadEnvIfPresent
         writeDotenv(tempDir);
         withClearedModelProperties(() -> {
-            assertThat(TeamSkillCreateRailExample.loadEnvIfPresent(tempDir)).isTrue();
+            assertThat(loadExampleEnvIfPresent(tempDir)).isTrue();
             assertLoadedModelProperties();
         });
     }
 
     @Test
     void teamSkillRailExampleCanLoadModelEnvFromLocalDotenv(@TempDir Path tempDir) throws IOException {
+        // Mirrors examples.agent_evolving.TeamSkillRailExample#loadEnvIfPresent
         writeDotenv(tempDir);
         withClearedModelProperties(() -> {
-            assertThat(TeamSkillRailExample.loadEnvIfPresent(tempDir)).isTrue();
+            assertThat(loadExampleEnvIfPresent(tempDir)).isTrue();
             assertLoadedModelProperties();
         });
     }
@@ -174,6 +174,33 @@ class TeamSkillRailsSystemMissingTest {
                         "API_BASE=https://example.test/v1"),
                 StandardCharsets.UTF_8
         );
+    }
+
+    /**
+     * Same contract as {@code examples.agent_evolving.TeamSkill*Example#loadEnvIfPresent}.
+     * Examples live under {@code examples/} and are not on the Maven test classpath.
+     */
+    private static boolean loadExampleEnvIfPresent(Path cwd) throws IOException {
+        Path envFile = cwd.resolve(".env");
+        if (!Files.isRegularFile(envFile)) {
+            return false;
+        }
+        boolean changed = false;
+        for (String line : Files.readAllLines(envFile, StandardCharsets.UTF_8)) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#") || !trimmed.contains("=")) {
+                continue;
+            }
+            int split = trimmed.indexOf('=');
+            String key = trimmed.substring(0, split).trim();
+            String value = trimmed.substring(split + 1).trim();
+            if (key.isEmpty() || System.getProperty(key) != null) {
+                continue;
+            }
+            System.setProperty(key, value);
+            changed = true;
+        }
+        return changed;
     }
 
     private static void assertLoadedModelProperties() {

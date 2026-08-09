@@ -15,7 +15,7 @@ import com.openjiuwen.core.controller.legacy.task.TaskInput;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,13 +44,13 @@ public class DefaultIntentDetector {
     private final IntentDetectionConfig intentConfig;
     private final Object agentConfig;
     private final ContextEngine contextEngine;
-    private final Session session;
+    private final AgentSessionApi session;
 
     /**
      * Auto-generated for codecheck compliance.
      */
     public DefaultIntentDetector(IntentDetectionConfig intentConfig, Object agentConfig,
-                                 ContextEngine contextEngine, Session session) {
+                                 ContextEngine contextEngine, AgentSessionApi session) {
         this.intentConfig = intentConfig;
         this.agentConfig = agentConfig;
         this.contextEngine = contextEngine;
@@ -60,7 +60,7 @@ public class DefaultIntentDetector {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public IntentDetectionController.Intent detect(Event event, Session session, ReasonerConfig config) {
+    public IntentDetectionController.Intent detect(Event event, AgentSessionApi session, ReasonerConfig config) {
         List<Task> tasks = processMessage(event);
         if (tasks.isEmpty()) {
             return IntentDetectionController.Intent.builder()

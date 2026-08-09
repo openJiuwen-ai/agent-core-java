@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,7 +63,6 @@ class LegacyConfigTest {
     void workflowAndReactConfigsSetControllerTypesAndNestedDefaults() {
         WorkflowAgentConfig workflow = new WorkflowAgentConfig();
         LegacyReActAgentConfig react = new LegacyReActAgentConfig();
-        ReActAgentConfig alias = new ReActAgentConfig();
 
         assertEquals(ControllerType.WORKFLOW_CONTROLLER, workflow.getControllerType());
         assertNotNull(workflow.getStartWorkflow());
@@ -73,7 +71,6 @@ class LegacyConfigTest {
         assertEquals(ControllerType.REACT_CONTROLLER, react.getControllerType());
         assertEquals("react_system_prompt", react.getPromptTemplateName());
         assertEquals(10, react.getContextWindowLimit());
-        assertInstanceOf(LegacyReActAgentConfig.class, alias);
     }
 
     @Test

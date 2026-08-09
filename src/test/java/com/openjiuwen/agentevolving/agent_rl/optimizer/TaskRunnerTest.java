@@ -2,9 +2,9 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.optimizer;
+package com.openjiuwen.agentevolving.agent_rl.optimizer;
 
-import com.openjiuwen.agent_evolving.agent_rl.rl_trainer.VerlConverter;
+import com.openjiuwen.agentevolving.agent_rl.rl_trainer.VerlConverter;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

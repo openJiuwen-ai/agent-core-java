@@ -52,11 +52,23 @@ public abstract class BaseRedisStorage {
         }
     }
 
+    /**
+     * Serialize session state for Redis checkpoint storage.
+     *
+     * @param state state to serialize
+     * @return typed bytes, or null when state is null
+     * @throws RuntimeException if the state cannot be serialized
+     */
     protected Serializer.TypedBytes serializeState(Object state) {
         if (state == null) {
             return null;
         }
-        return serializer.dumpsTyped(state);
+        try {
+            return serializer.dumpsTyped(state);
+        } catch (RuntimeException e) {
+            log.warn("Failed to serialize Redis state: {}", e.getMessage());
+            throw e;
+        }
     }
 
     protected Object deserializeState(Object dumpType, Object blob) {

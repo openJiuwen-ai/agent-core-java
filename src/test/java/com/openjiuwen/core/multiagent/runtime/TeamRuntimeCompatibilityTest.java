@@ -2,7 +2,7 @@ package com.openjiuwen.core.multiagent.runtime;
 
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class TeamRuntimeCompatibilityTest {
         RecordingAgent reviewer = new RecordingAgent("reviewer", Map.of("result", "approved"));
         runtime.registerAgent(reviewer.getCard(), () -> reviewer);
 
-        AgentGroupSessionApi session = new AgentGroupSessionApi("team-session");
+        AgentGroupSession session = new AgentGroupSession("team-session");
         Object result = runtime.send(Map.of("task", "review"), "reviewer", "lead", "team-session", session);
 
         assertThat(result).isEqualTo(Map.of("result", "approved"));
@@ -43,7 +43,7 @@ class TeamRuntimeCompatibilityTest {
         runtime.subscribe("reviewer", "code_*");
         runtime.subscribe("auditor", "code_review");
 
-        runtime.publish(Map.of("event", "done"), "code_review", "lead", "team-pubsub", new AgentGroupSessionApi("team-pubsub"));
+        runtime.publish(Map.of("event", "done"), "code_review", "lead", "team-pubsub", new AgentGroupSession("team-pubsub"));
 
         assertThat(reviewer.lastInput.get()).isEqualTo(Map.of("event", "done"));
         assertThat(auditor.lastInput.get()).isEqualTo(Map.of("event", "done"));
@@ -60,7 +60,7 @@ class TeamRuntimeCompatibilityTest {
         runtime.registerAgent(responder.getCard(), () -> responder);
         runtime.registerAgent(requester.getCard(), () -> requester);
 
-        Object result = runtime.send(Map.of("task", "ping"), "requester", "lead", "runtime-bridge", new AgentGroupSessionApi("runtime-bridge"));
+        Object result = runtime.send(Map.of("task", "ping"), "requester", "lead", "runtime-bridge", new AgentGroupSession("runtime-bridge"));
 
         assertThat(result).isEqualTo("ack:ping");
         assertThat(responder.lastSessionId.get()).isEqualTo("runtime-bridge");
@@ -73,7 +73,7 @@ class TeamRuntimeCompatibilityTest {
         RecordingAgent reviewer = new RecordingAgent("reviewer", Map.of("result", "accepted"));
         runtime.registerAgent(reviewer.getCard(), () -> reviewer);
 
-        AgentGroupSessionApi session = new AgentGroupSessionApi("team-demo-session");
+        AgentGroupSession session = new AgentGroupSession("team-demo-session");
         Object result = runtime.send(Map.of("task", "review"), "reviewer", "reviewer", "team-demo-session", session);
 
         assertThat(runtime.getAgentCount()).isEqualTo(1);
@@ -96,7 +96,7 @@ class TeamRuntimeCompatibilityTest {
         public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
             @SuppressWarnings("unchecked")
             String task = String.valueOf(((Map<String, Object>) inputs).get("task"));
-            AgentGroupSessionApi groupSession = session instanceof AgentGroupSessionApi api ? api : null;
+            AgentGroupSession groupSession = session instanceof AgentGroupSession api ? api : null;
             return CompletableFuture.completedFuture(
                     send(Map.of("task", task), "responder",
                             session != null ? session.getSessionId() : null,

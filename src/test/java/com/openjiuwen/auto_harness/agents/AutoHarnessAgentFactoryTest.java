@@ -8,10 +8,10 @@ import com.openjiuwen.auto_harness.rails.AutoHarnessContextRail;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.LspRail;
@@ -20,7 +20,7 @@ import com.openjiuwen.harness.rails.skills.SkillUseRail;
 import com.openjiuwen.harness.tools.WebTools;
 import com.openjiuwen.harness.tools.skills.SkillDescriptor;
 import com.openjiuwen.harness.cli.rails.ToolTrackingRail;
-import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -123,8 +124,12 @@ class AutoHarnessAgentFactoryTest {
         );
 
         assertEquals("workspace-override", agent.deepConfig().getWorkspace());
-        for (DeepAgentConfig.SubAgentConfig spec : agent.getSubagents().values()) {
-            assertEquals("workspace-override", spec.getWorkspace());
+        for (Object raw : agent.getSubagents().values()) {
+            if (raw instanceof DeepAgent child) {
+                assertEquals("workspace-override", child.deepConfig().getWorkspace());
+            } else {
+                assertThat(raw).isNotNull();
+            }
         }
     }
 
@@ -252,7 +257,10 @@ class AutoHarnessAgentFactoryTest {
         assertEquals(13, plan.deepConfig().getMaxIterations());
         assertEquals("activate-guide", activate.getCard().getName());
         assertEquals(1, activate.deepConfig().getMaxIterations());
-        assertTrue(activate.getRails().isEmpty());
+        // Stage agents always get buildSubagents() → applyAutoRailsFromConfig adds SubagentRail.
+        assertFalse(activate.getRails().isEmpty());
+        assertTrue(activate.getRails().stream()
+                .allMatch(rail -> rail instanceof com.openjiuwen.harness.rails.subagent.SubagentRail));
     }
 
     @Test

@@ -10,7 +10,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowComponent;
@@ -106,8 +106,8 @@ class WorkflowLLMEndToEndSystemTest {
         }
     }
 
-    private static WorkflowSessionApi newSession() {
-        return new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of());
+    private static WorkflowSession newSession() {
+        return new WorkflowSession(null, UUID.randomUUID().toString(), Map.of());
     }
 
     @Test

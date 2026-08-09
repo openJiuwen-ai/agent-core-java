@@ -19,7 +19,7 @@ import com.openjiuwen.core.sysop.result.ListFilesResult;
 import com.openjiuwen.core.sysop.result.ReadFileResult;
 import com.openjiuwen.core.sysop.result.SearchFilesResult;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

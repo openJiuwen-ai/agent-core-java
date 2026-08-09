@@ -14,6 +14,7 @@
 
 - `ReActAgentEvolvingExample.java`: 推荐入口，保持为一个薄包装类。
 - `AgentEvolvingExampleSupport.java`: 示例主实现，负责 agent 创建、数据集、训练、checkpoint 和推理输出。
+- `TeamSkillRailExample.java` / `TeamSkillCreateRailExample.java`: 团队技能演进 Rail 示例的环境加载辅助（`.env`）。
 - `../SharedExampleApiConfigLoader.java`: 读取 `examples/apiconfig.json` 中的大模型配置。
 
 ## 配置

@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.operator.tool_call;
 
-import com.openjiuwen.core.session.Session;
-
 /**
  * Registry interface for tool description overrides.
  *

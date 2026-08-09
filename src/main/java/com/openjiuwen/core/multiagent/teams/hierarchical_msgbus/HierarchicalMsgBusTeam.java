@@ -6,29 +6,31 @@ package com.openjiuwen.core.multiagent.teams.hierarchical_msgbus;
 
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.schema.TeamCard;
+import com.openjiuwen.core.session.AgentSessionApi;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Stream;
 
 /**
- * Legacy hierarchical msg-bus team; prefer the snake_case package version.
+ * Legacy hierarchical msg-bus team stub.
  *
- * @since 1.0
- * @deprecated Use {@code com.openjiuwen.agent_teams} package instead.
+ * @deprecated Prefer {@link HierarchicalTeam} or {@code com.openjiuwen.agentteams}.
  */
-@Deprecated
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class HierarchicalMsgBusTeam extends BaseTeam {
-  /** Auto-generated for codecheck compliance. */
-  public HierarchicalMsgBusTeam(TeamCard card, HierarchicalMsgBusTeamConfig config) {
-     super(card);
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  @Override
-  public java.util.concurrent.CompletionStage<Object> invoke(Object message, com.openjiuwen.core.session.Session session) {
-    return java.util.concurrent.CompletableFuture.completedFuture(null);
-  }
+    public HierarchicalMsgBusTeam(TeamCard card, HierarchicalMsgBusTeamConfig config) {
+        super(card);
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  @Override
-  public java.util.stream.Stream<Object> stream(Object message, com.openjiuwen.core.session.Session session) {
-    return java.util.stream.Stream.empty();
-  }
+    @Override
+    public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public Stream<Object> stream(Object message, AgentSessionApi session) {
+        return Stream.empty();
+    }
 }

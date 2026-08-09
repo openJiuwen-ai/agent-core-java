@@ -15,13 +15,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Sandbox gateway configuration for the sysop package.
- *
- * <p>Extends the sys_operation SandboxGatewayConfig with additional
- * {@code params} and {@code gatewayUrl} fields used by the sysop sandbox layer.</p>
- *
- * @since 2026-01-01
- * @version 1.0
+ * Sandbox gateway configuration.
+ * <p>
+ * Mirrors Python's {@code SandboxGatewayConfig} in
+ * {@code openjiuwen/core/sys_operation/config.py}.
  */
 @Data
 @Builder
@@ -48,10 +45,12 @@ public class SandboxGatewayConfig {
     @JsonProperty("auth_query_params")
     private Map<String, String> authQueryParams = new LinkedHashMap<>();
 
+    /** Legacy compatibility: gateway base URL used by profiles/clients. */
     @Builder.Default
     @JsonProperty("gateway_url")
     private String gatewayUrl = "";
 
+    /** Legacy compatibility: free-form params (root_path, shell_allowlist, etc.). */
     @Builder.Default
     @JsonProperty("params")
     private Map<String, Object> params = new LinkedHashMap<>();

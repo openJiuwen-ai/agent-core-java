@@ -20,7 +20,9 @@ import java.util.Map;
  * for both synchronous invocation and streaming modes.
  * 
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent}.
  */
+@Deprecated(since = "0.1.14")
 public class RemoteAgent {
     private final String agentId;
     private final String version;

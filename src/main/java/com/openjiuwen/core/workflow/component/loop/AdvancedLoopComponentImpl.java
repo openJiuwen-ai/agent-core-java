@@ -5,8 +5,13 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.CommitStateLike;
+import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.WorkflowComponent;
@@ -14,7 +19,8 @@ import com.openjiuwen.core.workflow.component.loop.callback.LoopCallback;
 import com.openjiuwen.core.workflow.condition.Condition;
 import com.openjiuwen.core.workflow.condition.NumberCondition;
 import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
-import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
+import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -100,6 +106,15 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         return true;
     }
 
+    /**
+     * Component type identifier used by Vertex tracing metadata.
+     *
+     * @return {@code "AdvancedLoopComponent"}
+     */
+    public String componentType() {
+        return "AdvancedLoopComponent";
+    }
+
     public Executable<?, ?> toExecutable() {
         return new AdvancedLoopExecutable(this);
     }
@@ -180,12 +195,78 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
 
         @Override
         public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
+            prepareLoopTraceContext(session);
             return owner.invoke(inputs, session, null);
         }
 
         @Override
         public boolean graphInvoker() {
             return true;
+        }
+
+        @Override
+        public String componentType() {
+            return owner.componentType();
+        }
+
+        private static void prepareLoopTraceContext(BaseSession session) {
+            if (session == null) {
+                return;
+            }
+            String nodeId = WorkflowSessionSupport.componentId(session);
+            if (nodeId == null || nodeId.isBlank()) {
+                nodeId = session instanceof WorkflowRuntimeSession runtime
+                        && runtime.executableId() != null
+                        ? runtime.executableId()
+                        : "";
+            }
+            cleanPriorNodeOutputs(session, nodeId);
+            WorkflowSessionSupport.setOutputs(session, Map.of(Constant.LOOP_ID, nodeId));
+            SessionStateAccess state = session.state();
+            if (state != null) {
+                state.updateGlobal(Map.of(Constant.LOOP_ID, nodeId));
+            }
+            WorkflowCommitState commitState = WorkflowSessionSupport.workflowState(session);
+            if (commitState != null) {
+                commitState.commit();
+            }
+            TracerWorkflowUtils.registerWorkflowSpanManager(session);
+        }
+
+        /**
+         * Best-effort cleanup of prior outputs for this loop node (Python AdvancedLoop on_invoke).
+         */
+        private static void cleanPriorNodeOutputs(BaseSession session, String nodeId) {
+            if (nodeId == null || nodeId.isBlank()) {
+                return;
+            }
+            WorkflowCommitState commitState = WorkflowSessionSupport.workflowState(session);
+            if (commitState == null) {
+                return;
+            }
+            CommitStateLike ioState = commitState.getIoState();
+            if (ioState == null) {
+                return;
+            }
+            Map<String, Object> ioMap = new LinkedHashMap<>(ioState.getState());
+            String parentId = session instanceof WorkflowRuntimeSession runtime
+                    ? runtime.parentId()
+                    : null;
+            if (parentId != null && !parentId.isBlank()) {
+                Object scoped = ioMap.get(parentId);
+                if (scoped instanceof Map<?, ?> scopedMap) {
+                    Map<String, Object> mutable = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> entry : scopedMap.entrySet()) {
+                        mutable.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                    if (mutable.remove(nodeId) != null) {
+                        ioMap.put(parentId, mutable);
+                        ioState.setState(ioMap);
+                    }
+                }
+            } else if (ioMap.remove(nodeId) != null) {
+                ioState.setState(ioMap);
+            }
         }
     }
 }

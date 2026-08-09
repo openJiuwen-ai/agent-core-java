@@ -6,14 +6,14 @@ package com.openjiuwen.harness.tools.shell.powershell;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.sys_operation.BaseShellOperation;
-import com.openjiuwen.core.sys_operation.Cwd;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdBackgroundResult;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdData;
-import com.openjiuwen.core.sys_operation.result.ExecuteCmdResult;
+import com.openjiuwen.core.sysop.BaseShellOperation;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
+import com.openjiuwen.core.sysop.result.ExecuteCmdData;
+import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.harness.tools.ToolOutput;
 
 import org.junit.jupiter.api.Test;

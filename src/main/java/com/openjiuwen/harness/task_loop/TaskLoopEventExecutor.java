@@ -13,7 +13,7 @@ import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

@@ -2,12 +2,12 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
+package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 
-import com.openjiuwen.agent_evolving.agent_rl.RLRail;
-import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryStore;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.agent_rl.RLRail;
+import com.openjiuwen.agentevolving.trajectory.InMemoryTrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.harness.rails.CallbackContext;
 

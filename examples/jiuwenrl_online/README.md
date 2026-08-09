@@ -4,11 +4,11 @@ The Python repository ships a full online RL loop launcher. The current Java bas
 
 What Java does expose today:
 
-- dataset / evaluator / trainer building blocks
-- example support helpers via `AgentEvolvingExampleSupport`
+- dataset / evaluator / trainer building blocks under `com.openjiuwen.agentevolving`
+- example support helpers via `examples.agent_evolving.AgentEvolvingExampleSupport`
 
 Suggested verification:
 
 ```bash
-mvn -Dtest=AgentEvolvingExampleSupportTest test
+mvn -Dtest=TrainerMissingTest,OfflineConfigSchemaTest,OnlineRLConfigTest test
 ```

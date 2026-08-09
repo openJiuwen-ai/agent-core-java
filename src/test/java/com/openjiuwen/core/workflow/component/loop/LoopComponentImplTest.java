@@ -12,7 +12,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
@@ -50,7 +50,7 @@ class LoopComponentImplTest {
 
     private static void invokeFlow(Object loopNumber, Map<String, Object> inputs) {
         Workflow flow = buildFlow(loopNumber);
-        flow.invoke(inputs, new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of()), null);
+        flow.invoke(inputs, new WorkflowSession(null, UUID.randomUUID().toString(), Map.of()), null);
     }
 
     private static Workflow buildFlow(Object loopNumber) {

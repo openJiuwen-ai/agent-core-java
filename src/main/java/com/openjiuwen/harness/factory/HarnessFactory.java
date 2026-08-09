@@ -6,17 +6,16 @@ package com.openjiuwen.harness.factory;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
-import com.openjiuwen.harness.rails.SecurityRail;
-import com.openjiuwen.harness.rails.SessionRail;
-import com.openjiuwen.harness.rails.SkillUseRail;
-import com.openjiuwen.harness.rails.SubagentRail;
+import com.openjiuwen.harness.rails.security.SecurityRail;
+import com.openjiuwen.harness.rails.skills.SkillUseRail;
+import com.openjiuwen.harness.rails.subagent.SessionRail;
+import com.openjiuwen.harness.rails.subagent.SubagentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
@@ -24,6 +23,8 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
+import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.KVStoreFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +36,6 @@ import java.util.UUID;
  * Auto-generated for codecheck compliance.
  */
 public final class HarnessFactory {
-    private static final String GENERAL_PURPOSE_NAME = "general-purpose";
     private static final String GENERAL_PURPOSE_DESC_CN =
             "用于研究复杂问题、搜索文件与内容、执行多步骤任务。该智能体拥有与主代理完全相同的全部工具权限。"
                     + "适合用于隔离上下文与 Token 消耗，并完成特定的复杂任务，因为它拥有与主代理完全相同的全部能力。";
@@ -60,7 +60,24 @@ public final class HarnessFactory {
         DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace);
         Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
         registerToolInstances(effectiveConfig.getTools());
-        return new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
+        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
+        injectKvStore(agent, effectiveConfig);
+        // Register tools/rails eagerly so getTools()/getRails() work before first invoke.
+        agent.ensureInitialized();
+        return agent;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void injectKvStore(DeepAgent agent, DeepAgentConfig config) {
+        Map<String, Object> kvStoreConfig = config.getKvStoreConfig();
+        Object typeValue = kvStoreConfig == null ? null : kvStoreConfig.get("type");
+        if (!(typeValue instanceof String type)) {
+            return;
+        }
+        Map<String, Object> conf = kvStoreConfig.get("conf") instanceof Map
+                ? (Map<String, Object>) kvStoreConfig.get("conf") : Map.of();
+        BaseKVStore kvStore = KVStoreFactory.create(type, conf);
+        agent.setKvStore(kvStore);
     }
 
     /**
@@ -127,8 +144,10 @@ public final class HarnessFactory {
             if (registered instanceof SysOperation existing) {
                 sysOperation = existing;
             } else {
-                SysOperationCard sysOperationCard = new SysOperationCard(sysOpId, OperationMode.LOCAL,
-                        new LocalWorkConfig());
+                LocalWorkConfig workConfig = LocalWorkConfig.builder()
+                        .restrictToSandbox(source.isRestrictToWorkDir())
+                        .build();
+                SysOperationCard sysOperationCard = new SysOperationCard(sysOpId, OperationMode.LOCAL, workConfig);
                 Runner.resourceMgr().addSysOperation(sysOperationCard, List.of(card.getId()));
                 Object added = Runner.resourceMgr().getSysOperation(sysOpId);
                 sysOperation = added instanceof SysOperation addedSysOperation
@@ -166,8 +185,18 @@ public final class HarnessFactory {
                 .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())
                 .addGeneralPurposeAgent(source.isAddGeneralPurposeAgent())
                 .restrictToWorkDir(source.isRestrictToWorkDir())
+                .autoCreateWorkspace(source.isAutoCreateWorkspace())
                 .sysOperation(sysOperation)
                 .permissionHost(source.getPermissionHost())
+                .enableTenantIsolation(source.isEnableTenantIsolation())
+                .tenantDataRoot(source.getTenantDataRoot())
+                .workspaceSecondaryTiers(source.getWorkspaceSecondaryTiers())
+                .workspaceTierConfigs(source.getWorkspaceTierConfigs())
+                .todoStorageType(source.getTodoStorageType())
+                .sessionStoreType(source.getSessionStoreType())
+                .kvStoreConfig(source.getKvStoreConfig())
+                .tmpTtl(source.getTmpTtl())
+                .tmpTtlScanInterval(source.getTmpTtlScanInterval())
                 .build();
     }
 
@@ -177,7 +206,7 @@ public final class HarnessFactory {
         }
         String rootPath = config != null && config.getWorkspacePath() != null && !config.getWorkspacePath().isBlank()
                 ? config.getWorkspacePath()
-                : "./";
+                : DeepAgentConfig.DEFAULT_WORKSPACE_PATH;
         String language = config != null && config.getLanguage() != null && !config.getLanguage().isBlank()
                 ? config.getLanguage()
                 : "cn";
@@ -242,7 +271,7 @@ public final class HarnessFactory {
                 : GENERAL_PURPOSE_DESC_CN;
         subagents.add(0, SubAgentConfig.builder()
                 .agentCard(AgentCard.builder()
-                        .name(GENERAL_PURPOSE_NAME)
+                        .name(DeepAgentConfig.GENERAL_PURPOSE_AGENT_NAME)
                         .description(description)
                         .build())
                 .systemPrompt(source.getSystemPrompt())
@@ -268,11 +297,11 @@ public final class HarnessFactory {
     private static boolean isGeneralPurposeSubagent(Object subagent) {
         if (subagent instanceof SubAgentConfig spec) {
             return spec.getAgentCard() != null
-                    && GENERAL_PURPOSE_NAME.equals(spec.getAgentCard().getName());
+                    && DeepAgentConfig.GENERAL_PURPOSE_AGENT_NAME.equals(spec.getAgentCard().getName());
         }
         if (subagent instanceof DeepAgent agent) {
             return agent.getCard() != null
-                    && GENERAL_PURPOSE_NAME.equals(agent.getCard().getName());
+                    && DeepAgentConfig.GENERAL_PURPOSE_AGENT_NAME.equals(agent.getCard().getName());
         }
         return false;
     }

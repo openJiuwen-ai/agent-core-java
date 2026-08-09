@@ -22,7 +22,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PullRequestDraft;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.util.ArrayList;

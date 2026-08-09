@@ -31,7 +31,7 @@ class DictableVariableTest {
 
         assertThat(result).isEqualTo(Map.of(
                 "title", "Ada",
-                "items", List.of("3", Map.of("flag", "True"))
+                "items", List.of("3", Map.of("flag", "true"))
         ));
     }
 

@@ -7,7 +7,7 @@ package com.openjiuwen.core.singleagent.rail;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

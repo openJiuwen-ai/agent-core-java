@@ -6,7 +6,7 @@ package com.openjiuwen.core.controller.legacy;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.legacy.event.Event;
 import com.openjiuwen.core.runner.mq.AsyncMessageHandler;
 import com.openjiuwen.core.runner.mq.InvokeQueueMessage;

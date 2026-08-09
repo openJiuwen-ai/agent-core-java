@@ -2,14 +2,14 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.sharing;
+package com.openjiuwen.agentevolving.sharing;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
-import com.openjiuwen.agent_evolving.checkpointing.SkillPackage;
-import com.openjiuwen.agent_evolving.sharing.backends.LocalFileBackend;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
+import com.openjiuwen.agentevolving.checkpointing.SkillPackage;
+import com.openjiuwen.agentevolving.sharing.backends.LocalFileBackend;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

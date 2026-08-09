@@ -2,12 +2,12 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.adapters.benchmarks;
+package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.adapters.benchmarks;
 
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.DockerEnvironment;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.EvalResult;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.ExecResult;
-import com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline.Task;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.DockerEnvironment;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.EvalResult;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.ExecResult;
+import com.openjiuwen.agentevolving.evaluator.evaluator_pipeline.Task;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

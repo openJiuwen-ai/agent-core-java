@@ -8,7 +8,7 @@ import com.openjiuwen.core.controller.legacy.IntentDetectionController;
 import com.openjiuwen.core.controller.legacy.config.ReasonerConfig;
 import com.openjiuwen.core.controller.legacy.event.Event;
 import com.openjiuwen.core.controller.legacy.task.Task;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -45,7 +45,7 @@ public class AgentReasoner {
      * @return the result
      * @since 0.1.7
      */
-    public CompletionStage<List<IntentDetectionController.Intent>> detect(Event event, Session session) {
+    public CompletionStage<List<IntentDetectionController.Intent>> detect(Event event, AgentSessionApi session) {
         if (intentDetector == null) {
             return java.util.concurrent.CompletableFuture.completedFuture(List.of());
         }
@@ -61,7 +61,7 @@ public class AgentReasoner {
      * @return the result
      * @since 0.1.7
      */
-    public CompletionStage<List<Task>> plan(IntentDetectionController.Intent intent, Session session) {
+    public CompletionStage<List<Task>> plan(IntentDetectionController.Intent intent, AgentSessionApi session) {
         if (planner == null) {
             return java.util.concurrent.CompletableFuture.completedFuture(List.of());
         }

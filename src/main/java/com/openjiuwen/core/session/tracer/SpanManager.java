@@ -4,11 +4,10 @@
 
 package com.openjiuwen.core.session.tracer;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Mirrors Python's {@code SpanManager} in
@@ -17,8 +16,8 @@ import java.util.UUID;
 public class SpanManager {
     private final String traceId;
     private final String parentNodeId;
-    private final List<String> order = new ArrayList<>();
-    private final Map<String, Span> sessionSpans = new LinkedHashMap<>();
+    private final CopyOnWriteArrayList<String> order = new CopyOnWriteArrayList<>();
+    private final Map<String, Span> sessionSpans = new ConcurrentHashMap<>();
 
     public SpanManager(String traceId) {
         this(traceId, "");
@@ -45,9 +44,7 @@ public class SpanManager {
     }
 
     public void refreshSpanRecord(String invokeId, Span span) {
-        if (!order.contains(invokeId)) {
-            order.add(invokeId);
-        }
+        order.addIfAbsent(invokeId);
         sessionSpans.put(invokeId, span);
     }
 
@@ -97,13 +94,11 @@ public class SpanManager {
     }
 
     public Span getLastSpan() {
-        if (order.isEmpty()) {
+        String[] snapshot = order.toArray(new String[0]);
+        if (snapshot.length == 0) {
             return null;
         }
-        String lastSpanId = order.get(order.size() - 1);
-        if (!sessionSpans.containsKey(lastSpanId)) {
-            return null;
-        }
+        String lastSpanId = snapshot[snapshot.length - 1];
         return sessionSpans.get(lastSpanId);
     }
 

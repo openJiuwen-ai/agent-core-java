@@ -6,7 +6,7 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -17,8 +17,8 @@ import com.openjiuwen.core.foundation.tool.ExternalTool;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
@@ -366,12 +366,16 @@ class ReActAgentRuntimeLoggingTest {
         }
     }
 
-    private static final class BlockingLifecycleSession extends MemorySession implements AgentSessionLifecycle {
+    private static final class BlockingLifecycleSession extends AgentSession {
         private final CountDownLatch workerThreadCaptured = new CountDownLatch(1);
         private volatile String workerThreadName;
 
+        private BlockingLifecycleSession() {
+            super("runtime-logging-session", null, null);
+        }
+
         @Override
-        public AgentSessionLifecycle preRun(Map<String, Object> kwargs) {
+        public AgentSession preRun(Map<String, Object> kwargs) {
             return this;
         }
 

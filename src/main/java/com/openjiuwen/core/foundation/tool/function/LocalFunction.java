@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.callback.ToolCallEvents;
+import com.openjiuwen.core.session.SessionContextHolder;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -27,6 +28,7 @@ import java.util.function.Function;
 public class LocalFunction extends Tool {
 
     private final Function<Map<String, Object>, Object> func;
+    private final ContextFunction contextFunc;
 
     /**
      * Creates a local function tool.
@@ -41,21 +43,47 @@ public class LocalFunction extends Tool {
                     "card", String.valueOf(getCard()));
         }
         this.func = func;
+        this.contextFunc = null;
+    }
+
+    /**
+     * Creates a local function tool that can access execution kwargs such as {@code session}.
+     *
+     * @param card tool metadata card
+     * @param contextFunc context-aware function; must not be {@code null}
+     */
+    public LocalFunction(ToolCard card, ContextFunction contextFunc) {
+        super(card);
+        if (contextFunc == null) {
+            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED,
+                    "card", String.valueOf(getCard()));
+        }
+        this.func = null;
+        this.contextFunc = contextFunc;
     }
 
     /**
      * Returns the wrapped function.
      *
-     * @return wrapped function
+     * @return wrapped function, or {@code null} when a {@link ContextFunction} is used
      */
     public Function<Map<String, Object>, Object> getFunc() {
         return func;
     }
 
+    /**
+     * Returns the context-aware function variant.
+     *
+     * @return context-aware function, or {@code null} when a plain function is used
+     */
+    public ContextFunction getContextFunc() {
+        return contextFunc;
+    }
+
     @Override
     protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         Map<String, Object> formattedInputs = formatInputs(inputs, kwargs);
-        Object result = awaitIfNeeded(func.apply(formattedInputs));
+        Object result = invokeFunction(formattedInputs, kwargs);
         if (result instanceof Iterator<?>) {
             throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
                     "method", "invoke",
@@ -68,7 +96,7 @@ public class LocalFunction extends Tool {
     @Override
     protected Iterator<Object> streamInternal(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         Map<String, Object> formattedInputs = formatInputs(inputs, kwargs);
-        Object result = awaitIfNeeded(func.apply(formattedInputs));
+        Object result = invokeFunction(formattedInputs, kwargs);
         if (result instanceof Iterator<?> iterator) {
             return castIterator(iterator);
         }
@@ -79,6 +107,27 @@ public class LocalFunction extends Tool {
                 "method", "stream",
                 "reason", "func is not generator",
                 "card", String.valueOf(getCard()));
+    }
+
+    /**
+     * Invokes the wrapped function within a saved session context that is
+     * restored after execution, so parallel tool calls do not clobber the
+     * session bound to the calling thread.
+     */
+    private Object invokeFunction(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
+        Object session = kwargs != null ? kwargs.get("session") : null;
+        Object previousSession = SessionContextHolder.getCurrentSession();
+        try {
+            if (session != null) {
+                SessionContextHolder.setCurrentSession(session);
+            }
+            if (contextFunc != null) {
+                return awaitIfNeeded(contextFunc.apply(inputs, kwargs != null ? kwargs : Map.of()));
+            }
+            return awaitIfNeeded(func.apply(inputs));
+        } finally {
+            SessionContextHolder.restoreCurrentSession(previousSession);
+        }
     }
 
     private Map<String, Object> formatInputs(Map<String, Object> inputs, Map<String, Object> kwargs) {
@@ -137,5 +186,13 @@ public class LocalFunction extends Tool {
     @SuppressWarnings("unchecked")
     private static Iterator<Object> castIterator(Iterator<?> iterator) {
         return (Iterator<Object>) iterator;
+    }
+
+    /**
+     * Context-aware local function signature.
+     */
+    @FunctionalInterface
+    public interface ContextFunction {
+        Object apply(Map<String, Object> inputs, Map<String, Object> kwargs);
     }
 }

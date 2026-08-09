@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.signal;
+package com.openjiuwen.agentevolving.signal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.optimizer.LlmResilience;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;

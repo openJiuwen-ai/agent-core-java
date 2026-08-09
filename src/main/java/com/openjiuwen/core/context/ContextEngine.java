@@ -4,386 +4,459 @@
 
 package com.openjiuwen.core.context;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.context.context.ContextUtils;
+import com.openjiuwen.core.context.context.KVCacheManager;
+import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressor;
+import com.openjiuwen.core.context.processor.compressor.DialogueCompressor;
+import com.openjiuwen.core.context.processor.compressor.FullCompactProcessor;
+import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessor;
+import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
+import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
+import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloader;
+import com.openjiuwen.core.context.processor.offloader.ToolResultBudgetProcessor;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.token.TiktokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.session.Session;
 
-import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
- * Backward-compatible facade for the pre-0.1.14 root context package.
+ * Manages the lifecycle and processing of conversational context.
  *
  * <p>Mirrors Python's {@code ContextEngine} in
  * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
  */
-public class ContextEngine extends com.openjiuwen.core.context_engine.ContextEngine {
-    public static final String DEFAULT_CONTEXT_ID =
-            com.openjiuwen.core.context_engine.ContextEngine.DEFAULT_CONTEXT_ID;
-    public static final String DEFAULT_SESSION_ID =
-            com.openjiuwen.core.context_engine.ContextEngine.DEFAULT_SESSION_ID;
+public class ContextEngine {
+    public static final String DEFAULT_CONTEXT_ID = "default_context_id";
+    public static final String DEFAULT_SESSION_ID = "default_session_id";
 
-    private static final Map<String, Class<?>> PROCESSOR_CLASS_MAP = new ConcurrentHashMap<>();
-    private static final Map<String, Function<Object, ?>> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
+    private static final Map<String, ProcessorFactory> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
 
-    private final Map<com.openjiuwen.core.context_engine.ModelContext, ModelContext> wrappers = new LinkedHashMap<>();
+    static {
+        registerProcessor("DialogueCompressor", DialogueCompressor.class);
+        registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class);
+        registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class);
+        registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+        registerProcessor("FullCompactProcessor", FullCompactProcessor.class);
+        registerProcessor("MessageOffloader", MessageOffloader.class);
+        registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class);
+        registerProcessor("ToolResultBudgetProcessor", ToolResultBudgetProcessor.class);
+    }
+
+    private final ContextEngineConfig config;
+    private final SessionModelContext.WorkspacePort workspace;
+    private final SessionModelContext.SysOperationPort sysOperation;
+    private final SessionModelContext.ModelContextWindowTokenProvider modelContextWindowTokenProvider;
+    private final Map<String, ModelContext> contextPool = new ConcurrentHashMap<>();
 
     public ContextEngine() {
-        this(null, null, null);
+        this(null);
     }
 
     public ContextEngine(ContextEngineConfig config) {
         this(config, null, null);
     }
 
-    public ContextEngine(ContextEngineConfig config, Object workspace, Object sysOperation) {
-        super(
-                config,
-                adaptWorkspace(workspace),
-                adaptSysOperation(sysOperation));
+    public ContextEngine(ContextEngineConfig config, SessionModelContext.WorkspacePort workspace,
+                         SessionModelContext.SysOperationPort sysOperation) {
+        this(config, workspace, sysOperation, ContextUtils::fetchOpenrouterModelContextWindowTokens);
     }
 
-    @Override
+    public ContextEngine(ContextEngineConfig config, SessionModelContext.WorkspacePort workspace,
+                         SessionModelContext.SysOperationPort sysOperation,
+                         SessionModelContext.ModelContextWindowTokenProvider modelContextWindowTokenProvider) {
+        this.config = config == null ? new ContextEngineConfig() : config;
+        this.workspace = workspace;
+        this.sysOperation = sysOperation;
+        this.modelContextWindowTokenProvider = modelContextWindowTokenProvider == null
+                ? ContextUtils::fetchOpenrouterModelContextWindowTokens
+                : modelContextWindowTokenProvider;
+    }
+
     public ModelContext createContext() {
-        return wrap(super.createContext());
+        return createContext(DEFAULT_CONTEXT_ID, null);
     }
 
-    public ModelContext createContext(String contextId, Session session) {
-        return createContext(contextId, (Object) session);
-    }
-
-    @Override
     public ModelContext createContext(String contextId, Object session) {
-        return wrap(super.createContext(contextId, session));
+        return createContext(contextId, session, null, null, null);
     }
 
-    @Override
-    public ModelContext createContext(String contextId, Object session,
-                                      List<com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec> processors,
+    public ModelContext createContext(String contextId, Object session, List<ProcessorSpec> processors,
                                       List<BaseMessage> historyMessages,
-                                      com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort tokenCounter) {
-        return wrap(super.createContext(contextId, session, processors, historyMessages, tokenCounter));
+                                      ModelContext.TokenCounterPort tokenCounter) {
+        String processedContextId = processContextId(contextId == null ? DEFAULT_CONTEXT_ID : contextId);
+        String sessionId = resolveSessionId(session);
+        String fullContextId = sessionId + "_" + processedContextId;
+        ModelContext context = contextPool.computeIfAbsent(fullContextId, ignored -> newSessionContext(
+                processedContextId, sessionId, session, processors, historyMessages, tokenCounter));
+        if (context instanceof SessionModelContext sessionModelContext) {
+            sessionModelContext.setSessionRef(session);
+        }
+        loadStateFromSession(context, session, historyMessages);
+        return context;
     }
 
-    public ModelContext createContext(String contextId, Object session, List<?> processors,
-                                      List<BaseMessage> historyMessages, Object tokenCounter) {
-        return wrap(super.createContext(contextId, session, adaptProcessorSpecs(processors), historyMessages,
-                adaptTokenCounter(tokenCounter)));
+    private SessionModelContext newSessionContext(String processedContextId, String sessionId, Object session,
+                                                  List<ProcessorSpec> processors, List<BaseMessage> historyMessages,
+                                                  ModelContext.TokenCounterPort tokenCounter) {
+        List<SessionModelContext.ContextProcessorPort> processorInstances = new ArrayList<>();
+        for (ProcessorSpec processorSpec : processors == null ? List.<ProcessorSpec>of() : processors) {
+            processorInstances.add(createProcessor(processorSpec.processorType(), processorSpec.config()));
+        }
+
+        // Align with Python create_context: default TiktokenCounter when caller omits token_counter.
+        ModelContext.TokenCounterPort effectiveTokenCounter = tokenCounter != null
+                ? tokenCounter
+                : defaultTiktokenTokenCounter();
+
+        if (config.isEnableOpenrouterModelContextWindowTokens()) {
+            modelContextWindowTokenProvider.fetch(config.getOpenrouterRequestTimeout());
+        }
+
+        return new SessionModelContext(
+                processedContextId,
+                sessionId,
+                config,
+                historyMessages == null ? List.of() : historyMessages,
+                processorInstances,
+                effectiveTokenCounter,
+                session,
+                workspace,
+                sysOperation,
+                config.isEnableKvCacheRelease() ? new KVCacheManager(sessionId) : null,
+                modelContextWindowTokenProvider
+        );
     }
 
-    public ModelContext createContextSimple(String contextId, Session session) {
-        return createContext(contextId, session);
+    private static ModelContext.TokenCounterPort defaultTiktokenTokenCounter() {
+        TiktokenCounter counter = new TiktokenCounter();
+        return messages -> counter.countMessages(messages == null ? List.of() : messages);
     }
 
-    public ModelContext createContextSimple(String contextId, Object session) {
-        return createContext(contextId, session);
-    }
-
-    public ModelContext createContextWithHistory(String contextId, Session session,
-                                                 List<BaseMessage> historyMessages) {
-        return createContext(contextId, session, (List<ProcessorSpec>) null, historyMessages, (Object) null);
-    }
-
-    public ModelContext createContextWithHistory(String contextId, Object session,
-                                                 List<BaseMessage> historyMessages) {
-        return createContext(contextId, session, (List<ProcessorSpec>) null, historyMessages, (Object) null);
-    }
-
-    @Override
     public ModelContext getContext() {
-        return wrap(super.getContext());
+        return getContext(DEFAULT_CONTEXT_ID, DEFAULT_SESSION_ID);
     }
 
-    @Override
     public ModelContext getContext(String contextId) {
-        return wrap(super.getContext(contextId));
+        return getContext(contextId, DEFAULT_SESSION_ID);
     }
 
-    @Override
     public ModelContext getContext(String contextId, String sessionId) {
-        return wrap(super.getContext(contextId, sessionId));
+        String processedContextId = processContextId(contextId == null ? DEFAULT_CONTEXT_ID : contextId);
+        String effectiveSessionId = sessionId == null ? DEFAULT_SESSION_ID : sessionId;
+        return contextPool.get(effectiveSessionId + "_" + processedContextId);
     }
 
-    @Override
     public Object compressContext(String contextId, Object session) {
-        return super.compressContext(contextId, session);
+        return compressContext(contextId, session, null, null, null);
     }
 
-    @Override
     public Object compressContext(String contextId, Object session, String sessionId, List<String> processorTypes,
                                   Map<String, Object> kwargs) {
-        return super.compressContext(contextId, session, sessionId, processorTypes, kwargs);
+        String resolvedSessionId = session != null ? resolveSessionId(session)
+                : (sessionId == null ? DEFAULT_SESSION_ID : sessionId);
+        String effectiveContextId = contextId == null ? DEFAULT_CONTEXT_ID : contextId;
+        ModelContext context = getContext(effectiveContextId, resolvedSessionId);
+        if (context == null) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "error_msg", "cannot find context '" + effectiveContextId + "' in session '"
+                            + resolvedSessionId + "'");
+        }
+        if (!(context instanceof SessionModelContext sessionModelContext)) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "error_msg", "context '" + effectiveContextId + "' does not support active compression");
+        }
+
+        Map<String, Object> effectiveKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        if (sysOperation != null) {
+            effectiveKwargs.putIfAbsent("sys_operation", sysOperation);
+        }
+        return sessionModelContext.compressContext(processorTypes, effectiveKwargs).toCompletableFuture().join();
     }
 
-    @Override
     public void clearContext() {
-        super.clearContext();
-        wrappers.clear();
+        clearContext(null, null);
     }
 
-    @Override
     public void clearContext(String contextId, String sessionId) {
-        super.clearContext(contextId, sessionId);
-        wrappers.clear();
+        if (sessionId == null) {
+            contextPool.clear();
+            return;
+        }
+
+        if (contextId == null) {
+            contextPool.entrySet().removeIf(entry -> sessionId.equals(entry.getValue().sessionId()));
+            return;
+        }
+
+        String processedContextId = processContextId(contextId);
+        contextPool.remove(sessionId + "_" + processedContextId);
     }
 
-    public void clearContextBySession(String sessionId) {
-        clearContext(null, sessionId);
+    public Map<String, Object> saveContexts(Object session) {
+        return saveContexts(session, null);
     }
 
-    public Map<String, Object> saveContexts(Session session, List<String> contextIds) {
-        return saveContexts((Object) session, contextIds);
-    }
-
-    @Override
     public Map<String, Object> saveContexts(Object session, List<String> contextIds) {
-        return super.saveContexts(session, contextIds);
+        if (session == null) {
+            return null;
+        }
+        String sessionId = resolveSessionId(session);
+        Map<String, Object> states = new LinkedHashMap<>();
+        List<String> idsToSave = contextIds == null ? contextIdsForSession(sessionId) : contextIds;
+
+        for (String rawContextId : idsToSave) {
+            String processedContextId = processContextId(rawContextId);
+            ModelContext context = contextPool.get(sessionId + "_" + processedContextId);
+            if (context instanceof SessionModelContext sessionModelContext) {
+                states.put(processedContextId, sessionModelContext.saveState());
+            }
+        }
+
+        saveStateToSession(session, states);
+        return states;
     }
 
-    public static void registerProcessor(String processorType, Class<?> processorClass,
-                                         Function<Object, ?> factory) {
-        PROCESSOR_CLASS_MAP.put(processorType, processorClass);
+    public static void registerProcessor(String processorType, ProcessorFactory factory) {
         PROCESSOR_FACTORY_MAP.put(processorType, factory);
-        com.openjiuwen.core.context_engine.ContextEngine.registerProcessor(processorType,
-                config -> adaptProcessor(factory.apply(config)));
     }
 
     public static void registerProcessor(String processorType,
-            Class<? extends com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort>
-                    processorClass) {
-        PROCESSOR_CLASS_MAP.put(processorType, processorClass);
-        com.openjiuwen.core.context_engine.ContextEngine.registerProcessor(processorType,
-                config -> instantiateProcessor(processorType, processorClass, config));
-    }
-
-    public static Class<?> getProcessorClass(String processorType) {
-        return PROCESSOR_CLASS_MAP.get(processorType);
+                                         Class<? extends SessionModelContext.ContextProcessorPort> processorClass) {
+        PROCESSOR_FACTORY_MAP.put(processorType, config -> instantiateProcessor(processorType, processorClass, config));
     }
 
     public static Set<String> registeredProcessorTypes() {
-        return com.openjiuwen.core.context_engine.ContextEngine.registeredProcessorTypes();
+        return new LinkedHashSet<>(PROCESSOR_FACTORY_MAP.keySet());
+    }
+
+    private List<String> contextIdsForSession(String sessionId) {
+        List<String> contextIds = new ArrayList<>();
+        for (ModelContext context : contextPool.values()) {
+            if (sessionId.equals(context.sessionId())) {
+                contextIds.add(context.contextId());
+            }
+        }
+        return contextIds;
+    }
+
+    private SessionModelContext.ContextProcessorPort createProcessor(String processorType, Object processorConfig) {
+        ProcessorFactory factory = PROCESSOR_FACTORY_MAP.get(processorType);
+        if (factory == null) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "error_msg", "cannot find processor type '" + processorType + "'");
+        }
+        try {
+            return factory.create(processorConfig);
+        } catch (RuntimeException ex) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "init processor type '" + processorType + "' failed",
+                    null,
+                    ex,
+                    Map.of("error_msg", "init processor type '" + processorType + "' failed"));
+        }
+    }
+
+    private static SessionModelContext.ContextProcessorPort instantiateProcessor(
+            String processorType,
+            Class<? extends SessionModelContext.ContextProcessorPort> processorClass,
+            Object config) {
+        try {
+            try {
+                return processorClass.getConstructor(config == null ? Object.class : config.getClass())
+                        .newInstance(config);
+            } catch (NoSuchMethodException ignored) {
+                return processorClass.getConstructor(Object.class).newInstance(config);
+            }
+        } catch (ReflectiveOperationException ex) {
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
+                    "init processor type '" + processorType + "' failed",
+                    null,
+                    ex,
+                    Map.of("error_msg", "init processor type '" + processorType + "' failed"));
+        }
+    }
+
+    private static void loadStateFromSession(ModelContext context, Object session, List<BaseMessage> historyMessages) {
+        if (session == null || !(context instanceof SessionModelContext sessionModelContext)) {
+            return;
+        }
+        Map<String, Object> states = asStringObjectMap(readSessionContextState(session).orElse(null));
+        if (states == null) {
+            return;
+        }
+        if (historyMessages != null) {
+            Map<String, Object> contextState = asStringObjectMap(states.get(context.contextId()));
+            if (contextState == null) {
+                contextState = new LinkedHashMap<>();
+            }
+            contextState.put("messages", historyMessages);
+            states.put(context.contextId(), contextState);
+        }
+        sessionModelContext.loadState(states);
+    }
+
+    private static void saveStateToSession(Object session, Map<String, Object> states) {
+        if (session == null) {
+            return;
+        }
+        if (invokeUpdateState(session, contextUpdate(null))) {
+            invokeUpdateState(session, contextUpdate(states));
+            return;
+        }
+        readInner(session).ifPresent(inner -> {
+            if (invokeUpdateState(inner, contextUpdate(null))) {
+                invokeUpdateState(inner, contextUpdate(states));
+            }
+        });
+    }
+
+    private static Map<String, Object> contextUpdate(Object value) {
+        Map<String, Object> update = new LinkedHashMap<>();
+        update.put("context", value);
+        return update;
+    }
+
+    private static Optional<Object> readSessionContextState(Object session) {
+        Optional<Object> directState = invokeStateGetter(session, "getState")
+                .or(() -> invokeStateGetter(session, "get_state"));
+        if (directState.isPresent()) {
+            Map<String, Object> state = asStringObjectMap(directState.get());
+            return state == null ? Optional.empty() : Optional.ofNullable(state.get("context"));
+        }
+
+        Optional<Object> directContext = invokeContextGetter(session, "getState")
+                .or(() -> invokeContextGetter(session, "get_state"));
+        if (directContext.isPresent()) {
+            return directContext;
+        }
+
+        return readInner(session).flatMap(ContextEngine::readSessionContextState);
+    }
+
+    private static Optional<Object> invokeStateGetter(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return Optional.ofNullable(method.invoke(target));
+        } catch (ReflectiveOperationException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<Object> invokeContextGetter(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getMethod(methodName, String.class);
+            return Optional.ofNullable(method.invoke(target, "context"));
+        } catch (ReflectiveOperationException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean invokeUpdateState(Object target, Map<String, Object> update) {
+        return invokeUpdateMethod(target, "updateState", update)
+                || invokeUpdateMethod(target, "update_state", update);
+    }
+
+    private static boolean invokeUpdateMethod(Object target, String methodName, Map<String, Object> update) {
+        try {
+            Method method = target.getClass().getMethod(methodName, Map.class);
+            method.invoke(target, update);
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    private static Optional<Object> readInner(Object target) {
+        try {
+            Field field = target.getClass().getDeclaredField("_inner");
+            field.setAccessible(true);
+            return Optional.ofNullable(field.get(target));
+        } catch (ReflectiveOperationException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static String resolveSessionId(Object session) {
+        if (session == null) {
+            return DEFAULT_SESSION_ID;
+        }
+        if (session instanceof SessionPort sessionPort) {
+            return sessionPort.getSessionId();
+        }
+        return invokeString(session, "getSessionId")
+                .or(() -> invokeString(session, "get_session_id"))
+                .or(() -> readInner(session).flatMap(ContextEngine::resolveSessionIdOptional))
+                .orElse(DEFAULT_SESSION_ID);
+    }
+
+    private static Optional<String> resolveSessionIdOptional(Object session) {
+        return Optional.of(resolveSessionId(session));
+    }
+
+    private static Optional<String> invokeString(Object target, String methodName) {
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            Object value = method.invoke(target);
+            return value == null ? Optional.empty() : Optional.of(String.valueOf(value));
+        } catch (ReflectiveOperationException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asStringObjectMap(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            rawMap.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
+            return result;
+        }
+        return null;
     }
 
     public static String processContextId(String contextId) {
-        return com.openjiuwen.core.context_engine.ContextEngine.processContextId(contextId);
+        return contextId == null ? DEFAULT_CONTEXT_ID : contextId.replace(".", "_");
     }
 
-    private ModelContext wrap(com.openjiuwen.core.context_engine.ModelContext context) {
-        if (context == null) {
-            return null;
-        }
-        return wrappers.computeIfAbsent(context, this::wrapContext);
+    /**
+     * Processor factory used by Java registrations.
+     *
+     * <p>Mirrors Python's processor-class construction in
+     * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
+     */
+    @FunctionalInterface
+    public interface ProcessorFactory {
+        SessionModelContext.ContextProcessorPort create(Object config);
     }
 
-    private ModelContext wrapContext(com.openjiuwen.core.context_engine.ModelContext context) {
-        if (context instanceof com.openjiuwen.core.context_engine.context.SessionModelContext sessionModelContext) {
-            return new com.openjiuwen.core.context.context.SessionModelContext(sessionModelContext);
-        }
-        return new ModelContext(context);
+    /**
+     * Narrow session surface consumed by {@link ContextEngine}.
+     *
+     * <p>Mirrors Python's {@code Session.get_session_id} use in
+     * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
+     */
+    public interface SessionPort {
+        String getSessionId();
     }
 
-    private static List<com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec> adaptProcessorSpecs(
-            List<?> processors) {
-        if (processors == null) {
-            return null;
-        }
-        return processors.stream()
-                .map(ContextEngine::adaptProcessorSpec)
-                .toList();
-    }
-
-    private static com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec adaptProcessorSpec(Object spec) {
-        if (spec instanceof com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec engineSpec) {
-            return engineSpec;
-        }
-        if (spec instanceof ProcessorSpec rootSpec) {
-            return new com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec(
-                    rootSpec.processorType(), rootSpec.config());
-        }
-        throw new IllegalArgumentException("Unsupported processor spec: " + spec);
-    }
-
-    private static com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort adaptTokenCounter(
-            Object tokenCounter) {
-        if (tokenCounter == null) {
-            return null;
-        }
-        if (tokenCounter instanceof com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort port) {
-            return port;
-        }
-        return messages -> {
-            try {
-                return (int) tokenCounter.getClass().getMethod("countMessages", List.class).invoke(tokenCounter,
-                        messages);
-            } catch (ReflectiveOperationException first) {
-                try {
-                    return (int) tokenCounter.getClass().getMethod("countMessages", List.class, String.class)
-                            .invoke(tokenCounter, messages, "");
-                } catch (ReflectiveOperationException second) {
-                    throw new IllegalArgumentException("Unsupported token counter: " + tokenCounter.getClass(),
-                            second);
-                }
-            }
-        };
-    }
-
-    private static com.openjiuwen.core.context_engine.context.SessionModelContext.WorkspacePort adaptWorkspace(
-            Object workspace) {
-        if (workspace == null) {
-            return null;
-        }
-        if (workspace instanceof com.openjiuwen.core.context_engine.context.SessionModelContext.WorkspacePort port) {
-            return port;
-        }
-        return () -> invokeString(workspace, "rootPath");
-    }
-
-    private static com.openjiuwen.core.context_engine.context.SessionModelContext.SysOperationPort adaptSysOperation(
-            Object sysOperation) {
-        if (sysOperation == null) {
-            return null;
-        }
-        if (sysOperation instanceof com.openjiuwen.core.context_engine.context.SessionModelContext.SysOperationPort port) {
-            return port;
-        }
-        return path -> java.util.Optional.empty();
-    }
-
-    private static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort adaptProcessor(
-            Object processor) {
-        if (processor instanceof com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort port) {
-            return port;
-        }
-        if (processor instanceof com.openjiuwen.core.context.processor.ContextProcessor) {
-            return adaptLegacyProcessor((com.openjiuwen.core.context.processor.ContextProcessor) processor);
-        }
-        throw new IllegalArgumentException("Unsupported context processor: "
-                + (processor == null ? "null" : processor.getClass()));
-    }
-
-    @SuppressWarnings("deprecation")
-    public static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort adaptLegacyProcessor(
-            com.openjiuwen.core.context.processor.ContextProcessor legacy) {
-        return new com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort() {
-            @Override
-            public String processorType() {
-                return legacy.processorType();
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<Boolean> triggerAddMessages(
-                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
-                    List<BaseMessage> messages,
-                    Map<String, Object> kwargs) {
-                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
-                boolean triggered = legacy.triggerAddMessages(adapted, messages);
-                return java.util.concurrent.CompletableFuture.completedFuture(triggered);
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult> onAddMessages(
-                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
-                    List<BaseMessage> messages,
-                    boolean force,
-                    Map<String, Object> kwargs) {
-                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
-                com.openjiuwen.core.context.processor.ContextProcessor.ProcessResult legacyResult =
-                        legacy.onAddMessages(adapted, messages);
-                return java.util.concurrent.CompletableFuture.completedFuture(
-                        new com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult(
-                                adaptLegacyEvent(legacyResult.event()),
-                                legacyResult.messages(),
-                                null
-                        )
-                );
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<Boolean> triggerGetContextWindow(
-                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
-                    com.openjiuwen.core.context_engine.ContextWindow window,
-                    Map<String, Object> kwargs) {
-                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
-                com.openjiuwen.core.context.ContextWindow adaptedWindow =
-                        com.openjiuwen.core.context.ContextWindow.from(window);
-                boolean triggered = legacy.triggerGetContextWindow(adapted, adaptedWindow);
-                return java.util.concurrent.CompletableFuture.completedFuture(triggered);
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult> onGetContextWindow(
-                    com.openjiuwen.core.context_engine.context.SessionModelContext context,
-                    com.openjiuwen.core.context_engine.ContextWindow window,
-                    Map<String, Object> kwargs) {
-                com.openjiuwen.core.context.ModelContext adapted = ModelContext.wrap(context);
-                com.openjiuwen.core.context.ContextWindow adaptedWindow =
-                        com.openjiuwen.core.context.ContextWindow.from(window);
-                com.openjiuwen.core.context.processor.ContextProcessor.ProcessResult legacyResult =
-                        legacy.onGetContextWindow(adapted, adaptedWindow);
-                com.openjiuwen.core.context_engine.ContextWindow resultWindow =
-                        legacyResult.contextWindow() != null
-                                ? new com.openjiuwen.core.context_engine.ContextWindow(
-                                legacyResult.contextWindow().getSystemMessages(),
-                                legacyResult.contextWindow().getContextMessages(),
-                                legacyResult.contextWindow().getTools(),
-                                legacyResult.contextWindow().getStatistic())
-                                : window;
-                return java.util.concurrent.CompletableFuture.completedFuture(
-                        new com.openjiuwen.core.context_engine.context.SessionModelContext.ProcessResult(
-                                adaptLegacyEvent(legacyResult.event()),
-                                null,
-                                resultWindow
-                        )
-                );
-            }
-        };
-    }
-
-    private static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorEventPort adaptLegacyEvent(
-            com.openjiuwen.core.context.processor.ContextEvent event) {
-        if (event == null) {
-            return null;
-        }
-        return new com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorEventPort() {
-            @Override
-            public List<Integer> messagesToModify() {
-                return event.getMessagesToModify();
-            }
-        };
-    }
-
-    private static com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort
-            instantiateProcessor(String processorType, Class<?> processorClass, Object config) {
-        try {
-            Object processor;
-            try {
-                Constructor<?> constructor = processorClass.getConstructor(config == null ? Object.class
-                        : config.getClass());
-                processor = constructor.newInstance(config);
-            } catch (NoSuchMethodException ignored) {
-                Constructor<?> constructor = processorClass.getConstructor(Object.class);
-                processor = constructor.newInstance(config);
-            }
-            return adaptProcessor(processor);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalArgumentException("init processor type '" + processorType + "' failed", ex);
-        }
-    }
-
-    private static String invokeString(Object target, String methodName) {
-        try {
-            Object value = target.getClass().getMethod(methodName).invoke(target);
-            return value == null ? "" : String.valueOf(value);
-        } catch (ReflectiveOperationException ignored) {
-            return "";
-        }
-    }
-
+    /**
+     * Processor declaration tuple passed to {@link #createContext}.
+     *
+     * <p>Mirrors Python's {@code Tuple[str, BaseModel]} processor entries in
+     * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
+     */
     public record ProcessorSpec(String processorType, Object config) {
     }
 }

@@ -6,8 +6,8 @@ package com.openjiuwen.core.controller.legacy.utils;
 
 import com.openjiuwen.core.common.constants.TaskType;
 import com.openjiuwen.core.common.utils.HashUtil;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.legacy.event.Event;
 import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.foundation.llm.Model;

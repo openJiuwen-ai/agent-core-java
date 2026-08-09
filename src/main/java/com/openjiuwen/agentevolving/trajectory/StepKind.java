@@ -21,16 +21,10 @@ public enum StepKind {
         this.value = value;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String value() {
         return value;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static StepKind fromValue(String value) {
         if (value == null || value.isBlank()) {
             return AGENT;

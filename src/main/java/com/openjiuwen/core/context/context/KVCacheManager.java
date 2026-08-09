@@ -4,144 +4,155 @@
 
 package com.openjiuwen.core.context.context;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextWindow;
-import com.openjiuwen.core.foundation.llm.InferenceAffinityModel;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Manages KV cache release for inference-affinity models.
- * <p>
- * Tracks the last context window and detects changes that require
- * releasing stale KV cache entries on the inference server.
- * <p>
- * Mirrors Python's {@code KVCacheManager} from {@code context_engine/context/kv_cache_manager.py}.
- * <p>
- * Note: The actual release call depends on the InferenceAffinityModel interface,
- * which may not yet be implemented in Java. The comparison logic is fully ported.
- * 
- * @since 0.1.7
+ * Tracks the previous model context window and releases stale KV cache prefixes.
+ *
+ * <p>Mirrors Python's {@code KVCacheManager} in
+ * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
  */
-public class KVCacheManager {
+public class KVCacheManager implements SessionModelContext.KvCacheManagerPort {
     private final String sessionId;
     private ContextWindow lastContextWindow;
 
-    /**
-     * KVCacheManager.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     public KVCacheManager(String sessionId) {
         this.sessionId = sessionId;
     }
 
-    /**
-     * Check and release stale KV cache if the context window has changed.
-     * <p>
-     * In the Python version, this calls {@code model.release()} on an
-     * InferenceAffinityModel. In Java, the actual release is a no-op
-     * until InferenceAffinityModel is implemented.
-     * 
-     * @param contextWindow the current context window
-     * @since 0.1.7
-     */
-    public void release(ContextWindow contextWindow) {
-        release(contextWindow, null);
+    @Override
+    public void release(ContextWindow contextWindow, Object model) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("model", model);
+        release(contextWindow, kwargs).toCompletableFuture().join();
     }
 
-    /**
-     * Check and release stale KV cache if the context window has changed and a model
-     * with release capability is provided.
-     * 
-     * @param contextWindow the current context window
-     * @param model optional model instance
-     * @since 0.1.7
-     */
-    public void release(ContextWindow contextWindow, Object model) {
+    public CompletionStage<Void> release(ContextWindow contextWindow, Map<String, Object> kwargs) {
+        Object model = kwargs == null ? null : kwargs.get("model");
+        if (model == null || !canRelease(model)) {
+            return CompletableFuture.completedFuture(null);
+        }
         if (lastContextWindow == null) {
             lastContextWindow = contextWindow;
+            return CompletableFuture.completedFuture(null);
+        }
+
+        ReleaseDecision decision = checkReleaseNeeded(contextWindow);
+        if (decision.shouldRelease()
+                && (decision.messagesReleasedIndex() != null || decision.toolsReleasedIndex() != null)) {
+            List<ToolInfo> tools = decision.toolsReleasedIndex() == null ? null : lastContextWindow.getTools();
+            invokeRelease(model, sessionId, lastContextWindow.getMessages(), decision.messagesReleasedIndex(),
+                    tools, decision.toolsReleasedIndex());
+        }
+        lastContextWindow = contextWindow;
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public ReleaseDecision checkReleaseNeeded(ContextWindow contextWindow) {
+        boolean shouldRelease = false;
+        Integer messageIndex = null;
+        Integer toolIndex = null;
+
+        List<BaseMessage> previousMessages = lastContextWindow == null ? List.of() : lastContextWindow.getMessages();
+        List<BaseMessage> currentMessages = contextWindow == null ? List.of() : contextWindow.getMessages();
+        if (!previousMessages.isEmpty()) {
+            messageIndex = previousMessages.size();
+            for (int index = 0; index < Math.min(previousMessages.size(), currentMessages.size()); index++) {
+                if (!previousMessages.get(index).equals(currentMessages.get(index))) {
+                    shouldRelease = true;
+                    messageIndex = index;
+                    break;
+                }
+            }
+        }
+
+        List<ToolInfo> previousTools = lastContextWindow == null ? List.of() : lastContextWindow.getTools();
+        List<ToolInfo> currentTools = contextWindow == null ? List.of() : contextWindow.getTools();
+        if (!previousTools.isEmpty()) {
+            toolIndex = previousTools.size();
+            for (int index = 0; index < Math.min(previousTools.size(), currentTools.size()); index++) {
+                if (!previousTools.get(index).equals(currentTools.get(index))) {
+                    shouldRelease = true;
+                    toolIndex = index;
+                    break;
+                }
+            }
+        }
+
+        return new ReleaseDecision(shouldRelease, messageIndex, toolIndex);
+    }
+
+    public ContextWindow lastContextWindow() {
+        return lastContextWindow;
+    }
+
+    private static boolean canRelease(Object model) {
+        if (model instanceof ReleaseCapableModel) {
+            return true;
+        }
+        return findReleaseMethod(model) != null;
+    }
+
+    private static void invokeRelease(Object model, String sessionId, List<BaseMessage> messages,
+                                      Integer messagesReleasedIndex, List<ToolInfo> tools,
+                                      Integer toolsReleasedIndex) {
+        if (model instanceof ReleaseCapableModel releaseCapableModel) {
+            releaseCapableModel.release(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex)
+                    .toCompletableFuture()
+                    .join();
             return;
         }
-
-        ReleaseCheckResult result = checkReleaseNeeded(contextWindow);
-
-        if (result.shouldRelease && (result.messagesReleasedIndex != null || result.toolsReleasedIndex != null)) {
-            Loggers.CONTEXT_ENGINE.info("KV cache release triggered for session " + sessionId + " (msg_idx="
-                    + result.messagesReleasedIndex + ", tool_idx=" + result.toolsReleasedIndex + ")");
-            if (model instanceof InferenceAffinityModel inferenceAffinityModel) {
-                try {
-                    inferenceAffinityModel.release(sessionId, lastContextWindow.getMessages(),
-                            result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,
-                            lastContextWindow.getToolList(), result.toolsReleasedIndex, null);
-                } catch (Exception e) {
-                    Loggers.CONTEXT_ENGINE.warning("Failed to release inference-affinity KV cache: " + e.getMessage());
-                }
-            }
+        Method method = findReleaseMethod(model);
+        if (method == null) {
+            return;
         }
+        try {
+            method.invoke(model, sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex);
+        } catch (IllegalAccessException | InvocationTargetException ignored) {
+            // Python awaits release and otherwise ignores its return value here.
+        }
+    }
 
-        lastContextWindow = contextWindow;
+    private static Method findReleaseMethod(Object model) {
+        if (model == null) {
+            return null;
+        }
+        try {
+            return model.getClass().getMethod("release", String.class, List.class, Integer.class, List.class,
+                    Integer.class);
+        } catch (NoSuchMethodException ex) {
+            return null;
+        }
     }
 
     /**
-     * checkReleaseNeeded.
-     * 
-     * @param contextWindow contextWindow
-     * @return the result
-     * @since 0.1.7
+     * Narrow model release adapter.
+     *
+     * <p>Mirrors Python's {@code model.release(...)} callback in
+     * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
      */
-    private ReleaseCheckResult checkReleaseNeeded(ContextWindow contextWindow) {
-        boolean shouldRelease = false;
-        Integer msgIdx = null;
-        Integer toolIdx = null;
-
-        List<BaseMessage> prevMsgs = lastContextWindow.getMessages();
-        List<BaseMessage> currMsgs = contextWindow.getMessages();
-
-        if (prevMsgs != null && !prevMsgs.isEmpty()) {
-            msgIdx = prevMsgs.size();
-            int minLen = Math.min(prevMsgs.size(), currMsgs != null ? currMsgs.size() : 0);
-            for (int idx = 0; idx < minLen; idx++) {
-                if (!prevMsgs.get(idx).equals(currMsgs.get(idx))) {
-                    shouldRelease = true;
-                    msgIdx = idx;
-                    Loggers.CONTEXT_ENGINE.info("  [RELEASE REASON] Message modified at index " + idx);
-                    break;
-                }
-            }
-        }
-
-        List<ToolInfo> prevTools = lastContextWindow.getToolList();
-        List<ToolInfo> currTools = contextWindow.getToolList();
-
-        if (prevTools != null && !prevTools.isEmpty()) {
-            toolIdx = prevTools.size();
-            int minLen = Math.min(prevTools.size(), currTools != null ? currTools.size() : 0);
-            for (int idx = 0; idx < minLen; idx++) {
-                if (!prevTools.get(idx).equals(currTools.get(idx))) {
-                    shouldRelease = true;
-                    toolIdx = idx;
-                    Loggers.CONTEXT_ENGINE.info("  [RELEASE REASON] Tool modified at index " + idx);
-                    break;
-                }
-            }
-        }
-
-        return new ReleaseCheckResult(shouldRelease, msgIdx, toolIdx);
+    public interface ReleaseCapableModel {
+        CompletionStage<Boolean> release(String sessionId, List<BaseMessage> messages, Integer messagesReleasedIndex,
+                                         List<ToolInfo> tools, Integer toolsReleasedIndex);
     }
 
     /**
-     * ReleaseCheckResult.
-     * 
-     * @param shouldRelease shouldRelease
-     * @param messagesReleasedIndex messagesReleasedIndex
-     * @param toolsReleasedIndex toolsReleasedIndex
-     * @since 0.1.7
+     * Release decision returned by {@link #checkReleaseNeeded(ContextWindow)}.
+     *
+     * <p>Mirrors Python's {@code _check_release_needed} tuple in
+     * {@code openjiuwen/core/context_engine/context/kv_cache_manager.py}.</p>
      */
-    private record ReleaseCheckResult(boolean shouldRelease, Integer messagesReleasedIndex,
-            Integer toolsReleasedIndex) {
+    public record ReleaseDecision(boolean shouldRelease, Integer messagesReleasedIndex,
+                                  Integer toolsReleasedIndex) {
     }
 }

@@ -4,24 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
 /**
- * Result type for streaming shell command execution.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ExecuteCmdStreamResult} in
+ * {@code openjiuwen/core/sys_operation/result/shell_operation_result.py}.
  */
-@NoArgsConstructor
 public class ExecuteCmdStreamResult extends BaseResult<ExecuteCmdChunkData> {
-    /**
-     * ExecuteCmdStreamResult.
-     * 
-     * @param code code
-     * @param message message
-     * @param data data
-     * @since 0.1.7
-     */
+
+    public ExecuteCmdStreamResult() {
+    }
+
     public ExecuteCmdStreamResult(int code, String message, ExecuteCmdChunkData data) {
-        setCode(code); setMessage(message); setData(data);
+        setCode(code);
+        setMessage(message);
+        setData(data);
     }
 }

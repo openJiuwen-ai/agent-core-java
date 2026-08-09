@@ -16,6 +16,7 @@ import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -143,7 +144,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         if (!workflowStorage.exists(session)) {
             return;
         }
-        String workflowId = session.workflowId();
+        String workflowId = Checkpointer.workflowId(session);
         String sessionId = session.sessionId();
         if (Boolean.TRUE.equals(session.config().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false))) {
             graphStore.delete(sessionId, workflowId).toCompletableFuture().join();
@@ -159,7 +160,7 @@ public class PersistenceCheckpointer extends Checkpointer {
 
     @Override
     public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
-        String workflowId = session.workflowId();
+        String workflowId = Checkpointer.workflowId(session);
         String sessionId = session.sessionId();
         if (exception != null) {
             workflowStorage.save(session);
@@ -410,11 +411,11 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
 
         private String stateBlobKey(String sessionId, String entityId) {
-            return Checkpointer.buildKeyWithNamespace(sessionId, namespace(), entityId, stateBlobsKey());
+            return Checkpointer.resolveNsKey(sessionId, namespace(), entityId, stateBlobsKey());
         }
 
         private String stateDumpTypeKey(String sessionId, String entityId) {
-            return Checkpointer.buildKeyWithNamespace(sessionId, namespace(), entityId, stateDumpTypeKey());
+            return Checkpointer.resolveNsKey(sessionId, namespace(), entityId, stateDumpTypeKey());
         }
     }
 
@@ -446,7 +447,7 @@ public class PersistenceCheckpointer extends Checkpointer {
 
         @Override
         String entityId(BaseSession session) {
-            return session.agentId();
+            return agentId(session);
         }
 
         @Override
@@ -491,7 +492,7 @@ public class PersistenceCheckpointer extends Checkpointer {
 
         @Override
         String entityId(BaseSession session) {
-            return session.teamId();
+            return teamId(session);
         }
 
         @Override
@@ -534,7 +535,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                 return;
             }
             String sessionId = session.sessionId();
-            String workflowId = session.workflowId();
+            String workflowId = Checkpointer.workflowId(session);
             Serializer.TypedBytes stateBlob = serializeState(session.state().getState());
             BasedKVStorePipeline pipeline = kvStore.pipeline();
             set(pipeline, key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE), stateBlob.type());
@@ -552,7 +553,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                 return;
             }
             String sessionId = session.sessionId();
-            String workflowId = session.workflowId();
+            String workflowId = Checkpointer.workflowId(session);
             BasedKVStorePipeline pipeline = kvStore.pipeline();
             pipeline.get(key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE)).join();
             pipeline.get(key(sessionId, workflowId, STATE_BLOBS)).join();
@@ -586,7 +587,7 @@ public class PersistenceCheckpointer extends Checkpointer {
 
         boolean exists(BaseSession session) {
             String sessionId = session.sessionId();
-            String workflowId = session.workflowId();
+            String workflowId = Checkpointer.workflowId(session);
             BasedKVStorePipeline pipeline = kvStore.pipeline();
             pipeline.exists(key(sessionId, workflowId, STATE_BLOBS_DUMP_TYPE)).join();
             pipeline.exists(key(sessionId, workflowId, STATE_BLOBS)).join();
@@ -634,7 +635,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
 
         private String key(String sessionId, String workflowId, String suffix) {
-            return Checkpointer.buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, suffix);
+            return Checkpointer.resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, suffix);
         }
     }
 
@@ -681,14 +682,14 @@ public class PersistenceCheckpointer extends Checkpointer {
         @Override
         public CompletionStage<Void> delete(String sessionId, String ns) {
             String prefix = ns == null || ns.isBlank()
-                    ? Checkpointer.buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH)
-                    : Checkpointer.buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns);
+                    ? TenantKVStoreKeyResolver.resolvePrefix(Checkpointer.buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH))
+                    : Checkpointer.resolveNsPrefix(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns);
             kvStore.deleteByPrefix(prefix, null).join();
             return CompletableFuture.completedFuture(null);
         }
 
         private String key(String sessionId, String ns, String suffix) {
-            return Checkpointer.buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, suffix);
+            return Checkpointer.resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, suffix);
         }
     }
 

@@ -5,11 +5,12 @@
 package com.openjiuwen.core.multiagent.legacy;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.mq.InvokeQueueMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueInMemory;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
@@ -29,7 +30,7 @@ import java.util.concurrent.ExecutionException;
  *   <li>Asynchronous processing architecture based on message queue</li>
  *   <li>Manages message routing between Agents</li>
  *   <li>Supports publish-subscribe pattern</li>
- *   <li>Developers only need to implement {@link #handleEvent(GroupEvent, AgentGroupSessionApi)}</li>
+ *   <li>Developers only need to implement {@link #handleEvent(GroupEvent, AgentGroupSession)}</li>
  * </ul>
  * <p>
  * Mirrors Python's {@code BaseGroupController} in {@code multi_agent/legacy/group_controller.py}.
@@ -91,7 +92,7 @@ public abstract class BaseGroupController {
      * @param session session context
      * @return processing result
      */
-    public Object invoke(GroupEvent event, AgentGroupSessionApi session) {
+    public Object invoke(GroupEvent event, AgentGroupSession session) {
         ensureQueueStarted();
 
         String topic = "group_messages_" + agentGroup.getGroupId();
@@ -134,7 +135,7 @@ public abstract class BaseGroupController {
     private Object handleMessageWrapper(Object payload) {
         Map<String, Object> request = (Map<String, Object>) payload;
         GroupEvent event = (GroupEvent) request.get("event");
-        AgentGroupSessionApi session = (AgentGroupSessionApi) request.get("session");
+        AgentGroupSession session = (AgentGroupSession) request.get("session");
         try {
             Object result = handleEvent(event, session);
             Loggers.MULTI_AGENT.info(
@@ -166,7 +167,7 @@ public abstract class BaseGroupController {
      * @param session session context
      * @return processing result
      */
-    protected abstract Object handleEvent(GroupEvent event, AgentGroupSessionApi session);
+    protected abstract Object handleEvent(GroupEvent event, AgentGroupSession session);
 
     // ========== Subscription management API ==========
 
@@ -230,7 +231,7 @@ public abstract class BaseGroupController {
      * @param session session context
      * @return final result (last chunk, or full list for interrupt case)
      */
-    public Object sendToAgent(GroupEvent event, String agentId, AgentGroupSessionApi session) {
+    public Object sendToAgent(GroupEvent event, String agentId, AgentGroupSession session) {
         BaseAgent agent = agentGroup.getAgents().get(agentId);
         if (agent == null) {
             Loggers.MULTI_AGENT.warn("BaseGroupController: Agent {} not found in group", agentId);
@@ -293,7 +294,7 @@ public abstract class BaseGroupController {
     /**
      * Auto-generated for codecheck compliance.
      */
-    public List<Object> publish(GroupEvent event, AgentGroupSessionApi session) {
+    public List<Object> publish(GroupEvent event, AgentGroupSession session) {
         String messageType = event.getCustomEventType();
 
         if (messageType == null || messageType.isEmpty()) {
@@ -317,16 +318,9 @@ public abstract class BaseGroupController {
                 subscribers.size(), messageType
         );
 
-        // Concurrently call all subscribers using regular threads
+        // Concurrently call all subscribers on the shared background executor.
         List<CompletableFuture<Object>> futures = subscribers.stream()
-                .map(agentId -> CompletableFuture.supplyAsync(
-                        () -> sendToAgent(event, agentId, session),
-                        runnable ->  {
-                            Thread thread = new Thread(runnable,"base-controller-group");
-                            thread.setDaemon(true);
-                            thread.start();
-                        }
-                ))
+                .map(agentId -> OpenJiuwenExecutors.supplyBackgroundAsync(() -> sendToAgent(event, agentId, session)))
                 .toList();
 
         List<Object> results = new ArrayList<>();

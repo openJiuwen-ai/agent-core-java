@@ -3,7 +3,7 @@
  */
 package com.openjiuwen.core.sysop.config;
 
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

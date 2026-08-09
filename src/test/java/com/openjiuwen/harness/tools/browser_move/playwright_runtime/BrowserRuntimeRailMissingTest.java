@@ -7,7 +7,7 @@ package com.openjiuwen.harness.tools.browser_move.playwright_runtime;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.tools.ToolOutput;

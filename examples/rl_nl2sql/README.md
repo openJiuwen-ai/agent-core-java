@@ -9,4 +9,4 @@ The current Java baseline aligns to the reusable training primitives behind the 
 
 Helper entry:
 
-- `com.openjiuwen.agentevolving.AgentEvolvingExampleSupport#nl2sqlCaseLoader`
+- `examples.agent_evolving.AgentEvolvingExampleSupport#nl2sqlCaseLoader`

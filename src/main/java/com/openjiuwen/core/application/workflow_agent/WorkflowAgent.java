@@ -30,7 +30,7 @@ public class WorkflowAgent extends ControllerAgent {
     }
 
     @Override
-    protected com.openjiuwen.core.context_engine.ContextEngine createContextEngine() {
+    protected com.openjiuwen.core.context.ContextEngine createContextEngine() {
         return new com.openjiuwen.core.context.ContextEngine();
     }
 

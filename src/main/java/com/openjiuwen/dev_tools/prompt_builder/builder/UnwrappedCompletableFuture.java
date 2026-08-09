@@ -4,6 +4,8 @@
 
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -24,7 +26,7 @@ final class UnwrappedCompletableFuture<T> extends CompletableFuture<T> {
      */
     public static <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
         UnwrappedCompletableFuture<T> future = new UnwrappedCompletableFuture<>();
-        CompletableFuture.supplyAsync(supplier).whenComplete((value, throwable) -> {
+        OpenJiuwenExecutors.supplyBackgroundAsync(supplier).whenComplete((value, throwable) -> {
             if (throwable != null) {
                 future.completeExceptionally(unwrap(throwable));
             } else {

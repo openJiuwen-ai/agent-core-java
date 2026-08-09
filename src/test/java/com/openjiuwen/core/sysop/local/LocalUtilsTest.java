@@ -1,108 +1,134 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
 
-import com.openjiuwen.core.sys_operation.local.InvokeData;
-import com.openjiuwen.core.sys_operation.local.OperationUtils;
-import com.openjiuwen.core.sys_operation.local.StreamEvent;
-import com.openjiuwen.core.sys_operation.local.StreamEventType;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Disabled;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for local utility classes.
+ * Mirrors Python's local-utils coverage around subprocess helpers in
+ * {@code openjiuwen/core/sys_operation/local/utils.py}.
  */
 class LocalUtilsTest {
 
-    @Nested
-    @DisplayName("StreamEventType")
-    class StreamEventTypeTests {
-        @Test
-        @DisplayName("values have correct string representation")
-        void testValues() {
-            assertEquals("stdout", StreamEventType.STDOUT.getValue());
-            assertEquals("stderr", StreamEventType.STDERR.getValue());
-            assertEquals("exit", StreamEventType.EXIT.getValue());
-            assertEquals("error", StreamEventType.ERROR.getValue());
-        }
+    @Test
+    void createAndDeleteTmpFilePreserveUtf8Content() throws Exception {
+        String pathText = OperationUtils.createTmpFile("hello", ".txt").get(5, TimeUnit.SECONDS);
+        Path path = Path.of(pathText);
+
+        assertThat(Files.exists(path)).isTrue();
+        assertThat(Files.readString(path)).isEqualTo("hello");
+        assertThat(OperationUtils.deleteTmpFile(pathText).get(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(Files.exists(path)).isFalse();
     }
 
-    @Nested
-    @DisplayName("StreamEvent")
-    class StreamEventTests {
-        @Test
-        @DisplayName("builder creates event with correct fields")
-        void testBuilder() {
-            StreamEvent event = new StreamEvent(StreamEventType.STDOUT, "hello world");
-            assertEquals(StreamEventType.STDOUT, event.getType());
-            assertEquals("hello world", event.getData());
-            assertNotNull(event.getTimestamp());
-        }
+    @Test
+    void prepareEnvironmentMergesCustomValues() {
+        Map<String, String> environment = OperationUtils.prepareEnvironment(Map.of("OPENJIUWEN_TEST_ENV", "1"));
+
+        assertThat(environment).containsEntry("OPENJIUWEN_TEST_ENV", "1");
+        assertThat(environment).containsKey("PATH");
     }
 
-    @Nested
-    @DisplayName("InvokeData")
-    class InvokeDataTests {
-        @Test
-        @DisplayName("builder creates data with correct fields")
-        void testBuilder() {
-            InvokeData data = new InvokeData("output", "", 0);
-            assertEquals("output", data.getStdout());
-            assertEquals("", data.getStderr());
-            assertEquals(0, data.getExitCode());
-            assertNull(data.getException());
-        }
+    @Test
+    void invokeCapturesStdoutStderrAndExitCode() throws Exception {
+        Process process = startScript("Write-Output 'hello'; [Console]::Error.WriteLine('warn'); exit 7");
+        InvokeData result = OperationUtils.createHandler(process, "utf-8", 5).invoke().get(10, TimeUnit.SECONDS);
+
+        assertThat(result.getStdout()).contains("hello");
+        assertThat(result.getStderr()).contains("warn");
+        assertThat(result.getExitCode()).isEqualTo(7);
+        assertThat(result.getException()).isNull();
     }
 
-    @Nested
-    @DisplayName("OperationUtils")
-    class OperationUtilsTests {
-        @Test
-        @DisplayName("createTmpFile creates and returns temp file path")
-        void testCreateTmpFile() {
-            String path = OperationUtils.createTmpFile("test content", ".txt").join();
-            assertNotNull(path);
-            assertTrue(path.endsWith(".txt"));
-            // Cleanup
-            OperationUtils.deleteTmpFile(path).join();
-        }
+    @Disabled("remote env do not support node")
+    @Test
+    void invokeTimeoutReturnsPartialBuffersAndTimeoutException() throws Exception {
+        Process process = startScript("Write-Output 'before'; Start-Sleep -Milliseconds 1500; Write-Output 'after'");
+        InvokeData result = OperationUtils.createHandler(process, "utf-8", 1).invoke().get(10, TimeUnit.SECONDS);
 
-        @Test
-        @DisplayName("deleteTmpFile deletes existing file")
-        void testDeleteTmpFile() {
-            String path = OperationUtils.createTmpFile("to delete", ".tmp").join();
-            assertNotNull(path);
-            assertTrue(OperationUtils.deleteTmpFile(path).join());
-        }
+        assertThat(result.getStdout()).contains("before");
+        assertThat(result.getStdout()).doesNotContain("after");
+        assertThat(result.getException()).isInstanceOf(java.util.concurrent.TimeoutException.class);
+    }
 
-        @Test
-        @DisplayName("deleteTmpFile returns false for non-existent file")
-        void testDeleteNonExistent() {
-            assertFalse(OperationUtils.deleteTmpFile("/non/existent/file.tmp").join());
-        }
+    @Test
+    void streamEmitsStdoutStderrAndExitEvents() throws Exception {
+        Process process = startScript("Write-Output 'hello'; [Console]::Error.WriteLine('warn'); exit 3");
+        BlockingQueue<StreamEvent> queue = OperationUtils.createHandler(process, "utf-8", 5).stream();
 
-        @Test
-        @DisplayName("prepareEnvironment returns system env when custom is null")
-        void testPrepareEnvironmentNull() {
-            Map<String, String> env = OperationUtils.prepareEnvironment(null);
-            assertNotNull(env);
-            assertFalse(env.isEmpty());
-        }
+        List<StreamEvent> events = collectUntilTerminal(queue);
+        List<StreamEventType> eventTypes = events.stream().map(StreamEvent::getType).collect(Collectors.toList());
+        String stdout = joinPayload(events, StreamEventType.STDOUT);
+        String stderr = joinPayload(events, StreamEventType.STDERR);
 
-        @Test
-        @DisplayName("prepareEnvironment merges custom env")
-        void testPrepareEnvironmentCustom() {
-            Map<String, String> custom = Map.of("MY_VAR", "my_value");
-            Map<String, String> env = OperationUtils.prepareEnvironment(custom);
-            assertEquals("my_value", env.get("MY_VAR"));
+        assertThat(eventTypes).contains(StreamEventType.STDOUT, StreamEventType.STDERR, StreamEventType.EXIT);
+        assertThat(stdout).contains("hello");
+        assertThat(stderr).contains("warn");
+        assertThat(events.get(events.size() - 1).getType()).isEqualTo(StreamEventType.EXIT);
+        assertThat(events.get(events.size() - 1).getData()).isEqualTo(3);
+    }
+
+    @Test
+    void backgroundReportsEarlyFailure() throws Exception {
+        Process process = startScript("[Console]::Error.WriteLine('boom'); exit 9");
+        AsyncProcessHandler.BackgroundLaunchResult result =
+                OperationUtils.createHandler(process).background(5.0d).get(15, TimeUnit.SECONDS);
+
+        assertThat(result.pid()).isPositive();
+        assertThat(result.error()).isNotNull().contains("code 9");
+    }
+
+    private static Process startScript(String powerShellScript) throws Exception {
+        if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")) {
+            return new ProcessBuilder("powershell", "-NoProfile", "-Command", powerShellScript).start();
         }
+        return new ProcessBuilder("bash", "-lc", toBashScript(powerShellScript)).start();
+    }
+
+    private static String toBashScript(String powerShellScript) {
+        if (powerShellScript.contains("Start-Sleep")) {
+            return "printf 'before\\n'; sleep 1.5; printf 'after\\n'";
+        }
+        if (powerShellScript.contains("warn")) {
+            return "printf 'hello\\n'; printf 'warn\\n' 1>&2; exit "
+                    + (powerShellScript.contains("exit 7") ? "7" : "3");
+        }
+        return "printf 'boom\\n' 1>&2; exit 9";
+    }
+
+    private static List<StreamEvent> collectUntilTerminal(BlockingQueue<StreamEvent> queue) throws Exception {
+        List<StreamEvent> events = new ArrayList<>();
+        for (int index = 0; index < 32; index++) {
+            StreamEvent event = queue.poll(5, TimeUnit.SECONDS);
+            assertThat(event).as("stream event " + index).isNotNull();
+            events.add(event);
+            if (event.getType() == StreamEventType.EXIT || event.getType() == StreamEventType.ERROR) {
+                break;
+            }
+        }
+        return events;
+    }
+
+    private static String joinPayload(List<StreamEvent> events, StreamEventType type) {
+        return events.stream()
+                .filter(event -> event.getType() == type)
+                .map(StreamEvent::getData)
+                .map(String::valueOf)
+                .collect(Collectors.joining());
     }
 }

@@ -5,63 +5,27 @@
 package com.openjiuwen.agentevolving.trainer;
 
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.core.singleagent.BaseAgent;
 
 import java.util.List;
 
 /**
- * Training lifecycle hooks.
- * <p>
- * Subclass can override to integrate logging, early stopping, metric reporting, etc.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.trainer.progress.Callbacks}.
- * 
- * @since 0.1.7
+ * Training lifecycle hooks for self-evolving trainer integrations.
+ *
+ * <p>Mirrors Python's {@code Callbacks} in
+ * {@code openjiuwen/agent_evolving/trainer/progress.py}.</p>
  */
 public class Callbacks {
-    /**
-     * onTrainBegin.
-     * 
-     * @param agent agent
-     * @param progress progress
-     * @param evalInfo evalInfo
-     * @since 0.1.7
-     */
-    public void onTrainBegin(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
-        // Default: no-op
+
+    public void onTrainBegin(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
     }
 
-    /**
-     * Training end.
-     * 
-     * @param agent Agent being trained
-     * @param progress Training progress
-     * @param evalInfo Evaluation results
-     * @since 0.1.7
-     */
-    public void onTrainEnd(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
-        // Default: no-op
+    public void onTrainEnd(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
     }
 
-    /**
-     * Single epoch training begins.
-     * 
-     * @param agent Agent being trained
-     * @param progress Training progress
-     * @since 0.1.7
-     */
-    public void onTrainEpochBegin(Object agent, Progress progress) {
-        // Default: no-op
+    public void onTrainEpochBegin(BaseAgent agent, Progress progress) {
     }
 
-    /**
-     * Single epoch training ends (best_score updated / parameters written back).
-     * 
-     * @param agent Agent being trained
-     * @param progress Training progress
-     * @param evalInfo Evaluation results
-     * @since 0.1.7
-     */
-    public void onTrainEpochEnd(Object agent, Progress progress, List<EvaluatedCase> evalInfo) {
-        // Default: no-op
+    public void onTrainEpochEnd(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
     }
 }

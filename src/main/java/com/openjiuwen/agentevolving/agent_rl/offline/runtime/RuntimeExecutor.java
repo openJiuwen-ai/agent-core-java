@@ -97,14 +97,13 @@ public class RuntimeExecutor {
         Object agent = agentFactory.apply(rlTask);
         Map<String, Object> inputs = buildAgentInputs(rlTask);
         TrajectoryCollector collector = new TrajectoryCollector();
-        com.openjiuwen.agent_evolving.trajectory.Trajectory rawTrajectory = collector.collect(
+        Trajectory trajectory = collector.collect(
                 agent,
                 inputs,
                 rlTask.getTaskId(),
                 "offline",
                 rlTask.getOriginTaskId()
         ).toCompletableFuture().join();
-        Trajectory trajectory = convertTrajectory(rawTrajectory);
         List<Rollout> rollouts = RlSchemas.trajectoryToRollouts(trajectory);
 
         String now = nowUtc();
@@ -212,36 +211,5 @@ public class RuntimeExecutor {
 
     public Function<RolloutMessage, Map<String, Object>> getRewardFn() {
         return rewardFn;
-    }
-
-    private static Trajectory convertTrajectory(com.openjiuwen.agent_evolving.trajectory.Trajectory source) {
-        if (source == null) {
-            return null;
-        }
-        Trajectory target = new Trajectory();
-        target.setCaseId(source.getCaseId());
-        target.setExecutionId(source.getExecutionId());
-        target.setTraceId(source.getTraceId());
-        target.setSource(source.getSource());
-        target.setSessionId(source.getSessionId());
-        target.setCost(source.getCost());
-        target.setMeta(source.getMeta());
-        // Convert steps from agent_evolving to agentevolving types
-        List<com.openjiuwen.agent_evolving.trajectory.TrajectoryStep> sourceSteps = source.getSteps();
-        if (sourceSteps != null) {
-            List<com.openjiuwen.agentevolving.trajectory.TrajectoryStep> targetSteps = new ArrayList<>();
-            for (com.openjiuwen.agent_evolving.trajectory.TrajectoryStep srcStep : sourceSteps) {
-                com.openjiuwen.agentevolving.trajectory.TrajectoryStep tgtStep = new com.openjiuwen.agentevolving.trajectory.TrajectoryStep();
-                tgtStep.setKind(srcStep.getKind());
-                tgtStep.setDetail(srcStep.getDetail());
-                tgtStep.setMeta(srcStep.getMeta());
-                tgtStep.setPromptTokenIds(srcStep.getPromptTokenIds());
-                tgtStep.setCompletionTokenIds(srcStep.getCompletionTokenIds());
-                targetSteps.add(tgtStep);
-            }
-            target.setSteps(targetSteps);
-        }
-        target.setEdges(source.getEdges());
-        return target;
     }
 }

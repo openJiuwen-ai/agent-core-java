@@ -4,501 +4,232 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Configuration for {@link FullCompactProcessor}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code FullCompactProcessorConfig} in
+ * {@code openjiuwen/core/context_engine/processor/compressor/full_compact_processor.py}.</p>
  */
 public class FullCompactProcessorConfig {
+    @JsonProperty("trigger_total_tokens")
     private int triggerTotalTokens = 180000;
+
+    @JsonProperty("compression_call_max_tokens")
     private int compressionCallMaxTokens = 200000;
+
+    @JsonProperty("messages_to_keep")
     private int messagesToKeep = 10;
+
+    @JsonProperty("session_memory_enabled")
     private boolean sessionMemoryEnabled = true;
+
     private ModelRequestConfig model;
+
+    @JsonProperty("model_client")
     private ModelClientConfig modelClient;
-    private boolean isKeepToolMessagePairs = true;
+
+    @JsonProperty("keep_tool_message_pairs")
+    private boolean keepToolMessagePairs = true;
+
+    @JsonProperty("state_snapshot_max_chars")
     private int stateSnapshotMaxChars = 4000;
+
+    @JsonProperty("reinject_recent_skills")
     private int reinjectRecentSkills = 3;
 
-    /**
-     * ArrayList<>.
-     * 
-     * @param "grep" "grep"
-     * @since 0.1.7
-     */
-    private List<String> reinjectFileToolNames =
-        new ArrayList<>(List.of("read_file", "write_file", "edit_file", "glob", "grep"));
+    @JsonProperty("reinject_file_tool_names")
+    private List<String> reinjectFileToolNames = List.of("read_file", "write_file", "edit_file", "glob", "grep");
 
-    /**
-     * ArrayList<>.
-     * 
-     * @param "grep" "grep"
-     * @since 0.1.7
-     */
+    @JsonProperty("reinject_tool_result_hint_names")
     private List<String> reinjectToolResultHintNames =
-        new ArrayList<>(List.of("read_file", "write_file", "edit_file", "glob", "grep"));
+            List.of("read_file", "write_file", "edit_file", "glob", "grep");
+
     private String marker = FullCompactProcessor.FULL_COMPACT_BOUNDARY_MARKER;
+
+    @JsonProperty("state_marker")
     private String stateMarker = FullCompactProcessor.FULL_COMPACT_STATE_MARKER;
+
+    @JsonProperty("synthetic_user_marker")
     private String syntheticUserMarker = FullCompactProcessor.FULL_COMPACT_SYNTHETIC_USER_MARKER;
+
+    @JsonProperty("summary_intro")
     private String summaryIntro = FullCompactProcessor.FULL_COMPACT_SUMMARY_INTRO;
+
+    @JsonProperty("recent_messages_notice")
     private String recentMessagesNotice = FullCompactProcessor.FULL_COMPACT_RECENT_MESSAGES_NOTICE;
+
+    @JsonProperty("session_memory_marker")
     private String sessionMemoryMarker = FullCompactProcessor.SESSION_MEMORY_BOUNDARY_MARKER;
+
+    @JsonProperty("session_memory_intro")
     private String sessionMemoryIntro = FullCompactProcessor.SESSION_MEMORY_SUMMARY_INTRO;
 
-    /**
-     * getTriggerTotalTokens.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public int getTriggerTotalTokens() {
         return triggerTotalTokens;
     }
 
-    /**
-     * getCompressionCallMaxTokens.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setTriggerTotalTokens(int triggerTotalTokens) {
+        validateGt(triggerTotalTokens, "trigger_total_tokens");
+        this.triggerTotalTokens = triggerTotalTokens;
+    }
+
     public int getCompressionCallMaxTokens() {
         return compressionCallMaxTokens;
     }
 
-    /**
-     * getMessagesToKeep.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setCompressionCallMaxTokens(int compressionCallMaxTokens) {
+        validateGt(compressionCallMaxTokens, "compression_call_max_tokens");
+        this.compressionCallMaxTokens = compressionCallMaxTokens;
+    }
+
     public int getMessagesToKeep() {
         return messagesToKeep;
     }
 
-    /**
-     * isSessionMemoryEnabled.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setMessagesToKeep(int messagesToKeep) {
+        validateGe(messagesToKeep, "messages_to_keep");
+        this.messagesToKeep = messagesToKeep;
+    }
+
     public boolean isSessionMemoryEnabled() {
         return sessionMemoryEnabled;
     }
 
-    /**
-     * getModel.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setSessionMemoryEnabled(boolean sessionMemoryEnabled) {
+        this.sessionMemoryEnabled = sessionMemoryEnabled;
+    }
+
     public ModelRequestConfig getModel() {
         return model;
     }
 
-    /**
-     * getModelClient.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setModel(ModelRequestConfig model) {
+        this.model = model;
+    }
+
     public ModelClientConfig getModelClient() {
         return modelClient;
     }
 
-    /**
-     * isKeepToolMessagePairs.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public boolean isKeepToolMessagePairs() {
-        return isKeepToolMessagePairs;
+    public void setModelClient(ModelClientConfig modelClient) {
+        this.modelClient = modelClient;
     }
 
-    /**
-     * getStateSnapshotMaxChars.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public boolean isKeepToolMessagePairs() {
+        return keepToolMessagePairs;
+    }
+
+    public void setKeepToolMessagePairs(boolean keepToolMessagePairs) {
+        this.keepToolMessagePairs = keepToolMessagePairs;
+    }
+
     public int getStateSnapshotMaxChars() {
         return stateSnapshotMaxChars;
     }
 
-    /**
-     * getReinjectRecentSkills.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setStateSnapshotMaxChars(int stateSnapshotMaxChars) {
+        validateGt(stateSnapshotMaxChars, "state_snapshot_max_chars");
+        this.stateSnapshotMaxChars = stateSnapshotMaxChars;
+    }
+
     public int getReinjectRecentSkills() {
         return reinjectRecentSkills;
     }
 
-    /**
-     * getReinjectFileToolNames.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setReinjectRecentSkills(int reinjectRecentSkills) {
+        validateGe(reinjectRecentSkills, "reinject_recent_skills");
+        this.reinjectRecentSkills = reinjectRecentSkills;
+    }
+
     public List<String> getReinjectFileToolNames() {
         return reinjectFileToolNames;
     }
 
-    /**
-     * getReinjectToolResultHintNames.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setReinjectFileToolNames(List<String> reinjectFileToolNames) {
+        this.reinjectFileToolNames = reinjectFileToolNames == null ? List.of() : List.copyOf(reinjectFileToolNames);
+    }
+
     public List<String> getReinjectToolResultHintNames() {
         return reinjectToolResultHintNames;
     }
 
-    /**
-     * getMarker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setReinjectToolResultHintNames(List<String> reinjectToolResultHintNames) {
+        this.reinjectToolResultHintNames = reinjectToolResultHintNames == null
+                ? List.of()
+                : List.copyOf(reinjectToolResultHintNames);
+    }
+
     public String getMarker() {
         return marker;
     }
 
-    /**
-     * getStateMarker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setMarker(String marker) {
+        this.marker = marker == null ? "" : marker;
+    }
+
     public String getStateMarker() {
         return stateMarker;
     }
 
-    /**
-     * getSyntheticUserMarker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setStateMarker(String stateMarker) {
+        this.stateMarker = stateMarker == null ? "" : stateMarker;
+    }
+
     public String getSyntheticUserMarker() {
         return syntheticUserMarker;
     }
 
-    /**
-     * getSummaryIntro.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setSyntheticUserMarker(String syntheticUserMarker) {
+        this.syntheticUserMarker = syntheticUserMarker == null ? "" : syntheticUserMarker;
+    }
+
     public String getSummaryIntro() {
         return summaryIntro;
     }
 
-    /**
-     * getRecentMessagesNotice.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setSummaryIntro(String summaryIntro) {
+        this.summaryIntro = summaryIntro == null ? "" : summaryIntro;
+    }
+
     public String getRecentMessagesNotice() {
         return recentMessagesNotice;
     }
 
-    /**
-     * getSessionMemoryMarker.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setRecentMessagesNotice(String recentMessagesNotice) {
+        this.recentMessagesNotice = recentMessagesNotice == null ? "" : recentMessagesNotice;
+    }
+
     public String getSessionMemoryMarker() {
         return sessionMemoryMarker;
     }
 
-    /**
-     * getSessionMemoryIntro.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public void setSessionMemoryMarker(String sessionMemoryMarker) {
+        this.sessionMemoryMarker = sessionMemoryMarker == null ? "" : sessionMemoryMarker;
+    }
+
     public String getSessionMemoryIntro() {
         return sessionMemoryIntro;
     }
 
-    /**
-     * validate.
-     * 
-     * @since 0.1.7
-     */
-    public void validate() {
-        if (triggerTotalTokens <= 0) {
-            throw new IllegalArgumentException("triggerTotalTokens must be > 0");
-        }
-        if (compressionCallMaxTokens <= 0) {
-            throw new IllegalArgumentException("compressionCallMaxTokens must be > 0");
-        }
-        if (messagesToKeep < 0) {
-            throw new IllegalArgumentException("messagesToKeep must be >= 0");
-        }
-        if (stateSnapshotMaxChars <= 0) {
-            throw new IllegalArgumentException("stateSnapshotMaxChars must be > 0");
-        }
-        if (reinjectRecentSkills < 0) {
-            throw new IllegalArgumentException("reinjectRecentSkills must be >= 0");
+    public void setSessionMemoryIntro(String sessionMemoryIntro) {
+        this.sessionMemoryIntro = sessionMemoryIntro == null ? "" : sessionMemoryIntro;
+    }
+
+    private static void validateGt(int value, String fieldName) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be > 0");
         }
     }
 
-    /**
-     * builder.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    /**
-     * Builder.
-     * 
-     * @since 0.1.7
-     */
-    public static class Builder {
-        private final FullCompactProcessorConfig config = new FullCompactProcessorConfig();
-
-        /**
-         * triggerTotalTokens.
-         * 
-         * @param triggerTotalTokens triggerTotalTokens
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder triggerTotalTokens(int triggerTotalTokens) {
-            config.triggerTotalTokens = triggerTotalTokens;
-            return this;
-        }
-
-        /**
-         * compressionCallMaxTokens.
-         * 
-         * @param compressionCallMaxTokens compressionCallMaxTokens
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder compressionCallMaxTokens(int compressionCallMaxTokens) {
-            config.compressionCallMaxTokens = compressionCallMaxTokens;
-            return this;
-        }
-
-        /**
-         * messagesToKeep.
-         * 
-         * @param messagesToKeep messagesToKeep
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder messagesToKeep(int messagesToKeep) {
-            config.messagesToKeep = messagesToKeep;
-            return this;
-        }
-
-        /**
-         * sessionMemoryEnabled.
-         * 
-         * @param sessionMemoryEnabled sessionMemoryEnabled
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder sessionMemoryEnabled(boolean sessionMemoryEnabled) {
-            config.sessionMemoryEnabled = sessionMemoryEnabled;
-            return this;
-        }
-
-        /**
-         * model.
-         * 
-         * @param model model
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder model(ModelRequestConfig model) {
-            config.model = model;
-            return this;
-        }
-
-        /**
-         * modelClient.
-         * 
-         * @param modelClient modelClient
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder modelClient(ModelClientConfig modelClient) {
-            config.modelClient = modelClient;
-            return this;
-        }
-
-        /**
-         * isKeepToolMessagePairs.
-         * 
-         * @param isKeepToolMessagePairs isKeepToolMessagePairs
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder isKeepToolMessagePairs(boolean isKeepToolMessagePairs) {
-            config.isKeepToolMessagePairs = isKeepToolMessagePairs;
-            return this;
-        }
-
-        /**
-         * stateSnapshotMaxChars.
-         * 
-         * @param stateSnapshotMaxChars stateSnapshotMaxChars
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder stateSnapshotMaxChars(int stateSnapshotMaxChars) {
-            config.stateSnapshotMaxChars = stateSnapshotMaxChars;
-            return this;
-        }
-
-        /**
-         * reinjectRecentSkills.
-         * 
-         * @param reinjectRecentSkills reinjectRecentSkills
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder reinjectRecentSkills(int reinjectRecentSkills) {
-            config.reinjectRecentSkills = reinjectRecentSkills;
-            return this;
-        }
-
-        /**
-         * reinjectFileToolNames.
-         * 
-         * @param reinjectFileToolNames reinjectFileToolNames
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder reinjectFileToolNames(List<String> reinjectFileToolNames) {
-            config.reinjectFileToolNames =
-                reinjectFileToolNames != null ? new ArrayList<>(reinjectFileToolNames) : new ArrayList<>();
-            return this;
-        }
-
-        /**
-         * reinjectToolResultHintNames.
-         * 
-         * @param reinjectToolResultHintNames reinjectToolResultHintNames
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder reinjectToolResultHintNames(List<String> reinjectToolResultHintNames) {
-            config.reinjectToolResultHintNames =
-                reinjectToolResultHintNames != null ? new ArrayList<>(reinjectToolResultHintNames) : new ArrayList<>();
-            return this;
-        }
-
-        /**
-         * marker.
-         * 
-         * @param marker marker
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder marker(String marker) {
-            config.marker = marker;
-            return this;
-        }
-
-        /**
-         * stateMarker.
-         * 
-         * @param stateMarker stateMarker
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder stateMarker(String stateMarker) {
-            config.stateMarker = stateMarker;
-            return this;
-        }
-
-        /**
-         * syntheticUserMarker.
-         * 
-         * @param syntheticUserMarker syntheticUserMarker
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder syntheticUserMarker(String syntheticUserMarker) {
-            config.syntheticUserMarker = syntheticUserMarker;
-            return this;
-        }
-
-        /**
-         * summaryIntro.
-         * 
-         * @param summaryIntro summaryIntro
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder summaryIntro(String summaryIntro) {
-            config.summaryIntro = summaryIntro;
-            return this;
-        }
-
-        /**
-         * recentMessagesNotice.
-         * 
-         * @param recentMessagesNotice recentMessagesNotice
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder recentMessagesNotice(String recentMessagesNotice) {
-            config.recentMessagesNotice = recentMessagesNotice;
-            return this;
-        }
-
-        /**
-         * sessionMemoryMarker.
-         * 
-         * @param sessionMemoryMarker sessionMemoryMarker
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder sessionMemoryMarker(String sessionMemoryMarker) {
-            config.sessionMemoryMarker = sessionMemoryMarker;
-            return this;
-        }
-
-        /**
-         * sessionMemoryIntro.
-         * 
-         * @param sessionMemoryIntro sessionMemoryIntro
-         * @return the result
-         * @since 0.1.7
-         */
-        public Builder sessionMemoryIntro(String sessionMemoryIntro) {
-            config.sessionMemoryIntro = sessionMemoryIntro;
-            return this;
-        }
-
-        /**
-         * build.
-         * 
-         * @return the result
-         * @since 0.1.7
-         */
-        public FullCompactProcessorConfig build() {
-            config.validate();
-            return config;
+    private static void validateGe(int value, String fieldName) {
+        if (value < 0) {
+            throw new IllegalArgumentException(fieldName + " must be >= 0");
         }
     }
 }

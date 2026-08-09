@@ -100,14 +100,14 @@ public class TeamTrajectoryAggregator {
             }
         }
 
-        return Trajectory.builder()
-                .executionId(trajectory.getExecutionId())
-                .sessionId(trajectory.getSessionId())
-                .source(trajectory.getSource())
-                .steps(filteredSteps)
-                .cost(trajectory.getCost())
-                .meta(trajectory.getMeta())
-                .build();
+        return new Trajectory(
+                trajectory.getExecutionId(),
+                trajectory.getSessionId(),
+                trajectory.getSource(),
+                filteredSteps,
+                trajectory.getCost(),
+                trajectory.getMeta()
+        );
     }
 
     private TeamTrajectory emptyCombined(String sessionId) {

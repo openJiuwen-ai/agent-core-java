@@ -5,7 +5,7 @@
 package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 
 import java.util.Map;
 
@@ -20,21 +20,21 @@ public final class WorkflowSessions {
     private WorkflowSessions() {
     }
 
-    public static WorkflowSessionApi createWorkflowSession(BaseSession parent,
+    public static WorkflowSession createWorkflowSession(BaseSession parent,
                                                             String sessionId,
                                                             Map<String, Object> envs) {
-        return WorkflowSessionApi.create(parent, sessionId, envs);
+        return WorkflowSession.create(parent, sessionId, envs);
     }
 
-    public static WorkflowSessionApi createWorkflowSession() {
-        return WorkflowSessionApi.create(null, null, null);
+    public static WorkflowSession createWorkflowSession() {
+        return WorkflowSession.create(null, null, null);
     }
 
-    public static WorkflowSessionApi createWorkflowSession(String sessionId) {
-        return WorkflowSessionApi.create(null, sessionId, null);
+    public static WorkflowSession createWorkflowSession(String sessionId) {
+        return WorkflowSession.create(null, sessionId, null);
     }
 
-    public static WorkflowSessionApi createWorkflowSession(BaseSession parent) {
-        return WorkflowSessionApi.create(parent, null, null);
+    public static WorkflowSession createWorkflowSession(BaseSession parent) {
+        return WorkflowSession.create(parent, null, null);
     }
 }

@@ -46,7 +46,7 @@ public class StreamEmitter {
         }
         closed = true;
         if (!streamQueue.isClosed()) {
-            streamQueue.send(END_FRAME);
+            streamQueue.sendCritical(END_FRAME);
         }
     }
 }

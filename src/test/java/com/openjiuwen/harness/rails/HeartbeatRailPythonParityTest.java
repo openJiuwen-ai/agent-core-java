@@ -10,7 +10,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.RunContext;
 import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.HeartbeatSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentConfig;

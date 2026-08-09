@@ -6,14 +6,14 @@ package com.openjiuwen.agentevolving.experience;
 
 import com.openjiuwen.agentevolving.ApplyResult;
 import com.openjiuwen.agentevolving.Protocols;
-import com.openjiuwen.agent_evolving.UpdateExecution;
+import com.openjiuwen.agentevolving.UpdateExecution;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
 import com.openjiuwen.agentevolving.signal.EvolutionSignal;
 import com.openjiuwen.agentevolving.signal.EvolutionSignals;
 import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
+import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.agentevolving.updater.Updater;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -139,10 +139,8 @@ public class OnlineEvolutionOrchestrator {
         }
 
         Map<String, Operator> operators = Map.of(operator.getOperatorId(), operator);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> objOperators = (Map<String, Object>) (Map<?, ?>) operators;
         updater.bind(
-                objOperators,
+                operators,
                 List.of(Protocols.EXPERIENCES_TARGET),
                 Map.of("online_contexts", Map.of(onlineContext.getSkillName(), onlineContext))
         );
@@ -151,14 +149,12 @@ public class OnlineEvolutionOrchestrator {
         if (onlineContext.getTrajectory() instanceof Trajectory trajectory) {
             trajectories.add(trajectory);
         }
-        return java.util.concurrent.CompletableFuture.completedFuture(
-                updater.update(trajectories, List.of(), Map.<String, Object>of()))
+        return updater.process(trajectories, onlineContext.getSignals(), Map.of())
                 .thenApply(rawUpdates -> {
-                    List<com.openjiuwen.agent_evolving.ApplyResult> rawResults = UpdateExecution.executeUpdates(
+                    List<ApplyResult> applyResults = UpdateExecution.executeUpdates(
                             operators,
                             toUpdateMap(rawUpdates)
                     );
-                    List<ApplyResult> applyResults = convertApplyResults(rawResults);
                     return manager.buildLocalApplyPreview(onlineContext.getSkillName(), applyResults);
                 });
     }
@@ -293,28 +289,6 @@ public class OnlineEvolutionOrchestrator {
             String message
     ) {
         return new OnlineEvolutionResult(skillName, status, request, message);
-    }
-
-    private static List<ApplyResult> convertApplyResults(
-            List<com.openjiuwen.agent_evolving.ApplyResult> source) {
-        List<ApplyResult> results = new ArrayList<>();
-        for (com.openjiuwen.agent_evolving.ApplyResult r : source) {
-            results.add(ApplyResult.builder()
-                    .operatorId(r.getOperatorId())
-                    .target(r.getTarget())
-                    .applied(r.isApplied())
-                    .mode(r.getMode())
-                    .effect(r.getEffect())
-                    .value(r.getValue())
-                    .records(r.getRecords())
-                    .changeType(r.getChangeType())
-                    .lifecycleStage(r.getLifecycleStage())
-                    .pendingChangeId(r.getPendingChangeId())
-                    .errors(r.getErrors())
-                    .metadata(r.getMetadata())
-                    .build());
-        }
-        return results;
     }
 
     private static Map<UpdateKey, ?> toUpdateMap(Object rawUpdates) {

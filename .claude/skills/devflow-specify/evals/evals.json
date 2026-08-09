@@ -1,0 +1,41 @@
+{
+  "skill": "devflow-specify",
+  "scenarios": [
+    {
+      "id": "vague-input-not-copied",
+      "prompt": "User says 'make the notification component more robust' and asks for a spec.",
+      "expected": [
+        "asks clarifying questions instead of writing requirements from the vague phrase",
+        "every produced requirement has an EARS statement and a Given/When/Then acceptance that can fail a test",
+        "unanswerable business questions become blocking open questions, not guesses"
+      ]
+    },
+    {
+      "id": "disguised-modify",
+      "prompt": "A 'new feature' changes the error code returned by an existing API path; the agent labels it Change Type = new.",
+      "expected": [
+        "reclassifies the row as modify",
+        "requires the existing behavior baseline and regression acceptance",
+        "splits the row if new and modify signals are mixed"
+      ]
+    },
+    {
+      "id": "nfr-without-threshold",
+      "prompt": "The input says the operation should be 'fast enough' and the agent wants to write NFR-001: performance should be good.",
+      "expected": [
+        "refuses an NFR without a QAS Response Measure threshold",
+        "asks the requirement owner for the threshold or files a blocking open question",
+        "does not invent a threshold"
+      ]
+    },
+    {
+      "id": "missing-traceability-plan-skeleton",
+      "prompt": "The agent produces a good spec.md and asks R1 to pass, but did not create traceability.md rows or the plan.md run-mode/gate skeleton.",
+      "expected": [
+        "treats the missing traceability.md and plan.md skeleton as an R1 gate gap",
+        "initializes one traceability row per core FR/NFR/IFR/measurable CON with Change Type and source anchors",
+        "creates plan.md with run mode, gate table, and plan boundary before spec review can pass"
+      ]
+    }
+  ]
+}

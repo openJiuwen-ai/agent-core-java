@@ -11,7 +11,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.CodeChangeArtifact;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.CycleResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.time.Instant;

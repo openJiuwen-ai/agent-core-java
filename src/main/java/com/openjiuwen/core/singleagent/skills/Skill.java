@@ -21,6 +21,7 @@ public class Skill {
     private String name;
     private String description;
     private Path directory;
+    private long updateAt;
 
     public Skill() {
     }
@@ -41,6 +42,9 @@ public class Skill {
         result.put("description", description);
         if (includeDirectory) {
             result.put("directory", directory == null ? null : directory.toString());
+        }
+        if (updateAt > 0) {
+            result.put("update_at", updateAt);
         }
         return result;
     }
@@ -82,5 +86,13 @@ public class Skill {
 
     public void setDirectory(Path directory) {
         this.directory = directory;
+    }
+
+    public long getUpdateAt() {
+        return updateAt;
+    }
+
+    public void setUpdateAt(long updateAt) {
+        this.updateAt = updateAt;
     }
 }

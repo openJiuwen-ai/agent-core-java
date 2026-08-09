@@ -25,7 +25,17 @@ public class GraphStore implements Store {
     private final Store saver;
 
     public GraphStore(Store saver) {
-        this.saver = saver;
+        this.saver = wrapWithKeyLock(saver);
+    }
+
+    /**
+     * Ensures the delegate is wrapped with {@link KeyLockedStore} for per-session write locking.
+     */
+    private static Store wrapWithKeyLock(Store delegate) {
+        if (delegate == null || delegate instanceof KeyLockedStore) {
+            return delegate;
+        }
+        return new KeyLockedStore(delegate);
     }
 
     @Override

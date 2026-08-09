@@ -19,7 +19,7 @@ public class Progress {
 
     private int startEpoch;
     private int currentEpoch;
-    private int maxEpoch = TuneConstant.DEFAULT_ITERATION_NUM;
+    private int maxEpoch = TuneConstant.defaultIterationNum;
     private int currentBatchIter;
     private int maxBatchIter = 1;
     private double bestScore;
@@ -32,9 +32,6 @@ public class Progress {
             private boolean finalized;
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (nextEpoch <= maxEpoch) {
                     return true;
@@ -44,9 +41,6 @@ public class Progress {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Integer next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
@@ -74,17 +68,11 @@ public class Progress {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 return nextBatchIter < maxBatchIter;
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Integer next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException();

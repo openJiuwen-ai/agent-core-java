@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
@@ -13,6 +14,9 @@ import com.openjiuwen.core.session.stream.StreamWriterManager;
  *
  * <p>Mirrors Python's {@code ProxySession} in
  * {@code openjiuwen/core/session/session.py}.</p>
+ *
+ * <p>Unbound calls return {@link BaseSession} defaults so workflow compilation
+ * can hold a proxy before {@link #setSession(BaseSession)} runs.</p>
  */
 public class ProxySession extends BaseSession {
 
@@ -34,40 +38,51 @@ public class ProxySession extends BaseSession {
         return stub;
     }
 
+    /**
+     * Read a global-state key from the bound session, or {@code null} when unbound.
+     */
+    public Object getGlobal(String key) {
+        State state = state();
+        return state == null ? null : state.getGlobal(key);
+    }
+
     @Override
     public Config config() {
-        return requireStub().config();
+        return stub == null ? super.config() : stub.config();
     }
 
     @Override
     public State state() {
-        return requireStub().state();
+        return stub == null ? null : stub.state();
     }
 
     @Override
     public Object tracer() {
-        return requireStub().tracer();
+        return stub == null ? null : stub.tracer();
     }
 
     @Override
     public StreamWriterManager streamWriterManager() {
-        return requireStub().streamWriterManager();
+        return stub == null ? null : stub.streamWriterManager();
     }
 
     @Override
     public String sessionId() {
-        return requireStub().sessionId();
+        return stub == null ? "" : stub.sessionId();
     }
 
     @Override
     public Object checkpointer() {
-        return requireStub().checkpointer();
+        return stub == null ? null : stub.checkpointer();
     }
 
-    private BaseSession requireStub() {
-        if (stub == null) {
-            throw new IllegalStateException("ProxySession has no backing session");
-        }
-        return stub;
+    @Override
+    public Object actorManager() {
+        return stub == null ? null : stub.actorManager();
+    }
+
+    @Override
+    public CallbackManager callbackManager() {
+        return stub == null ? null : stub.callbackManager();
     }
 }

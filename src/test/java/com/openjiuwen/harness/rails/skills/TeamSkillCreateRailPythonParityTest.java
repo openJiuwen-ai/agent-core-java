@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.rails.skills;
 
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.evolution.EvolutionTriggerPoint;
 

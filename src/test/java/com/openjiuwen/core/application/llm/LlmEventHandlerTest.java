@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.application.llm;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 

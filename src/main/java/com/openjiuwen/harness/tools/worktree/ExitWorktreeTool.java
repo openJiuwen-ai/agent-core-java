@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.tools.worktree;
 
-import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -30,7 +30,8 @@ public class ExitWorktreeTool extends AbstractHarnessTool {
         super(toolCard(
                 scopedToolId("exit_worktree", agentId),
                 "exit_worktree",
-                "Exit the current worktree session."));
+                "Exit the current worktree session.",
+                language));
         this.manager = manager;
     }
 

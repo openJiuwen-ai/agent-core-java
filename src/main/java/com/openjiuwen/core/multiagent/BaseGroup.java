@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multiagent.schema.GroupCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
 import java.util.ArrayList;
@@ -264,7 +264,7 @@ public abstract class BaseGroup {
      * @return the collective output from the agent group
      * @since 0.1.7
      */
-    public abstract Object invoke(Object message, AgentGroupSessionApi session);
+    public abstract Object invoke(Object message, AgentGroupSession session);
 
     /**
      * Execute streaming operation on the agent group.
@@ -274,5 +274,5 @@ public abstract class BaseGroup {
      * @return iterator of streaming output
      * @since 0.1.7
      */
-    public abstract Iterator<Object> stream(Object message, AgentGroupSessionApi session);
+    public abstract Iterator<Object> stream(Object message, AgentGroupSession session);
 }

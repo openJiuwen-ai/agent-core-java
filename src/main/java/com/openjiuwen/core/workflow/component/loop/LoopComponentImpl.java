@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.HasDrawable;
@@ -62,6 +62,15 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
     @Override
     public boolean graphInvoker() {
         return true;
+    }
+
+    /**
+     * Component type identifier used by Vertex tracing metadata.
+     *
+     * @return {@code "LoopComponent"}
+     */
+    public String componentType() {
+        return "LoopComponent";
     }
 
     public Executable<?, ?> toExecutable() {
@@ -191,12 +200,17 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
                     "ability", ComponentAbility.STREAM.name(),
                     "comp", WorkflowSessionSupport.componentId(session),
                     "reason", "Component 'LoopExecutable' does not implement the on_stream method.",
-                    "workflow", session == null ? "" : session.workflowId());
+                    "workflow", session == null ? "" : WorkflowSessionSupport.workflowId(session));
         }
 
         @Override
         public boolean graphInvoker() {
             return true;
+        }
+
+        @Override
+        public String componentType() {
+            return owner.componentType();
         }
 
         private static ModelContext extractContext(Object... kwargs) {

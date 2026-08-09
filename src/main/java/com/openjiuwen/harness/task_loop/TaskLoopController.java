@@ -8,13 +8,10 @@ import com.openjiuwen.core.controller.Controller;
 import com.openjiuwen.core.session.AgentSessionApi;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -30,7 +27,6 @@ public class TaskLoopController extends Controller {
     public static final String DEFAULT_SESSION_ID = "default";
 
     private final LoopQueues interactionQueues = new LoopQueues();
-    private final Queue<String> followUps = new ConcurrentLinkedQueue<>();
     private CompletableFuture<Map<String, Object>> roundCompletion = new CompletableFuture<>();
 
     public LoopQueues getInteractionQueues() {
@@ -76,12 +72,21 @@ public class TaskLoopController extends Controller {
     }
 
     public List<String> drainFollowUp() {
-        List<String> messages = new ArrayList<>();
-        String next;
-        while ((next = followUps.poll()) != null) {
-            messages.add(next);
-        }
-        return messages;
+        return interactionQueues.drainFollowUp();
+    }
+
+    public List<String> drainSteering() {
+        return interactionQueues.drainSteering();
+    }
+
+    /**
+     * Drain steering messages for a given session.
+     *
+     * @param sessionId the session id (ignored in this implementation)
+     * @return list of steering messages
+     */
+    public List<String> drainSteering(String sessionId) {
+        return drainSteering();
     }
 
     /**
@@ -116,7 +121,7 @@ public class TaskLoopController extends Controller {
 
     public void enqueueFollowUp(String message) {
         if (message != null && !message.isBlank()) {
-            followUps.add(message);
+            interactionQueues.pushFollowUp(message);
         }
     }
 
@@ -137,10 +142,12 @@ public class TaskLoopController extends Controller {
      * @param message   the steering message
      */
     public void enqueueSteering(String sessionId, String message) {
-        enqueueFollowUp(message);
+        if (message != null && !message.isBlank()) {
+            interactionQueues.pushSteer(message);
+        }
     }
 
     public boolean hasFollowUp() {
-        return !followUps.isEmpty();
+        return interactionQueues.hasFollowUp();
     }
 }

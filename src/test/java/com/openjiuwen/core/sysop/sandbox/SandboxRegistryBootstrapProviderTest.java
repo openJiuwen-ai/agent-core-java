@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioCodeProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioFSProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioShellProvider;

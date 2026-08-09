@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.OperationMode
+# com.openjiuwen.core.sysop.OperationMode
 
 ## 枚举 OperationMode
 

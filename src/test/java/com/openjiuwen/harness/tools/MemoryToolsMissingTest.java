@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.memory.lite.LiteMemoryToolContextBase;
 import com.openjiuwen.core.memory.lite.MemoryToolContext;
 import com.openjiuwen.core.memory.lite.MemoryToolOps;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import org.junit.jupiter.api.Test;

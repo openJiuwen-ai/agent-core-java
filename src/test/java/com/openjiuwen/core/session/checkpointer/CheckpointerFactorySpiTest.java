@@ -51,11 +51,10 @@ class CheckpointerFactorySpiTest {
     @Test
     @DisplayName("ServiceLoader discovers built-in persistence provider")
     void serviceLoaderDiscoversPersistenceProvider() {
-        // Without kv_store config, persistence provider falls back to InMemoryCheckpointer
+        // Empty conf still creates a persistence checkpointer (default sqlite path).
         Checkpointer cp = CheckpointerFactory.create("persistence", Map.of());
-        assertNotNull(cp);
+        assertInstanceOf(PersistenceCheckpointer.class, cp);
 
-        // With kv_store config, it creates PersistenceCheckpointer
         com.openjiuwen.core.foundation.store.kv.InMemoryKVStore kvStore =
                 new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
         Checkpointer cpWithStore = CheckpointerFactory.create("persistence", Map.of("kv_store", kvStore));
@@ -63,7 +62,7 @@ class CheckpointerFactorySpiTest {
     }
 
     @Test
-    @DisplayName("redis_checkpointer_cluster is registered as alias for redis")
+    @DisplayName("redis provider aliases redis_checkpointer_cluster")
     void redisClusterAliasIsRegistered() {
         Checkpointer cp = CheckpointerFactory.create("redis_checkpointer_cluster", Map.of(
                 "connection", Map.of("url", "redis://127.0.0.1:6379")));

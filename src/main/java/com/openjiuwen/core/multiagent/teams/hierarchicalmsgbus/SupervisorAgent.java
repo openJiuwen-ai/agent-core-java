@@ -36,8 +36,8 @@ public final class SupervisorAgent {
                                   String systemPrompt,
                                   int maxIterations,
                                   int maxParallelSubAgents) {
-        com.openjiuwen.core.multi_agent.teams.hierarchical_msgbus.SupervisorAgent.CreatedSupervisor created =
-                com.openjiuwen.core.multi_agent.teams.hierarchical_msgbus.SupervisorAgent.create(
+        com.openjiuwen.core.multiagent.teams.hierarchical_msgbus.SupervisorAgent.CreatedSupervisor created =
+                com.openjiuwen.core.multiagent.teams.hierarchical_msgbus.SupervisorAgent.create(
                         agents,
                         modelClientConfig,
                         modelRequestConfig,

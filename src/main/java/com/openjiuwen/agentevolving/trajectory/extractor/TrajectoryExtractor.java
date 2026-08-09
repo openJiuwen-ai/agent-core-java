@@ -144,8 +144,8 @@ public class TrajectoryExtractor {
 
         return LLMCallDetail.builder()
                 .model(stringValue(llmParams.get("model"), ""))
-                .messages(new ArrayList<>(objectList(llmParams.get("messages"))))
-                .tools(mapListOrNull(llmParams.get("tools")) != null ? new ArrayList<>(mapListOrNull(llmParams.get("tools"))) : null)
+                .messages(objectList(llmParams.get("messages")))
+                .tools(mapListOrNull(llmParams.get("tools")))
                 .response(response)
                 .usage(usage)
                 .build();

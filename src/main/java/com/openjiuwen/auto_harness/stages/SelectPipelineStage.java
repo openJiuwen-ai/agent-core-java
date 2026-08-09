@@ -23,8 +23,10 @@ import java.util.Map;
  */
 public final class SelectPipelineStage {
 
+    @SuppressWarnings("unchecked")
     private static final SelectPipelineAgentFactory DEFAULT_AGENT_FACTORY =
-            config -> inputs -> AutoHarnessAgentFactory.createSelectPipelineAgent(config, null).stream(inputs);
+            config -> inputs -> (Iterator<Map<String, Object>>) (Iterator<?>)
+                    AutoHarnessAgentFactory.createSelectPipelineAgent(config, null).stream(inputs);
 
     private SelectPipelineStage() {
     }

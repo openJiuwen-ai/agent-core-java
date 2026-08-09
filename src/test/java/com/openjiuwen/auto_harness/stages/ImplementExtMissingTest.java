@@ -14,7 +14,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -236,9 +236,9 @@ class ImplementExtMissingTest {
         }
 
         @Override
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs) {
+        public Iterator<Object> stream(Map<String, Object> inputs) {
             writeScaffold(wtPath);
-            return List.<Map<String, Object>>of().iterator();
+            return (Iterator<Object>) (Iterator<?>) List.<Map<String, Object>>of().iterator();
         }
     }
 
@@ -248,14 +248,14 @@ class ImplementExtMissingTest {
         }
 
         @Override
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs) {
+        public Iterator<Object> stream(Map<String, Object> inputs) {
             super.stream(inputs);
             OutputSchema output = new OutputSchema(
                     "stage_result",
                     0,
                     Map.of("stage", "implement", "status", "success")
             );
-            return List.of(Map.of(
+            return (Iterator<Object>) (Iterator<?>) List.of(Map.of(
                     "type", output.getType(),
                     "payload", output.getPayload(),
                     "_output", output

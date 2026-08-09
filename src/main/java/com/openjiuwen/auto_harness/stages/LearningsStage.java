@@ -15,7 +15,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.Experience;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExperienceType;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.SessionResultsArtifact;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
 import java.util.ArrayList;

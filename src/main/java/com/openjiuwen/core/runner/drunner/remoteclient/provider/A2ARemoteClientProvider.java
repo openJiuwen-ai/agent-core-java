@@ -21,7 +21,9 @@ import java.util.Map;
  * @since 0.1.12
  * @see RemoteClientProvider
  * @see com.openjiuwen.extensions.a2a.A2ARemoteClient
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client}.
  */
+@Deprecated(since = "0.1.14")
 public final class A2ARemoteClientProvider implements RemoteClientProvider {
     /**
      * Returns the A2A protocol type name.

@@ -10,6 +10,7 @@ import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioCodeProv
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxFSProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxShellProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxCodeProvider;
+import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
 
 /**
  * Registers built-in launchers and operation providers once per JVM.
