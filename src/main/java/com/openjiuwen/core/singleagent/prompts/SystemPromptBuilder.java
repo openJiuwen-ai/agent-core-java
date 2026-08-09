@@ -87,7 +87,7 @@ public class SystemPromptBuilder {
      * @return this builder
      * @since 0.1.7
      */
-    public SystemPromptBuilder addSection(PromptSection section) {
+    public synchronized SystemPromptBuilder addSection(PromptSection section) {
         if (section != null && section.getName() != null && !section.getName().isBlank()) {
             sections.put(section.getName(), section);
         }
@@ -101,7 +101,7 @@ public class SystemPromptBuilder {
      * @return this builder
      * @since 0.1.7
      */
-    public SystemPromptBuilder removeSection(String name) {
+    public synchronized SystemPromptBuilder removeSection(String name) {
         if (name != null) {
             sections.remove(name);
         }
@@ -114,7 +114,7 @@ public class SystemPromptBuilder {
      * @return section snapshot
      * @since 0.1.7
      */
-    public Map<String, PromptSection> getAllSections() {
+    public synchronized Map<String, PromptSection> getAllSections() {
         return new LinkedHashMap<String, PromptSection>(sections);
     }
 
@@ -125,7 +125,7 @@ public class SystemPromptBuilder {
      * @return true when the section isExists
      * @since 0.1.7
      */
-    public boolean hasSection(String name) {
+    public synchronized boolean hasSection(String name) {
         return name != null && sections.containsKey(name);
     }
 
@@ -136,7 +136,7 @@ public class SystemPromptBuilder {
      * @return matched section or null-equivalent map lookup result
      * @since 0.1.7
      */
-    public PromptSection getSection(String name) {
+    public synchronized PromptSection getSection(String name) {
         return sections.get(name);
     }
 
@@ -146,7 +146,7 @@ public class SystemPromptBuilder {
      * @return rendered system prompt
      * @since 0.1.7
      */
-    public String build() {
+    public synchronized String build() {
         List<PromptSection> ordered = getSectionsForBuild();
         ordered.sort(Comparator.comparingInt(PromptSection::getPriority));
 
