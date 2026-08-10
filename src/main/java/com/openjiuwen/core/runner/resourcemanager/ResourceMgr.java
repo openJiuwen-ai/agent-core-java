@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
@@ -150,10 +151,7 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public List<Result<AgentCard>> addAgents(List<AgentEntry> agents, Object tag) {
-        if (agents == null || agents.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", "agent", "reason",
-                    "cannot be empty");
-        }
+        validateAgentEntries(agents);
         if (tag != null) {
             validateTag(tag);
         }
@@ -231,10 +229,7 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public List<Result<WorkflowCard>> addWorkflows(List<WorkflowEntry> workflows, Object tag) {
-        if (workflows == null || workflows.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", "workflow", "reason",
-                    "cannot be empty");
-        }
+        validateWorkflowEntries(workflows);
         if (tag != null) {
             validateTag(tag);
         }
@@ -314,7 +309,7 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public Result<ToolCard> addTool(Tool tool, Object tag, boolean refresh) {
-        validateResource(tool, "tool", Tool.class);
+        validateTool(tool);
         if (tag != null) {
             validateTag(tag);
         }
@@ -346,10 +341,7 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public List<Result<ToolCard>> addTools(List<Tool> tools, Object tag, boolean refresh) {
-        if (tools == null || tools.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID, "resource_type", "tool", "reason",
-                    "tool list cannot be empty");
-        }
+        validateTools(tools);
         if (tag != null) {
             validateTag(tag);
         }
@@ -703,7 +695,7 @@ public class ResourceMgr {
      * @since 0.1.7
      */
     public List<ToolInfo> getToolInfos(Object toolId, Object toolType, Object tag, TagMatchStrategy tagMatchStrategy) {
-        FindResult findResult = innerFindResourceIds(toolId, tag, tagMatchStrategy, true);
+        FindResult findResult = innerFindResourceIds(toolId, tag, tagMatchStrategy, true, "tool");
         List<ToolInfo> results = new ArrayList<>();
         if (findResult.ids() == null || findResult.ids().isEmpty()) {
             return results;
@@ -1035,11 +1027,14 @@ public class ResourceMgr {
         validateTag(tag);
         List<String> resourceIds = tagMgr.getTagResources(tag);
         if (resourceIds == null || resourceIds.isEmpty()) {
-            return resourceIds != null ? Collections.emptyList() : null;
+            return Collections.emptyList();
         }
         List<BaseCard> cards = new ArrayList<>();
         for (String resourceId : resourceIds) {
-            cards.add(idToCard.get(resourceId));
+            BaseCard card = idToCard.get(resourceId);
+            if (card != null) {
+                cards.add(card);
+            }
         }
         return cards;
     }
@@ -1228,8 +1223,9 @@ public class ResourceMgr {
             String resourceType) {
         try {
             if (tagMgr.hasResource(resourceId)) {
-                innerRemoveResources(resourceId, null, TagMatchStrategy.ALL, true, resourceType);
-                logger.info("replaced existing resource, id={}, type={}", resourceId, resourceType);
+                String card = resourceCard != null ? resourceCard.toString() : resourceId;
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_ADD_ERROR, "card", card, "reason",
+                        "resource already exist");
             }
             switch (resourceType) {
                 case "workflow" -> resourceRegistry.workflow().addWorkflow(resourceId, (Supplier<Workflow>) resource);
@@ -1271,6 +1267,7 @@ public class ResourceMgr {
         List<String> idsToRemove;
         boolean isRemoveByTag = false;
         if (resourceId != null) {
+            validateResourceIds(resourceId, resourceType);
             idsToRemove = normalizeIds(resourceId);
         } else {
             validateTag(tag);
@@ -1323,26 +1320,15 @@ public class ResourceMgr {
      * @param resourceId resourceId
      * @param tag tag
      * @param tagMatchStrategy tagMatchStrategy
-     * @return the result
-     * @since 0.1.7
-     */
-    private FindResult innerFindResourceIds(Object resourceId, Object tag, TagMatchStrategy tagMatchStrategy) {
-        return innerFindResourceIds(resourceId, tag, tagMatchStrategy, false);
-    }
-
-    /**
-     * innerFindResourceIds.
-     * 
-     * @param resourceId resourceId
-     * @param tag tag
-     * @param tagMatchStrategy tagMatchStrategy
      * @param shouldSkipMissingTag shouldSkipMissingTag
+     * @param resourceType resourceType
      * @return the result
      * @since 0.1.7
      */
     private FindResult innerFindResourceIds(Object resourceId, Object tag, TagMatchStrategy tagMatchStrategy,
-            boolean shouldSkipMissingTag) {
+            boolean shouldSkipMissingTag, String resourceType) {
         if (resourceId != null) {
+            validateResourceIds(resourceId, resourceType);
             return new FindResult(normalizeIds(resourceId), true);
         }
         List<String> ids = tagMgr.findResourcesByTags(tag != null ? tag : Tag.GLOBAL,
@@ -1362,7 +1348,7 @@ public class ResourceMgr {
      */
     private Object innerGetResources(Object resourceId, Object tag, TagMatchStrategy tagMatchStrategy,
             String resourceType) {
-        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true);
+        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true, resourceType);
         List<Object> results = new ArrayList<>();
         for (String getId : findResult.ids()) {
             Object resource = null;
@@ -1400,7 +1386,7 @@ public class ResourceMgr {
      */
     private Object innerGetResourcesByProvider(Object resourceId, Object tag, TagMatchStrategy tagMatchStrategy,
             String resourceType) {
-        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true);
+        FindResult findResult = innerFindResourceIds(resourceId, tag, tagMatchStrategy, true, resourceType);
         List<Object> results = new ArrayList<>();
         if (findResult.ids() == null || findResult.ids().isEmpty()) {
             return results;
@@ -1526,6 +1512,179 @@ public class ResourceMgr {
     }
 
     /**
+     * Validates agent provider entries before any resource is registered.
+     *
+     * @param agents agent provider entries
+     * @since 0.1.14
+     */
+    private static void validateAgentEntries(List<AgentEntry> agents) {
+        validateProviderListNotEmpty(agents, "agent");
+        for (int index = 0; index < agents.size(); index++) {
+            Object item = agents.get(index);
+            if (!(item instanceof AgentEntry entry)) {
+                throw buildInvalidProviderFormat("agent", index, item, AgentCard.class);
+            }
+            validateProviderEntry(entry.card(), entry.provider(), "agent", AgentCard.class, index);
+        }
+    }
+
+    /**
+     * Validates workflow provider entries before any resource is registered.
+     *
+     * @param workflows workflow provider entries
+     * @since 0.1.14
+     */
+    private static void validateWorkflowEntries(List<WorkflowEntry> workflows) {
+        validateProviderListNotEmpty(workflows, "workflow");
+        for (int index = 0; index < workflows.size(); index++) {
+            Object item = workflows.get(index);
+            if (!(item instanceof WorkflowEntry entry)) {
+                throw buildInvalidProviderFormat("workflow", index, item, WorkflowCard.class);
+            }
+            validateProviderEntry(entry.card(), entry.provider(), "workflow", WorkflowCard.class, index);
+        }
+    }
+
+    /**
+     * Validates that a provider entry list is present and non-empty.
+     *
+     * @param entries provider entries
+     * @param resourceType resource type
+     * @since 0.1.14
+     */
+    private static void validateProviderListNotEmpty(List<?> entries, String resourceType) {
+        if (entries == null || entries.isEmpty()) {
+            throw ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", resourceType,
+                    "reason", "cannot be empty");
+        }
+    }
+
+    /**
+     * Validates one card/provider pair from a bulk registration request.
+     *
+     * @param card resource card
+     * @param provider resource provider
+     * @param resourceType resource type
+     * @param cardClassType expected card type
+     * @param index entry index
+     * @since 0.1.14
+     */
+    private static void validateProviderEntry(Object card, Object provider, String resourceType,
+            Class<? extends BaseCard> cardClassType, int index) {
+        if (card == null) {
+            throw buildProviderError(resourceType, "invalid card at idx " + index
+                    + ": card cannot be None, must be an instance of " + cardClassType.getSimpleName());
+        }
+        if (!cardClassType.isInstance(card)) {
+            throw buildProviderError(resourceType, "invalid " + resourceType + " card type at idx " + index
+                    + ": expected " + cardClassType.getSimpleName() + ", got " + getPythonTypeName(card));
+        }
+        BaseCard resourceCard = (BaseCard) card;
+        try {
+            validateResourceId(resourceCard.getId(), resourceType);
+        } catch (BaseError error) {
+            String reason = "invalid " + resourceType + " id at idx " + index + ": " + error.getMessage();
+            throw buildValidationError(StatusCode.RESOURCE_PROVIDER_INVALID, resourceType, reason, error);
+        }
+        if (provider == null) {
+            throw buildProviderError(resourceType, "invalid provider at idx " + index
+                    + ": provider cannot be None, must be a callable function");
+        }
+        if (!(provider instanceof Supplier<?>)) {
+            throw buildProviderError(resourceType, "invalid " + resourceType + " provider type at idx " + index
+                    + ": expected callable, got " + getPythonTypeName(provider));
+        }
+    }
+
+    /**
+     * Builds the Python-compatible malformed provider entry error.
+     *
+     * @param resourceType resource type
+     * @param index entry index
+     * @param item malformed entry
+     * @param cardClassType expected card type
+     * @return provider validation error
+     * @since 0.1.14
+     */
+    private static BaseError buildInvalidProviderFormat(String resourceType, int index, Object item,
+            Class<? extends BaseCard> cardClassType) {
+        String length = item instanceof List<?> list ? String.valueOf(list.size()) : "N/A";
+        String reason = "invalid provider format at idx " + index + ": expected tuple["
+                + cardClassType.getSimpleName() + ", Callable], got " + getPythonTypeName(item)
+                + " (length=" + length + ")";
+        return buildProviderError(resourceType, reason);
+    }
+
+    /**
+     * Builds a provider validation error.
+     *
+     * @param resourceType resource type
+     * @param reason validation failure reason
+     * @return provider validation error
+     * @since 0.1.14
+     */
+    private static BaseError buildProviderError(String resourceType, String reason) {
+        return ErrorHelper.buildError(StatusCode.RESOURCE_PROVIDER_INVALID, "resource_type", resourceType, "reason",
+                reason);
+    }
+
+    /**
+     * Validates one tool and its card.
+     *
+     * @param tool tool instance
+     * @since 0.1.14
+     */
+    private static void validateTool(Tool tool) {
+        validateResource(tool, "tool", Tool.class);
+        try {
+            validateResourceCard(tool.getCard(), "tool", ToolCard.class);
+            validateResourceId(tool.getCard().getId(), "tool");
+        } catch (BaseError error) {
+            throw buildValidationError(StatusCode.RESOURCE_VALUE_INVALID, "tool",
+                    "tool has invalid card: " + error.getMessage(), error);
+        }
+    }
+
+    /**
+     * Validates every tool before bulk registration begins.
+     *
+     * @param tools tool instances
+     * @since 0.1.14
+     */
+    private static void validateTools(List<Tool> tools) {
+        if (tools == null || tools.isEmpty()) {
+            throw buildResourceError("tool", "tool list cannot be empty");
+        }
+        for (int index = 0; index < tools.size(); index++) {
+            Object item = tools.get(index);
+            if (!(item instanceof Tool tool)) {
+                throw buildResourceError("tool", "invalid tool type at index " + index
+                        + ": expected Tool, got " + getPythonTypeName(item));
+            }
+            try {
+                validateResourceCard(tool.getCard(), "tool", ToolCard.class);
+                validateResourceId(tool.getCard().getId(), "tool");
+            } catch (BaseError error) {
+                String reason = "tool at index " + index + " has invalid card: " + error.getMessage();
+                throw buildValidationError(StatusCode.RESOURCE_VALUE_INVALID, "tool", reason, error);
+            }
+        }
+    }
+
+    /**
+     * Builds a resource value validation error.
+     *
+     * @param resourceType resource type
+     * @param reason validation failure reason
+     * @return resource validation error
+     * @since 0.1.14
+     */
+    private static BaseError buildResourceError(String resourceType, String reason) {
+        return ErrorHelper.buildError(StatusCode.RESOURCE_VALUE_INVALID, "resource_type", resourceType, "reason",
+                reason);
+    }
+
+    /**
      * validateResourceCard.
      * 
      * @param card card
@@ -1566,6 +1725,105 @@ public class ResourceMgr {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_ID_VALUE_INVALID, "resource_type", resourceType, "reason",
                     "string id cannot be empty or whitespace only");
         }
+    }
+
+    /**
+     * Validates a single resource ID or a list of resource IDs.
+     *
+     * @param resourceId resource ID input
+     * @param resourceType resource type
+     * @since 0.1.14
+     */
+    private static void validateResourceIds(Object resourceId, String resourceType) {
+        if (resourceId instanceof String id) {
+            if (id.isEmpty()) {
+                throw buildResourceIdError(resourceType, resourceType + " id list cannot be empty or None");
+            }
+            validateResourceId(id, resourceType);
+            return;
+        }
+        if (!(resourceId instanceof List<?> ids)) {
+            throw buildResourceIdError(resourceType, "invalid id type: expected string or list, got "
+                    + getPythonTypeName(resourceId));
+        }
+        if (ids.isEmpty()) {
+            throw buildResourceIdError(resourceType, resourceType + " id list cannot be empty or None");
+        }
+        Set<String> seenIds = new HashSet<>();
+        for (int index = 0; index < ids.size(); index++) {
+            Object item = ids.get(index);
+            if (!(item instanceof String id)) {
+                String itemError = resourceType + " id is invalid, reason='invalid id type: expected string, got "
+                        + getPythonTypeName(item) + "'";
+                throw buildResourceIdError(resourceType,
+                        "invalid " + resourceType + " id at idx " + index + ": " + itemError);
+            }
+            try {
+                validateResourceId(id, resourceType);
+            } catch (BaseError error) {
+                String reason = "invalid " + resourceType + " id at idx " + index + ": " + error.getMessage();
+                throw buildValidationError(StatusCode.RESOURCE_ID_VALUE_INVALID, resourceType, reason, error);
+            }
+            if (!seenIds.add(id)) {
+                throw buildResourceIdError(resourceType, "duplicate " + resourceType + " id found: '" + id
+                        + "' appears multiple times in the list");
+            }
+        }
+    }
+
+    /**
+     * Builds a resource ID validation error.
+     *
+     * @param resourceType resource type
+     * @param reason validation failure reason
+     * @return resource ID validation error
+     * @since 0.1.14
+     */
+    private static BaseError buildResourceIdError(String resourceType, String reason) {
+        return ErrorHelper.buildError(StatusCode.RESOURCE_ID_VALUE_INVALID, "resource_type", resourceType, "reason",
+                reason);
+    }
+
+    /**
+     * Builds a validation error while preserving the lower-level cause.
+     *
+     * @param status validation status
+     * @param resourceType resource type
+     * @param reason validation failure reason
+     * @param cause lower-level validation failure
+     * @return validation error with its cause attached
+     * @since 0.1.14
+     */
+    private static BaseError buildValidationError(StatusCode status, String resourceType, String reason,
+            Throwable cause) {
+        return ErrorHelper.buildError(status, null, null, cause,
+                Map.of("resource_type", resourceType, "reason", reason));
+    }
+
+    /**
+     * Returns the Python-style type name used by parity validation messages.
+     *
+     * @param value input value
+     * @return Python-style type name
+     * @since 0.1.14
+     */
+    private static String getPythonTypeName(Object value) {
+        if (value == null) {
+            return "NoneType";
+        }
+        if (value instanceof String) {
+            return "str";
+        }
+        if (value instanceof List<?>) {
+            return "list";
+        }
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            return "int";
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return "float";
+        }
+        return value.getClass().getSimpleName();
     }
 
     /**

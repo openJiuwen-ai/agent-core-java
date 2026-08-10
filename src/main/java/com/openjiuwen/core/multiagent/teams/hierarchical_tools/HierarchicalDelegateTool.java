@@ -49,17 +49,16 @@ public class HierarchicalDelegateTool extends Tool {
     /**
      * Create a delegate tool targeting {@code targetId}.
      * 
-     * @param targetId ID of the child agent to delegate to.
-     * @param targetCard Child agent card (used for tool description and
-     * @param runtime the team runtime for message dispatch.
-     * @param senderId the ID of the parent agent that owns this tool.
-     * @param teamId the team ID for session metadata.
-     *            input params schema shown to the LLM).
+     * @param targetId ID of the child agent to delegate to
+     * @param targetCard child agent card used for the description and input schema
+     * @param runtime team runtime for message dispatch
+     * @param senderId ID of the parent agent that owns this tool
+     * @param teamId team ID for session metadata and resource scoping
      * @since 0.1.7
      */
     public HierarchicalDelegateTool(String targetId, AgentCard targetCard, TeamRuntime runtime, String senderId,
             String teamId) {
-        super(buildCard(targetId, targetCard));
+        super(buildCard(targetId, targetCard, senderId, teamId));
         this.targetId = targetId;
         this.runtime = runtime;
         this.senderId = senderId;
@@ -132,10 +131,12 @@ public class HierarchicalDelegateTool extends Tool {
      * 
      * @param targetId targetId
      * @param targetCard targetCard
+     * @param senderId senderId
+     * @param teamId teamId
      * @return the result
      * @since 0.1.7
      */
-    private static ToolCard buildCard(String targetId, AgentCard targetCard) {
+    private static ToolCard buildCard(String targetId, AgentCard targetCard, String senderId, String teamId) {
         String toolName = targetId;
         String description = "Delegate a task to " + targetId + " for processing.";
         if (targetCard != null && targetCard.getDescription() != null && !targetCard.getDescription().isBlank()) {
@@ -151,7 +152,25 @@ public class HierarchicalDelegateTool extends Tool {
         } else {
             inputParams = defaultInputParams();
         }
-        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
+        return ToolCard.builder()
+                .id(buildToolId(targetId, senderId, teamId))
+                .name(toolName)
+                .description(description)
+                .inputParams(inputParams)
+                .build();
+    }
+
+    /**
+     * Builds a process-global resource ID for a team-owned delegate tool.
+     *
+     * @param targetId target agent ID
+     * @param senderId owning agent ID
+     * @param teamId owning team ID
+     * @return scoped tool resource ID
+     * @since 0.1.14
+     */
+    private static String buildToolId(String targetId, String senderId, String teamId) {
+        return "delegate.hierarchical_tools." + teamId + "." + senderId + "." + targetId;
     }
 
     /**

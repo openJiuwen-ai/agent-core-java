@@ -223,6 +223,14 @@ public class TagMgr {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
                         resourceId, "tags", String.valueOf(tags), "reason", "Resource does not exist");
             }
+            Set<String> currentTags = resourceTags.get(resourceId);
+            if (!skipIfNotExists) {
+                List<String> missingTags = tagsToRemove.stream().filter(tag -> !currentTags.contains(tag)).toList();
+                if (!missingTags.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
+                            resourceId, "tags", missingTags.toString(), "reason", "Tag does not exist");
+                }
+            }
             return doRemoveResourceTags(resourceId, tagsToRemove);
         } finally {
             lock.unlock();
@@ -450,6 +458,9 @@ public class TagMgr {
                 Set<String> res = tagToResource.get(tag);
                 if (res != null) {
                     res.remove(resourceId);
+                    if (res.isEmpty() && !Tag.GLOBAL.equals(tag)) {
+                        tagToResource.remove(tag);
+                    }
                 }
                 removedTags.add(tag);
             }
@@ -468,11 +479,18 @@ public class TagMgr {
     private List<String> doRemoveResourceTags(String resourceId, List<String> tagsToRemove) {
         Set<String> currentTags = resourceTags.get(resourceId);
         for (String tag : tagsToRemove) {
-            currentTags.remove(tag);
-            Set<String> res = tagToResource.get(tag);
-            if (res != null) {
-                res.remove(resourceId);
+            if (currentTags.remove(tag)) {
+                Set<String> res = tagToResource.get(tag);
+                if (res != null) {
+                    res.remove(resourceId);
+                    if (res.isEmpty() && !Tag.GLOBAL.equals(tag)) {
+                        tagToResource.remove(tag);
+                    }
+                }
             }
+        }
+        if (currentTags.isEmpty()) {
+            resourceTags.remove(resourceId);
         }
         return new ArrayList<>(currentTags);
     }
@@ -492,6 +510,9 @@ public class TagMgr {
                 Set<String> tags = resourceTags.get(resourceId);
                 if (tags != null) {
                     tags.remove(tag);
+                    if (tags.isEmpty()) {
+                        resourceTags.remove(resourceId);
+                    }
                 }
                 affected.add(resourceId);
             }

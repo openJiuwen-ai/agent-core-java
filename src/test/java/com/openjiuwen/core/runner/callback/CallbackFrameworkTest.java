@@ -2,7 +2,12 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -434,6 +439,20 @@ class CallbackFrameworkTest {
         assertEquals(2, results.size());
         assertTrue(results.contains("result1"));
         assertTrue(results.contains("result2"));
+    }
+
+    @Test
+    @DisplayName("Trigger parallel omits failed callbacks but keeps successful empty lists")
+    void testTriggerParallelOmitsFailures() {
+        framework.register("event", kwargs -> List.of(), "empty_result");
+        framework.register("event", kwargs -> {
+            throw new IllegalStateException("failed");
+        }, "failed");
+
+        List<Object> results = framework.triggerParallel("event", null, null);
+
+        assertEquals(1, results.size());
+        assertEquals(List.of(), results.get(0));
     }
 
     // ========== History ==========
