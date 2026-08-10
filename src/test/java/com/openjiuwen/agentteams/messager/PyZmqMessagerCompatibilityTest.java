@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,25 @@ class PyZmqMessagerCompatibilityTest {
         assertThat(response.get().getEventType()).isEqualTo("pong");
         assertThat(response.get().getPayload()).containsEntry("request", 7);
         assertThat(response.get().getSenderId()).isEqualTo("worker");
+    }
+
+    @Test
+    void sendAndWaitShouldCompleteAfterTemporaryReplyHandlerCleanup() {
+        PyZmqMessager requester = startDirectMessager("requester");
+        PyZmqMessager responder = startDirectMessager("responder");
+        connectPeers(requester, responder);
+        responder.registerDirectMessageHandler(message -> {
+            String replyTo = String.valueOf(message.getPayload().get("reply_to"));
+            return responder.send(replyTo, EventMessage.builder()
+                    .eventType("response")
+                    .payload(Map.of("result", message.getPayload().get("value")))
+                    .build());
+        }).join();
+
+        Map<String, Object> response = requester.sendAndWait(
+                "responder", Map.of("value", 42), Duration.ofSeconds(5L)).join();
+
+        assertThat(response).containsEntry("result", 42);
     }
 
     @Test

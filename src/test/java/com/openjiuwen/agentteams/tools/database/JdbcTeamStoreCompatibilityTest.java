@@ -6,7 +6,11 @@ package com.openjiuwen.agentteams.tools.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -77,6 +81,31 @@ class JdbcTeamStoreCompatibilityTest {
 
     @ParameterizedTest
     @EnumSource(value = DatabaseType.class, names = {"POSTGRESQL", "MYSQL"})
+    void jdbcStoreShouldRollbackRuntimeSnapshotFailure(DatabaseType databaseType) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(h2Url(databaseType, "runtime_rollback"));
+                JdbcTeamStore store = JdbcTeamStore.forConnection(databaseType, connection)) {
+            store.replaceStaticRows(List.of(teamRecord()), List.of(memberRecord("team-jdbc")));
+            TeamRecord updatedTeam = teamRecord();
+            updatedTeam.setDisplayName("Uncommitted Team Name");
+            FailingTeamRecord failingTeam = new FailingTeamRecord();
+            failingTeam.setTeamName("team-runtime-failure");
+
+            assertThatThrownBy(() -> store.replaceStaticRows(
+                    List.of(updatedTeam, failingTeam), List.of(memberRecord("team-jdbc"))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Synthetic runtime persistence failure");
+
+            assertThat(connection.getAutoCommit()).isTrue();
+            Map<String, TeamRecord> teams = new ConcurrentHashMap<>();
+            Map<String, MemberRecord> members = new ConcurrentHashMap<>();
+            store.loadStaticRows(teams, members);
+            assertThat(teams.get("team-jdbc").getDisplayName()).isEqualTo("JDBC Team");
+            assertThat(teams).doesNotContainKey("team-runtime-failure");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DatabaseType.class, names = {"POSTGRESQL", "MYSQL"})
     void teamDatabaseShouldPersistAcrossInjectedJdbcConnections(DatabaseType databaseType) throws SQLException {
         String jdbcUrl = h2Url(databaseType, "team_database");
         DatabaseConfig config = DatabaseConfig.builder().dbType(databaseType).build();
@@ -139,6 +168,20 @@ class JdbcTeamStoreCompatibilityTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Failed to load JDBC team database rows");
         assertThat(connection.isClosed()).isTrue();
+    }
+
+    @Test
+    void teamDatabaseShouldCloseInjectedConnectionAfterIllegalArgumentInitializationFailure() throws SQLException {
+        Connection connection = mock(Connection.class);
+        when(connection.createStatement()).thenThrow(
+                new IllegalArgumentException("Synthetic JDBC initialization failure"));
+        TeamDatabase database = new TeamDatabase(
+                DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL).build(), connection);
+
+        assertThatThrownBy(database::initialize)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Synthetic JDBC initialization failure");
+        verify(connection).close();
     }
 
     private static void verifyLoadedSession(JdbcTeamStore store, String sessionId) {
@@ -219,5 +262,12 @@ class JdbcTeamStoreCompatibilityTest {
                 .broadcast(false)
                 .isRead(false)
                 .build();
+    }
+
+    private static final class FailingTeamRecord extends TeamRecord {
+        @Override
+        public String getDisplayName() {
+            throw new IllegalArgumentException("Synthetic runtime persistence failure");
+        }
     }
 }

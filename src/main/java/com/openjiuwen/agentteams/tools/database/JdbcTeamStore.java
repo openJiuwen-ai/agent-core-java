@@ -838,38 +838,10 @@ final class JdbcTeamStore implements AutoCloseable {
 
     private void runInTransaction(SqlOperation operation) throws SQLException {
         synchronized (transactionLock) {
-            boolean isPreviousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            SQLException transactionFailure = null;
-            try {
+            try (TransactionScope transaction = new TransactionScope()) {
                 operation.execute();
-                connection.commit();
-            } catch (SQLException exception) {
-                transactionFailure = exception;
-                rollback(exception);
-                throw exception;
-            } finally {
-                restoreAutoCommit(isPreviousAutoCommit, transactionFailure);
+                transaction.commit();
             }
-        }
-    }
-
-    private void restoreAutoCommit(boolean isAutoCommit, SQLException transactionFailure) throws SQLException {
-        try {
-            connection.setAutoCommit(isAutoCommit);
-        } catch (SQLException restoreException) {
-            if (transactionFailure == null) {
-                throw restoreException;
-            }
-            transactionFailure.addSuppressed(restoreException);
-        }
-    }
-
-    private void rollback(SQLException originalException) {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackException) {
-            originalException.addSuppressed(rollbackException);
         }
     }
 
@@ -915,8 +887,53 @@ final class JdbcTeamStore implements AutoCloseable {
         }
     }
 
+    private final class TransactionScope implements AutoCloseable {
+        private final boolean isPreviousAutoCommit;
+        private boolean isCommitted;
+
+        private TransactionScope() throws SQLException {
+            isPreviousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+        }
+
+        private void commit() throws SQLException {
+            connection.commit();
+            isCommitted = true;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public void close() throws SQLException {
+            SQLException cleanupFailure = null;
+            if (!isCommitted) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    cleanupFailure = rollbackFailure;
+                }
+            }
+            try {
+                connection.setAutoCommit(isPreviousAutoCommit);
+            } catch (SQLException restoreFailure) {
+                if (cleanupFailure == null) {
+                    cleanupFailure = restoreFailure;
+                } else {
+                    cleanupFailure.addSuppressed(restoreFailure);
+                }
+            }
+            if (cleanupFailure != null) {
+                throw cleanupFailure;
+            }
+        }
+    }
+
     @FunctionalInterface
     private interface SqlOperation {
+        /**
+         * Executes a database operation in the active transaction.
+         *
+         * @throws SQLException if the database operation fails
+         */
         void execute() throws SQLException;
     }
 

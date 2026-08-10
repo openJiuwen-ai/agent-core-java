@@ -279,19 +279,15 @@ public class PyZmqMessager implements Messager {
         String requestId = UUID.randomUUID().toString();
         String replyTo = localNodeId + REPLY_ROUTE_MARKER + requestId;
         CompletableFuture<Map<String, Object>> response = new CompletableFuture<>();
-        CompletableFuture<Void> registered = registerDirectHandler(replyTo, message -> {
-            response.complete(copyPayload(message.getPayload()));
-            unregisterDirectHandler(replyTo);
-            return CompletableFuture.completedFuture(null);
-        });
+        CompletableFuture<Void> registered = registerDirectHandler(
+                replyTo, message -> completeResponseAfterUnregister(response, replyTo, message));
         Map<String, Object> requestPayload = copyPayload(payload);
         requestPayload.put("reply_to", replyTo);
         requestPayload.put("request_id", requestId);
         EventMessage request = EventMessage.builder().eventType("request").payload(requestPayload).build();
         registered.thenCompose(ignored -> send(agentId, request)).whenComplete((ignored, throwable) -> {
             if (throwable != null) {
-                unregisterDirectHandler(replyTo);
-                response.completeExceptionally(throwable);
+                completeFailureAfterUnregister(response, replyTo, throwable);
             }
         });
         applyResponseTimeout(response, replyTo, timeout);
@@ -679,6 +675,29 @@ public class PyZmqMessager implements Messager {
         return result;
     }
 
+    private CompletableFuture<Void> completeResponseAfterUnregister(
+            CompletableFuture<Map<String, Object>> response, String replyTo, EventMessage message) {
+        Map<String, Object> responsePayload = copyPayload(message.getPayload());
+        return unregisterDirectHandler(replyTo).whenComplete((ignored, cleanupFailure) -> {
+            if (cleanupFailure != null) {
+                response.completeExceptionally(cleanupFailure);
+                return;
+            }
+            response.complete(responsePayload);
+        });
+    }
+
+    private void completeFailureAfterUnregister(
+            CompletableFuture<Map<String, Object>> response, String replyTo, Throwable requestFailure) {
+        CompletableFuture<Void> cleanup = unregisterDirectHandler(replyTo);
+        cleanup.whenComplete((ignored, cleanupFailure) -> {
+            if (cleanupFailure != null && cleanupFailure != requestFailure) {
+                requestFailure.addSuppressed(cleanupFailure);
+            }
+            response.completeExceptionally(requestFailure);
+        });
+    }
+
     private CompletableFuture<Void> enqueueImmediate(Runnable action) {
         return enqueue(commandFuture -> {
             action.run();
@@ -711,7 +730,7 @@ public class PyZmqMessager implements Messager {
         long timeoutMillis = timeout != null ? Math.max(1L, timeout.toMillis()) : requestTimeoutMillis();
         response.orTimeout(timeoutMillis, TimeUnit.MILLISECONDS).whenComplete((ignored, throwable) -> {
             if (throwable instanceof TimeoutException) {
-                unregisterDirectHandler(replyTo);
+                completeFailureAfterUnregister(response, replyTo, throwable);
             }
         });
     }
@@ -945,6 +964,11 @@ public class PyZmqMessager implements Messager {
 
     @FunctionalInterface
     private interface IoAction {
+        /**
+         * Executes an action on the transport I/O thread.
+         *
+         * @param future future completed with the action result
+         */
         void execute(CompletableFuture<Void> future);
     }
 

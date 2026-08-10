@@ -260,18 +260,27 @@ public class TeamTaskManager {
         Loggers.TOOL.info("TeamTaskManager.add: creating task {} team={} db={} session={} assignee={}",
                 task.getTaskId(), teamName, Integer.toHexString(System.identityHashCode(db)),
                 teamSessionId, task.getAssignee());
-        db.task.createTask(
+        boolean isTaskCreated = db.task.createTask(
                 task.getTaskId(), teamName, task.getTitle(), task.getContent(), persistedStatus);
-        if (dependencies != null) {
-            for (String dependency : dependencies) {
-                db.task.addDependency(task.getTaskId(), dependency);
-            }
+        if (!isTaskCreated) {
+            throw new CompletionException(new IllegalStateException(
+                    "Task " + task.getTaskId() + " already exists in team " + teamName));
         }
-        persistAssignee(task);
-        get(task.getTaskId()).ifPresent(persistedTask -> {
-            task.setStatus(persistedTask.getStatus());
-            task.setAssignee(persistedTask.getAssignee());
-        });
+        try {
+            if (dependencies != null) {
+                for (String dependency : dependencies) {
+                    db.task.addDependency(task.getTaskId(), dependency);
+                }
+            }
+            persistAssignee(task);
+            get(task.getTaskId()).ifPresent(persistedTask -> {
+                task.setStatus(persistedTask.getStatus());
+                task.setAssignee(persistedTask.getAssignee());
+            });
+        } catch (CompletionException | IllegalArgumentException | IllegalStateException persistenceFailure) {
+            removePersistedTask(task.getTaskId(), persistenceFailure);
+            throw persistenceFailure;
+        }
     }
 
     private void persistAssignee(TeamTask task) {
@@ -281,6 +290,18 @@ public class TeamTaskManager {
         if (!db.task.assignTask(task.getTaskId(), task.getAssignee())) {
             throw new CompletionException(new IllegalStateException(
                     "Failed to assign task " + task.getTaskId() + " to " + task.getAssignee()));
+        }
+    }
+
+    private void removePersistedTask(String taskId, RuntimeException persistenceFailure) {
+        try {
+            boolean isTaskDeleted = db.task.deleteTask(taskId);
+            if (!isTaskDeleted) {
+                persistenceFailure.addSuppressed(
+                        new IllegalStateException("Failed to remove partially persisted task " + taskId));
+            }
+        } catch (IllegalArgumentException | IllegalStateException cleanupFailure) {
+            persistenceFailure.addSuppressed(cleanupFailure);
         }
     }
 

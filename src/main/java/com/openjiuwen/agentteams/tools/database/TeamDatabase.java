@@ -119,7 +119,7 @@ public class TeamDatabase implements AutoCloseable {
             if (!sessionId.isBlank()) {
                 createCurSessionTables();
             }
-        } catch (IllegalStateException exception) {
+        } catch (IllegalArgumentException | IllegalStateException exception) {
             cleanupFailedInitialization(exception);
             throw exception;
         }
@@ -277,7 +277,7 @@ public class TeamDatabase implements AutoCloseable {
         }
     }
 
-    private void cleanupFailedInitialization(IllegalStateException initializationFailure) {
+    private void cleanupFailedInitialization(RuntimeException initializationFailure) {
         try {
             closeExternalJdbcIfNeeded();
         } catch (IllegalStateException closeFailure) {
@@ -370,47 +370,55 @@ public class TeamDatabase implements AutoCloseable {
         teams.clear();
         members.clear();
         try (Statement statement = sqliteConnection.createStatement()) {
-            try (ResultSet result = statement.executeQuery("""
-                    SELECT team_name, display_name, leader_member_name, desc, prompt, created, updated_at
-                    FROM team_info
-                    """)) {
-                while (result.next()) {
-                    TeamRecord teamRecord = TeamRecord.builder()
-                            .teamName(result.getString("team_name"))
-                            .displayName(result.getString("display_name"))
-                            .leaderMemberName(result.getString("leader_member_name"))
-                            .desc(result.getString("desc"))
-                            .prompt(result.getString("prompt"))
-                            .created(result.getLong("created"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
-                    teams.put(teamRecord.getTeamName(), teamRecord);
-                }
-            }
-            try (ResultSet result = statement.executeQuery("""
-                    SELECT member_name, team_name, display_name, agent_card, status, desc, execution_status,
-                           mode, prompt, model_ref_json, updated_at
-                    FROM team_member
-                    """)) {
-                while (result.next()) {
-                    MemberRecord memberRecord = MemberRecord.builder()
-                            .memberName(result.getString("member_name"))
-                            .teamName(result.getString("team_name"))
-                            .displayName(result.getString("display_name"))
-                            .agentCard(result.getString("agent_card"))
-                            .status(result.getString("status"))
-                            .desc(result.getString("desc"))
-                            .executionStatus(result.getString("execution_status"))
-                            .mode(result.getString("mode"))
-                            .prompt(result.getString("prompt"))
-                            .modelRefJson(result.getString("model_ref_json"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
-                    members.put(memberRecord.getTeamName() + "::" + memberRecord.getMemberName(), memberRecord);
-                }
-            }
+            loadSqliteTeams(statement);
+            loadSqliteMembers(statement);
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to load SQLite team database rows", e);
+        }
+    }
+
+    private void loadSqliteTeams(Statement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery("""
+                SELECT team_name, display_name, leader_member_name, desc, prompt, created, updated_at
+                FROM team_info
+                """)) {
+            while (result.next()) {
+                TeamRecord teamRecord = TeamRecord.builder()
+                        .teamName(result.getString("team_name"))
+                        .displayName(result.getString("display_name"))
+                        .leaderMemberName(result.getString("leader_member_name"))
+                        .desc(result.getString("desc"))
+                        .prompt(result.getString("prompt"))
+                        .created(result.getLong("created"))
+                        .updatedAt(result.getLong("updated_at"))
+                        .build();
+                teams.put(teamRecord.getTeamName(), teamRecord);
+            }
+        }
+    }
+
+    private void loadSqliteMembers(Statement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery("""
+                SELECT member_name, team_name, display_name, agent_card, status, desc, execution_status,
+                       mode, prompt, model_ref_json, updated_at
+                FROM team_member
+                """)) {
+            while (result.next()) {
+                MemberRecord memberRecord = MemberRecord.builder()
+                        .memberName(result.getString("member_name"))
+                        .teamName(result.getString("team_name"))
+                        .displayName(result.getString("display_name"))
+                        .agentCard(result.getString("agent_card"))
+                        .status(result.getString("status"))
+                        .desc(result.getString("desc"))
+                        .executionStatus(result.getString("execution_status"))
+                        .mode(result.getString("mode"))
+                        .prompt(result.getString("prompt"))
+                        .modelRefJson(result.getString("model_ref_json"))
+                        .updatedAt(result.getLong("updated_at"))
+                        .build();
+                members.put(memberRecord.getTeamName() + "::" + memberRecord.getMemberName(), memberRecord);
+            }
         }
     }
 
