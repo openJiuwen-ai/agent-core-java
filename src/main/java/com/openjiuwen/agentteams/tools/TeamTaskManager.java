@@ -197,8 +197,8 @@ public class TeamTaskManager {
      * @param dependencies task ids this task depends on
      * @return CompletableFuture with the created TeamTask
      */
-    public CompletableFuture<TeamTask> add(String title, String content, String taskId,
-                                           List<String> dependencies) {
+    public CompletableFuture<TeamTask> add(
+            String title, String content, String taskId, List<String> dependencies) {
         return add(title, content, taskId, dependencies, null);
     }
 
@@ -214,11 +214,20 @@ public class TeamTaskManager {
      * @param assignee optional member name to assign the task to
      * @return CompletableFuture with the created TeamTask
      */
-    public CompletableFuture<TeamTask> add(String title, String content, String taskId,
-                                           List<String> dependencies, String assignee) {
+    public CompletableFuture<TeamTask> add(
+            String title, String content, String taskId, List<String> dependencies, String assignee) {
         String resolvedTaskId = taskId != null ? taskId : UUID.randomUUID().toString();
+        TeamTask task = createTask(title, content, resolvedTaskId, dependencies, assignee);
+        if (db != null) {
+            persistTask(task, dependencies);
+        }
+        return publishCreatedTask(task);
+    }
+
+    private TeamTask createTask(String title, String content, String taskId,
+            List<String> dependencies, String assignee) {
         TeamTask task = TeamTask.builder()
-                .taskId(resolvedTaskId)
+                .taskId(taskId)
                 .teamName(teamName)
                 .title(title)
                 .content(content)
@@ -233,7 +242,7 @@ public class TeamTaskManager {
             if (db != null && shouldValidateMembers() && db.member.getMember(assignee, teamName) == null) {
                 throw new CompletionException(new IllegalStateException(
                         "assignee " + assignee + " not found in team " + teamName
-                        + "; spawn_member must run before create_task with assignee (task_id=" + resolvedTaskId + ")"));
+                        + "; spawn_member must run before create_task with assignee (task_id=" + taskId + ")"));
             }
             task.setAssignee(assignee);
             // Only set claimed if no dependencies block the task
@@ -241,30 +250,48 @@ public class TeamTaskManager {
                 task.setStatus("claimed");
             }
         }
-        if (db != null) {
-            Loggers.TOOL.info("TeamTaskManager.add: creating task {} team={} db={} session={} assignee={}",
-                    resolvedTaskId, teamName, Integer.toHexString(System.identityHashCode(db)),
-                    teamSessionId, task.getAssignee());
-            db.task.createTask(resolvedTaskId, teamName, title, content, task.getStatus());
-            if (dependencies != null) {
-                for (String dependency : dependencies) {
-                    db.task.addDependency(resolvedTaskId, dependency);
-                }
-            }
-            // Persist assignee if set
-            if (task.getAssignee() != null) {
-                db.task.assignTask(resolvedTaskId, task.getAssignee());
-            }
-            Optional<TeamTask> reloadedOpt = get(resolvedTaskId);
-            if (reloadedOpt.isPresent()) {
-                task.setStatus(reloadedOpt.get().getStatus());
+        return task;
+    }
+
+    private void persistTask(TeamTask task, List<String> dependencies) {
+        String persistedStatus = task.getAssignee() != null && "claimed".equals(task.getStatus())
+                ? "pending"
+                : task.getStatus();
+        Loggers.TOOL.info("TeamTaskManager.add: creating task {} team={} db={} session={} assignee={}",
+                task.getTaskId(), teamName, Integer.toHexString(System.identityHashCode(db)),
+                teamSessionId, task.getAssignee());
+        db.task.createTask(
+                task.getTaskId(), teamName, task.getTitle(), task.getContent(), persistedStatus);
+        if (dependencies != null) {
+            for (String dependency : dependencies) {
+                db.task.addDependency(task.getTaskId(), dependency);
             }
         }
+        persistAssignee(task);
+        get(task.getTaskId()).ifPresent(persistedTask -> {
+            task.setStatus(persistedTask.getStatus());
+            task.setAssignee(persistedTask.getAssignee());
+        });
+    }
+
+    private void persistAssignee(TeamTask task) {
+        if (task.getAssignee() == null) {
+            return;
+        }
+        if (!db.task.assignTask(task.getTaskId(), task.getAssignee())) {
+            throw new CompletionException(new IllegalStateException(
+                    "Failed to assign task " + task.getTaskId() + " to " + task.getAssignee()));
+        }
+    }
+
+    private CompletableFuture<TeamTask> publishCreatedTask(TeamTask task) {
+        boolean isAssigned = task.getAssignee() != null;
+        Map<String, Object> payload = isAssigned
+                ? Map.of("task_id", task.getTaskId(), "member_name", task.getAssignee())
+                : Map.of("task_id", task.getTaskId());
         return messager.publish(taskTopic(), EventMessage.builder()
-                        .eventType(task.getAssignee() != null ? TeamEvent.TASK_CLAIMED : TeamEvent.TASK_CREATED)
-                        .payload(task.getAssignee() != null
-                                ? java.util.Map.of("task_id", resolvedTaskId, "member_name", task.getAssignee())
-                                : java.util.Map.of("task_id", resolvedTaskId))
+                        .eventType(isAssigned ? TeamEvent.TASK_CLAIMED : TeamEvent.TASK_CREATED)
+                        .payload(payload)
                         .build())
                 .thenApply(ignored -> task);
     }

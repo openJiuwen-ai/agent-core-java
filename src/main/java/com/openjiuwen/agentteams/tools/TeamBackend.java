@@ -66,6 +66,7 @@ public class TeamBackend {
     private final Messager messager;
     private final String displayName;
     private final String description;
+    private String teammateMode = "build_mode";
 
     // Non-final: the leader constructs the backend before its agent session is
     // resolved, so the session id is latched later via setTeamSessionId once
@@ -168,7 +169,7 @@ public class TeamBackend {
                 .memberName(memberName).teamName(teamName)
                 .displayName(memberName).agentCard("{}")
                 .status(MemberStatus.READY.value()).desc(description)
-                .executionStatus(null).mode("build")
+                .executionStatus(null).mode(teammateMode)
                 .prompt(null).modelRefJson(null)
                 .role((isLeader ? TeamRole.LEADER : TeamRole.MEMBER).value())
                 .build());
@@ -220,6 +221,17 @@ public class TeamBackend {
         if (taskManager != null) {
             taskManager.setTeamSessionId(sessionId);
         }
+    }
+
+    /**
+     * Set the execution mode inherited by existing and newly spawned members.
+     *
+     * @param mode member execution mode
+     * @since 0.1.15
+     */
+    public void setTeammateMode(String mode) {
+        teammateMode = mode != null && !mode.isBlank() ? mode : "build_mode";
+        db.member.updateMemberMode(memberName, teamName, teammateMode);
     }
 
     /**
@@ -326,7 +338,7 @@ public class TeamBackend {
                 .displayName(display).agentCard(card != null ? card.toString() : "{}")
                 .status(MemberStatus.UNSTARTED.value())
                 .desc(card != null ? card.getDescription() : "")
-                .executionStatus(null).mode("build")
+                .executionStatus(null).mode(teammateMode)
                 .prompt(teamPrompt).modelRefJson(modelRefJson(alloc))
                 .role((teamRole != null ? teamRole : TeamRole.MEMBER).value())
                 .build());
@@ -543,7 +555,7 @@ public class TeamBackend {
                     .status((existing != null ? existing.getStatus()
                             : defaultStatusFor(role)).value())
                     .desc(spec.getDescription())
-                    .executionStatus(null).mode("build")
+                    .executionStatus(null).mode(teammateMode)
                     .prompt(null).modelRefJson(null)
                     .role(role.value())
                     .build());

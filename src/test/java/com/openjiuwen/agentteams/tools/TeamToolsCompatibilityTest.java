@@ -270,6 +270,19 @@ class TeamToolsCompatibilityTest {
         assertThat(reassigned.isOk()).isFalse();
         assertThat(reassigned.getReason()).contains("already claimed by worker-1");
         assertThat(taskManager.assign(task.getTaskId(), "worker-1").join()).isTrue();
+
+        TeamTask preassigned = taskManager.add(
+                "Preassigned", "Bind during creation", "assign-2", List.of(), "worker-1").join();
+        assertThat(preassigned)
+                .extracting(TeamTask::getStatus, TeamTask::getAssignee)
+                .containsExactly("claimed", "worker-1");
+
+        TeamTask upstream = taskManager.add("Dependency", "Complete first", "assign-upstream", List.of()).join();
+        TeamTask blocked = taskManager.add(
+                "Blocked", "Wait for dependency", "assign-3", List.of(upstream.getTaskId()), "worker-1").join();
+        assertThat(blocked)
+                .extracting(TeamTask::getStatus, TeamTask::getAssignee)
+                .containsExactly("blocked", "worker-1");
     }
 
     @Test

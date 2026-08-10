@@ -172,7 +172,7 @@ public final class OpenJiuwenExecutors {
                 .keepAlive(DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS)
                 .workQueue(workQueue)
                 .isDaemon(isDaemon)
-                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                .rejectionHandler(defaults.rejectionHandler())
                 .build());
     }
 
@@ -595,7 +595,7 @@ public final class OpenJiuwenExecutors {
         CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
         MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
         TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
-        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, false),
+        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, true),
         GENERIC("", 16, 256, false);
 
         private final String prefix;
@@ -623,6 +623,13 @@ public final class OpenJiuwenExecutors {
 
         boolean isDirectHandoff() {
             return isDirectHandoff;
+        }
+
+        RejectedExecutionHandler rejectionHandler() {
+            if (this == DEEP_AGENT_STREAM) {
+                return new ThreadPoolExecutor.CallerRunsPolicy();
+            }
+            return new ThreadPoolExecutor.AbortPolicy();
         }
 
         static ModulePoolDefaults forPrefix(String threadNamePrefix) {

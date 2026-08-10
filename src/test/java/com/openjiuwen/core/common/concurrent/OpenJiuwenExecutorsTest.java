@@ -15,6 +15,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -28,7 +29,11 @@ class OpenJiuwenExecutorsTest {
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
-            assertThat(((ThreadPoolExecutor) executor).getMaximumPoolSize()).isEqualTo(expectedDefault);
+            ThreadPoolExecutor streamExecutor = (ThreadPoolExecutor) executor;
+            assertThat(streamExecutor.getMaximumPoolSize()).isEqualTo(expectedDefault);
+            assertThat(streamExecutor.getQueue()).isInstanceOf(SynchronousQueue.class);
+            assertThat(streamExecutor.getRejectedExecutionHandler())
+                    .isInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class);
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("deep-agent-stream-");
         } finally {
