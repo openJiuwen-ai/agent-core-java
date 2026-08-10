@@ -1575,11 +1575,10 @@ public class ResourceMgr {
             throw buildProviderError(resourceType, "invalid card at idx " + index
                     + ": card cannot be None, must be an instance of " + cardClassType.getSimpleName());
         }
-        if (!cardClassType.isInstance(card)) {
+        if (!(card instanceof BaseCard resourceCard) || !cardClassType.isInstance(resourceCard)) {
             throw buildProviderError(resourceType, "invalid " + resourceType + " card type at idx " + index
                     + ": expected " + cardClassType.getSimpleName() + ", got " + getPythonTypeName(card));
         }
-        BaseCard resourceCard = (BaseCard) card;
         try {
             validateResourceId(resourceCard.getId(), resourceType);
         } catch (BaseError error) {
