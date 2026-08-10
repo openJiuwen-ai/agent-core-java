@@ -21,6 +21,7 @@ import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.agentteams.tools.MemberOpResult;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMessage;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
@@ -909,6 +910,7 @@ public class TeamAgent implements DispatcherHost {
                 localMemberName,
                 context.getRole() == TeamRole.LEADER,
                 messager);
+        this.teamBackend.setTeammateMode(resolveTeammateMode());
         this.teamBackend.setTeamSessionId(context.getSessionId());
         this.teamBackend.syncMembers(spec.getMembers());
         this.messageManager = teamBackend.getMessageManager();
@@ -1005,7 +1007,9 @@ public class TeamAgent implements DispatcherHost {
         Loggers.AGENT.info("[{}] team cleaned: marking stream as terminated", resolveLocalMemberName());
         if (this.streamController != null) {
             this.streamController.markTeamTerminated();
-            this.streamController.closeStream();
+            if (!this.streamController.isAgentRunning()) {
+                this.streamController.closeStream();
+            }
         }
     }
 
@@ -1695,16 +1699,21 @@ public class TeamAgent implements DispatcherHost {
      */
     private void forceShutdownOtherMembers() {
         String localName = resolveLocalMemberName();
-        for (var member : teamBackend.getDb().member.getTeamMembers(teamBackend.getTeamName())) {
+        for (MemberRecord member : teamBackend.getDb().member.getTeamMembers(teamBackend.getTeamName())) {
             if (localName.equals(member.getMemberName())) {
                 continue;
             }
-            com.openjiuwen.agentteams.tools.MemberOpResult result =
+            MemberOpResult result =
                     teamBackend.shutdownMember(member.getMemberName(), true).join();
             if (!result.isOk()) {
                 Loggers.AGENT.warn("destroyTeam: shutdown failed for member={}: {}",
                         member.getMemberName(), result.getReason());
+                continue;
             }
+            if (spawnManager != null) {
+                spawnManager.cleanupTeammate(member.getMemberName());
+            }
+            teamBackend.forceUpdateMemberStatus(member.getMemberName(), MemberStatus.SHUTDOWN);
         }
     }
 

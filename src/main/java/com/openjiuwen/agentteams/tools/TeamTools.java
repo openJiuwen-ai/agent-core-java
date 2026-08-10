@@ -28,8 +28,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -56,7 +56,8 @@ public final class TeamTools {
     /**
      * Tool names restricted to the member role.
      */
-    public static final Set<String> MEMBER_ONLY_TOOLS = Set.of("claim_task", "enter_worktree", "exit_worktree");
+    public static final Set<String> MEMBER_ONLY_TOOLS = Set.of(
+            "claim_task", "enter_worktree", "exit_worktree", "submit_plan");
 
     /**
      * Tool names shared between leader and member roles.
@@ -156,6 +157,7 @@ public final class TeamTools {
         allTools.put("update_task", new UpdateTaskTool(backend));
         allTools.put("view_task", new ViewTaskTool(backend.getTaskManager()));
         allTools.put("claim_task", new ClaimTaskTool(backend));
+        allTools.put("submit_plan", new SubmitPlanTool(backend.getTaskManager()));
         allTools.put("send_message", new SendMessageTool(backend));
         if (config.workspaceManager != null) {
             allTools.put("workspace_meta", new WorkspaceMetaTool(config.workspaceManager, backend));
@@ -177,6 +179,9 @@ public final class TeamTools {
         if ("leader".equals(config.role) && !"plan_mode".equals(config.teammateMode)) {
             isAllowed.remove("approve_plan");
             isAllowed.remove("approve_tool");
+        }
+        if (!"plan_mode".equals(config.teammateMode)) {
+            isAllowed.remove("submit_plan");
         }
         if (config.excludeTools != null) {
             isAllowed.removeAll(config.excludeTools);
@@ -1256,6 +1261,65 @@ public final class TeamTools {
                 return "Cancelled " + data.get("cancelled_count") + " tasks";
             }
             return "Task #" + data.get("task_id") + " " + data.get("status");
+        }
+    }
+
+    /**
+     * Tool for submitting a member execution plan for leader approval.
+     */
+    static final class SubmitPlanTool extends TeamTool {
+        private final TeamTaskManager taskManager;
+
+        SubmitPlanTool(TeamTaskManager taskManager) {
+            super("submit_plan", "Submit a prepared execution-plan Markdown file for a plan-mode task before "
+                    + "implementation.", objectSchema(Map.of(
+                    "task_id", stringSchema("Task ID to plan before execution"),
+                    "plan_id", stringSchema("Optional member plan ID; generated when omitted"),
+                    "plan_path", stringSchema("Path to the member-authored Markdown plan file")
+            ), List.of("task_id", "plan_path")));
+            this.taskManager = taskManager;
+        }
+
+        /**
+         * Invokes submit_plan to persist the member plan and request leader approval.
+         *
+         * @param inputs positional input map containing task_id, plan_path, and optional plan_id
+         * @param kwargs keyword input map containing an optional tool_call_id
+         * @return tool execution result containing the persisted plan record summary
+         */
+        @Override
+        public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            Map<String, Object> safeInputs = safeInputs(inputs);
+            String taskId = stringValue(safeInputs.get("task_id"), "");
+            String planPath = stringValue(safeInputs.get("plan_path"), "");
+            String planId = stringValue(safeInputs.get("plan_id"), "");
+            String toolCallId = stringValue(safeInputs(kwargs).get("tool_call_id"), "");
+            Map<String, Object> result = taskManager.submitPlan(taskId, planPath, planId, toolCallId).join();
+            if (!Boolean.TRUE.equals(result.get("success"))) {
+                return error(stringValue(result.get("message"), "Failed to submit member plan"));
+            }
+            return isOk(result);
+        }
+
+        /**
+         * Maps the submit_plan output to a human-readable string.
+         *
+         * @param output tool output to map
+         * @return formatted member plan submission summary
+         */
+        @Override
+        protected String mapResult(ToolOutput output) {
+            if (!output.isSuccess()) {
+                return output.getError() != null ? output.getError() : "Failed to submit member plan";
+            }
+            Object dataValue = output.getData();
+            if (!(dataValue instanceof Map<?, ?> data)) {
+                return mappedContent(output);
+            }
+            return "Member plan submitted: task_id=" + data.get("task_id")
+                    + " plan_id=" + data.get("plan_id")
+                    + " status=" + data.get("status")
+                    + " member_plan_md=" + data.get("member_plan_md");
         }
     }
 

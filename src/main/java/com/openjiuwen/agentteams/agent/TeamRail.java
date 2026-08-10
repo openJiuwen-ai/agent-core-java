@@ -663,7 +663,7 @@ public class TeamRail extends DeepAgentRail {
                 Map.entry("leader_mode_plan", "团队成员执行模式: plan_mode（成员领取任务后需先提交计划，由你通过 approve_plan 审批后才能执行）"),
                 Map.entry("leader_mode_build", "团队成员执行模式: build_mode（成员领取任务后自主执行并直接完成，无需你审批计划）"),
                 Map.entry("teammate_mode_plan",
-                        "你的执行模式: plan_mode（领取任务后必须先通过 write_plan 提交计划，等待 leader 通过 approve_plan 审批后才能开始执行）"),
+                        "你的执行模式: plan_mode（领取任务后必须先通过 submit_plan 提交计划，等待 leader 通过 approve_plan 审批后才能开始执行）"),
                 Map.entry("teammate_mode_build", "你的执行模式: build_mode（领取任务后可自主执行并直接标记完成，无需 leader 审批计划）"));
         Map<String, String> en = Map.ofEntries(Map.entry("member_name_line", "Your member_name"),
                 Map.entry("role_heading", "# Team Role"), Map.entry("workflow_heading", "# Workflow"),
@@ -684,7 +684,7 @@ public class TeamRail extends DeepAgentRail {
                                 + "without plan approval)"),
                 Map.entry("teammate_mode_plan",
                         "Your execution mode: plan_mode (after claiming a task you must submit a plan via "
-                                + "write_plan and wait for the leader to approve it via approve_plan before "
+                                + "submit_plan and wait for the leader to approve it via approve_plan before "
                                 + "executing)"),
                 Map.entry("teammate_mode_build",
                         "Your execution mode: build_mode (after claiming a task you execute autonomously and "

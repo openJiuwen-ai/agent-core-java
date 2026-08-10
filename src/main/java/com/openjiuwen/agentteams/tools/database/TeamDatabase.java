@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,13 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 1.0
  */
-public class TeamDatabase {
+public class TeamDatabase implements AutoCloseable {
     private static final String TEAM_TASK_PREFIX = "team_task_";
     private static final String TEAM_TASK_DEPENDENCY_PREFIX = "team_task_dependency_";
     private static final String TEAM_MESSAGE_PREFIX = "team_message_";
     private static final String MESSAGE_READ_STATUS_PREFIX = "message_read_status_";
 
     private final DatabaseConfig config;
+    private final Connection injectedJdbcConnection;
 
     // X.CON.05: shared mutable maps must be thread-safe — concurrent
     // spawn_member tool calls hit createMember + getTeamMembers in
@@ -49,6 +51,7 @@ public class TeamDatabase {
     private final Map<String, SessionTables> sessions = new ConcurrentHashMap<>();
     private final Set<String> droppedSessionIds = new HashSet<>();
     private Connection sqliteConnection;
+    private JdbcTeamStore jdbcTeamStore;
     private boolean isInitialized;
 
     /** DAO for team record operations (create, query, update, delete). */
@@ -73,37 +76,77 @@ public class TeamDatabase {
      */
     public TeamDatabase(DatabaseConfig config) {
         this.config = config != null ? config : DatabaseConfig.builder().build();
+        this.injectedJdbcConnection = null;
     }
 
     /**
-     * Initializes the database, creating SQLite tables and loading existing data.
+     * Constructs a PostgreSQL or MySQL database around a caller-provided JDBC connection.
      *
-     * @throws IllegalStateException if SQLite initialization or row loading fails
+     * <p>The database takes ownership of the connection and closes it from {@link #close()}.
+     * This entry point supports managed data sources and compatibility-mode integration tests
+     * without changing the production connection-string path.</p>
+     *
+     * @param config PostgreSQL or MySQL database configuration
+     * @param connection open JDBC connection whose lifecycle is transferred to this database
+     * @throws IllegalArgumentException if the configured database type is not PostgreSQL or MySQL
+     * @throws NullPointerException if connection is null
+     * @since 0.1.15
+     */
+    public TeamDatabase(DatabaseConfig config, Connection connection) {
+        this.config = config != null ? config : DatabaseConfig.builder().build();
+        if (this.config.getDbType() != DatabaseType.POSTGRESQL
+                && this.config.getDbType() != DatabaseType.MYSQL) {
+            throw new IllegalArgumentException("Injected JDBC connection requires PostgreSQL or MySQL config");
+        }
+        this.injectedJdbcConnection = Objects.requireNonNull(connection, "connection");
+    }
+
+    /**
+     * Initializes the configured database, creates its schema, and loads existing data.
+     *
+     * @throws IllegalStateException if persistent backend initialization or row loading fails
      */
     public void initialize() {
         if (isInitialized) {
             return;
         }
-        rejectUnsupportedPersistentBackend();
-        initializeSqliteIfNeeded();
-        isInitialized = true;
-        loadStaticRowsIfNeeded();
-        String sessionId = currentSessionId();
-        if (!sessionId.isBlank()) {
-            createCurSessionTables();
+        try {
+            initializeExternalJdbcIfNeeded();
+            initializeSqliteIfNeeded();
+            isInitialized = true;
+            loadStaticRowsIfNeeded();
+            String sessionId = currentSessionId();
+            if (!sessionId.isBlank()) {
+                createCurSessionTables();
+            }
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            cleanupFailedInitialization(exception);
+            throw exception;
         }
     }
 
     /**
      * Closes the database connection and clears all in-memory state.
+     *
+     * @throws IllegalStateException if an external JDBC connection cannot be closed
      */
+    @Override
     public void close() {
+        IllegalStateException closeFailure = null;
+        try {
+            closeExternalJdbcIfNeeded();
+        } catch (IllegalStateException exception) {
+            closeFailure = exception;
+        }
         closeSqliteIfNeeded();
         isInitialized = false;
         teams.clear();
         members.clear();
         sessions.clear();
         droppedSessionIds.clear();
+        if (closeFailure != null) {
+            throw closeFailure;
+        }
     }
 
     /**
@@ -189,6 +232,11 @@ public class TeamDatabase {
         return config.getDbType() == DatabaseType.SQLITE;
     }
 
+    private boolean isExternalJdbc() {
+        DatabaseType databaseType = config.getDbType();
+        return databaseType == DatabaseType.POSTGRESQL || databaseType == DatabaseType.MYSQL;
+    }
+
     /**
      * Normalizes the JDBC connection string based on the configured database type.
      *
@@ -196,47 +244,51 @@ public class TeamDatabase {
      * @throws IllegalArgumentException if the connection string is blank or has an invalid scheme
      */
     public String normalizedJdbcConnectionString() {
-        DatabaseType dbType = config.getDbType();
-        String connectionString = config.getConnectionString() != null ? config.getConnectionString().trim() : "";
-        if (dbType == DatabaseType.POSTGRESQL) {
-            if (connectionString.isBlank()) {
-                throw new IllegalArgumentException("PostgreSQL requires a non-empty connectionString");
-            }
-            if (connectionString.startsWith("jdbc:postgresql://")) {
-                return connectionString;
-            }
-            if (connectionString.startsWith("postgres://")) {
-                return "jdbc:postgresql://" + connectionString.substring("postgres://".length());
-            }
-            if (connectionString.startsWith("postgresql://")) {
-                return "jdbc:postgresql://" + connectionString.substring("postgresql://".length());
-            }
-            throw new IllegalArgumentException(
-                    "PostgreSQL connectionString must use postgresql://, postgres://, "
-                            + "or jdbc:postgresql:// scheme");
+        if (isExternalJdbc()) {
+            return JdbcConnectionSpec.from(config).jdbcUrl();
         }
-        if (dbType == DatabaseType.MYSQL) {
-            if (connectionString.isBlank()) {
-                throw new IllegalArgumentException("MySQL requires a non-empty connectionString");
-            }
-            if (connectionString.startsWith("jdbc:mysql://")) {
-                return connectionString;
-            }
-            if (connectionString.startsWith("mysql://")) {
-                return "jdbc:mysql://" + connectionString.substring("mysql://".length());
-            }
-            throw new IllegalArgumentException("MySQL connectionString must use mysql:// or jdbc:mysql:// scheme");
-        }
-        return connectionString;
+        return config.getConnectionString() == null ? "" : config.getConnectionString().trim();
     }
 
-    private void rejectUnsupportedPersistentBackend() {
-        DatabaseType dbType = config.getDbType();
-        if (dbType == DatabaseType.POSTGRESQL || dbType == DatabaseType.MYSQL) {
-            normalizedJdbcConnectionString();
-            throw new UnsupportedOperationException(
-                    dbType + " team database backend requires a JDBC DAO implementation");
+    private void initializeExternalJdbcIfNeeded() {
+        if (isExternalJdbc()) {
+            jdbcTeamStore = injectedJdbcConnection == null
+                    ? JdbcTeamStore.open(config)
+                    : JdbcTeamStore.forConnection(config.getDbType(), injectedJdbcConnection);
         }
+    }
+
+    private void closeExternalJdbcIfNeeded() {
+        if (jdbcTeamStore != null) {
+            try {
+                jdbcTeamStore.close();
+            } finally {
+                jdbcTeamStore = null;
+            }
+            return;
+        }
+        if (injectedJdbcConnection == null) {
+            return;
+        }
+        try {
+            injectedJdbcConnection.close();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to close injected JDBC connection", exception);
+        }
+    }
+
+    private void cleanupFailedInitialization(RuntimeException initializationFailure) {
+        try {
+            closeExternalJdbcIfNeeded();
+        } catch (IllegalStateException closeFailure) {
+            initializationFailure.addSuppressed(closeFailure);
+        }
+        closeSqliteIfNeeded();
+        isInitialized = false;
+        teams.clear();
+        members.clear();
+        sessions.clear();
+        droppedSessionIds.clear();
     }
 
     private void initializeSqliteIfNeeded() {
@@ -308,53 +360,65 @@ public class TeamDatabase {
     }
 
     private void loadStaticRowsIfNeeded() {
+        if (isExternalJdbc()) {
+            jdbcTeamStore.loadStaticRows(teams, members);
+            return;
+        }
         if (!isSqlite()) {
             return;
         }
         teams.clear();
         members.clear();
         try (Statement statement = sqliteConnection.createStatement()) {
-            try (ResultSet result = statement.executeQuery("""
-                    SELECT team_name, display_name, leader_member_name, desc, prompt, created, updated_at
-                    FROM team_info
-                    """)) {
-                while (result.next()) {
-                    TeamRecord teamRecord = TeamRecord.builder()
-                            .teamName(result.getString("team_name"))
-                            .displayName(result.getString("display_name"))
-                            .leaderMemberName(result.getString("leader_member_name"))
-                            .desc(result.getString("desc"))
-                            .prompt(result.getString("prompt"))
-                            .created(result.getLong("created"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
-                    teams.put(teamRecord.getTeamName(), teamRecord);
-                }
-            }
-            try (ResultSet result = statement.executeQuery("""
-                    SELECT member_name, team_name, display_name, agent_card, status, desc, execution_status,
-                           mode, prompt, model_ref_json, updated_at
-                    FROM team_member
-                    """)) {
-                while (result.next()) {
-                    MemberRecord memberRecord = MemberRecord.builder()
-                            .memberName(result.getString("member_name"))
-                            .teamName(result.getString("team_name"))
-                            .displayName(result.getString("display_name"))
-                            .agentCard(result.getString("agent_card"))
-                            .status(result.getString("status"))
-                            .desc(result.getString("desc"))
-                            .executionStatus(result.getString("execution_status"))
-                            .mode(result.getString("mode"))
-                            .prompt(result.getString("prompt"))
-                            .modelRefJson(result.getString("model_ref_json"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
-                    members.put(memberRecord.getTeamName() + "::" + memberRecord.getMemberName(), memberRecord);
-                }
-            }
+            loadSqliteTeams(statement);
+            loadSqliteMembers(statement);
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to load SQLite team database rows", e);
+        }
+    }
+
+    private void loadSqliteTeams(Statement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery("""
+                SELECT team_name, display_name, leader_member_name, desc, prompt, created, updated_at
+                FROM team_info
+                """)) {
+            while (result.next()) {
+                TeamRecord teamRecord = TeamRecord.builder()
+                        .teamName(result.getString("team_name"))
+                        .displayName(result.getString("display_name"))
+                        .leaderMemberName(result.getString("leader_member_name"))
+                        .desc(result.getString("desc"))
+                        .prompt(result.getString("prompt"))
+                        .created(result.getLong("created"))
+                        .updatedAt(result.getLong("updated_at"))
+                        .build();
+                teams.put(teamRecord.getTeamName(), teamRecord);
+            }
+        }
+    }
+
+    private void loadSqliteMembers(Statement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery("""
+                SELECT member_name, team_name, display_name, agent_card, status, desc, execution_status,
+                       mode, prompt, model_ref_json, updated_at
+                FROM team_member
+                """)) {
+            while (result.next()) {
+                MemberRecord memberRecord = MemberRecord.builder()
+                        .memberName(result.getString("member_name"))
+                        .teamName(result.getString("team_name"))
+                        .displayName(result.getString("display_name"))
+                        .agentCard(result.getString("agent_card"))
+                        .status(result.getString("status"))
+                        .desc(result.getString("desc"))
+                        .executionStatus(result.getString("execution_status"))
+                        .mode(result.getString("mode"))
+                        .prompt(result.getString("prompt"))
+                        .modelRefJson(result.getString("model_ref_json"))
+                        .updatedAt(result.getLong("updated_at"))
+                        .build();
+                members.put(memberRecord.getTeamName() + "::" + memberRecord.getMemberName(), memberRecord);
+            }
         }
     }
 
@@ -386,8 +450,18 @@ public class TeamDatabase {
         sessions.computeIfAbsent(sessionId, ignored -> new SessionTables());
         createSqliteSessionTablesIfNeeded(sessionId);
         loadSqliteSessionRowsIfNeeded(sessionId);
+        loadExternalJdbcSessionRowsIfNeeded(sessionId);
         droppedSessionIds.remove(sessionId);
         return true;
+    }
+
+    private void loadExternalJdbcSessionRowsIfNeeded(String sessionId) {
+        if (!isExternalJdbc()) {
+            return;
+        }
+        SessionTables tables = sessions.computeIfAbsent(sessionId, ignored -> new SessionTables());
+        jdbcTeamStore.loadSessionRows(
+                sessionId, tables.tasks, tables.messages, tables.broadcastReadAt);
     }
 
     /**
@@ -417,11 +491,16 @@ public class TeamDatabase {
         boolean isExisted = sessions.remove(sessionId) != null;
         List<String> tableNames = sessionTableNames(sessionId);
         boolean isSqliteDropped = dropSqliteTablesIfNeeded(tableNames);
-        if (!isExisted && !isSqliteDropped) {
+        boolean isJdbcDropped = dropExternalJdbcTablesIfNeeded(tableNames);
+        if (!isExisted && !isSqliteDropped && !isJdbcDropped) {
             return List.of();
         }
         droppedSessionIds.add(sessionId);
         return tableNames;
+    }
+
+    private boolean dropExternalJdbcTablesIfNeeded(List<String> tableNames) {
+        return isExternalJdbc() && jdbcTeamStore.dropSessionTables(tableNames);
     }
 
     /**
@@ -443,10 +522,22 @@ public class TeamDatabase {
         teams.clear();
         members.clear();
         cleanupSqliteAllRuntimeStateIfNeeded(deletedTables);
+        cleanupExternalJdbcRuntimeStateIfNeeded(deletedTables);
         return RuntimeCleanupResult.builder()
                 .deletedTables(deletedTables)
                 .clearedTables(List.of("team_info", "team_member"))
                 .build();
+    }
+
+    private void cleanupExternalJdbcRuntimeStateIfNeeded(List<String> deletedTables) {
+        if (!isExternalJdbc()) {
+            return;
+        }
+        for (String tableName : jdbcTeamStore.cleanupAllRuntimeState()) {
+            if (!deletedTables.contains(tableName)) {
+                deletedTables.add(tableName);
+            }
+        }
     }
 
     /**
@@ -674,7 +765,12 @@ public class TeamDatabase {
         return MESSAGE_READ_STATUS_PREFIX + sanitizeSessionIdForTable(sessionId);
     }
 
-    private void flushStaticRowsIfNeeded() {
+    private synchronized void flushStaticRowsIfNeeded() {
+        if (isExternalJdbc()) {
+            jdbcTeamStore.replaceStaticRows(
+                    new ArrayList<>(teams.values()), new ArrayList<>(members.values()));
+            return;
+        }
         if (!isSqlite()) {
             return;
         }
@@ -741,7 +837,11 @@ public class TeamDatabase {
         }
     }
 
-    private void flushCurrentSessionRowsIfNeeded() {
+    private synchronized void flushCurrentSessionRowsIfNeeded() {
+        if (isExternalJdbc()) {
+            flushCurrentExternalJdbcSessionRows();
+            return;
+        }
         if (!isSqlite()) {
             return;
         }
@@ -785,8 +885,21 @@ public class TeamDatabase {
         }
     }
 
+    private void flushCurrentExternalJdbcSessionRows() {
+        String sessionId = currentSessionId();
+        SessionTables tables = sessions.get(sessionId);
+        if (sessionId.isBlank() || tables == null) {
+            return;
+        }
+        jdbcTeamStore.replaceSessionRows(
+                sessionId,
+                new ArrayList<>(tables.tasks.values()),
+                new ArrayList<>(tables.messages.values()),
+                new LinkedHashMap<>(tables.broadcastReadAt));
+    }
+
     private void flushAllLoadedSessionRowsIfNeeded() {
-        if (!isSqlite()) {
+        if (!isSqlite() && !isExternalJdbc()) {
             return;
         }
         for (String sessionId : sessions.keySet()) {
@@ -1500,6 +1613,28 @@ public class TeamDatabase {
                 return false;
             }
             memberRecord.setExecutionStatus(executionStatus);
+            memberRecord.setUpdatedAt(nextMemberUpdatedAt(teamName));
+            flushStaticRowsIfNeeded();
+            return true;
+        }
+
+        /**
+         * Updates the execution mode of a member.
+         *
+         * @param memberName member identifier
+         * @param teamName team the member belongs to
+         * @param mode new execution mode
+         * @return true if the member was updated; false if not found
+         * @throws IllegalStateException if the database is not initialized
+         * @since 0.1.15
+         */
+        public boolean updateMemberMode(String memberName, String teamName, String mode) {
+            ensureInitialized();
+            MemberRecord memberRecord = getMember(memberName, teamName);
+            if (memberRecord == null) {
+                return false;
+            }
+            memberRecord.setMode(mode);
             memberRecord.setUpdatedAt(nextMemberUpdatedAt(teamName));
             flushStaticRowsIfNeeded();
             return true;
@@ -2370,11 +2505,18 @@ public class TeamDatabase {
             if (taskRecord == null) {
                 return false;
             }
-            if (assignee.equals(taskRecord.getAssignee()) && "claimed".equals(taskRecord.getStatus())) {
+            if (assignee.equals(taskRecord.getAssignee())
+                    && ("claimed".equals(taskRecord.getStatus()) || "blocked".equals(taskRecord.getStatus()))) {
                 return true;
             }
             if (taskRecord.getAssignee() != null && !assignee.equals(taskRecord.getAssignee())) {
                 return false;
+            }
+            if ("blocked".equals(taskRecord.getStatus())) {
+                taskRecord.setAssignee(assignee);
+                taskRecord.setUpdatedAt(getCurrentTime());
+                flushCurrentSessionRowsIfNeeded();
+                return true;
             }
             return claimTask(taskId, assignee);
         }

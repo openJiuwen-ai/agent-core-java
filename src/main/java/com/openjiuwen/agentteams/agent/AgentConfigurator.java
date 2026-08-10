@@ -286,6 +286,7 @@ public class AgentConfigurator {
 
         this.teamBackend = new TeamBackend(
                 teamName, currentMemberName, isLeader, messager, ctx.getSessionId());
+        this.teamBackend.setTeammateMode(spec.getTeammateMode());
         this.teamBackend.syncMembers(spec.getMembers());
 
         String roleValue = ctx.getRole() != null ? payloadRole(ctx.getRole()) : "leader";
