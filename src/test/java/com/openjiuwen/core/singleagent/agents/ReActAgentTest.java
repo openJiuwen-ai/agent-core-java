@@ -577,6 +577,27 @@ class ReActAgentTest {
     }
 
     @Test
+    void testRunStreamRoundReturnsErrorResultWithoutThrowing() throws Exception {
+        TestableReActAgent testAgent = new TestableReActAgent("react-run-stream-round-error");
+        testAgent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("stream failed"));
+        testAgent.setLlm(model);
+        AgentSessionApi session = new AgentSessionApi("run-stream-round-error-session", null, testAgent.getCard(),
+                List.of(StreamMode.OUTPUT));
+        List<Object> captured = new ArrayList<>();
+        session.setStreamTap(captured::add);
+
+        Map<String, Object> result = testAgent.runStreamRound(Map.of("query", "run"), session);
+
+        assertThat(result.get("result_type")).isEqualTo("error");
+        assertThat(String.valueOf(result.get("output"))).contains("stream failed");
+        assertThat(captured).anyMatch(output -> output instanceof OutputSchema outputSchema
+                && "error".equals(outputSchema.getType()));
+    }
+
+    @Test
     void testInvokeNormalizesMissingToolCallIndexInStoredContext() throws Exception {
         TestableReActAgent testAgent = new TestableReActAgent("react-context-tool-index");
         testAgent.configure(ReActAgentConfig.builder().maxIterations(2).build());

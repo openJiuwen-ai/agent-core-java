@@ -87,11 +87,11 @@ import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -1055,10 +1055,12 @@ public class DeepAgent implements AutoCloseable {
         LinkedBlockingQueue<Object> liveChunks = new LinkedBlockingQueue<>();
         AtomicBoolean producerFinished = new AtomicBoolean(false);
         effectiveSession.setStreamTap(liveChunks::offer);
-        final Future<?> workerFuture;
+        AtomicReference<Thread> workerThread = new AtomicReference<>();
         try {
-            workerFuture = streamTaskLoopExecutor().submit(
-                    () -> runTaskLoopForStream(normalized, effectiveSession, session, producerFinished));
+            streamTaskLoopExecutor().submit(() -> {
+                workerThread.set(Thread.currentThread());
+                runTaskLoopForStream(normalized, effectiveSession, session, producerFinished);
+            });
         } catch (RejectedExecutionException ex) {
             writeStreamError(effectiveSession, 0, ex);
             effectiveSession.clearStreamTap();
@@ -1069,11 +1071,23 @@ public class DeepAgent implements AutoCloseable {
         }
         return OperatorStream.wrap(
                 new LiveStreamQueueIterator(liveChunks, producerFinished),
-                () -> {
-                    producerFinished.set(true);
-                    effectiveSession.clearStreamTap();
-                    workerFuture.cancel(false);
-                });
+                () -> abortStreamTaskLoopWorker(effectiveSession, workerThread, producerFinished));
+    }
+
+    /**
+     * Stops task-loop streaming when the SSE consumer closes the iterator.
+     * Interrupts the worker thread (not the consumer), matching legacy {@code streamThread::interrupt}
+     * semantics without self-interrupt on the caller (G.CON.10).
+     */
+    private void abortStreamTaskLoopWorker(AgentSessionApi effectiveSession, AtomicReference<Thread> workerThread,
+            AtomicBoolean producerFinished) {
+        producerFinished.set(true);
+        effectiveSession.clearStreamTap();
+        requestAbort(effectiveSession.getSessionId());
+        Thread worker = workerThread.get();
+        if (worker != null) {
+            worker.interrupt();
+        }
     }
 
     private static ExecutorService streamTaskLoopExecutor() {

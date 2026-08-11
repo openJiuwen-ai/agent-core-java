@@ -960,16 +960,21 @@ public class ReActAgent extends BaseAgent {
             } else {
                 writeStreamThrowable(agentSession, error);
             }
-            if (error instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            if (error instanceof Error err) {
-                throw err;
-            }
-            throw new IllegalStateException(error);
+            return streamFailureResult(error);
         } finally {
             postRunStreamSession(agentSession, agentSession);
         }
+    }
+
+    /**
+     * Build a task-loop-friendly error result after {@link #writeStreamError} / {@link #writeStreamThrowable},
+     * matching {@link #stream} which emits an error chunk without rethrowing.
+     */
+    private Map<String, Object> streamFailureResult(Throwable error) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("output", describeStreamThrowable(error));
+        result.put("result_type", "error");
+        return result;
     }
 
     /**
