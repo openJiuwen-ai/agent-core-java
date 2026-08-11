@@ -164,11 +164,16 @@ public final class OpenJiuwenExecutors {
         int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        BlockingQueue<Runnable> workQueue = defaults.isDirectHandoff()
+        boolean directHandoff = defaults.isDirectHandoff();
+        BlockingQueue<Runnable> workQueue = directHandoff
                 ? new SynchronousQueue<>()
                 : new ArrayBlockingQueue<>(queueCapacity);
+        // core=0 + ArrayBlockingQueue: JDK pools queue first and may create only one worker until the
+        // queue is full (serial long tasks when burst < queue capacity). Direct-handoff pools use core=0;
+        // bounded-queue pools use core=max so max workers stay hot and the queue is overflow only.
+        int corePoolSize = directHandoff ? 0 : maxSize;
         return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
-                .poolSize(0, maxSize)
+                .poolSize(corePoolSize, maxSize)
                 .keepAlive(DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS)
                 .workQueue(workQueue)
                 .isDaemon(isDaemon)
