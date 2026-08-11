@@ -40,10 +40,12 @@
         <pulsar.version>4.2.3</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.12</postgresql.version>
+        <mysql-connector.version>9.7.0</mysql-connector.version>
         <sqlite-jdbc.version>3.53.2.1</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
         <jedis.version>5.1.5</jedis.version>
+        <jeromq.version>0.6.0</jeromq.version>
         <pdfbox.version>2.0.37</pdfbox.version>
         <poi.version>5.5.1</poi.version>
         <openai-java.version>4.32.0</openai-java.version>
@@ -263,6 +265,11 @@
             <version>${postgresql.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>${mysql-connector.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
@@ -306,6 +313,11 @@
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
             <version>${jedis.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.zeromq</groupId>
+            <artifactId>jeromq</artifactId>
+            <version>${jeromq.version}</version>
         </dependency>
         <!-- Test Dependencies -->
         <dependency>

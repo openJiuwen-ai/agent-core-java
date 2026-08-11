@@ -34,6 +34,8 @@ class OpenJiuwenExecutorsTest {
             BlockingQueue<Runnable> workQueue = pool.getQueue();
             assertThat(workQueue).isInstanceOf(ArrayBlockingQueue.class);
             assertThat(((ArrayBlockingQueue<?>) workQueue).remainingCapacity()).isEqualTo(128);
+            assertThat(pool.getRejectedExecutionHandler())
+                    .isInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class);
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("deep-agent-stream-");
         } finally {
