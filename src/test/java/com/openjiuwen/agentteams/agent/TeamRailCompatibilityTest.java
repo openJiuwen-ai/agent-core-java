@@ -68,7 +68,7 @@ class TeamRailCompatibilityTest {
         assertThat(rail.getStaticSections()).extracting(section -> section.getName()).containsExactly(TeamRail.ROLE,
                 TeamRail.PERSONA, TeamRail.EXTRA);
         assertThat(rail.getStaticSections().get(0).render("en")).contains("# Team Role", "Your member_name: dev1",
-                "view_task", "plan_mode");
+                "view_task", "plan_mode", "submit_plan").doesNotContain("write_plan");
     }
 
     @Test

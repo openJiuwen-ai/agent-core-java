@@ -172,7 +172,7 @@ public final class OpenJiuwenExecutors {
                 .keepAlive(DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS)
                 .workQueue(workQueue)
                 .isDaemon(isDaemon)
-                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                .rejectionHandler(defaults.rejectionHandler())
                 .build());
     }
 
@@ -624,6 +624,13 @@ public final class OpenJiuwenExecutors {
 
         boolean isDirectHandoff() {
             return isDirectHandoff;
+        }
+
+        RejectedExecutionHandler rejectionHandler() {
+            if (this == DEEP_AGENT_STREAM) {
+                return new ThreadPoolExecutor.CallerRunsPolicy();
+            }
+            return new ThreadPoolExecutor.AbortPolicy();
         }
 
         static ModulePoolDefaults forPrefix(String threadNamePrefix) {

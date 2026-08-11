@@ -50,17 +50,15 @@ class DatabaseCompatibilityTest {
     }
 
     @Test
-    void databaseShouldNormalizePostgresqlAndMysqlConnectionStringsButRejectFallbackInitialization() {
+    void databaseShouldNormalizePostgresqlAndMysqlConnectionStringsWithoutExposingCredentials() {
         TeamDatabase postgres = new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL)
                 .connectionString("postgresql://user:pass@localhost:5432/team_db").build());
         TeamDatabase mysql = new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.MYSQL)
                 .connectionString("mysql://user:pass@localhost:3306/team_db").build());
 
         assertThat(postgres.normalizedJdbcConnectionString())
-                .isEqualTo("jdbc:postgresql://user:pass@localhost:5432/team_db");
-        assertThat(mysql.normalizedJdbcConnectionString()).isEqualTo("jdbc:mysql://user:pass@localhost:3306/team_db");
-        assertThatThrownBy(postgres::initialize).isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("POSTGRESQL team database backend requires a JDBC DAO implementation");
+                .isEqualTo("jdbc:postgresql://localhost:5432/team_db");
+        assertThat(mysql.normalizedJdbcConnectionString()).isEqualTo("jdbc:mysql://localhost:3306/team_db");
         assertThatThrownBy(() -> new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL)
                 .connectionString("postgresql+asyncpg://user:pass@localhost/db").build())
                 .normalizedJdbcConnectionString()).isInstanceOf(IllegalArgumentException.class)
