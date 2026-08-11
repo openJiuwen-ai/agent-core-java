@@ -553,6 +553,30 @@ class ReActAgentTest {
     }
 
     @Test
+    void testRunStreamRoundWritesFinalAnswerSchemaLikeStream() throws Exception {
+        TestableReActAgent testAgent = new TestableReActAgent("react-run-stream-round");
+        testAgent.configure(ReActAgentConfig.builder().maxIterations(1).build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(AssistantMessageChunk.builder().content("delta").build(),
+                        AssistantMessageChunk.builder().content("done").build()).iterator());
+        testAgent.setLlm(model);
+        AgentSessionApi session = new AgentSessionApi("run-stream-round-session", null, testAgent.getCard(),
+                List.of(StreamMode.OUTPUT));
+        List<Object> captured = new ArrayList<>();
+        session.setStreamTap(captured::add);
+
+        Map<String, Object> result = testAgent.runStreamRound(Map.of("query", "run"), session);
+
+        assertThat(result.get("result_type")).isEqualTo("answer");
+        assertThat(captured).anyMatch(output -> output instanceof OutputSchema outputSchema
+                && "answer".equals(outputSchema.getType())
+                && outputSchema.getPayload() instanceof Map<?, ?> payload
+                && "answer".equals(payload.get("result_type"))
+                && payload.get("output").equals(result.get("output")));
+    }
+
+    @Test
     void testInvokeNormalizesMissingToolCallIndexInStoredContext() throws Exception {
         TestableReActAgent testAgent = new TestableReActAgent("react-context-tool-index");
         testAgent.configure(ReActAgentConfig.builder().maxIterations(2).build());

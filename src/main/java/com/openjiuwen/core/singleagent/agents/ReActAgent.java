@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
@@ -54,6 +55,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -75,6 +78,9 @@ import java.util.Optional;
  * @since 0.1.7
  */
 public class ReActAgent extends BaseAgent {
+    private static final ExecutorService REACT_STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
+
     private static final String INTERRUPTION_KEY = ToolInterruptionState.INTERRUPTION_KEY;
     private static final String RESUME_USER_INPUT_KEY = ToolInterruptionState.RESUME_USER_INPUT_KEY;
     private static final String IDENTITY_SECTION = "identity";
@@ -912,21 +918,58 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
-        Thread streamThread = new Thread(() -> {
+        Future<?> streamFuture = REACT_STREAM_EXECUTOR.submit(() -> {
             try {
                 Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
                 writeStreamResult(agentSession, finalResult);
-            } catch (Exception e) {
-                writeStreamError(agentSession, e);
+            } catch (Throwable error) {
+                if (error instanceof Exception exception) {
+                    writeStreamError(agentSession, exception);
+                } else {
+                    writeStreamThrowable(agentSession, error);
+                }
             } finally {
                 postRunStreamSession(agentSession, session);
             }
-        }, "react-agent-stream-" + agentSession.getSessionId());
-        streamThread.setDaemon(true);
-        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
-        streamThread.start();
-        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
-        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
+        });
+        return OperatorStream.wrap(agentSession.streamIterator(), () -> streamFuture.cancel(true));
+    }
+
+    /**
+     * Run one streaming ReAct round on the calling thread, emitting chunks via
+     * {@link AgentSessionApi#writeStream}. Avoids the nested {@code REACT_STREAM_EXECUTOR}
+     * + blocking {@code streamIterator} pipeline used by {@link #stream}.
+     *
+     * @param inputs agent inputs
+     * @param agentSession streaming session
+     * @return round result map
+     * @since 0.1.7
+     */
+    public Map<String, Object> runStreamRound(Object inputs, AgentSessionApi agentSession) {
+        if (agentSession == null) {
+            throw new IllegalArgumentException("Session is required for streaming");
+        }
+        preRunStreamSession(agentSession, inputs);
+        try {
+            Map<String, Object> finalResult = invokeForStream(inputs, agentSession, agentSession);
+            writeStreamResult(agentSession, finalResult);
+            return finalResult;
+        } catch (Throwable error) {
+            if (error instanceof Exception exception) {
+                writeStreamError(agentSession, exception);
+            } else {
+                writeStreamThrowable(agentSession, error);
+            }
+            if (error instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (error instanceof Error err) {
+                throw err;
+            }
+            throw new IllegalStateException(error);
+        } finally {
+            postRunStreamSession(agentSession, agentSession);
+        }
     }
 
     /**

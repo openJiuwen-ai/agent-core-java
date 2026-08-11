@@ -596,6 +596,7 @@ public final class OpenJiuwenExecutors {
         MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
         TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
         DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, false),
+        REACT_AGENT_STREAM("react-agent-stream", 16, 128, false),
         GENERIC("", 16, 256, false);
 
         private final String prefix;
@@ -611,7 +612,7 @@ public final class OpenJiuwenExecutors {
         }
 
         int resolveMaxSize() {
-            if (this == DEEP_AGENT_STREAM) {
+            if (this == DEEP_AGENT_STREAM || this == REACT_AGENT_STREAM) {
                 return defaultDeepAgentStreamMaxSize();
             }
             return maxSize;

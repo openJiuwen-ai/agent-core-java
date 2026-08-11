@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
@@ -32,7 +33,9 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventQueue;
+import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
+import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.controller.modules.TaskScheduler;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.InputEvent;
@@ -80,10 +83,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
@@ -95,6 +103,8 @@ import java.util.function.Supplier;
 public class DeepAgent implements AutoCloseable {
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+
+    private static volatile ExecutorService streamTaskLoopExecutorOverride;
 
     private final AgentCard card;
     private final DeepAgentConfig config;
@@ -1042,23 +1052,116 @@ public class DeepAgent implements AutoCloseable {
 
     private java.util.Iterator<Object> streamTaskLoop(Map<String, Object> normalized,
             AgentSessionApi effectiveSession, AgentSessionApi session) {
-        STREAM_EXECUTOR.execute(() -> {
+        LinkedBlockingQueue<Object> liveChunks = new LinkedBlockingQueue<>();
+        AtomicBoolean producerFinished = new AtomicBoolean(false);
+        effectiveSession.setStreamTap(liveChunks::offer);
+        final Future<?> workerFuture;
+        try {
+            workerFuture = streamTaskLoopExecutor().submit(
+                    () -> runTaskLoopForStream(normalized, effectiveSession, session, producerFinished));
+        } catch (RejectedExecutionException ex) {
+            writeStreamError(effectiveSession, 0, ex);
+            effectiveSession.clearStreamTap();
+            producerFinished.set(true);
+            return OperatorStream.wrap(
+                    new LiveStreamQueueIterator(liveChunks, producerFinished),
+                    effectiveSession::clearStreamTap);
+        }
+        return OperatorStream.wrap(
+                new LiveStreamQueueIterator(liveChunks, producerFinished),
+                () -> {
+                    workerFuture.cancel(true);
+                    effectiveSession.clearStreamTap();
+                });
+    }
+
+    private static ExecutorService streamTaskLoopExecutor() {
+        ExecutorService override = streamTaskLoopExecutorOverride;
+        return override != null ? override : STREAM_EXECUTOR;
+    }
+
+    /**
+     * Overrides the bounded executor used by {@link #streamTaskLoop} (tests only).
+     */
+    static void setStreamTaskLoopExecutorOverride(ExecutorService executor) {
+        streamTaskLoopExecutorOverride = executor;
+    }
+
+    /**
+     * Clears a test override for the stream task-loop executor.
+     */
+    static void clearStreamTaskLoopExecutorOverride() {
+        streamTaskLoopExecutorOverride = null;
+    }
+
+    private void runTaskLoopForStream(Map<String, Object> normalized, AgentSessionApi effectiveSession,
+            AgentSessionApi session, AtomicBoolean producerFinished) {
+        try {
+            runTaskLoop(normalized, effectiveSession);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            writeStreamError(effectiveSession, 0, ex);
+        } finally {
             try {
-                runTaskLoop(normalized, effectiveSession);
-            } catch (IllegalArgumentException | IllegalStateException ex) {
-                writeStreamError(effectiveSession, 0, ex);
+                if (session != null) {
+                    copySessionState(effectiveSession, session);
+                }
             } finally {
+                effectiveSession.clearStreamTap();
+                effectiveSession.postRun();
+                producerFinished.set(true);
+            }
+        }
+    }
+
+    /**
+     * Blocking iterator fed by {@link AgentSessionApi#setStreamTap(Consumer)} during task-loop streaming.
+     */
+    private static final class LiveStreamQueueIterator implements java.util.Iterator<Object> {
+        private final LinkedBlockingQueue<Object> queue;
+        private final AtomicBoolean producerFinished;
+        private Object nextItem;
+
+        LiveStreamQueueIterator(LinkedBlockingQueue<Object> queue, AtomicBoolean producerFinished) {
+            this.queue = queue;
+            this.producerFinished = producerFinished;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (nextItem != null) {
+                return true;
+            }
+            while (true) {
+                Object polled = queue.poll();
+                if (polled != null) {
+                    nextItem = polled;
+                    return true;
+                }
+                if (producerFinished.get()) {
+                    return false;
+                }
                 try {
-                    // 关闭流前先传播状态，避免 Runner 收到 EOF 后保存到旧的外层状态。
-                    if (session != null) {
-                        copySessionState(effectiveSession, session);
-                    }
-                } finally {
-                    effectiveSession.postRun();
+                    polled = queue.poll(50L, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                if (polled != null) {
+                    nextItem = polled;
+                    return true;
                 }
             }
-        });
-        return effectiveSession.streamIterator();
+        }
+
+        @Override
+        public Object next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            Object current = nextItem;
+            nextItem = null;
+            return current;
+        }
     }
 
     private java.util.Iterator<Object> streamInvokeOnce(Map<String, Object> normalized,
@@ -1562,10 +1665,10 @@ public class DeepAgent implements AutoCloseable {
         if (session == null) {
             return;
         }
-        taskScheduler.getSessions().put(session.getSessionId(), session);
-        if (activeTaskLoopSessions.add(session.getSessionId())) {
-            eventQueue.subscribe(card.getId(), session.getSessionId());
-        }
+        String sessionId = session.getSessionId();
+        taskScheduler.getSessions().put(sessionId, session);
+        eventQueue.subscribe(card.getId(), sessionId);
+        activeTaskLoopSessions.add(sessionId);
     }
 
     /**
@@ -1578,9 +1681,41 @@ public class DeepAgent implements AutoCloseable {
         if (session == null) {
             return;
         }
-        activeTaskLoopSessions.remove(session.getSessionId());
-        eventQueue.unsubscribe(card.getId(), session.getSessionId());
-        taskScheduler.getSessions().remove(session.getSessionId());
+        String sessionId = session.getSessionId();
+        waitForSessionTasksToFinish(sessionId);
+        activeTaskLoopSessions.remove(sessionId);
+        eventQueue.unsubscribe(card.getId(), sessionId);
+        taskScheduler.getSessions().remove(sessionId);
+    }
+
+    /**
+     * Keeps the controller session registered until TaskScheduler has finished
+     * SUBMITTED/WORKING tasks for this session. Prevents {@code session not found}
+     * skips under high concurrent streaming load.
+     */
+    private void waitForSessionTasksToFinish(String sessionId) {
+        if (taskManager == null || sessionId == null) {
+            return;
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
+        while (System.nanoTime() < deadline) {
+            if (!hasActiveSessionTasks(sessionId)) {
+                return;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    private boolean hasActiveSessionTasks(String sessionId) {
+        return !taskManager.getTask(
+                TaskFilter.builder().sessionId(sessionId).status(TaskStatus.SUBMITTED).build()).isEmpty()
+                || !taskManager.getTask(
+                        TaskFilter.builder().sessionId(sessionId).status(TaskStatus.WORKING).build()).isEmpty();
     }
 
     /**
@@ -1741,7 +1876,7 @@ public class DeepAgent implements AutoCloseable {
 
     /**
      * invokeInnerRoundStreaming.
-     * 
+     *
      * @param effectiveInputs effectiveInputs
      * @param session session
      * @return the result
@@ -1751,14 +1886,12 @@ public class DeepAgent implements AutoCloseable {
             AgentSessionApi session) {
         AgentSessionApi innerSession = new AgentSessionApi(String.valueOf(effectiveInputs.get("conversation_id")),
                 session != null ? session.getEnvs() : null, card, List.of(StreamMode.OUTPUT));
-        // 传播租户上下文到 inner session
         TenantContext ctx = session != null ? session.getTenantContext() : null;
         if (ctx != null && ctx.isTenantAware()) {
             innerSession.withTenantContext(ctx);
         }
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
-        // task-loop 独立线程需重新绑定租户上下文
         if (ctx != null && ctx.isTenantAware()) {
             TenantContextHolder.setCurrentTenant(ctx);
             try {
@@ -1783,20 +1916,26 @@ public class DeepAgent implements AutoCloseable {
     private Map<String, Object> collectStreamToResult(Map<String, Object> effectiveInputs,
             AgentSessionApi innerSession, AgentSessionApi session) {
         List<Object> streamItems = new ArrayList<>();
-        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT))
-                .forEachRemaining(chunk -> {
-                    streamItems.add(chunk);
-                    if (chunk instanceof OutputSchema outputSchema) {
-                        session.writeStream(outputSchema);
-                    }
-                });
-        copySessionState(innerSession, session);
-        Map<String, Object> result = extractFinalStreamResult(streamItems);
-        List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
-        if (!normalizedChunks.isEmpty()) {
-            result.put("stream_chunks", normalizedChunks);
+        innerSession.setStreamTap(chunk -> {
+            streamItems.add(chunk);
+            if (chunk instanceof OutputSchema outputSchema) {
+                session.writeStream(outputSchema);
+            }
+        });
+        try {
+            Map<String, Object> roundResult = agent.runStreamRound(effectiveInputs, innerSession);
+            copySessionState(innerSession, session);
+            Map<String, Object> result = roundResult == null || roundResult.isEmpty()
+                    ? extractFinalStreamResult(streamItems)
+                    : new LinkedHashMap<>(roundResult);
+            List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
+            if (!normalizedChunks.isEmpty()) {
+                result.put("stream_chunks", normalizedChunks);
+            }
+            return result;
+        } finally {
+            innerSession.clearStreamTap();
         }
-        return result;
     }
 
     /**

@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * User-facing agent session providing high-level API for agent lifecycle management.
@@ -48,6 +50,7 @@ public class AgentSessionApi implements Session {
     private final AtomicInteger runState = new AtomicInteger(0);
     private SimpleAgentInteraction interaction;
     private TenantContext tenantContext;
+    private final AtomicReference<Consumer<Object>> streamTap = new AtomicReference<>();
 
     /**
      * Create a new AgentSessionApi.
@@ -233,6 +236,27 @@ public class AgentSessionApi implements Session {
     }
 
     /**
+     * Install a live tap invoked synchronously on every {@link #writeStream} call.
+     * Used by DeepAgent task-loop streaming to push chunks without blocking on
+     * {@link #streamIterator()}.
+     *
+     * @param tap consumer receiving stream payloads, or {@code null} to clear
+     * @since 0.1.7
+     */
+    public void setStreamTap(Consumer<Object> tap) {
+        streamTap.set(tap);
+    }
+
+    /**
+     * clearStreamTap.
+     *
+     * @since 0.1.7
+     */
+    public void clearStreamTap() {
+        streamTap.set(null);
+    }
+
+    /**
      * writeStream.
      *
      * @param data data
@@ -240,6 +264,10 @@ public class AgentSessionApi implements Session {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeStream(Object data) {
+        Consumer<Object> tap = streamTap.get();
+        if (tap != null) {
+            tap.accept(data);
+        }
         StreamWriter<?> writer = inner.streamWriterManager().getOutputWriter();
         if (writer != null) {
             writer.write(data);
