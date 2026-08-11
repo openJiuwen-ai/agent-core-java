@@ -1070,8 +1070,9 @@ public class DeepAgent implements AutoCloseable {
         return OperatorStream.wrap(
                 new LiveStreamQueueIterator(liveChunks, producerFinished),
                 () -> {
-                    workerFuture.cancel(true);
+                    producerFinished.set(true);
                     effectiveSession.clearStreamTap();
+                    workerFuture.cancel(false);
                 });
     }
 
@@ -1143,7 +1144,7 @@ public class DeepAgent implements AutoCloseable {
                 try {
                     polled = queue.poll(50L, TimeUnit.MILLISECONDS);
                 } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
+                    // Cooperative exit for SSE consumer; do not self-interrupt (G.CON.10).
                     return false;
                 }
                 if (polled != null) {
@@ -1705,7 +1706,7 @@ public class DeepAgent implements AutoCloseable {
             try {
                 Thread.sleep(10L);
             } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
+                // Cooperative stop waiting; do not self-interrupt (G.CON.10).
                 return;
             }
         }

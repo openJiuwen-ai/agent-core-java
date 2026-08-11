@@ -70,7 +70,7 @@ class DeepAgentStreamTaskLoopExecutorTest {
             try {
                 holdWorker.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
+                return;
             }
         });
         assertThat(workerStarted.await(5, TimeUnit.SECONDS)).isTrue();
@@ -79,7 +79,7 @@ class DeepAgentStreamTaskLoopExecutorTest {
             try {
                 holdWorker.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
+                return;
             }
         });
 

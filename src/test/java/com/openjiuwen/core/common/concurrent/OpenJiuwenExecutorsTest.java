@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -28,7 +29,11 @@ class OpenJiuwenExecutorsTest {
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
-            assertThat(((ThreadPoolExecutor) executor).getMaximumPoolSize()).isEqualTo(expectedDefault);
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            assertThat(pool.getMaximumPoolSize()).isEqualTo(expectedDefault);
+            BlockingQueue<Runnable> workQueue = pool.getQueue();
+            assertThat(workQueue).isInstanceOf(ArrayBlockingQueue.class);
+            assertThat(((ArrayBlockingQueue<?>) workQueue).remainingCapacity()).isEqualTo(128);
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("deep-agent-stream-");
         } finally {
