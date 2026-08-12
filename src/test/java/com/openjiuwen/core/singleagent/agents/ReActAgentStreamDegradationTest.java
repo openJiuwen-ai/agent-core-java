@@ -579,6 +579,67 @@ class ReActAgentStreamDegradationTest {
         }
     }
 
+    /**
+     * 验证回退非流式时，若 AssistantMessage 含 tool_calls 但 content 为 null，
+     * 不会将字面量 "null" 作为流式 chunk 发送给客户端。
+     *
+     * 场景：LLM 调用工具时 content 通常为 null，toText(null) 返回 "null" 字符串
+     * 验证：收集所有 llm_output 类型的输出，确认不包含 "null" 字面量
+     */
+    @Test
+    void nullContentWithToolCallsDoesNotSendLiteralNull() throws Exception {
+        ReActAgent agent = newAgent("null-content-toolcall");
+        Model model = mock(Model.class);
+
+        // stream 始终返回空（触发回退非流式）
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyIterator());
+
+        // 第一次 invoke：返回 content=null + tool_call（LLM 常见行为）
+        AssistantMessage firstResponse = AssistantMessage.builder()
+                .content(null)
+                .toolCalls(List.of(ToolCall.builder()
+                        .name("todo_modify")
+                        .arguments("{\"task_id\": \"1\", \"status\": \"completed\"}")
+                        .build()))
+                .build();
+
+        // 第二次 invoke：返回最终摘要
+        AssistantMessage secondResponse = AssistantMessage.builder()
+                .content("done")
+                .build();
+
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(firstResponse)
+                .thenReturn(secondResponse);
+        agent.setLlm(model);
+
+        AgentSessionApi session =
+            new AgentSessionApi("null-content-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
+
+        List<Object> collected = new ArrayList<>();
+        StepVerifier.create(agent.streamAsync(Map.of("query", "test"), session, List.of(StreamMode.OUTPUT)))
+                .thenConsumeWhile(item -> {
+                    collected.add(item);
+                    return true;
+                })
+                .verifyComplete();
+
+        // 提取所有 llm_output 类型的输出文本
+        String allLlmOutput = collected.stream()
+                .filter(item -> item instanceof OutputSchema)
+                .map(item -> (OutputSchema) item)
+                .filter(o -> "llm_output".equals(o.getType()))
+                .map(o -> String.valueOf(o.getPayload()))
+                .reduce("", (a, b) -> a + b);
+
+        // 核心断言：不包含独立的 "null" 字面量
+        assertThat(allLlmOutput).as("content 为 null 时不应发送字面量 null").doesNotContain("null");
+
+        // tool_call 应正常发送
+        assertThat(allLlmOutput).as("tool_call 应正常发送").contains("tool_calls");
+    }
+
     private static ReActAgent newAgent(String id) {
         ReActAgent agent = new ReActAgent(AgentCard.builder().id(id).name(id).description(id).build());
         agent.configure(ReActAgentConfig.builder()

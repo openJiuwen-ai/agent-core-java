@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.context.ContextEngine;
@@ -1499,11 +1500,33 @@ public class ReActAgent extends BaseAgent {
         // 流式重试全部返回空（非异常）→ 模型可能不支持流式，回退到非流式并包装为流式发送
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
             + " attempts, falling back to non-stream with stream wrapping");
+        return fallbackToNonStreamWithHeartbeat(ctx, context, systemMessages, tools, agentSession);
+    }
+
+    /**
+     * 回退到非流式调用，期间用周期性心跳防止客户端超时，并将结果包装为流式 chunk 发送。
+     *
+     * @param ctx callback context
+     * @param context model context
+     * @param systemMessages system messages
+     * @param tools tools
+     * @param agentSession agent session
+     * @return the result, or Optional.empty() if callModel returns null
+     * @since 0.1.7
+     */
+    private Optional<AssistantMessage> fallbackToNonStreamWithHeartbeat(AgentCallbackContext ctx, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession) {
         // 先同步发送一次心跳，确保客户端立即收到切换通知
         writeStreamHeartbeat(agentSession, HEARTBEAT_NON_STREAM_MSG);
         // 周期性心跳：在 callModel 阻塞期间按 HEARTBEAT_INTERVAL_MS 间隔发送，防止客户端超时
         ScheduledThreadPoolExecutor heartbeatExecutor = new ScheduledThreadPoolExecutor(
-            1, r -> new Thread(r, "react-heartbeat-" + agentSession.getSessionId()),
+            1, r -> {
+                Thread t = new Thread(r, "react-heartbeat-" + agentSession.getSessionId());
+                t.setDaemon(true);
+                t.setUncaughtExceptionHandler((thread, ex) ->
+                    Loggers.AGENT.debug("Heartbeat thread exception", ex));
+                return t;
+            },
             new ThreadPoolExecutor.AbortPolicy());
         heartbeatExecutor.setRemoveOnCancelPolicy(true);
         ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
@@ -1623,7 +1646,8 @@ public class ReActAgent extends BaseAgent {
             return;
         }
 
-        String content = toText(aiMessage.getContent());
+        Object rawContent = aiMessage.getContent();
+        String content = rawContent != null ? toText(rawContent) : null;
         if (shouldSendContent && content != null && !content.isBlank()) {
             // 按固定长度分块
             int chunkIndex = startIndex;
@@ -1695,7 +1719,7 @@ public class ReActAgent extends BaseAgent {
             heartbeat.put("content", message);
             heartbeat.put("result_type", "progress");
             agentSession.writeStream(new OutputSchema("progress", 0, heartbeat));
-        } catch (RuntimeException e) {
+        } catch (BaseError e) {
             // emitter 可能已关闭，静默忽略，避免中断心跳定时器线程
             Loggers.AGENT.debug("Heartbeat write skipped: {}", e.getMessage());
         }
