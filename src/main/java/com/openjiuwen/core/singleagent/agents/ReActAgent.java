@@ -84,7 +84,7 @@ public class ReActAgent extends BaseAgent {
     private static final int STREAM_CHUNK_SIZE = 200;
 
     // SSE 心跳间隔（毫秒），在回退非流式调用前发送，防止客户端超时断开
-    private static final long HEARTBEAT_INTERVAL_MS = 5000;
+    private static final long HEARTBEAT_INTERVAL_MS = 5000L;
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -1333,7 +1333,7 @@ public class ReActAgent extends BaseAgent {
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                     + (attempt + 1) + "/" + (maxRetries + 1) + ")");
-            } catch (RuntimeException e) {
+            } catch (IllegalStateException e) {
                 // 异常时已可能有部分 chunk 被发送，不重试避免重复发送
                 Loggers.AGENT.error("ReAct stream error (attempt "
                     + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: " + e.getMessage());

@@ -128,7 +128,7 @@ class ReActAgentStreamDegradationTest {
         Model model = mock(Model.class);
         // stream 抛异常（异常时不重试，避免部分 chunk 重复发送）
         when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("connection timeout"));
+                .thenThrow(new IllegalStateException("connection timeout"));
 
         agent.setLlm(model);
 
