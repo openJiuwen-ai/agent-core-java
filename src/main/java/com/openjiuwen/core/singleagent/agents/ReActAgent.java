@@ -578,6 +578,38 @@ public class ReActAgent extends BaseAgent {
      */
     private List<ToolExecutionEntry> executeToolCallEntries(AgentCallbackContext ctx, List<?> toolCalls,
             Session session, ModelContext context) {
+        return executeToolCallEntries(ctx, toolCalls, session, context, null);
+    }
+
+    /**
+     * Streaming-aware overload of {@link #executeToolCallEntries}.
+     * <p>
+     * When {@code agentSession} is non-null the underlying AbilityManager
+     * will forward tool stream chunks ({@code tool_stream_chunk},
+     * {@code tool_stream_end}, {@code tool_error}) to the outer stream;
+     * when {@code null} this behaves identically to the 4-arg overload.
+     * <p>
+     * Only the main ReAct loop invokes this with a session; the
+     * interrupt-resume branch continues to use the 4-arg (non-streaming)
+     * variant because the interrupted tool has already been executed
+     * upstream.
+     *
+     * @param ctx           callback context
+     * @param toolCalls     tool calls to execute
+     * @param session       session
+     * @param context       model context (to append ToolMessage)
+     * @param agentSession  nullable stream writer; when set, tool stream
+     *                      chunks are forwarded to the outer agent stream
+     * @return same as 4-arg executeToolCallEntries
+     * @since 0.1.15
+     */
+    private List<ToolExecutionEntry> executeToolCallEntries(
+            AgentCallbackContext ctx,
+            List<?> toolCalls,
+            Session session,
+            ModelContext context,
+            /* @Nullable */ AgentSessionApi agentSession
+    ) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return List.of();
         }
@@ -590,7 +622,12 @@ public class ReActAgent extends BaseAgent {
             }
         }
 
-        List<ToolExecutionEntry> results = getAbilityManager().execute(ctx, toolCalls, session, null);
+        List<ToolExecutionEntry> results;
+        if (agentSession == null) {
+            results = getAbilityManager().execute(ctx, toolCalls, session, null);
+        } else {
+            results = getAbilityManager().executeStream(ctx, toolCalls, session, null, agentSession);
+        }
         for (ToolExecutionEntry entry : results) {
             if (entry.toolMessage() != null) {
                 context.addMessages(entry.toolMessage());
@@ -1373,7 +1410,7 @@ public class ReActAgent extends BaseAgent {
 
                 if (hasToolCalls) {
                     List<ToolExecutionEntry> results =
-                        executeToolCallEntries(ctx, aiMessage.getToolCalls(), session, context);
+                        executeToolCallEntries(ctx, aiMessage.getToolCalls(), session, context, agentSession);
 
                     AgentCallbackContext.ForceFinishRequest finishAfterTool = ctx.consumeForceFinish();
                     if (finishAfterTool != null) {
@@ -1490,25 +1527,35 @@ public class ReActAgent extends BaseAgent {
         if (agentSession == null || chunk == null) {
             return;
         }
+        // 复用 AbilityManager.resolveTaskId 同样的取值方式：从 session state 读 task_id，
+        // 与 tool_output / task_output chunk 保持一致。standalone ReActAgent 调用
+        // 时 task_id 为空字符串，不影响下游消费。
+        Object taskIdRaw = agentSession.getState("task_id");
+        String taskId = taskIdRaw == null ? "" : String.valueOf(taskIdRaw);
+
         if (chunk.getReasoningContent() != null) {
             Map<String, Object> reasoningPayload = new HashMap<String, Object>();
+            reasoningPayload.put("task_id", taskId);
             reasoningPayload.put("content", chunk.getReasoningContent());
             reasoningPayload.put("result_type", "answer");
             agentSession.writeStream(new OutputSchema("llm_reasoning", index, reasoningPayload));
         }
         if (chunk.getContent() != null && !(chunk.getContent() instanceof String str && str.isBlank())) {
             Map<String, Object> contentPayload = new HashMap<String, Object>();
+            contentPayload.put("task_id", taskId);
             contentPayload.put("content", chunk.getContent());
             contentPayload.put("result_type", "answer");
             agentSession.writeStream(new OutputSchema("llm_output", index, contentPayload));
         }
         if (chunk.getToolCalls() != null && !chunk.getToolCalls().isEmpty()) {
             Map<String, Object> toolPayload = new HashMap<String, Object>();
+            toolPayload.put("task_id", taskId);
             toolPayload.put("tool_calls", cloneToolCalls(chunk.getToolCalls()));
             agentSession.writeStream(new OutputSchema("llm_output", index, toolPayload));
         }
         if (chunk.getUsageMetadata() != null) {
             Map<String, Object> usagePayload = new HashMap<String, Object>();
+            usagePayload.put("task_id", taskId);
             usagePayload.put("usage_metadata", chunk.getUsageMetadata());
             usagePayload.put("result_type", "answer");
             agentSession.writeStream(new OutputSchema("llm_usage", 0, usagePayload));

@@ -34,6 +34,8 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.session.stream.OutputSchema;
 
 /**
  * Agent Ability Manager.
@@ -1041,6 +1046,411 @@ public class AbilityManager implements ToolRegistry {
         } finally {
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
+    }
+
+    // ==================== Streaming tool execution ====================
+
+    /**
+     * Streaming-aware version of {@link #execute(AgentCallbackContext, Object, Session, String)}.
+     * <p>
+     * When {@code agentSession} is non-null AND the tool supports streaming
+     * (currently {@link LocalFunction}), each chunk yielded by
+     * {@link Tool#stream(Map, Map)} is forwarded as
+     * {@code OutputSchema("tool_stream_chunk", ...)}, and the method finally
+     * emits a {@code "tool_stream_end"} chunk. Non-streaming tools and
+     * non-tool branches (workflows, agents, MCP) fall back to the synchronous
+     * {@link #execute(AgentCallbackContext, Object, Session, String)} behaviour.
+     * <p>
+     * The returned {@code List<ToolExecutionEntry>} is identical to
+     * {@code execute(...)} so the caller continues to work unchanged.
+     *
+     * @param ctx           callback context (for rails / force-finish / steering)
+     * @param toolCall      tool call(s) to execute (ToolCall, List, Map, array)
+     * @param session       session
+     * @param tag           optional routing tag
+     * @param agentSession  stream writer; {@code null} disables streaming forwarding
+     * @return tool execution entries, same as {@link #execute(...)}
+     * @since 0.1.15
+     */
+    public List<ToolExecutionEntry> executeStream(
+            AgentCallbackContext ctx,
+            Object toolCall,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession
+    ) {
+        List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
+        if (toolCalls.isEmpty()) {
+            return List.of();
+        }
+        if (toolCalls.size() == 1) {
+            int toolIndex = toolCalls.get(0).getIndex() != null
+                    ? toolCalls.get(0).getIndex() : 0;
+            return List.of(executeOneToolCallWithStreaming(ctx, toolCalls.get(0), session, tag, agentSession, toolIndex));
+        }
+        return executeParallelToolCallsWithStreaming(ctx, toolCalls, session, tag, agentSession);
+    }
+
+    private List<ToolExecutionEntry> executeParallelToolCallsWithStreaming(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession
+    ) {
+        List<AgentCallbackContext> toolContexts = new ArrayList<>();
+        List<CompletableFuture<ToolExecutionEntry>> futures = new ArrayList<>();
+        for (int i = 0; i < toolCalls.size(); i++) {
+            ToolCall tc = toolCalls.get(i);
+            final int toolIndex = tc.getIndex() != null ? tc.getIndex() : i;
+            AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, tc, session);
+            toolContexts.add(toolCtx);
+            CompletableFuture<ToolExecutionEntry> future = OpenJiuwenExecutors.withToolCallTimeout(
+                    OpenJiuwenExecutors.supplyToolCallAsync(
+                            () -> executePreparedToolCallWithStreaming(
+                                toolCtx, tc, session, tag, agentSession, toolIndex)
+                    )
+            );
+            futures.add(future);
+        }
+        List<ToolExecutionEntry> finalResults = new ArrayList<>();
+        for (int i = 0; i < futures.size(); i++) {
+            finalResults.add(joinToolExecution(toolCalls.get(i), futures.get(i)));
+        }
+        for (AgentCallbackContext toolCtx : toolContexts) {
+            mergeToolContext(ctx, toolCtx);
+        }
+        return finalResults;
+    }
+
+    private ToolExecutionEntry executeOneToolCallWithStreaming(
+            AgentCallbackContext ctx,
+            ToolCall singleToolCall,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession,
+            int toolIndex
+    ) {
+        AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
+        try {
+            return executePreparedToolCallWithStreaming(toolCtx, singleToolCall, session, tag, agentSession, toolIndex);
+        } finally {
+            mergeToolContext(ctx, toolCtx);
+        }
+    }
+
+    private ToolExecutionEntry executePreparedToolCallWithStreaming(
+            AgentCallbackContext toolCtx,
+            ToolCall singleToolCall,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession,
+            int toolIndex
+    ) {
+        Session previousSession = SessionContextHolder.getCurrentSession();
+        try {
+            SessionContextHolder.setCurrentSession(session);
+            ToolExecutionEntry result;
+            try {
+                result = railedExecuteStreamSingleToolCall(
+                        toolCtx, singleToolCall, session, tag, agentSession, toolIndex);
+            } finally {
+                toolCtx.getExtra().remove("_skip_tool");
+            }
+            if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
+                Object toolResult = inputs.getToolResult() != null
+                        ? inputs.getToolResult()
+                        : (result != null ? result.result() : null);
+                ToolMessage toolMsg = inputs.getToolMsg() != null
+                        ? inputs.getToolMsg()
+                        : (result != null ? result.toolMessage() : null);
+                return new ToolExecutionEntry(toolResult, toolMsg);
+            }
+            return result;
+        } catch (ToolInterruptException | AbilityExecutionError e) {
+            if (agentSession != null) {
+                agentSession.writeStream(buildToolOutputChunk(
+                        resolveSessionId(session), resolveTaskId(session), singleToolCall,
+                        "tool error: " + (e.getMessage() == null ? "" : e.getMessage()), 0));
+            }
+            return handleToolExecutionException(singleToolCall, toolCtx, e);
+        } catch (RuntimeException re) {
+            if (agentSession != null) {
+                agentSession.writeStream(buildToolOutputChunk(
+                        resolveSessionId(session), resolveTaskId(session), singleToolCall,
+                        "tool error: " + (re.getMessage() == null ? "" : re.getMessage()), 0));
+            }
+            throw re;
+        } finally {
+            SessionContextHolder.restoreCurrentSession(previousSession);
+        }
+    }
+
+    private ToolExecutionEntry railedExecuteStreamSingleToolCall(
+            AgentCallbackContext ctx,
+            ToolCall toolCall,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession,
+            int toolIndex
+    ) {
+        return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_TOOL_CALL,
+                AgentCallbackEvent.AFTER_TOOL_CALL,
+                AgentCallbackEvent.ON_TOOL_EXCEPTION,
+                () -> {
+                    if (Boolean.TRUE.equals(ctx.getExtra().get("_skip_tool"))) {
+                        if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                            return new ToolExecutionEntry(inputs.getToolResult(), inputs.getToolMsg());
+                        }
+                        return new ToolExecutionEntry(null, null);
+                    }
+
+                    if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        if (inputs.getToolName() != null && !inputs.getToolName().isEmpty()) {
+                            toolCall.setName(inputs.getToolName());
+                        }
+                        if (inputs.getToolArgs() != null) {
+                            toolCall.setArguments(inputs.getToolArgs() instanceof String s
+                                    ? s
+                                    : MAPPER.writeValueAsString(inputs.getToolArgs()));
+                        }
+                    }
+
+                    ToolExecutionEntry result = streamSingleToolCall(
+                            toolCall, session, tag, agentSession, toolIndex);
+
+                    if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                        inputs.setToolCall(toolCall);
+                        inputs.setToolName(toolCall.getName());
+                        inputs.setToolArgs(toolCall.getArguments());
+                        inputs.setToolResult(result.result());
+                        inputs.setToolMsg(result.toolMessage());
+                    }
+                    return result;
+                }).orElseGet(() -> new ToolExecutionEntry(null, null));
+    }
+
+    /**
+     * Execute one tool call, choosing the streaming or synchronous path.
+     * Tool instance path only (tools.containsKey / fallback). For
+     * workflows / agents / MCP it simply delegates to executeSingleToolCall.
+     */
+    private ToolExecutionEntry streamSingleToolCall(
+            ToolCall toolCall,
+            Session session,
+            String tag,
+            /* @Nullable */ AgentSessionApi agentSession,
+            int toolIndex
+    ) {
+        String toolName = toolCall.getName();
+        Map<String, Object> toolArgs = parseToolArgs(toolCall.getArguments());
+
+        // --- Tool branch ---
+        Tool tool = null;
+        if (tools.containsKey(toolName)) {
+            ToolCard toolCard = tools.get(toolName);
+            String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
+            tool = getToolFromResourceMgr(toolId, tag);
+        } else if (!mcpServers.isEmpty()) {
+            tool = resolveMcpToolByName(toolName);
+            if (tool == null && !mcpServers.containsKey(toolName)) {
+                tool = getToolFromResourceMgr(toolName, tag);
+            }
+        } else {
+            tool = getToolFromResourceMgr(toolName, tag);
+        }
+
+        if (tool != null) {
+            boolean streaming = agentSession != null && canStream(tool);
+            try {
+                if (streaming) {
+                    return executeStreamingTool(tool, toolCall, toolArgs, session, agentSession, toolIndex);
+                }
+                // 非流式或 agentSession 为 null：走原 invoke 路径
+                Object result = invokeTool(tool, toolArgs, session);
+                logToolResult(result);
+                if (agentSession != null) {
+                    agentSession.writeStream(buildToolOutputChunk(
+                            resolveSessionId(session), resolveTaskId(session), toolCall,
+                            result == null ? "" : result, 0));
+                }
+                ToolMessage toolMsg = ToolMessage.builder()
+                        .content(result == null ? "" : result.toString())
+                        .toolCallId(toolCall.getId())
+                        .build();
+                return new ToolExecutionEntry(result, toolMsg);
+            } catch (BaseError e) {
+                throw e;
+            } catch (Exception e) {
+                String errorMsg = "Tool execution error: "
+                        + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
+                if (agentSession != null) {
+                    agentSession.writeStream(buildToolOutputChunk(
+                            resolveSessionId(session), resolveTaskId(session), toolCall,
+                            "tool error: " + (e.getMessage() == null ? "" : e.getMessage()), 0));
+                }
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        }
+
+        // --- Non-tool branches (workflows / agents / MCP servers): use original path ---
+        return executeSingleToolCall(toolCall, session, tag);
+    }
+
+    private ToolExecutionEntry executeStreamingTool(
+            Tool tool,
+            ToolCall toolCall,
+            Map<String, Object> toolArgs,
+            Session session,
+            AgentSessionApi agentSession,
+            int toolIndex
+    ) throws Exception {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        Session previousSession = SessionContextHolder.getCurrentSession();
+        if (session != null) {
+            kwargs.put("session", session);
+            SessionContextHolder.setCurrentSession(session);
+        }
+        String sessionId = resolveSessionId(session);
+        String taskId = resolveTaskId(session);
+        List<Object> accumulated = new ArrayList<>();
+        int chunkIndex = 0;
+        try {
+            Iterator<Object> streamIt = tool.stream(toolArgs, kwargs);
+            while (streamIt != null && streamIt.hasNext()) {
+                Object chunk = streamIt.next();
+                accumulated.add(chunk);
+                agentSession.writeStream(buildToolOutputChunk(
+                        sessionId, taskId, toolCall, chunk, chunkIndex));
+                chunkIndex++;
+            }
+        } catch (BaseError e) {
+            // If LocalFunction.stream() throws TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
+            // it means the underlying func is not streaming — fall back to tool.invoke().
+            if (e.getCode() == StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR.getCode()) {
+                Loggers.AGENT.debug("Tool '{}' does not support streaming, falling back to synchronous invoke",
+                        tool.getCard() != null ? tool.getCard().getId() : toolCall.getName());
+                Object result = invokeTool(tool, toolArgs, session);
+                logToolResult(result);
+                agentSession.writeStream(buildToolOutputChunk(
+                        sessionId, taskId, toolCall, result == null ? "" : result, 0));
+                ToolMessage toolMsg = ToolMessage.builder()
+                        .content(result == null ? "" : result.toString())
+                        .toolCallId(toolCall.getId())
+                        .build();
+                return new ToolExecutionEntry(result, toolMsg);
+            }
+            throw e;
+        } finally {
+            SessionContextHolder.restoreCurrentSession(previousSession);
+        }
+
+        Object merged = mergeStreamChunks(accumulated);
+        logToolResult(merged);
+
+        ToolMessage toolMsg = ToolMessage.builder()
+                .content(merged == null ? "" : merged.toString())
+                .toolCallId(toolCall.getId())
+                .build();
+        return new ToolExecutionEntry(merged, toolMsg);
+    }
+
+    /**
+     * Determines whether the tool instance is worth trying tool.stream().
+     * McpTool and RestfulApi's stream() currently raise an explicit error;
+     * only LocalFunction truly supports streaming (when it wraps a func
+     * returning Iterator/Iterable). For other tool types we skip the try
+     * to avoid an exception-control-flow code path.
+     */
+    private static boolean canStream(Tool tool) {
+        return tool instanceof LocalFunction;
+    }
+
+    /**
+     * Resolve task id from session state, if the upstream agent (e.g. DeepAgent)
+     * injected {@code task_id} into the session state before invoking tools.
+     * Returns {@code null} when no task id is bound (standalone ReActAgent
+     * invocations have no task concept).
+     */
+    private static String resolveTaskId(Session session) {
+        if (session == null) {
+            return null;
+        }
+        Object value = session.getState("task_id");
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * Resolve session id from the {@link Session} parameter (not the
+     * {@link AgentSessionApi} wrapper). The {@code session} argument is
+     * the ReActAgent's own session handle, which may differ from the
+     * inner {@code AgentSessionApi} created by DeepAgent for stream
+     * forwarding (the latter's id is typically the conversation_id).
+     * Returns empty string when session is null so the payload field
+     * stays present.
+     */
+    private static String resolveSessionId(Session session) {
+        if (session == null) {
+            return "";
+        }
+        String id = session.getSessionId();
+        return id == null ? "" : id;
+    }
+
+    /**
+     * Build a unified {@code tool_output} stream chunk.
+     * <p>
+     * All tool streaming events (per-chunk output, non-streaming invoke
+     * result, tool error) are emitted using the same shape:
+     * <pre>
+     * {
+     *   "type": "tool_output",
+     *   "index": chunkIndex,
+     *   "payload": {
+     *     "session_id": "...",
+     *     "task_id": "...",
+     *     "tool_name": "...",
+     *     "tool_call_id": "...",
+     *     "content": ...
+     *   }
+     * }
+     * </pre>
+     * Downstream consumers only need to read {@code payload.content} for
+     * every {@code tool_output} chunk to render the tool's progressive
+     * output; no lifecycle events or replay cursors are emitted.
+     */
+    private static OutputSchema buildToolOutputChunk(
+            String sessionId, String taskId, ToolCall toolCall, Object content, int chunkIndex) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("task_id", taskId == null ? "" : taskId);
+        payload.put("tool_name", toolCall.getName());
+        payload.put("tool_call_id", toolCall.getId());
+        payload.put("content", content);
+        return new OutputSchema("tool_output", chunkIndex, payload);
+    }
+
+    /**
+     * Merge a list of tool stream chunks into a single result for ToolMessage.
+     * All-String chunks are joined as-is (a typical streaming tool case);
+     * otherwise the list is wrapped so the caller sees every chunk.
+     */
+    private static Object mergeStreamChunks(List<Object> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return "";
+        }
+        boolean allStrings = chunks.stream().allMatch(c -> c instanceof String || c == null);
+        if (allStrings) {
+            StringBuilder sb = new StringBuilder();
+            for (Object c : chunks) {
+                if (c != null) {
+                    sb.append(c);
+                }
+            }
+            return sb.toString();
+        }
+        return new ArrayList<>(chunks);
     }
 
     /**

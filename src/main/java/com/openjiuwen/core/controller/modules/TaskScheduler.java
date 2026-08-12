@@ -21,9 +21,11 @@ import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -245,6 +247,17 @@ public class TaskScheduler {
         }
         Task task = tasks.get(0);
         Loggers.CONTROLLER.info("Executing task {} (type: {})", taskId, task.getTaskType());
+
+        // 任务调用前，把任务元信息写入输出流（与 tool_output 同 type，下游统一消费）
+        Map<String, Object> taskStartedPayload = new LinkedHashMap<>();
+        taskStartedPayload.put("task_id", task.getTaskId());
+        taskStartedPayload.put("task_type", task.getTaskType());
+        String description = task.getDescription() == null ? "" : task.getDescription();
+        if (description.length() > 120) {
+            description = description.substring(0, 120) + "...";
+        }
+        taskStartedPayload.put("description", description);
+        session.writeStream(new OutputSchema("task_output", 0, taskStartedPayload));
 
         // 2. Create TaskExecutor
         TaskExecutorDependencies dependencies =

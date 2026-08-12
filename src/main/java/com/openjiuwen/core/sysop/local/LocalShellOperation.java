@@ -22,15 +22,20 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
@@ -145,32 +150,30 @@ public class LocalShellOperation extends BaseShellOperation {
     @Override
     public Iterator<ExecuteCmdStreamResult> executeCmdStream(String command, String cwd, int timeout,
             Map<String, String> environment, Map<String, Object> options) {
-        String methodName = "executeCmdStream";
-        long startTime = System.currentTimeMillis();
-        List<ExecuteCmdStreamResult> results = new ArrayList<>();
-
         Loggers.SYS_OPERATION.info("Start to execute cmd streaming");
 
-        int chunkIndex = 0;
+        // fail-fast: 参数 / 白名单 / 危险字符 校验同步完成，错误立即返回单元素迭代器
         if (command == null || command.isBlank()) {
-            results.add(buildCmdStreamErrorResult("command can not be empty",
-                    ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
-            return results.iterator();
+            return Collections.singletonList(
+                buildCmdStreamErrorResult("command can not be empty",
+                    ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+            ).iterator();
         }
 
         try {
             int effectiveTimeout = normalizeTimeoutSeconds(timeout);
-
             if (!checkAllowlist(command)) {
-                results.add(buildCmdStreamErrorResult("command not allowed by allowlist",
-                        ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
-                return results.iterator();
+                return Collections.singletonList(
+                    buildCmdStreamErrorResult("command not allowed by allowlist",
+                        ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+                ).iterator();
             }
             String dangerousReason = checkDangerousPatterns(command);
             if (dangerousReason != null && !dangerousReason.isBlank()) {
-                results.add(buildCmdStreamErrorResult(dangerousReason,
-                        ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
-                return results.iterator();
+                return Collections.singletonList(
+                    buildCmdStreamErrorResult(dangerousReason,
+                        ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+                ).iterator();
             }
 
             Map<String, String> env = OperationUtils.prepareEnvironment(environment);
@@ -189,24 +192,62 @@ public class LocalShellOperation extends BaseShellOperation {
             ProcessHandler handler = new ProcessHandler(process, chunkSize, charset, effectiveTimeout);
             Iterator<StreamEvent> eventIterator = handler.stream();
 
-            while (eventIterator.hasNext()) {
-                StreamEvent event = eventIterator.next();
-                ExecuteCmdStreamResult transformed = transformCmdStreamEvent(event, chunkIndex);
-                if (transformed != null) {
-                    results.add(transformed);
-                    chunkIndex++;
-                }
-                if (event.getType() == StreamEventType.ERROR || event.getType() == StreamEventType.EXIT) {
-                    break;
-                }
-            }
+            // 真正惰性的迭代器：hasNext/next 时才去拉取下一事件，避免先全量收集
+            return new Iterator<ExecuteCmdStreamResult>() {
+                private final AtomicInteger chunkIndex = new AtomicInteger(0);
+                private StreamEvent nextEvent;
+                private boolean hasNext = true;
 
-            return results.iterator();
+                @Override
+                public boolean hasNext() {
+                    advanceIfNeeded();
+                    return hasNext;
+                }
+
+                @Override
+                public ExecuteCmdStreamResult next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException("No more streaming events");
+                    }
+                    StreamEvent event = nextEvent;
+                    nextEvent = null;
+                    int idx = chunkIndex.getAndIncrement();
+                    // EXIT / ERROR 事件产出本次后不再继续
+                    if (event.getType() == StreamEventType.EXIT
+                            || event.getType() == StreamEventType.ERROR) {
+                        hasNext = false;
+                    }
+                    return transformCmdStreamEvent(event, idx);
+                }
+
+                private void advanceIfNeeded() {
+                    if (nextEvent != null || !hasNext) {
+                        return;
+                    }
+                    try {
+                        if (eventIterator.hasNext()) {
+                            nextEvent = eventIterator.next();
+                        } else {
+                            hasNext = false;
+                        }
+                    } catch (Exception e) {
+                        Loggers.SYS_OPERATION.error("Failed to execute cmd streaming", e);
+                        StringWriter sw = new StringWriter(256);
+                        e.printStackTrace(new PrintWriter(sw));
+                        nextEvent = StreamEvent.builder()
+                                .type(StreamEventType.ERROR)
+                                .data("unexpected streaming error: " + e.getMessage())
+                                .build();
+                        // 产出这一条 ERROR 事件后结束
+                    }
+                }
+            };
         } catch (Exception e) {
-            Loggers.SYS_OPERATION.error("Failed to execute cmd streaming", e);
-            results.add(buildCmdStreamErrorResult("unexpected error: " + e.getMessage(),
-                    ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
-            return results.iterator();
+            Loggers.SYS_OPERATION.error("Failed to start cmd streaming", e);
+            return Collections.singletonList(
+                buildCmdStreamErrorResult("unexpected error: " + e.getMessage(),
+                    ExecuteCmdChunkData.builder().chunkIndex(0).exitCode(-1).build())
+            ).iterator();
         }
     }
 
