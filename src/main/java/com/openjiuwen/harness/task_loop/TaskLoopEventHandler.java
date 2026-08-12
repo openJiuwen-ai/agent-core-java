@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.task_loop;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.DataFrame;
