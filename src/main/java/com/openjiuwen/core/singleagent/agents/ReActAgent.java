@@ -55,8 +55,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -1519,9 +1521,11 @@ public class ReActAgent extends BaseAgent {
         // 先同步发送一次心跳，确保客户端立即收到切换通知
         writeStreamHeartbeat(agentSession, HEARTBEAT_NON_STREAM_MSG);
         // 周期性心跳：在 callModel 阻塞期间按 HEARTBEAT_INTERVAL_MS 间隔发送，防止客户端超时
+        ThreadFactory defaultFactory = Executors.defaultThreadFactory();
         ScheduledThreadPoolExecutor heartbeatExecutor = new ScheduledThreadPoolExecutor(
             1, r -> {
-                Thread t = new Thread(r, "react-heartbeat-" + agentSession.getSessionId());
+                Thread t = defaultFactory.newThread(r);
+                t.setName("react-heartbeat-" + agentSession.getSessionId());
                 t.setDaemon(true);
                 t.setUncaughtExceptionHandler((thread, ex) ->
                     Loggers.AGENT.debug("Heartbeat thread exception", ex));
@@ -1537,12 +1541,7 @@ public class ReActAgent extends BaseAgent {
             aiMessage = callModel(ctx, context, systemMessages, tools);
         } finally {
             heartbeat.cancel(false);
-            heartbeatExecutor.shutdown();
-            try {
-                heartbeatExecutor.awaitTermination(1, TimeUnit.SECONDS);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
+            heartbeatExecutor.shutdownNow();
         }
         if (aiMessage != null) {
             // 有 tool_call 时：content 必须通过流式发送（因为循环会 continue，writeStreamResult 不会发送此轮 content）
