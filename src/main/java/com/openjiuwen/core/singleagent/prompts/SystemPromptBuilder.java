@@ -148,10 +148,14 @@ public class SystemPromptBuilder {
      */
     public synchronized String build() {
         List<PromptSection> ordered = getSectionsForBuild();
+        ordered.removeIf(section -> section == null);
         ordered.sort(Comparator.comparingInt(PromptSection::getPriority));
 
         List<String> parts = new ArrayList<String>();
         for (PromptSection section : ordered) {
+            if (section == null) {
+                continue;
+            }
             String rendered = section.render(language);
             if (rendered != null && !rendered.trim().isEmpty()) {
                 parts.add(rendered);
@@ -192,6 +196,9 @@ public class SystemPromptBuilder {
         }
         List<PromptSection> filtered = new ArrayList<PromptSection>();
         for (PromptSection section : sections.values()) {
+            if (section == null) {
+                continue;
+            }
             if (MODE_NONE.equals(mode)) {
                 if ("identity".equals(section.getName())) {
                     filtered.add(section);
