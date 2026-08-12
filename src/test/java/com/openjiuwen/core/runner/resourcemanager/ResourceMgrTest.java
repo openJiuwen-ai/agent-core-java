@@ -2,13 +2,22 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.base.Result;
 import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.workflow.WorkflowCard;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -123,6 +132,80 @@ class ResourceMgrTest {
             Exception ex = assertThrows(Exception.class, () -> resourceMgr.addTools(List.of(), null));
             assertTrue(ex.getMessage().contains("cannot be empty"));
         }
+
+        @Test
+        @DisplayName("Tool card validation preserves its cause")
+        void testAddToolInvalidCardPreservesCause() {
+            Tool toolWithMissingCard = new SimpleTool(makeTool("delegate").getCard()) {
+                @Override
+                public ToolCard getCard() {
+                    return null;
+                }
+            };
+            ValidationError singleError = assertThrows(ValidationError.class,
+                    () -> resourceMgr.addTool(toolWithMissingCard, null));
+            ValidationError bulkError = assertThrows(ValidationError.class,
+                    () -> resourceMgr.addTools(List.of(toolWithMissingCard), null));
+
+            assertTrue(singleError.getCause() instanceof BaseError);
+            assertTrue(bulkError.getCause() instanceof BaseError);
+        }
+
+        @Test
+        @DisplayName("Malformed tool list is rejected before any tool is added")
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        void testAddToolsMalformedListIsAtomic() {
+            Tool validTool = makeTool("valid_tool");
+            List malformedTools = List.of(validTool, "abc");
+
+            ValidationError error = assertThrows(ValidationError.class,
+                    () -> resourceMgr.addTools(malformedTools, null));
+
+            assertTrue(error.getMessage().contains(
+                    "invalid tool type at index 1: expected Tool, got str"));
+            assertNull(resourceMgr.getTool("valid_tool"));
+        }
+
+        @Test
+        @DisplayName("Empty tool id is rejected for get and remove")
+        void testEmptyToolIdRejected() {
+            ValidationError getError = assertThrows(ValidationError.class, () -> resourceMgr.getTool(""));
+            ValidationError removeError = assertThrows(ValidationError.class,
+                    () -> resourceMgr.removeTool("", null, null, true));
+            ValidationError listError = assertThrows(ValidationError.class,
+                    () -> resourceMgr.removeTool(List.of(""), null, null, true));
+
+            assertTrue(getError.getMessage().contains("tool id list cannot be empty or None"));
+            assertTrue(removeError.getMessage().contains("tool id list cannot be empty or None"));
+            assertTrue(listError.getCause() instanceof BaseError);
+        }
+
+        @Test
+        @DisplayName("Malformed workflow provider list has a validation error")
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        void testAddWorkflowsMalformedProviderList() {
+            List malformedWorkflows = List.of(List.of());
+
+            BaseError error = assertThrows(BaseError.class,
+                    () -> resourceMgr.addWorkflows(malformedWorkflows, null));
+
+            assertEquals(StatusCode.RESOURCE_PROVIDER_INVALID.getCode(), error.getCode());
+            assertTrue(error.getMessage().contains("invalid provider format at idx 0: "
+                    + "expected tuple[WorkflowCard, Callable], got list (length=0)"));
+        }
+
+        @Test
+        @DisplayName("Workflow provider id validation preserves its cause")
+        void testAddWorkflowInvalidIdPreservesCause() {
+            WorkflowCard card = new WorkflowCard("", "workflow");
+            ResourceMgr.WorkflowEntry entry = new ResourceMgr.WorkflowEntry(card, () -> null);
+
+            BaseError error = assertThrows(BaseError.class,
+                    () -> resourceMgr.addWorkflows(List.of(entry), null));
+
+            assertEquals(StatusCode.RESOURCE_PROVIDER_INVALID.getCode(), error.getCode());
+            assertTrue(error.getCause() instanceof BaseError);
+        }
     }
 
     // ========== Tool Tag Isolation Tests ==========
@@ -223,12 +306,18 @@ class ResourceMgrTest {
         }
 
         @Test
-        @DisplayName("Add duplicate agent replaces existing registration")
+        @DisplayName("Add duplicate agent returns an error and keeps existing registration")
         void testAddDuplicateAgent() {
             AgentCard card = AgentCard.builder().id("agent1").name("Agent One").build();
-            resourceMgr.addAgent(card, () -> "agent_instance", null);
-            Result<?> result = resourceMgr.addAgent(card, () -> "agent_instance2", null);
-            assertTrue(result.isOk());
+            Result<?> first = resourceMgr.addAgent(card, () -> "agent_instance", null);
+            Result<?> duplicate = resourceMgr.addAgent(card, () -> "agent_instance2", null);
+
+            assertTrue(first.isOk());
+            assertTrue(duplicate.isError());
+            assertTrue(duplicate.getError() instanceof BaseError);
+            BaseError error = (BaseError) duplicate.getError();
+            assertEquals("resource already exist", error.getParams().get("reason"));
+            assertEquals("agent_instance", resourceMgr.getAgent("agent1"));
         }
 
         @Test
@@ -260,6 +349,14 @@ class ResourceMgrTest {
             List<String> tags = resourceMgr.getResourceTag("tagged_tool");
             assertNotNull(tags);
             assertTrue(tags.contains("my_tag"));
+        }
+
+        @Test
+        @DisplayName("Get resources by tag omits ids without resource cards")
+        void testGetResourceByTagOmitsMissingCards() {
+            assertTrue(resourceMgr.addResourceTag("missing_resource", "missing_tag").isOk());
+
+            assertTrue(resourceMgr.getResourceByTag("missing_tag").isEmpty());
         }
     }
 }

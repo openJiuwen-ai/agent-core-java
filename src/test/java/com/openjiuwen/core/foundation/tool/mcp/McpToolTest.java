@@ -4,8 +4,17 @@
 
 package com.openjiuwen.core.foundation.tool.mcp;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.tool.schema.McpToolInfo;
 
 import org.junit.jupiter.api.DisplayName;
@@ -213,6 +222,32 @@ class McpToolTest {
             assertNotNull(result);
             assertNotNull(client.lastArguments);
             assertTrue(client.lastArguments.isEmpty());
+        }
+
+        @Test
+        @DisplayName("McpTool reports implicit extra fields as formatting errors")
+        void testImplicitExtraFieldFailsDuringFormatting() {
+            MockMcpClient client = new MockMcpClient();
+            McpToolCard card = McpToolCard.builder()
+                    .name("add_numbers")
+                    .description("add numbers")
+                    .serverName("server")
+                    .inputParams(Map.of(
+                            "properties", Map.of(
+                                    "a", Map.of("type", "number"),
+                                    "b", Map.of("type", "number")),
+                            "required", List.of("a", "b"),
+                            "type", "object"))
+                    .build();
+            McpTool tool = new McpTool(client, card);
+
+            BaseError error = assertThrows(BaseError.class,
+                    () -> tool.invoke(Map.of("a", 1, "b", 2, "c", 3)));
+
+            assertEquals(StatusCode.TOOL_MCP_EXECUTION_ERROR.getCode(), error.getCode());
+            assertTrue(error.getMessage().contains("format data with schema failed"));
+            assertInstanceOf(ValidationError.class, error.getCause());
+            assertNull(client.lastCalledTool);
         }
 
         @Test

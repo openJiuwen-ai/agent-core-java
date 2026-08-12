@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.tool.mcp;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 
@@ -53,14 +54,57 @@ public class McpTool extends Tool {
             // Schema validation: format inputs against inputParams if defined
             Map<String, Object> inputParams = card.getInputParams();
             if (inputParams != null && !inputParams.isEmpty()) {
-                arguments = SchemaUtils.formatWithSchema(arguments, inputParams);
+                arguments = formatArguments(arguments, inputParams);
             }
             Object result = mcpClient.callTool(card.getName(), arguments);
             return Map.of("result", result);
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_EXECUTION_ERROR, "reason", e.getMessage(), "method",
-                    "invoke", "card", card.toString());
+            String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            throw ErrorHelper.buildError(StatusCode.TOOL_MCP_EXECUTION_ERROR, null, null, e,
+                    Map.of("reason", reason, "method", "invoke", "card", card.toString()));
         }
+    }
+
+    /**
+     * Formats MCP arguments while preserving Python's formatting-stage error for undeclared extra fields.
+     *
+     * @param arguments raw MCP arguments
+     * @param inputParams MCP input schema
+     * @return formatted MCP arguments
+     * @since 0.1.14
+     */
+    private static Map<String, Object> formatArguments(Map<String, Object> arguments,
+            Map<String, Object> inputParams) {
+        try {
+            return SchemaUtils.formatWithSchema(arguments, inputParams);
+        } catch (ValidationError error) {
+            if (!isImplicitAdditionalPropertyError(error, inputParams)) {
+                throw error;
+            }
+            Throwable cause = error.getCause();
+            throw new ValidationError(StatusCode.SCHEMA_FORMAT_INVALID, null, null, error,
+                    Map.of("reason", cause.getMessage(), "data", String.valueOf(arguments)));
+        }
+    }
+
+    /**
+     * Checks whether validation rejected an extra field under an implicit additional-property policy.
+     *
+     * @param error schema validation error
+     * @param inputParams MCP input schema
+     * @return true when Python reports the failure during formatting
+     * @since 0.1.14
+     */
+    private static boolean isImplicitAdditionalPropertyError(ValidationError error,
+            Map<String, Object> inputParams) {
+        if (inputParams.containsKey("additionalProperties")) {
+            return false;
+        }
+        Throwable cause = error.getCause();
+        return error.getCode() == StatusCode.SCHEMA_VALIDATE_INVALID.getCode()
+                && cause instanceof IllegalArgumentException
+                && cause.getMessage() != null
+                && cause.getMessage().startsWith("Unexpected keyword argument:");
     }
 
     /**

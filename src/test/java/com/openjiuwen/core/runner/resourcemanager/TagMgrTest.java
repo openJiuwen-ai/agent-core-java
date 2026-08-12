@@ -2,8 +2,14 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.base.TagUpdateStrategy;
@@ -110,6 +116,26 @@ class TagMgrTest {
         // tag1 should no longer map to res1
         List<String> tag1Resources = tagMgr.getTagResources("tag1");
         assertFalse(tag1Resources.contains("res1"));
+    }
+
+    @Test
+    @DisplayName("removeResourceTags validates missing tags atomically")
+    void testRemoveResourceTagsMissingTagIsAtomic() {
+        BaseError error = assertThrows(BaseError.class,
+                () -> tagMgr.removeResourceTags("res1", List.of("missing", "tag1"), false));
+
+        assertEquals(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR.getCode(), error.getCode());
+        assertTrue(error.getMessage().contains("Tag does not exist"));
+        assertEquals(Set.of("tag1", "tag2"), new HashSet<>(tagMgr.getResourcesTags("res1")));
+    }
+
+    @Test
+    @DisplayName("removeResourceTags removes resource mapping when the last tag is removed")
+    void testRemoveResourceTagsRemovesEmptyResource() {
+        tagMgr.removeResourceTags("res1", List.of("tag1", "tag2"), false);
+
+        assertFalse(tagMgr.hasResource("res1"));
+        assertNull(tagMgr.getResourcesTags("res1"));
     }
 
     @Test

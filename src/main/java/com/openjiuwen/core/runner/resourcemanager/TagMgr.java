@@ -223,6 +223,14 @@ public class TagMgr {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
                         resourceId, "tags", String.valueOf(tags), "reason", "Resource does not exist");
             }
+            Set<String> currentTags = resourceTags.get(resourceId);
+            if (!skipIfNotExists) {
+                List<String> missingTags = tagsToRemove.stream().filter(tag -> !currentTags.contains(tag)).toList();
+                if (!missingTags.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
+                            resourceId, "tags", missingTags.toString(), "reason", "Tag does not exist");
+                }
+            }
             return doRemoveResourceTags(resourceId, tagsToRemove);
         } finally {
             lock.unlock();
@@ -445,14 +453,12 @@ public class TagMgr {
     private List<String> doRemoveResource(String resourceId) {
         Set<String> tags = resourceTags.remove(resourceId);
         List<String> removedTags = new ArrayList<>();
-        if (tags != null) {
-            for (String tag : tags) {
-                Set<String> res = tagToResource.get(tag);
-                if (res != null) {
-                    res.remove(resourceId);
-                }
-                removedTags.add(tag);
-            }
+        if (tags == null) {
+            return removedTags;
+        }
+        for (String tag : tags) {
+            removeResourceFromTag(resourceId, tag);
+            removedTags.add(tag);
         }
         return removedTags;
     }
@@ -468,11 +474,12 @@ public class TagMgr {
     private List<String> doRemoveResourceTags(String resourceId, List<String> tagsToRemove) {
         Set<String> currentTags = resourceTags.get(resourceId);
         for (String tag : tagsToRemove) {
-            currentTags.remove(tag);
-            Set<String> res = tagToResource.get(tag);
-            if (res != null) {
-                res.remove(resourceId);
+            if (currentTags.remove(tag)) {
+                removeResourceFromTag(resourceId, tag);
             }
+        }
+        if (currentTags.isEmpty()) {
+            resourceTags.remove(resourceId);
         }
         return new ArrayList<>(currentTags);
     }
@@ -487,16 +494,50 @@ public class TagMgr {
     private List<String> doRemoveTag(String tag) {
         Set<String> affectedResources = tagToResource.remove(tag);
         List<String> affected = new ArrayList<>();
-        if (affectedResources != null) {
-            for (String resourceId : affectedResources) {
-                Set<String> tags = resourceTags.get(resourceId);
-                if (tags != null) {
-                    tags.remove(tag);
-                }
-                affected.add(resourceId);
-            }
+        if (affectedResources == null) {
+            return affected;
+        }
+        for (String resourceId : affectedResources) {
+            removeTagFromResource(resourceId, tag);
+            affected.add(resourceId);
         }
         return affected;
+    }
+
+    /**
+     * Removes one resource from a tag's reverse mapping.
+     *
+     * @param resourceId resourceId
+     * @param tag tag
+     * @since 0.1.14
+     */
+    private void removeResourceFromTag(String resourceId, String tag) {
+        Set<String> resources = tagToResource.get(tag);
+        if (resources == null) {
+            return;
+        }
+        resources.remove(resourceId);
+        if (resources.isEmpty() && !Tag.GLOBAL.equals(tag)) {
+            tagToResource.remove(tag);
+        }
+    }
+
+    /**
+     * Removes one tag from a resource's forward mapping.
+     *
+     * @param resourceId resourceId
+     * @param tag tag
+     * @since 0.1.14
+     */
+    private void removeTagFromResource(String resourceId, String tag) {
+        Set<String> tags = resourceTags.get(resourceId);
+        if (tags == null) {
+            return;
+        }
+        tags.remove(tag);
+        if (tags.isEmpty()) {
+            resourceTags.remove(resourceId);
+        }
     }
 
     /**
