@@ -54,6 +54,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -1483,7 +1488,8 @@ public class ReActAgent extends BaseAgent {
                 try {
                     Thread.sleep(retryDelayMs);
                 } catch (InterruptedException ie) {
-                    break;
+                    Thread.currentThread().interrupt();
+                    return Optional.empty();
                 }
             }
         }
@@ -1491,9 +1497,28 @@ public class ReActAgent extends BaseAgent {
         // 流式重试全部返回空（非异常）→ 模型可能不支持流式，回退到非流式并包装为流式发送
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
             + " attempts, falling back to non-stream with stream wrapping");
-        // 发送心跳，告知客户端正在切换为非流式模式，防止 callModel 阻塞期间超时
+        // 先同步发送一次心跳，确保客户端立即收到切换通知
         writeStreamHeartbeat(agentSession, "正在以非流式模式获取响应，请稍候...");
-        AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
+        // 周期性心跳：在 callModel 阻塞期间按 HEARTBEAT_INTERVAL_MS 间隔发送，防止客户端超时
+        ScheduledExecutorService heartbeatExecutor = new ScheduledThreadPoolExecutor(
+            1, r -> new Thread(r, "react-heartbeat-" + agentSession.getSessionId()),
+            new ThreadPoolExecutor.AbortPolicy());
+        ((ScheduledThreadPoolExecutor) heartbeatExecutor).setRemoveOnCancelPolicy(true);
+        ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
+            () -> writeStreamHeartbeat(agentSession, "正在以非流式模式获取响应，请稍候..."),
+            HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        AssistantMessage aiMessage;
+        try {
+            aiMessage = callModel(ctx, context, systemMessages, tools);
+        } finally {
+            heartbeat.cancel(false);
+            heartbeatExecutor.shutdown();
+            try {
+                heartbeatExecutor.awaitTermination(1, TimeUnit.SECONDS);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        }
         if (aiMessage != null) {
             // 有 tool_call 时：content 必须通过流式发送（因为循环会 continue，writeStreamResult 不会发送此轮 content）
             // 无 tool_call 时：content 由 writeStreamResult 统一发送，避免重复
@@ -1666,10 +1691,15 @@ public class ReActAgent extends BaseAgent {
         if (agentSession == null) {
             return;
         }
-        Map<String, Object> heartbeat = new HashMap<String, Object>();
-        heartbeat.put("content", message);
-        heartbeat.put("result_type", "progress");
-        agentSession.writeStream(new OutputSchema("progress", 0, heartbeat));
+        try {
+            Map<String, Object> heartbeat = new HashMap<String, Object>();
+            heartbeat.put("content", message);
+            heartbeat.put("result_type", "progress");
+            agentSession.writeStream(new OutputSchema("progress", 0, heartbeat));
+        } catch (RuntimeException e) {
+            // emitter 可能已关闭，静默忽略，避免中断心跳定时器线程
+            Loggers.AGENT.debug("Heartbeat write skipped: {}", e.getMessage());
+        }
     }
 
     /**
