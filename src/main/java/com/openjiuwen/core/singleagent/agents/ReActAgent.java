@@ -54,7 +54,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -92,6 +91,9 @@ public class ReActAgent extends BaseAgent {
 
     // SSE 心跳间隔（毫秒），在回退非流式调用前发送，防止客户端超时断开
     private static final long HEARTBEAT_INTERVAL_MS = 5000L;
+
+    // 非流式回退时的心跳提示消息
+    private static final String HEARTBEAT_NON_STREAM_MSG = "正在以非流式模式获取响应，请稍候...";
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -1498,14 +1500,14 @@ public class ReActAgent extends BaseAgent {
         Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
             + " attempts, falling back to non-stream with stream wrapping");
         // 先同步发送一次心跳，确保客户端立即收到切换通知
-        writeStreamHeartbeat(agentSession, "正在以非流式模式获取响应，请稍候...");
+        writeStreamHeartbeat(agentSession, HEARTBEAT_NON_STREAM_MSG);
         // 周期性心跳：在 callModel 阻塞期间按 HEARTBEAT_INTERVAL_MS 间隔发送，防止客户端超时
-        ScheduledExecutorService heartbeatExecutor = new ScheduledThreadPoolExecutor(
+        ScheduledThreadPoolExecutor heartbeatExecutor = new ScheduledThreadPoolExecutor(
             1, r -> new Thread(r, "react-heartbeat-" + agentSession.getSessionId()),
             new ThreadPoolExecutor.AbortPolicy());
-        ((ScheduledThreadPoolExecutor) heartbeatExecutor).setRemoveOnCancelPolicy(true);
+        heartbeatExecutor.setRemoveOnCancelPolicy(true);
         ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
-            () -> writeStreamHeartbeat(agentSession, "正在以非流式模式获取响应，请稍候..."),
+            () -> writeStreamHeartbeat(agentSession, HEARTBEAT_NON_STREAM_MSG),
             HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
         AssistantMessage aiMessage;
         try {
@@ -1634,38 +1636,35 @@ public class ReActAgent extends BaseAgent {
                         .build();
                 writeAssistantStreamChunk(agentSession, chunk, chunkIndex++);
             }
-
-            // 发送 tool_calls（如果有），确保正文先于工具调用发送
-            if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
-                AssistantMessageChunk toolChunk = AssistantMessageChunk.builder()
-                        .toolCalls(aiMessage.getToolCalls())
-                        .build();
-                writeAssistantStreamChunk(agentSession, toolChunk, chunkIndex);
-            }
-
-            // 发送 usage_metadata（如果有）
-            if (aiMessage.getUsageMetadata() != null) {
-                AssistantMessageChunk usageChunk = AssistantMessageChunk.builder()
-                        .usageMetadata(aiMessage.getUsageMetadata())
-                        .build();
-                writeAssistantStreamChunk(agentSession, usageChunk, chunkIndex + 1);
-            }
+            // 发送 tool_calls 和 usage_metadata，确保正文先于工具调用发送
+            writeToolCallsAndUsage(agentSession, aiMessage, chunkIndex);
             return;
         }
 
         // 不发送 content（由 writeStreamResult 统一负责），仅发送 tool_calls 和 usage_metadata
-        int index = startIndex;
+        writeToolCallsAndUsage(agentSession, aiMessage, startIndex);
+    }
+
+    /**
+     * 发送 tool_calls 和 usage_metadata 为流式 chunk。
+     *
+     * @param agentSession agentSession
+     * @param aiMessage non-stream AssistantMessage
+     * @param startIndex tool_calls 的起始 chunk index；usage_metadata 使用 startIndex + 1
+     * @since 0.1.7
+     */
+    private void writeToolCallsAndUsage(AgentSessionApi agentSession, AssistantMessage aiMessage, int startIndex) {
         if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
             AssistantMessageChunk toolChunk = AssistantMessageChunk.builder()
                     .toolCalls(aiMessage.getToolCalls())
                     .build();
-            writeAssistantStreamChunk(agentSession, toolChunk, index++);
+            writeAssistantStreamChunk(agentSession, toolChunk, startIndex);
         }
         if (aiMessage.getUsageMetadata() != null) {
             AssistantMessageChunk usageChunk = AssistantMessageChunk.builder()
                     .usageMetadata(aiMessage.getUsageMetadata())
                     .build();
-            writeAssistantStreamChunk(agentSession, usageChunk, index);
+            writeAssistantStreamChunk(agentSession, usageChunk, startIndex + 1);
         }
     }
 

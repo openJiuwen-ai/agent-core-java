@@ -493,6 +493,92 @@ class ReActAgentStreamDegradationTest {
         assertThat(lastMsg).contains("非流式");
     }
 
+    /**
+     * 模拟长耗时（12秒）非流式回退场景，验证心跳按 HEARTBEAT_INTERVAL_MS(5s) 周期性发送。
+     *
+     * 场景：流式返回空 → 回退非流式 → callModel 阻塞 12 秒 → 响应到达
+     * 验证：阻塞期间收到 ≥2 个心跳，且相邻心跳间隔在 [3s, 8s] 范围内（容忍调度抖动）
+     */
+    @Test
+    void heartbeatSentPeriodicallyDuringLongCallModel() throws Exception {
+        ReActAgent agent = newAgent("periodic-heartbeat");
+        agent.configure(ReActAgentConfig.builder()
+                .maxIterations(3)
+                .streamMaxRetries(0)
+                .streamRetryDelayMs(0)
+                .build());
+        Model model = mock(Model.class);
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyIterator());
+
+        // 用 latch 阻塞 invoke，模拟 12 秒长耗时
+        java.util.concurrent.CountDownLatch invokeStarted = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch invokeProceed = new java.util.concurrent.CountDownLatch(1);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    invokeStarted.countDown();
+                    invokeProceed.await();
+                    return AssistantMessage.builder().content("periodic content").build();
+                });
+        agent.setLlm(model);
+
+        AgentSessionApi session =
+            new AgentSessionApi("periodic-heartbeat-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
+
+        // 线程安全收集：记录每个 progress 事件的接收时间戳
+        java.util.List<Long> heartbeatTimestamps = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.CountDownLatch consumerReady = new java.util.concurrent.CountDownLatch(1);
+        Thread consumerThread = new Thread(() -> {
+            consumerReady.countDown();
+            session.streamOutput(item -> {
+                if (item instanceof OutputSchema output && "progress".equals(output.getType())) {
+                    // 记录心跳到达的相对时间戳（毫秒）
+                    heartbeatTimestamps.add(System.currentTimeMillis());
+                }
+            });
+        }, "test-consumer-periodic");
+        consumerThread.setDaemon(true);
+        consumerThread.start();
+        consumerReady.await();
+
+        // 触发流式执行
+        agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
+
+        // 等待 callModel 被调用（说明回退已开始，心跳已启动）
+        assertThat(invokeStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                .as("callModel should be invoked within 10s").isTrue();
+
+        // 等待 12 秒，让周期性心跳发送 2-3 次（5s 间隔）
+        Thread.sleep(12000);
+
+        // 释放 callModel 阻塞，让流完成
+        invokeProceed.countDown();
+
+        // 等待流结束
+        long deadline = System.currentTimeMillis() + 10000;
+        boolean found = false;
+        while (System.currentTimeMillis() < deadline) {
+            found = heartbeatTimestamps.size() >= 2;
+            if (found) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+
+        // 验证至少收到 2 个心跳（12 秒内，5 秒间隔应发 2-3 次）
+        assertThat(heartbeatTimestamps.size())
+                .as("12秒内应收到至少2个心跳，实际收到 " + heartbeatTimestamps.size() + " 个")
+                .isGreaterThanOrEqualTo(2);
+
+        // 验证相邻心跳间隔在 [3s, 8s] 范围内（5s ± 调度抖动）
+        for (int i = 1; i < heartbeatTimestamps.size(); i++) {
+            long intervalMs = heartbeatTimestamps.get(i) - heartbeatTimestamps.get(i - 1);
+            assertThat(intervalMs)
+                    .as("第 " + i + " 个心跳与上一个的间隔应在 [3000, 8000]ms 范围内，实际 " + intervalMs + "ms")
+                    .isBetween(3000L, 8000L);
+        }
+    }
+
     private static ReActAgent newAgent(String id) {
         ReActAgent agent = new ReActAgent(AgentCard.builder().id(id).name(id).description(id).build());
         agent.configure(ReActAgentConfig.builder()
