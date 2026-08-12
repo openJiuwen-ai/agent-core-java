@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 class SystemPromptBuilderTest {
@@ -78,5 +80,56 @@ class SystemPromptBuilderTest {
 
         assertThat(builder.getMode()).isEqualTo("full");
         assertThat(builder.build()).isEqualTo("identity\n\nmemory file");
+    }
+
+    /**
+     * 模拟 sections map 中混入 null 值（可能由并发修改或反射注入导致），
+     * 验证 build() 不会抛出 NPE，而是跳过 null section 继续构建。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildSkipsNullSectionWithoutNpe() throws Exception {
+        SystemPromptBuilder builder = new SystemPromptBuilder("cn", "full");
+        builder.addSection(new PromptSection("identity", Map.of("cn", "identity"), 10));
+        builder.addSection(new PromptSection("tools", Map.of("cn", "tools"), 20));
+
+        // 通过反射注入 null 值到 sections map
+        Field sectionsField = SystemPromptBuilder.class.getDeclaredField("sections");
+        sectionsField.setAccessible(true);
+        Map<String, PromptSection> sections =
+            (Map<String, PromptSection>) sectionsField.get(builder);
+        // 使用新的 LinkedHashMap 模拟并发场景下可能出现的 null 值
+        Map<String, PromptSection> tampered = new LinkedHashMap<String, PromptSection>();
+        tampered.put("identity", new PromptSection("identity", Map.of("cn", "identity"), 10));
+        tampered.put("broken", null);  // 注入 null
+        tampered.put("tools", new PromptSection("tools", Map.of("cn", "tools"), 20));
+        sectionsField.set(builder, tampered);
+
+        // build() 应跳过 null section，不抛出 NPE
+        String result = builder.build();
+        assertThat(result).isEqualTo("identity\n\ntools");
+    }
+
+    /**
+     * 模拟 minimal 模式下 sections map 中混入 null 值，
+     * 验证 getSectionsForBuild() 不会抛出 NPE。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void minimalModeSkipsNullSectionWithoutNpe() throws Exception {
+        SystemPromptBuilder builder = new SystemPromptBuilder("cn", "minimal");
+        builder.addSection(new PromptSection("identity", Map.of("cn", "identity"), 10));
+
+        // 通过反射注入 null 值
+        Field sectionsField = SystemPromptBuilder.class.getDeclaredField("sections");
+        sectionsField.setAccessible(true);
+        Map<String, PromptSection> tampered = new LinkedHashMap<String, PromptSection>();
+        tampered.put("identity", new PromptSection("identity", Map.of("cn", "identity"), 10));
+        tampered.put("broken", null);
+        sectionsField.set(builder, tampered);
+
+        // minimal 模式下应跳过 null，仅输出 identity
+        String result = builder.build();
+        assertThat(result).isEqualTo("identity");
     }
 }

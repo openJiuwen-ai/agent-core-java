@@ -82,6 +82,12 @@ public class ReActAgent extends BaseAgent {
     private static final int IDENTITY_SECTION_PRIORITY = 10;
     private static final int SKILLS_SECTION_PRIORITY = 90;
 
+    // 非流式→流式适配器的分块大小（字符数）
+    private static final int STREAM_CHUNK_SIZE = 200;
+
+    // SSE 心跳间隔（毫秒），在回退非流式调用前发送，防止客户端超时断开
+    private static final long HEARTBEAT_INTERVAL_MS = 5000L;
+
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
     private Model llm;
@@ -1344,10 +1350,9 @@ public class ReActAgent extends BaseAgent {
                 Loggers.AGENT.info("ReAct stream iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
                 injectPendingSteering(ctx, context);
-                AssistantMessage aiMessage = callModelStream(ctx, context, systemMessages, tools, agentSession);
-                if (aiMessage == null) {
-                    aiMessage = callModel(ctx, context, systemMessages, tools);
-                }
+                // 流式失败时重试（仅空响应）；异常时不重试，空响应回退非流式并包装为流式发送
+                AssistantMessage aiMessage = callModelStreamWithRetry(ctx, context, systemMessages, tools,
+                        agentSession).orElse(null);
                 logLlmResponse(aiMessage);
                 AgentCallbackContext.ForceFinishRequest finishAfterModel = ctx.consumeForceFinish();
                 if (finishAfterModel != null) {
@@ -1356,7 +1361,8 @@ public class ReActAgent extends BaseAgent {
                     return finishAfterModel.getResult();
                 }
                 if (aiMessage == null) {
-                    Map<String, Object> result = buildErrorResult("Model stream skipped without terminal result");
+                    Map<String, Object> result =
+                        buildErrorResult("Model stream failed after retries, no terminal result");
                     invokeInputs.setResult(result);
                     return result;
                 }
@@ -1440,6 +1446,64 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
+     * 带重试的流式模型调用。流式请求返回空时按配置重试；若重试仍为空，
+     * 回退为非流式调用并包装为流式 chunk 发送。流式异常时不重试（避免部分 chunk 重复发送）。
+     *
+     * @param ctx ctx
+     * @param context context
+     * @param systemMessages systemMessages
+     * @param tools tools
+     * @param agentSession agentSession
+     * @return the result, or Optional.empty() if stream error or all retries exhausted
+     * @since 0.1.7
+     */
+    private Optional<AssistantMessage> callModelStreamWithRetry(AgentCallbackContext ctx, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, AgentSessionApi agentSession) {
+        int maxRetries = config.getStreamMaxRetries();
+        long retryDelayMs = config.getStreamRetryDelayMs();
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                AssistantMessage aiMessage = callModelStream(ctx, context, systemMessages, tools, agentSession);
+                if (aiMessage != null) {
+                    return Optional.of(aiMessage);
+                }
+                Loggers.AGENT.warning("ReAct stream returned empty (attempt "
+                    + (attempt + 1) + "/" + (maxRetries + 1) + ")");
+            } catch (IllegalStateException e) {
+                // 异常时已可能有部分 chunk 被发送，不重试避免重复发送
+                Loggers.AGENT.error("ReAct stream error (attempt "
+                    + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: " + e.getMessage());
+                return Optional.empty();
+            }
+
+            if (attempt < maxRetries && retryDelayMs > 0) {
+                // 发送心跳，防止客户端在重试等待期间超时断开
+                writeStreamHeartbeat(agentSession, "流式响应为空，正在重试 (" + (attempt + 2) + "/" + (maxRetries + 1) + ")");
+                try {
+                    Thread.sleep(retryDelayMs);
+                } catch (InterruptedException ie) {
+                    break;
+                }
+            }
+        }
+
+        // 流式重试全部返回空（非异常）→ 模型可能不支持流式，回退到非流式并包装为流式发送
+        Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
+            + " attempts, falling back to non-stream with stream wrapping");
+        // 发送心跳，告知客户端正在切换为非流式模式，防止 callModel 阻塞期间超时
+        writeStreamHeartbeat(agentSession, "正在以非流式模式获取响应，请稍候...");
+        AssistantMessage aiMessage = callModel(ctx, context, systemMessages, tools);
+        if (aiMessage != null) {
+            // 有 tool_call 时：content 必须通过流式发送（因为循环会 continue，writeStreamResult 不会发送此轮 content）
+            // 无 tool_call 时：content 由 writeStreamResult 统一发送，避免重复
+            boolean hasToolCalls = aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty();
+            writeNonStreamAsStreamChunks(agentSession, aiMessage, 0, hasToolCalls);
+        }
+        return Optional.ofNullable(aiMessage);
+    }
+
+    /**
      * preRunStreamSession.
      * 
      * @param agentSession agentSession
@@ -1516,10 +1580,75 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * Write a stream error chunk for a checked/unchecked Exception.
+     * 将非流式 AssistantMessage 的 content 拆分为多个 chunk，通过 SSE 逐步发送。
+     * 确保即使获得非流式响应，用户也能收到流式正文。
      *
-     * @param agentSession session to write to; ignored when null
-     * @param exception stream failure
+     * @param agentSession agentSession
+     * @param aiMessage non-stream AssistantMessage
+     * @param startIndex starting chunk index
+     * @param shouldSendContent whether to send content as stream chunks;
+     *                          if false, only tool_calls and usage_metadata are sent
+     * @since 0.1.7
+     */
+    private void writeNonStreamAsStreamChunks(AgentSessionApi agentSession, AssistantMessage aiMessage,
+            int startIndex, boolean shouldSendContent) {
+        if (agentSession == null || aiMessage == null) {
+            return;
+        }
+
+        String content = toText(aiMessage.getContent());
+        if (shouldSendContent && content != null && !content.isBlank()) {
+            // 按固定长度分块
+            int chunkIndex = startIndex;
+            for (int i = 0; i < content.length(); i += STREAM_CHUNK_SIZE) {
+                int end = Math.min(i + STREAM_CHUNK_SIZE, content.length());
+                String chunkContent = content.substring(i, end);
+
+                AssistantMessageChunk chunk = AssistantMessageChunk.builder()
+                        .content(chunkContent)
+                        .build();
+                writeAssistantStreamChunk(agentSession, chunk, chunkIndex++);
+            }
+
+            // 发送 tool_calls（如果有），确保正文先于工具调用发送
+            if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+                AssistantMessageChunk toolChunk = AssistantMessageChunk.builder()
+                        .toolCalls(aiMessage.getToolCalls())
+                        .build();
+                writeAssistantStreamChunk(agentSession, toolChunk, chunkIndex);
+            }
+
+            // 发送 usage_metadata（如果有）
+            if (aiMessage.getUsageMetadata() != null) {
+                AssistantMessageChunk usageChunk = AssistantMessageChunk.builder()
+                        .usageMetadata(aiMessage.getUsageMetadata())
+                        .build();
+                writeAssistantStreamChunk(agentSession, usageChunk, chunkIndex + 1);
+            }
+            return;
+        }
+
+        // 不发送 content（由 writeStreamResult 统一负责），仅发送 tool_calls 和 usage_metadata
+        int index = startIndex;
+        if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+            AssistantMessageChunk toolChunk = AssistantMessageChunk.builder()
+                    .toolCalls(aiMessage.getToolCalls())
+                    .build();
+            writeAssistantStreamChunk(agentSession, toolChunk, index++);
+        }
+        if (aiMessage.getUsageMetadata() != null) {
+            AssistantMessageChunk usageChunk = AssistantMessageChunk.builder()
+                    .usageMetadata(aiMessage.getUsageMetadata())
+                    .build();
+            writeAssistantStreamChunk(agentSession, usageChunk, index);
+        }
+    }
+
+    /**
+     * writeStreamError.
+     *
+     * @param agentSession agentSession
+     * @param exception exception
      * @since 0.1.7
      */
     private void writeStreamError(AgentSessionApi agentSession, Exception exception) {
@@ -1527,10 +1656,27 @@ public class ReActAgent extends BaseAgent {
     }
 
     /**
-     * Write a stream error chunk for any Throwable (including Error from worker threads).
+     * 发送 SSE 心跳事件，防止客户端在长时间等待（重试/非流式回退）期间超时断开。
      *
-     * @param agentSession session to write to; ignored when null
-     * @param throwable stream failure
+     * @param agentSession agentSession
+     * @param message 心跳消息
+     * @since 0.1.7
+     */
+    private void writeStreamHeartbeat(AgentSessionApi agentSession, String message) {
+        if (agentSession == null) {
+            return;
+        }
+        Map<String, Object> heartbeat = new HashMap<String, Object>();
+        heartbeat.put("content", message);
+        heartbeat.put("result_type", "progress");
+        agentSession.writeStream(new OutputSchema("progress", 0, heartbeat));
+    }
+
+    /**
+     * writeStreamThrowable.
+     *
+     * @param agentSession agentSession
+     * @param throwable throwable
      * @since 0.1.7
      */
     private void writeStreamThrowable(AgentSessionApi agentSession, Throwable throwable) {
