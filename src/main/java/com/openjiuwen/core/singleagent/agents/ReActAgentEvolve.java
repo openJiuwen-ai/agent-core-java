@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -60,6 +61,7 @@ public class ReActAgentEvolve extends BaseAgent {
     private Model llm;
     private LLMCallOperator llmOp;
     private ToolCallOperator toolOp;
+    private boolean isKvReleaseWarningLogged;
 
     /**
      * ReActAgentEvolve.
@@ -134,6 +136,7 @@ public class ReActAgentEvolve extends BaseAgent {
         // Update context engine if config changed
         if (!safeEquals(oldConfig.getContextEngineConfig(), newConfig.getContextEngineConfig())) {
             this.contextEngine = new ContextEngine(newConfig.getContextEngineConfig());
+            this.isKvReleaseWarningLogged = false;
         }
 
         // Update memory scope if changed
@@ -289,8 +292,8 @@ public class ReActAgentEvolve extends BaseAgent {
      */
     private AssistantMessage prepareModelCall(AgentCallbackContext ctx, String userInput, ModelContext context,
             List<ToolInfo> tools) {
-        ContextWindow contextWindow =
-            context.getContextWindow(List.of(), tools != null ? tools : null, (Integer) null, (Integer) null);
+        ContextWindow contextWindow = context.getContextWindow(List.of(), tools != null ? tools : null,
+                null, null, buildContextWindowKwargs());
 
         List<Object> skillMessages = new ArrayList<>(getSkillMessages());
         List<BaseMessage> historyMessages = contextWindow.getMessages();
@@ -300,22 +303,83 @@ public class ReActAgentEvolve extends BaseAgent {
 
         ctx.setInputs(ModelCallInputs.builder().messages(allMessages).tools(contextWindow.getToolList()).build());
 
-        return railedModelCall(ctx, userInput, ctx.getSession()).orElse(null);
+        return railedModelCall(ctx, userInput, ctx.getSession(), buildKvCacheInvokeKwargs(ctx)).orElse(null);
+    }
+
+    /**
+     * Build kwargs for {@link ModelContext#getContextWindow}, injecting
+     * {@code model=llm} when KV cache release is enabled and the underlying
+     * client supports it.
+     * <p>
+     * Mirrors Python's {@code react_agent.py} KV cache release kwargs block:
+     * reads {@code ContextEngineConfig.enable_kv_cache_release}, checks
+     * {@code llm.supports_kv_cache_release()}, logs a one-time warning when
+     * enabled but unsupported, and only injects {@code model} when both hold.
+     *
+     * @return kwargs map (possibly containing {@code "model"})
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildContextWindowKwargs() {
+        Map<String, Object> kwargs = new HashMap<>();
+        if (llm == null) {
+            return kwargs;
+        }
+        ContextEngineConfig ceConfig = config.getContextEngineConfig();
+        boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
+        boolean isKvReleaseSupported = llm.supportsKvCacheRelease();
+
+        if (isKvReleaseEnabled && !isKvReleaseSupported && !isKvReleaseWarningLogged) {
+            Loggers.AGENT.warning("ContextEngineConfig.enable_kv_cache_release is True, "
+                    + "but the current LLM does not support KV cache release; "
+                    + "KV cache release will not take effect.");
+            isKvReleaseWarningLogged = true;
+        }
+
+        if (isKvReleaseEnabled && isKvReleaseSupported) {
+            kwargs.put("model", llm);
+        }
+        return kwargs;
+    }
+
+    /**
+     * Build extra kwargs for {@code LLMCallOperator.invoke} related to KV cache
+     * behavior (session_id, enable_cache_sharing).
+     * <p>
+     * Mirrors Python's {@code react_agent.py:760-767}: calls
+     * {@code llm.build_kv_cache_invoke_kwargs(session, enable_kv_cache_release)}
+     * and returns the resulting map. Returns an empty map when the underlying
+     * client is not an InferenceAffinity client.
+     *
+     * @param ctx callback context providing the session
+     * @return extra kwargs map (possibly containing {@code session_id} and
+     *     {@code enable_cache_sharing}); never {@code null}
+     * @since 0.1.15
+     */
+    private Map<String, Object> buildKvCacheInvokeKwargs(AgentCallbackContext ctx) {
+        if (llm == null) {
+            return Map.of();
+        }
+        ContextEngineConfig ceConfig = config.getContextEngineConfig();
+        boolean isKvReleaseEnabled = ceConfig != null && ceConfig.isEnableKvCacheRelease();
+        return new LinkedHashMap<>(llm.buildKvCacheInvokeKwargs(ctx.getSession(), isKvReleaseEnabled));
     }
 
     /**
      * Execute LLM call via Operator with rail hooks.
-     * 
+     *
      * @param ctx ctx
      * @param userInput userInput
      * @param session session
+     * @param extraKwargs extra kwargs to pass through to {@code LLMCallOperator.invoke}
+     *     (e.g. {@code session_id}, {@code enable_cache_sharing}); may be
+     *     {@code null}
      * @return the result
-     * @since 0.1.7
+     * @since 0.1.15
      */
-    private Optional<AssistantMessage> railedModelCall(AgentCallbackContext ctx, String userInput, Session session) {
+    private Optional<AssistantMessage> railedModelCall(AgentCallbackContext ctx, String userInput, Session session,
+            Map<String, Object> extraKwargs) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
                 AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
-                    LLMCallOperator op = getLlmOp();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
                     Map<String, Object> invokeInputs = new HashMap<>();
@@ -326,7 +390,11 @@ public class ReActAgentEvolve extends BaseAgent {
                     if (inputs.getTools() != null && !inputs.getTools().isEmpty()) {
                         kwargs.put("tools", inputs.getTools());
                     }
+                    if (extraKwargs != null && !extraKwargs.isEmpty()) {
+                        kwargs.putAll(extraKwargs);
+                    }
 
+                    LLMCallOperator op = getLlmOp();
                     AssistantMessage aiMessage = (AssistantMessage) op.invoke(invokeInputs, session, kwargs);
                     inputs.setResponse(aiMessage);
                     return aiMessage;

@@ -263,13 +263,28 @@ public class ReActAgentConfig {
 
     /**
      * Configure context-engine processors.
-     * 
+     *
      * @param processors processors to install
      * @return this config
      * @since 0.1.7
      */
     public ReActAgentConfig configureContextProcessors(List<Object> processors) {
         this.contextProcessors = processors;
+        return this;
+    }
+
+    /**
+     * Override the model client configuration built by
+     * {@link #configureModelClient(String, String, String, String, boolean)}.
+     * Use to inject fields not exposed by {@code configureModelClient}
+     * (e.g. {@code timeout}, {@code maxRetries}, {@code clientId}).
+     *
+     * @param modelClientConfig the new model client configuration
+     * @return this config
+     * @since 0.1.16
+     */
+    public ReActAgentConfig setModelClientConfig(ModelClientConfig modelClientConfig) {
+        this.modelClientConfig = modelClientConfig;
         return this;
     }
 

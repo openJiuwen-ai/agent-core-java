@@ -10,12 +10,12 @@ import com.openjiuwen.core.foundation.llm.model_clients.InferenceAffinityModelCl
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -125,19 +125,14 @@ public class InferenceAffinityModel {
 
     /**
      * release.
-     * 
-     * @param sessionId sessionId
-     * @param messages messages
-     * @param messagesReleasedIndex messagesReleasedIndex
-     * @param tools tools
-     * @param toolsReleasedIndex toolsReleasedIndex
-     * @param model model
+     *
+     * @param request bundle of sessionId, previous-window messages/tools, their
+     *                first modified indices, and an optional model name override
      * @return the result
      * @throws Exception Exception
      * @since 0.1.7
      */
-    public boolean release(String sessionId, List<?> messages, int messagesReleasedIndex, List<?> tools,
-            Integer toolsReleasedIndex, String model) throws Exception {
-        return client.release(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex, model);
+    public boolean release(KvCacheReleaseRequest request) throws Exception {
+        return client.release(request);
     }
 }

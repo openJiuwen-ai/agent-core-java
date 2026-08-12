@@ -9,20 +9,24 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
+import com.openjiuwen.core.foundation.llm.model_clients.InferenceAffinityModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.session.Session;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -359,5 +363,74 @@ public class Model {
             Map<String, Object> kwargs) {
         return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(messages, tools, temperature, topP, model,
                 maxTokens, stop, outputParser, timeout, kwargs));
+    }
+
+    /**
+     * Whether the underlying client supports KV cache release.
+     * <p>
+     * Mirrors Python's {@code Model.supports_kv_cache_release()}:
+     * {@code callable(getattr(self._client, "release", None))}.
+     *
+     * @return {@code true} if the underlying client can release KV cache
+     * @since 0.1.7
+     */
+    public boolean supportsKvCacheRelease() {
+        return client.supportsKvCacheRelease();
+    }
+
+    /**
+     * Release stale KV cache on the inference server.
+     * <p>
+     * Mirrors Python's {@code Model.release()}: delegates to
+     * {@code self._client.release(...)} when supported, otherwise returns
+     * {@code false}.
+     *
+     * @param request bundle of sessionId, previous-window messages/tools, their
+     *                first modified indices, and an optional model name override
+     * @return {@code true} if the release request succeeded
+     * @throws Exception on release failure
+     * @since 0.1.7
+     */
+    public boolean release(KvCacheReleaseRequest request) throws Exception {
+        if (!supportsKvCacheRelease()) {
+            return false;
+        }
+        return client.release(request);
+    }
+
+    /**
+     * Build extra kwargs for {@code invoke}/{@code stream} related to KV cache
+     * behavior.
+     * <p>
+     * For InferenceAffinity (vLLM):
+     * <ul>
+     * <li>{@code session_id}: from {@code session.getSessionId()} when session
+     * provided</li>
+     * <li>{@code enable_cache_sharing}: follows {@code isEnableKvCacheRelease}</li>
+     * </ul>
+     * Returns an empty map when the underlying client is not an
+     * {@code InferenceAffinityModelClient}, mirroring Python's
+     * {@code Model.build_kv_cache_invoke_kwargs}.
+     *
+     * @param session session providing the session id (may be {@code null})
+     * @param isEnableKvCacheRelease whether KV cache release is enabled in
+     *     {@code ContextEngineConfig}
+     * @return extra kwargs map (possibly containing {@code session_id} and
+     *     {@code enable_cache_sharing}); empty when client does not support
+     *     KV cache release
+     * @since 0.1.15
+     */
+    public Map<String, Object> buildKvCacheInvokeKwargs(Session session, boolean isEnableKvCacheRelease) {
+        if (!(client instanceof InferenceAffinityModelClient)) {
+            return Map.of();
+        }
+        Map<String, Object> extra = new LinkedHashMap<>();
+        if (session != null) {
+            extra.put("session_id", session.getSessionId());
+        }
+        if (isEnableKvCacheRelease) {
+            extra.put("enable_cache_sharing", Boolean.TRUE);
+        }
+        return extra;
     }
 }
