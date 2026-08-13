@@ -129,13 +129,13 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 | `callback-parallel` | 回调并行触发（短生命周期） | `16` | `256` | 同步移交 |
 | `mq-server-adapter` | MQ 服务端适配器 | `8` | `128` | 有界队列 |
 | `task-manager-worker` | TaskManager 任务 worker | `16` | `512` | 同步移交（避免 parent/child 死锁） |
-| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(16, CPU 核数 * 4)`** | `128` | 有界队列 |
+| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(16, CPU 核数 * 4)`** | — | 同步移交（`SynchronousQueue` + `CallerRunsPolicy`） |
 
 模块池共性：
 
-- `corePoolSize=0`，`keepAlive=60s`，空闲线程可回收。
-- 饱和策略为 **`AbortPolicy`**（抛出 `RejectedExecutionException`），与共享池不同。
-- **同步移交** 模块在 max 线程占满前不会排队积压 Runnable，行为接近原 `CachedThreadPool` 并行语义；**有界队列** 模块则在队列中等待空槽。
+- **同步移交**（`SynchronousQueue`）：`corePoolSize=0`，按需扩到 max；饱和时 `deep-agent-stream` 用 **`CallerRunsPolicy`**，其余多为 **`AbortPolicy`**。
+- **有界队列**（`ArrayBlockingQueue`）：`corePoolSize=maxSize`，避免 `core=0` 时在队列未满时只起 1 个 worker 的串行陷阱；超出 max 的任务入队等待。
+- `keepAlive=60s`；同步移交池空闲线程可回收，有界队列池 core 线程常驻。
 
 **DeepAgent stream 调优**：`deep-agent-stream` 限制同时进行中的 stream 会话数（I/O 型）。默认可随 CPU 缩放；高并发或长连接场景可显式调大，并配合 LLM 侧 HTTP / 配额限流，见 [DeepAgent 使用指南](DeepAgent/DeepAgent使用指南.md#stream-并发与线程池)。
 

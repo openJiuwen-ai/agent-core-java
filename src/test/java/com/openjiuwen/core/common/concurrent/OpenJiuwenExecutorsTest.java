@@ -31,6 +31,7 @@ class OpenJiuwenExecutorsTest {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
             ThreadPoolExecutor streamExecutor = (ThreadPoolExecutor) executor;
             assertThat(streamExecutor.getMaximumPoolSize()).isEqualTo(expectedDefault);
+            assertThat(streamExecutor.getCorePoolSize()).isZero();
             assertThat(streamExecutor.getQueue()).isInstanceOf(SynchronousQueue.class);
             assertThat(streamExecutor.getRejectedExecutionHandler())
                     .isInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class);
@@ -70,7 +71,34 @@ class OpenJiuwenExecutorsTest {
     }
 
     @Test
-    @DisplayName("默认异步任务使用统一命名的后台线程池")
+    @DisplayName("有界队列模块池 core=max，避免 core=0 单 worker 串行陷阱")
+    void boundedQueueModulePoolUsesCoreEqualToMaxSize() throws Exception {
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", true);
+        try {
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            int maxSize = pool.getMaximumPoolSize();
+            assertThat(pool.getCorePoolSize()).isEqualTo(maxSize);
+            assertThat(pool.getQueue()).isInstanceOf(ArrayBlockingQueue.class);
+
+            int workers = Math.min(4, maxSize);
+            CountDownLatch allStarted = new CountDownLatch(workers);
+            CountDownLatch release = new CountDownLatch(1);
+            for (int i = 0; i < workers; i++) {
+                executor.submit(() -> {
+                    allStarted.countDown();
+                    await(release);
+                });
+            }
+            assertThat(allStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(pool.getActiveCount()).isEqualTo(workers);
+            release.countDown();
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
     void backgroundExecutorUsesDedicatedThreadPrefix() throws Exception {
         String backgroundThread = OpenJiuwenExecutors.backgroundExecutor()
                 .submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
