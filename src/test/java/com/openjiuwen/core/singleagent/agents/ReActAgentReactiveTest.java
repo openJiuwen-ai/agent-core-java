@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -48,15 +49,21 @@ class ReActAgentReactiveTest {
     void streamAsyncDelegatesThroughConcreteReActAgentStream() throws Exception {
         ReActAgent agent = newAgent("reactive-react-stream");
         Model model = mock(Model.class);
-        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(AssistantMessage.builder().content("reactive stream ok").build());
+        when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(
+                        AssistantMessageChunk.builder().content("reactive stream ok").build()
+                ).iterator());
         agent.setLlm(model);
 
         AgentSessionApi session =
             new AgentSessionApi("react-stream-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
 
         StepVerifier.create(agent.streamAsync(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT)))
-                .expectNextMatches(item -> item instanceof OutputSchema output && "answer".equals(output.getType())
+                .thenConsumeWhile(item -> !(item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
+                        && String.valueOf(output.getPayload()).contains("reactive stream ok")))
+                .expectNextMatches(item -> item instanceof OutputSchema output
+                        && "answer".equals(output.getType())
                         && String.valueOf(output.getPayload()).contains("reactive stream ok"))
                 .verifyComplete();
     }
