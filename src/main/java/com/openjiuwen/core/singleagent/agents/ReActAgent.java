@@ -585,9 +585,10 @@ public class ReActAgent extends BaseAgent {
      * Streaming-aware overload of {@link #executeToolCallEntries}.
      * <p>
      * When {@code agentSession} is non-null the underlying AbilityManager
-     * will forward tool stream chunks ({@code tool_stream_chunk},
-     * {@code tool_stream_end}, {@code tool_error}) to the outer stream;
-     * when {@code null} this behaves identically to the 4-arg overload.
+     * forwards tool stream chunks as unified {@code tool_output} events
+     * (covering per-chunk output, non-streaming invoke results, and tool
+     * errors); when {@code null} this behaves identically to the 4-arg
+     * overload.
      * <p>
      * Only the main ReAct loop invokes this with a session; the
      * interrupt-resume branch continues to use the 4-arg (non-streaming)

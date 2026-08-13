@@ -1170,14 +1170,14 @@ public class AbilityManager implements ToolRegistry {
         } catch (ToolInterruptException | AbilityExecutionError e) {
             if (agentSession != null) {
                 agentSession.writeStream(buildToolOutputChunk(
-                        resolveSessionId(session), resolveTaskId(session), singleToolCall,
+                        resolveTaskId(session), singleToolCall,
                         "tool error: " + (e.getMessage() == null ? "" : e.getMessage()), 0));
             }
             return handleToolExecutionException(singleToolCall, toolCtx, e);
         } catch (RuntimeException re) {
             if (agentSession != null) {
                 agentSession.writeStream(buildToolOutputChunk(
-                        resolveSessionId(session), resolveTaskId(session), singleToolCall,
+                        resolveTaskId(session), singleToolCall,
                         "tool error: " + (re.getMessage() == null ? "" : re.getMessage()), 0));
             }
             throw re;
@@ -1271,7 +1271,7 @@ public class AbilityManager implements ToolRegistry {
                 logToolResult(result);
                 if (agentSession != null) {
                     agentSession.writeStream(buildToolOutputChunk(
-                            resolveSessionId(session), resolveTaskId(session), toolCall,
+                            resolveTaskId(session), toolCall,
                             result == null ? "" : result, 0));
                 }
                 ToolMessage toolMsg = ToolMessage.builder()
@@ -1288,7 +1288,7 @@ public class AbilityManager implements ToolRegistry {
                 Loggers.TOOL.info("Tool result: None");
                 if (agentSession != null) {
                     agentSession.writeStream(buildToolOutputChunk(
-                            resolveSessionId(session), resolveTaskId(session), toolCall,
+                            resolveTaskId(session), toolCall,
                             "tool error: " + (e.getMessage() == null ? "" : e.getMessage()), 0));
                 }
                 throw buildExecutionError(toolCall, errorMsg);
@@ -1313,7 +1313,6 @@ public class AbilityManager implements ToolRegistry {
             kwargs.put("session", session);
             SessionContextHolder.setCurrentSession(session);
         }
-        String sessionId = resolveSessionId(session);
         String taskId = resolveTaskId(session);
         List<Object> accumulated = new ArrayList<>();
         int chunkIndex = 0;
@@ -1323,7 +1322,7 @@ public class AbilityManager implements ToolRegistry {
                 Object chunk = streamIt.next();
                 accumulated.add(chunk);
                 agentSession.writeStream(buildToolOutputChunk(
-                        sessionId, taskId, toolCall, chunk, chunkIndex));
+                        taskId, toolCall, chunk, chunkIndex));
                 chunkIndex++;
             }
         } catch (BaseError e) {
@@ -1335,7 +1334,7 @@ public class AbilityManager implements ToolRegistry {
                 Object result = invokeTool(tool, toolArgs, session);
                 logToolResult(result);
                 agentSession.writeStream(buildToolOutputChunk(
-                        sessionId, taskId, toolCall, result == null ? "" : result, 0));
+                        taskId, toolCall, result == null ? "" : result, 0));
                 ToolMessage toolMsg = ToolMessage.builder()
                         .content(result == null ? "" : result.toString())
                         .toolCallId(toolCall.getId())
@@ -1383,23 +1382,6 @@ public class AbilityManager implements ToolRegistry {
     }
 
     /**
-     * Resolve session id from the {@link Session} parameter (not the
-     * {@link AgentSessionApi} wrapper). The {@code session} argument is
-     * the ReActAgent's own session handle, which may differ from the
-     * inner {@code AgentSessionApi} created by DeepAgent for stream
-     * forwarding (the latter's id is typically the conversation_id).
-     * Returns empty string when session is null so the payload field
-     * stays present.
-     */
-    private static String resolveSessionId(Session session) {
-        if (session == null) {
-            return "";
-        }
-        String id = session.getSessionId();
-        return id == null ? "" : id;
-    }
-
-    /**
      * Build a unified {@code tool_output} stream chunk.
      * <p>
      * All tool streaming events (per-chunk output, non-streaming invoke
@@ -1409,7 +1391,6 @@ public class AbilityManager implements ToolRegistry {
      *   "type": "tool_output",
      *   "index": chunkIndex,
      *   "payload": {
-     *     "session_id": "...",
      *     "task_id": "...",
      *     "tool_name": "...",
      *     "tool_call_id": "...",
@@ -1422,7 +1403,7 @@ public class AbilityManager implements ToolRegistry {
      * output; no lifecycle events or replay cursors are emitted.
      */
     private static OutputSchema buildToolOutputChunk(
-            String sessionId, String taskId, ToolCall toolCall, Object content, int chunkIndex) {
+            String taskId, ToolCall toolCall, Object content, int chunkIndex) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("task_id", taskId == null ? "" : taskId);
         payload.put("tool_name", toolCall.getName());

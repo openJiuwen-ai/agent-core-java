@@ -238,7 +238,8 @@ public class LocalShellOperation extends BaseShellOperation {
                                 .type(StreamEventType.ERROR)
                                 .data("unexpected streaming error: " + e.getMessage())
                                 .build();
-                        // 产出这一条 ERROR 事件后结束
+                        // 产出这一条 ERROR 事件后结束，避免 eventIterator 持续抛异常导致死循环
+                        hasNext = false;
                     }
                 }
             };
