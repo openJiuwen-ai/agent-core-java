@@ -22,8 +22,6 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.Charset;
@@ -232,14 +230,10 @@ public class LocalShellOperation extends BaseShellOperation {
                         }
                     } catch (Exception e) {
                         Loggers.SYS_OPERATION.error("Failed to execute cmd streaming", e);
-                        StringWriter sw = new StringWriter(256);
-                        e.printStackTrace(new PrintWriter(sw));
                         nextEvent = StreamEvent.builder()
                                 .type(StreamEventType.ERROR)
                                 .data("unexpected streaming error: " + e.getMessage())
                                 .build();
-                        // 产出这一条 ERROR 事件后结束，避免 eventIterator 持续抛异常导致死循环
-                        hasNext = false;
                     }
                 }
             };
