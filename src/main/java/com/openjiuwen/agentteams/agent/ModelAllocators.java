@@ -16,6 +16,8 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * ModelAllocators.
@@ -127,7 +129,7 @@ public final class ModelAllocators {
          * @since 0.1.7
          */
         private final Map<String, List<ModelPoolEntry>> groups = new LinkedHashMap<>();
-        private int index;
+        private final AtomicInteger index = new AtomicInteger();
 
         /**
          * RoundRobinModelAllocator.
@@ -155,8 +157,8 @@ public final class ModelAllocators {
             if (pool.isEmpty()) {
                 return nullValue();
             }
-            ModelPoolEntry entry = pool.get(index % pool.size());
-            index += 1;
+            int idx = index.getAndIncrement();
+            ModelPoolEntry entry = pool.get(Math.floorMod(idx, pool.size()));
             List<ModelPoolEntry> group = groups.getOrDefault(entry.getModelName(), List.of(entry));
             return new Allocation(entry, groupIndexOf(entry, group));
         }
@@ -170,7 +172,7 @@ public final class ModelAllocators {
         @Override
         public Map<String, Object> stateDict() {
             Map<String, Object> state = new LinkedHashMap<>();
-            state.put("index", index);
+            state.put("index", index.get());
             state.put("pool_digest", poolDigest);
             return state;
         }
@@ -184,11 +186,11 @@ public final class ModelAllocators {
         @Override
         public void loadStateDict(Map<String, Object> state) {
             if (state == null || !poolDigest.equals(String.valueOf(state.get("pool_digest")))) {
-                index = 0;
+                index.set(0);
                 return;
             }
             Integer restored = asInteger(state.get("index"));
-            index = restored != null ? restored : 0;
+            index.set(restored != null ? restored : 0);
         }
     }
 
@@ -206,7 +208,7 @@ public final class ModelAllocators {
          * 
          * @since 0.1.7
          */
-        private Map<String, Integer> innerIndexes = new LinkedHashMap<>();
+        private final Map<String, AtomicInteger> innerIndexes = new ConcurrentHashMap<>();
 
         /**
          * ByModelNameAllocator.
@@ -236,8 +238,8 @@ public final class ModelAllocators {
                 return nullValue();
             }
             List<ModelPoolEntry> group = groups.get(modelName);
-            int idx = innerIndexes.getOrDefault(modelName, 0) % group.size();
-            innerIndexes.put(modelName, innerIndexes.getOrDefault(modelName, 0) + 1);
+            AtomicInteger counter = innerIndexes.computeIfAbsent(modelName, key -> new AtomicInteger());
+            int idx = Math.floorMod(counter.getAndIncrement(), group.size());
             return new Allocation(group.get(idx), idx);
         }
 
@@ -250,7 +252,9 @@ public final class ModelAllocators {
         @Override
         public Map<String, Object> stateDict() {
             Map<String, Object> state = new LinkedHashMap<>();
-            state.put("inner_indexes", new LinkedHashMap<>(innerIndexes));
+            Map<String, Integer> snapshot = new LinkedHashMap<>();
+            innerIndexes.forEach((name, counter) -> snapshot.put(name, counter.get()));
+            state.put("inner_indexes", snapshot);
             state.put("pool_digest", poolDigest);
             return state;
         }
@@ -273,11 +277,8 @@ public final class ModelAllocators {
             }
             for (String name : groups.keySet()) {
                 Integer restored = asInteger(rawMap.get(name));
-                if (restored != null) {
-                    innerIndexes.put(name, restored);
-                } else {
-                    innerIndexes.put(name, 0);
-                }
+                innerIndexes.computeIfAbsent(name, key -> new AtomicInteger())
+                        .set(restored != null ? restored : 0);
             }
         }
 
@@ -287,9 +288,9 @@ public final class ModelAllocators {
          * @since 0.1.7
          */
         private void resetIndexes() {
-            innerIndexes = new LinkedHashMap<>();
+            innerIndexes.clear();
             for (String name : groups.keySet()) {
-                innerIndexes.put(name, 0);
+                innerIndexes.put(name, new AtomicInteger());
             }
         }
     }

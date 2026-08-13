@@ -34,9 +34,9 @@ import com.openjiuwen.core.session.Session;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -54,14 +54,14 @@ import java.util.function.Function;
  * @since 0.1.7
  */
 public class ContextEngine {
-    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP = new LinkedHashMap<>();
+    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
 
     /**
      * Global registry mapping processor type names to their class.
      * 
      * @since 0.1.7
      */
-    private static final Map<String, Class<? extends ContextProcessor>> PROCESSOR_CLASS_MAP = new LinkedHashMap<>();
+    private static final Map<String, Class<? extends ContextProcessor>> PROCESSOR_CLASS_MAP = new ConcurrentHashMap<>();
 
     /*
      * Auto-register all built-in processors so they can be isResolved by type name at runtime.
@@ -93,7 +93,7 @@ public class ContextEngine {
      * 
      * @since 0.1.7
      */
-    private final Map<String, ModelContext> contextPool = new HashMap<>();
+    private final Map<String, ModelContext> contextPool = new ConcurrentHashMap<>();
     private final Object workspace;
     private final SysOperation sysOperation;
 
@@ -147,29 +147,22 @@ public class ContextEngine {
     public ModelContext createContext(String contextId, Session session, List<ProcessorSpec> processors,
             List<BaseMessage> historyMessages, TokenCounter tokenCounter) {
         TokenCounter effectiveTokenCounter = tokenCounter != null ? tokenCounter : new SimpleTokenCounter();
-        contextId = processContextId(contextId);
+        String processedContextId = processContextId(contextId);
         String sessionId = session != null ? session.getSessionId() : "default_session_id";
-        String fullContextId = sessionId + "_" + contextId;
+        String fullContextId = sessionId + "_" + processedContextId;
 
-        if (contextPool.containsKey(fullContextId)) {
-            ModelContext context = contextPool.get(fullContextId);
-            loadStateFromSession(context, session, historyMessages);
-            return context;
-        }
-
-        List<ContextProcessor> processorInstances = new ArrayList<>();
-        if (processors != null) {
-            for (ProcessorSpec spec : processors) {
-                processorInstances.add(createProcessor(spec.processorType(), spec.config()));
+        ModelContext context = contextPool.computeIfAbsent(fullContextId, key -> {
+            List<ContextProcessor> processorInstances = new ArrayList<>();
+            if (processors != null) {
+                for (ProcessorSpec spec : processors) {
+                    processorInstances.add(createProcessor(spec.processorType(), spec.config()));
+                }
             }
-        }
-
-        SessionModelContext context = new SessionModelContext(contextId, sessionId, config,
-                historyMessages != null ? historyMessages : new ArrayList<>(), processorInstances,
-                effectiveTokenCounter, session, workspace, sysOperation);
-
+            return new SessionModelContext(processedContextId, sessionId, config,
+                    historyMessages != null ? historyMessages : new ArrayList<>(), processorInstances,
+                    effectiveTokenCounter, session, workspace, sysOperation);
+        });
         loadStateFromSession(context, session, historyMessages);
-        contextPool.put(fullContextId, context);
         return context;
     }
 
@@ -251,20 +244,10 @@ public class ContextEngine {
         }
 
         if (contextId == null) {
-            List<String> toDelete = new ArrayList<>();
-            for (var entry : contextPool.entrySet()) {
-                if (entry.getValue().sessionId().equals(sessionId)) {
-                    toDelete.add(entry.getKey());
-                }
-            }
-
-            if (toDelete.isEmpty()) {
+            boolean removed = contextPool.entrySet()
+                    .removeIf(entry -> entry.getValue().sessionId().equals(sessionId));
+            if (!removed) {
                 Loggers.CONTEXT_ENGINE.warning("Delete context failed, session does not exist: " + sessionId);
-                return;
-            }
-
-            for (String key : toDelete) {
-                contextPool.remove(key);
             }
             return;
         }
