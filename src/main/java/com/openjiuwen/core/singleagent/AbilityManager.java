@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
@@ -13,17 +13,19 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.operator.tool_call.ToolExecutionResult;
 import com.openjiuwen.core.operator.tool_call.ToolRegistry;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -39,13 +41,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
-
-import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.session.stream.OutputSchema;
 
 /**
  * Agent Ability Manager.
@@ -1077,7 +1076,7 @@ public class AbilityManager implements ToolRegistry {
             Object toolCall,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession
+            AgentSessionApi agentSession
     ) {
         List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
         if (toolCalls.isEmpty()) {
@@ -1086,7 +1085,8 @@ public class AbilityManager implements ToolRegistry {
         if (toolCalls.size() == 1) {
             int toolIndex = toolCalls.get(0).getIndex() != null
                     ? toolCalls.get(0).getIndex() : 0;
-            return List.of(executeOneToolCallWithStreaming(ctx, toolCalls.get(0), session, tag, agentSession, toolIndex));
+            return List.of(executeOneToolCallWithStreaming(
+                    ctx, toolCalls.get(0), session, tag, agentSession, toolIndex));
         }
         return executeParallelToolCallsWithStreaming(ctx, toolCalls, session, tag, agentSession);
     }
@@ -1096,7 +1096,7 @@ public class AbilityManager implements ToolRegistry {
             List<ToolCall> toolCalls,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession
+            AgentSessionApi agentSession
     ) {
         List<AgentCallbackContext> toolContexts = new ArrayList<>();
         List<CompletableFuture<ToolExecutionEntry>> futures = new ArrayList<>();
@@ -1128,7 +1128,7 @@ public class AbilityManager implements ToolRegistry {
             ToolCall singleToolCall,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession,
+            AgentSessionApi agentSession,
             int toolIndex
     ) {
         AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
@@ -1144,7 +1144,7 @@ public class AbilityManager implements ToolRegistry {
             ToolCall singleToolCall,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession,
+            AgentSessionApi agentSession,
             int toolIndex
     ) {
         Session previousSession = SessionContextHolder.getCurrentSession();
@@ -1191,7 +1191,7 @@ public class AbilityManager implements ToolRegistry {
             ToolCall toolCall,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession,
+            AgentSessionApi agentSession,
             int toolIndex
     ) {
         return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_TOOL_CALL,
@@ -1239,11 +1239,10 @@ public class AbilityManager implements ToolRegistry {
             ToolCall toolCall,
             Session session,
             String tag,
-            /* @Nullable */ AgentSessionApi agentSession,
+            AgentSessionApi agentSession,
             int toolIndex
     ) {
         String toolName = toolCall.getName();
-        Map<String, Object> toolArgs = parseToolArgs(toolCall.getArguments());
 
         // --- Tool branch ---
         Tool tool = null;
@@ -1261,9 +1260,10 @@ public class AbilityManager implements ToolRegistry {
         }
 
         if (tool != null) {
-            boolean streaming = agentSession != null && canStream(tool);
+            Map<String, Object> toolArgs = parseToolArgs(toolCall.getArguments());
+            boolean isStreaming = agentSession != null && canStream(tool);
             try {
-                if (streaming) {
+                if (isStreaming) {
                     return executeStreamingTool(tool, toolCall, toolArgs, session, agentSession, toolIndex);
                 }
                 // 非流式或 agentSession 为 null：走原 invoke 路径
@@ -1421,8 +1421,8 @@ public class AbilityManager implements ToolRegistry {
         if (chunks == null || chunks.isEmpty()) {
             return "";
         }
-        boolean allStrings = chunks.stream().allMatch(c -> c instanceof String || c == null);
-        if (allStrings) {
+        boolean isAllStrings = chunks.stream().allMatch(c -> c instanceof String || c == null);
+        if (isAllStrings) {
             StringBuilder sb = new StringBuilder();
             for (Object c : chunks) {
                 if (c != null) {

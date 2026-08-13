@@ -612,7 +612,7 @@ public class ReActAgent extends BaseAgent {
             List<?> toolCalls,
             Session session,
             ModelContext context,
-            /* @Nullable */ AgentSessionApi agentSession
+            AgentSessionApi agentSession
     ) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return List.of();
