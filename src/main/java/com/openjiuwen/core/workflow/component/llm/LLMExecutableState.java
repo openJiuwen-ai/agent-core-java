@@ -29,7 +29,7 @@ public class LLMExecutableState {
      * @param content content
      * @since 0.1.7
      */
-    public void accumulateContent(String content) {
+    public synchronized void accumulateContent(String content) {
         accumulatedContent.append(content);
     }
 
@@ -41,7 +41,8 @@ public class LLMExecutableState {
      * @return the result
      * @since 0.1.7
      */
-    public Map<String, Object> buildFinalResult(Map<String, Object> responseFormat, Map<String, Object> outputConfig) {
+    public synchronized Map<String, Object> buildFinalResult(Map<String, Object> responseFormat,
+        Map<String, Object> outputConfig) {
         if (accumulatedContent.length() == 0) {
             return Map.of();
         }
@@ -53,7 +54,7 @@ public class LLMExecutableState {
      * 
      * @since 0.1.7
      */
-    public void clear() {
+    public synchronized void clear() {
         finalResult = Map.of();
         accumulatedContent.setLength(0);
     }

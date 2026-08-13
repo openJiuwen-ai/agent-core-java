@@ -4,9 +4,10 @@
 
 package com.openjiuwen.autoharness.registry;
 
-import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Public class BaseRegistry used by the Java parity implementation.
@@ -19,7 +20,7 @@ public class BaseRegistry<T> {
      * 
      * @since 0.1.7
      */
-    protected final Map<String, T> items = new LinkedHashMap<>();
+    protected final Map<String, T> items = new ConcurrentHashMap<>();
 
     /**
      * register.
@@ -29,10 +30,9 @@ public class BaseRegistry<T> {
      * @since 0.1.7
      */
     public void register(String name, T spec) {
-        if (items.containsKey(name)) {
+        if (items.putIfAbsent(name, spec) != null) {
             throw new IllegalArgumentException("Duplicate registration: " + name);
         }
-        items.put(name, spec);
     }
 
     /**
@@ -68,6 +68,6 @@ public class BaseRegistry<T> {
      * @since 0.1.7
      */
     public Set<String> names() {
-        return items.keySet();
+        return Collections.unmodifiableSet(items.keySet());
     }
 }

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Public class TaskLoopController used by the Java parity implementation.
@@ -70,11 +71,11 @@ public class TaskLoopController {
      */
     public int prepareRound(String sessionId, boolean isFollowUp) {
         SessionState state = state(sessionId);
-        state.roundCounter += 1;
+        int round = state.roundCounter.incrementAndGet();
         state.isLastRoundFollowUp = isFollowUp;
         state.isRoundActive = true;
         state.lastResult = null;
-        return state.roundCounter;
+        return round;
     }
 
     /**
@@ -164,8 +165,9 @@ public class TaskLoopController {
      */
     public Map<String, Object> resolveCompletion(String sessionId, int completedRound, Map<String, Object> result) {
         SessionState state = state(sessionId);
-        if (completedRound != state.roundCounter) {
-            return Map.of("status", "stale", "round", completedRound, "current_round", state.roundCounter);
+        int currentRound = state.roundCounter.get();
+        if (completedRound != currentRound) {
+            return Map.of("status", "stale", "round", completedRound, "current_round", currentRound);
         }
         state.isRoundActive = false;
         state.lastResult = result == null ? Map.of("status", "completed") : Map.copyOf(result);
@@ -394,7 +396,7 @@ public class TaskLoopController {
      * @since 0.1.7
      */
     public int getRoundCounter(String sessionId) {
-        return state(sessionId).roundCounter;
+        return state(sessionId).roundCounter.get();
     }
 
     /**
@@ -447,10 +449,10 @@ public class TaskLoopController {
 
     private static final class SessionState {
         private final LoopQueues queues;
-        private int roundCounter;
-        private boolean isLastRoundFollowUp;
-        private boolean isRoundActive;
-        private Map<String, Object> lastResult;
+        private final AtomicInteger roundCounter = new AtomicInteger();
+        private volatile boolean isLastRoundFollowUp;
+        private volatile boolean isRoundActive;
+        private volatile Map<String, Object> lastResult;
 
         /**
          * SessionState.

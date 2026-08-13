@@ -39,10 +39,12 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -76,8 +78,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private NodeSession session;
     private int streamCalledTimeout = 10;
     private CompletableFuture<Object> streamDone;
-    private int callCount = 0;
-    private int streamCallCount = 0;
+    private final AtomicInteger callCount = new AtomicInteger(0);
+    private final AtomicInteger streamCallCount = new AtomicInteger(0);
     private boolean isEndNode = false;
     private volatile boolean isStarted = false;
     private volatile boolean isCallStarted = false;
@@ -98,7 +100,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      *
      * @since 0.1.7
      */
-    private Map<String, Object> logMessage = new HashMap<>();
+    private Map<String, Object> logMessage = new ConcurrentHashMap<>();
     private boolean isFirstInit = true;
 
     /**
@@ -166,7 +168,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
         this.hasStreamCall = !streamAbilities().isEmpty();
         this.hasCall = componentAbility.size() > streamAbilities().size();
 
-        this.logMessage = new HashMap<>();
+        this.logMessage = new ConcurrentHashMap<>();
         logMessage.put("graph_id", this.session.workflowId());
         logMessage.put("node_id", this.nodeId);
 
@@ -241,7 +243,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             }
             throw e;
         } finally {
-            callCount++;
+            callCount.incrementAndGet();
             isStarted = false;
             isCallStarted = false;
         }
@@ -948,7 +950,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     @Override
     public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
         LOGGER.info("Begin to call stream-in node [{}]", nodeId);
-        streamCallCount++;
+        streamCallCount.incrementAndGet();
         streamDone = new CompletableFuture<>();
 
         ActorManager actorManager = getActorManager();
@@ -1038,7 +1040,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     private boolean streamCalled() {
-        return streamCallCount == callCount + 1;
+        return streamCallCount.get() == callCount.get() + 1;
     }
 
     /**
@@ -1049,7 +1051,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      */
     @Override
     public boolean isDone() {
-        return callCount == streamCallCount || callCount == streamCallCount + 1;
+        return callCount.get() == streamCallCount.get() || callCount.get() == streamCallCount.get() + 1;
     }
 
     /**
@@ -1092,8 +1094,8 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      * @since 0.1.7
      */
     public void reset() {
-        callCount = 0;
-        streamCallCount = 0;
+        callCount.set(0);
+        streamCallCount.set(0);
         streamDone.cancel(true);
         streamDone = new CompletableFuture<>();
     }

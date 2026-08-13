@@ -23,12 +23,12 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Unified LLM invocation entry point.
@@ -78,7 +78,7 @@ public class Model {
      * 
      * @since 0.1.7
      */
-    private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = new LinkedHashMap<>();
+    private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = new ConcurrentHashMap<>();
 
     static {
         for (ModelClientFactory f : ServiceLoader.load(ModelClientFactory.class)) {

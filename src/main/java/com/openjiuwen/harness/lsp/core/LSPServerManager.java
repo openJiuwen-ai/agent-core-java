@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -20,28 +21,28 @@ import java.util.function.Consumer;
  * @since 0.1.7
  */
 public class LSPServerManager {
-    private final Map<String, Object> configs = new LinkedHashMap<>();
+    private final Map<String, Object> configs = new ConcurrentHashMap<>();
 
     /**
      * LinkedHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, Object> instances = new LinkedHashMap<>();
+    private final Map<String, Object> instances = new ConcurrentHashMap<>();
 
     /**
      * LinkedHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, Object> spawning = new LinkedHashMap<>();
+    private final Map<String, Object> spawning = new ConcurrentHashMap<>();
 
     /**
-     * LinkedHashMap<>.
-     * 
+     * ConcurrentHashMap<>.
+     *
      * @since 0.1.7
      */
-    private final Map<String, String> extensionMap = new LinkedHashMap<>();
+    private final Map<String, String> extensionMap = new ConcurrentHashMap<>();
     private String workspaceRoot;
 
     /**
@@ -49,14 +50,14 @@ public class LSPServerManager {
      * 
      * @since 0.1.7
      */
-    private final Set<Integer> diagHandlerInstances = new java.util.HashSet<>();
+    private final Set<Integer> diagHandlerInstances = ConcurrentHashMap.newKeySet();
 
     /**
      * LinkedHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, Integer> docVersions = new LinkedHashMap<>();
+    private final Map<String, Integer> docVersions = new ConcurrentHashMap<>();
 
     /**
      * LSPServerManager.
@@ -75,10 +76,9 @@ public class LSPServerManager {
      */
     public void ensureDiagnosticHandler(Object server) {
         int identity = System.identityHashCode(server);
-        if (diagHandlerInstances.contains(identity)) {
+        if (!diagHandlerInstances.add(identity)) {
             return;
         }
-        diagHandlerInstances.add(identity);
         Consumer<Map<String, Object>> handler = payload -> {
             String uri = String.valueOf(payload.get("uri"));
             @SuppressWarnings("unchecked")

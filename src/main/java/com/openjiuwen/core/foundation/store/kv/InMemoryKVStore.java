@@ -19,14 +19,30 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 0.1.7
  */
 public class InMemoryKVStore extends BaseKVStore {
-    private final Map<String, Object> values = new ConcurrentHashMap<>();
 
     /**
-     * ConcurrentHashMap<>.
-     * 
+     * Internal entry bundling a value with its optional expiry timestamp so
+     * that write-value and clear-set-expiry happen as one atomic
+     * {@link ConcurrentHashMap#compute} step, eliminating the TOCTOU window
+     * the previous dual-map design exposed under concurrent set/get/cleanup.
+     *
      * @since 0.1.7
      */
-    private final Map<String, Long> expiryAt = new ConcurrentHashMap<>();
+    private static final class Entry {
+        private final Object value;
+        private final Long expiryAt;
+
+        Entry(Object value, Long expiryAt) {
+            this.value = value;
+            this.expiryAt = expiryAt;
+        }
+
+        boolean isExpired(long now) {
+            return expiryAt != null && expiryAt <= now;
+        }
+    }
+
+    private final Map<String, Entry> store = new ConcurrentHashMap<>();
 
     /**
      * set.
@@ -37,8 +53,7 @@ public class InMemoryKVStore extends BaseKVStore {
      */
     @Override
     public void set(String key, Object value) {
-        values.put(key, value);
-        expiryAt.remove(key);
+        store.compute(key, (k, existing) -> new Entry(value, null));
     }
 
     /**
@@ -53,14 +68,10 @@ public class InMemoryKVStore extends BaseKVStore {
     @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
         cleanupIfExpired(key);
-        Object existing = values.putIfAbsent(key, value);
-        if (existing != null) {
-            return false;
-        }
-        if (expiry != null && expiry > 0) {
-            expiryAt.put(key, System.currentTimeMillis() + expiry * 1000L);
-        }
-        return true;
+        Long expiryMs = expiry != null && expiry > 0
+                ? System.currentTimeMillis() + expiry * 1000L
+                : null;
+        return store.putIfAbsent(key, new Entry(value, expiryMs)) == null;
     }
 
     /**
@@ -73,7 +84,8 @@ public class InMemoryKVStore extends BaseKVStore {
     @Override
     public Object get(String key) {
         cleanupIfExpired(key);
-        return values.get(key);
+        Entry entry = store.get(key);
+        return entry != null ? entry.value : null;
     }
 
     /**
@@ -86,7 +98,7 @@ public class InMemoryKVStore extends BaseKVStore {
     @Override
     public boolean isExists(String key) {
         cleanupIfExpired(key);
-        return values.containsKey(key);
+        return store.containsKey(key);
     }
 
     /**
@@ -97,8 +109,7 @@ public class InMemoryKVStore extends BaseKVStore {
      */
     @Override
     public void delete(String key) {
-        values.remove(key);
-        expiryAt.remove(key);
+        store.remove(key);
     }
 
     /**
@@ -111,10 +122,11 @@ public class InMemoryKVStore extends BaseKVStore {
     @Override
     public Map<String, Object> getByPrefix(String prefix) {
         Map<String, Object> result = new LinkedHashMap<>();
-        for (String key : new ArrayList<>(values.keySet())) {
+        for (String key : new ArrayList<>(store.keySet())) {
             cleanupIfExpired(key);
-            if (key.startsWith(prefix) && values.containsKey(key)) {
-                result.put(key, values.get(key));
+            Entry entry = store.get(key);
+            if (key.startsWith(prefix) && entry != null) {
+                result.put(key, entry.value);
             }
         }
         return result;
@@ -129,7 +141,7 @@ public class InMemoryKVStore extends BaseKVStore {
      */
     @Override
     public void deleteByPrefix(String prefix, Integer batchSize) {
-        for (String key : new ArrayList<>(values.keySet())) {
+        for (String key : new ArrayList<>(store.keySet())) {
             if (key.startsWith(prefix)) {
                 delete(key);
             }
@@ -209,21 +221,17 @@ public class InMemoryKVStore extends BaseKVStore {
      */
     @Override
     public void close() {
-        values.clear();
-        expiryAt.clear();
+        store.clear();
     }
 
     /**
-     * cleanupIfExpired.
-     * 
+     * Atomically remove the entry for {@code key} when its expiry has elapsed.
+     *
      * @param key key
      * @since 0.1.7
      */
     private void cleanupIfExpired(String key) {
-        Long expireTime = expiryAt.get(key);
-        if (expireTime != null && expireTime <= System.currentTimeMillis()) {
-            values.remove(key);
-            expiryAt.remove(key);
-        }
+        long now = System.currentTimeMillis();
+        store.computeIfPresent(key, (k, entry) -> entry.isExpired(now) ? null : entry);
     }
 }
