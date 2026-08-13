@@ -54,7 +54,8 @@ import java.util.function.Function;
  * @since 0.1.7
  */
 public class ContextEngine {
-    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
+    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP =
+            new ConcurrentHashMap<>();
 
     /**
      * Global registry mapping processor type names to their class.
@@ -244,9 +245,9 @@ public class ContextEngine {
         }
 
         if (contextId == null) {
-            boolean removed = contextPool.entrySet()
+            boolean hasRemoved = contextPool.entrySet()
                     .removeIf(entry -> entry.getValue().sessionId().equals(sessionId));
-            if (!removed) {
+            if (!hasRemoved) {
                 Loggers.CONTEXT_ENGINE.warning("Delete context failed, session does not exist: " + sessionId);
             }
             return;

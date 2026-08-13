@@ -41,7 +41,8 @@ public class LLMExecutableState {
      * @return the result
      * @since 0.1.7
      */
-    public synchronized Map<String, Object> buildFinalResult(Map<String, Object> responseFormat, Map<String, Object> outputConfig) {
+    public synchronized Map<String, Object> buildFinalResult(Map<String, Object> responseFormat,
+        Map<String, Object> outputConfig) {
         if (accumulatedContent.length() == 0) {
             return Map.of();
         }
