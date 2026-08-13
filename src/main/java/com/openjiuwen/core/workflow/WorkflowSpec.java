@@ -7,11 +7,11 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.workflow.component.NodeConfig;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Complete specification of a workflow structure.
@@ -21,14 +21,14 @@ import java.util.Set;
  * @since 0.1.7
  */
 public class WorkflowSpec {
-    private Map<String, List<String>> edges = new HashMap<>();
+    private Map<String, List<String>> edges = new ConcurrentHashMap<>();
 
     /**
      * HashMap<>.
      *
      * @since 0.1.7
      */
-    private Map<String, List<String>> streamEdges = new HashMap<>();
+    private Map<String, List<String>> streamEdges = new ConcurrentHashMap<>();
 
     /**
      * Stream source groups per consumer, mirroring Python
@@ -45,7 +45,7 @@ public class WorkflowSpec {
      *
      * @since 0.1.7
      */
-    private Map<String, NodeConfig> compConfigs = new HashMap<>();
+    private Map<String, NodeConfig> compConfigs = new ConcurrentHashMap<>();
 
     /**
      * ArrayList<>.

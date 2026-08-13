@@ -15,7 +15,7 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class LspDiagnosticRegistry {
-    private static LspDiagnosticRegistry instance = new LspDiagnosticRegistry();
+    private static volatile LspDiagnosticRegistry instance = new LspDiagnosticRegistry();
 
     /**
      * ArrayList<>.

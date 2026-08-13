@@ -18,7 +18,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +48,7 @@ public class TeamDatabase implements AutoCloseable {
     private final Map<String, TeamRecord> teams = new ConcurrentHashMap<>();
     private final Map<String, MemberRecord> members = new ConcurrentHashMap<>();
     private final Map<String, SessionTables> sessions = new ConcurrentHashMap<>();
-    private final Set<String> droppedSessionIds = new HashSet<>();
+    private final Set<String> droppedSessionIds = ConcurrentHashMap.newKeySet();
     private Connection sqliteConnection;
     private JdbcTeamStore jdbcTeamStore;
     private boolean isInitialized;

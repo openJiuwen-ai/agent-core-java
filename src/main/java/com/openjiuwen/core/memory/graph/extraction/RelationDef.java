@@ -6,8 +6,8 @@ package com.openjiuwen.core.memory.graph.extraction;
 
 import lombok.Data;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Base relation type.
@@ -16,7 +16,7 @@ import java.util.Map;
  */
 @Data
 public class RelationDef {
-    private static final Map<String, String> RELATION_DEFINITION_DESCRIPTION = new LinkedHashMap<>();
+    private static final Map<String, String> RELATION_DEFINITION_DESCRIPTION = new ConcurrentHashMap<>();
 
     private String name = "Relation";
     private Map<String, String> description = RELATION_DEFINITION_DESCRIPTION;

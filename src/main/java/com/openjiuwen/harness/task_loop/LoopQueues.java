@@ -6,11 +6,11 @@ package com.openjiuwen.harness.task_loop;
 
 import com.openjiuwen.core.singleagent.rail.SteeringQueue;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Public class LoopQueues used by the Java parity implementation.
@@ -18,22 +18,22 @@ import java.util.Queue;
  * @since 0.1.7
  */
 public class LoopQueues implements SteeringQueue {
-    private final Queue<String> steering = new ArrayDeque<>();
+    private final ConcurrentLinkedQueue<String> steering = new ConcurrentLinkedQueue<>();
 
     /**
-     * ArrayDeque<>.
+     * ConcurrentLinkedQueue<>.
      * 
      * @since 0.1.7
      */
-    private final Queue<String> isFollowUp = new ArrayDeque<>();
+    private final ConcurrentLinkedQueue<String> isFollowUp = new ConcurrentLinkedQueue<>();
 
     /**
-     * PriorityQueue<>.
+     * PriorityBlockingQueue<>.
      * 
      * @since 0.1.7
      */
-    private final PriorityQueue<DeepLoopEvent> events = new PriorityQueue<>();
-    private long sequence;
+    private final PriorityBlockingQueue<DeepLoopEvent> events = new PriorityBlockingQueue<>();
+    private final AtomicLong sequence = new AtomicLong();
 
     /**
      * pushSteer.
@@ -74,8 +74,11 @@ public class LoopQueues implements SteeringQueue {
      */
     @Override
     public List<String> drainSteering() {
-        List<String> result = new ArrayList<>(steering);
-        steering.clear();
+        List<String> result = new ArrayList<>();
+        String message;
+        while ((message = steering.poll()) != null) {
+            result.add(message);
+        }
         return result;
     }
 
@@ -96,8 +99,11 @@ public class LoopQueues implements SteeringQueue {
      * @since 0.1.7
      */
     public List<String> drainFollowUp() {
-        List<String> result = new ArrayList<>(isFollowUp);
-        isFollowUp.clear();
+        List<String> result = new ArrayList<>();
+        String message;
+        while ((message = isFollowUp.poll()) != null) {
+            result.add(message);
+        }
         return result;
     }
 
@@ -110,7 +116,7 @@ public class LoopQueues implements SteeringQueue {
      * @since 0.1.7
      */
     public DeepLoopEvent pushEvent(DeepLoopEventType eventType, String content) {
-        DeepLoopEvent event = DeepLoopEvent.builder(++sequence, eventType, content).build();
+        DeepLoopEvent event = DeepLoopEvent.builder(sequence.incrementAndGet(), eventType, content).build();
         events.add(event);
         if (eventType == DeepLoopEventType.STEER) {
             pushSteer(content);
@@ -138,8 +144,9 @@ public class LoopQueues implements SteeringQueue {
      */
     public List<DeepLoopEvent> drainEvents() {
         List<DeepLoopEvent> result = new ArrayList<>();
-        while (!events.isEmpty()) {
-            result.add(events.poll());
+        DeepLoopEvent event;
+        while ((event = events.poll()) != null) {
+            result.add(event);
         }
         return result;
     }
