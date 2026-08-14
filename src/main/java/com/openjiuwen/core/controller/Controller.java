@@ -26,6 +26,7 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.tracer.Tracer;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -431,7 +432,13 @@ public class Controller {
 
     /**
      * cleanup.
-     * 
+     * <p>
+     * Removes the session from the scheduler, clears the context engine
+     * to prevent SessionModelContext (and its sessionRef → AgentSession
+     * → Tracer → SpanManager reference chain) from leaking, and explicitly
+     * clears tracer span data.
+     * </p>
+     *
      * @param agentId agentId
      * @param sessionId sessionId
      * @param session session
@@ -441,6 +448,16 @@ public class Controller {
         saveTaskManagerState(session);
         eventQueue.unsubscribe(agentId, sessionId);
         taskScheduler.getSessions().remove(sessionId);
+        // Clear context engine to break the reference chain:
+        // contextPool → SessionModelContext → sessionRef → AgentSession
+        //   → Tracer → SpanManager → sessionSpans → spans
+        contextEngine.clearContextBySession(sessionId);
+        // Explicitly clear tracer span data to release span references
+        // even if other code paths still hold a tracer reference.
+        Tracer tracer = session.getInner().tracerTyped();
+        if (tracer != null) {
+            tracer.clear();
+        }
         Loggers.CONTROLLER.info("Session {} completed, {} active sessions remaining", sessionId,
                 taskScheduler.getSessions().size());
     }

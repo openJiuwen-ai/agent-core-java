@@ -82,6 +82,20 @@ public class SpanManager {
     }
 
     /**
+     * Clear all spans from this manager.
+     * <p>
+     * Called when the owning session is cleaned up to release all span
+     * references and prevent accumulation across sessions.
+     * </p>
+     *
+     * @since 0.1.15
+     */
+    public void clear() {
+        order.clear();
+        sessionSpans.clear();
+    }
+
+    /**
      * Add or update a span record.
      * 
      * @param invokeId invokeId
