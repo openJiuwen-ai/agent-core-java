@@ -32,6 +32,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventQueue;
+import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
 import com.openjiuwen.core.controller.modules.TaskScheduler;
 import com.openjiuwen.core.controller.schema.DataFrame;
@@ -1578,9 +1579,22 @@ public class DeepAgent implements AutoCloseable {
         if (session == null) {
             return;
         }
-        activeTaskLoopSessions.remove(session.getSessionId());
-        eventQueue.unsubscribe(card.getId(), session.getSessionId());
-        taskScheduler.getSessions().remove(session.getSessionId());
+        String sessionId = session.getSessionId();
+        activeTaskLoopSessions.remove(sessionId);
+        eventQueue.unsubscribe(card.getId(), sessionId);
+        taskScheduler.getSessions().remove(sessionId);
+
+        // Clean up per-session state to prevent memory leaks in long-running scenarios.
+        // Only non-default sessions are cleaned — the default session is a shared resource.
+        if (sessionId != null && !TaskLoopController.DEFAULT_SESSION_ID.equals(sessionId)) {
+            sessionLoopCoordinators.remove(sessionId);
+            if (loopController != null) {
+                loopController.clearSession(sessionId);
+            }
+            if (taskManager != null) {
+                taskManager.removeTask(TaskFilter.bySessionId(sessionId));
+            }
+        }
     }
 
     /**
@@ -2089,6 +2103,11 @@ public class DeepAgent implements AutoCloseable {
         if (tmpFileCleaner != null) {
             tmpFileCleaner.stop();
             tmpFileCleaner = null;
+        }
+        // Release all per-session state eagerly to prevent retention in long-running scenarios.
+        sessionLoopCoordinators.clear();
+        if (taskManager != null) {
+            taskManager.clearState();
         }
     }
 

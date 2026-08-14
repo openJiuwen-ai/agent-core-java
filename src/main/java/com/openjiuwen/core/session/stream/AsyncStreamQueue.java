@@ -47,6 +47,14 @@ public class AsyncStreamQueue {
      */
     public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000;
 
+    /**
+     * Default bounded capacity used when no explicit size is provided.
+     * Prevents unbounded memory growth when a consumer disconnects or slows down.
+     * 
+     * @since 0.1.7
+     */
+    public static final int DEFAULT_MAX_SIZE = 1024;
+
     private final BlockingQueue<Object> streamQueue;
 
     /**
@@ -70,12 +78,12 @@ public class AsyncStreamQueue {
     }
 
     /**
-     * Create an unbounded stream queue.
+     * Create a bounded stream queue with the default capacity.
      * 
      * @since 0.1.7
      */
     public AsyncStreamQueue() {
-        this(0);
+        this(DEFAULT_MAX_SIZE);
     }
 
     /**
@@ -127,6 +135,36 @@ public class AsyncStreamQueue {
      */
     public void send(Object data) {
         send(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, DEFAULT_MAX_SEND_RETRIES);
+    }
+
+    /**
+     * Send a critical frame that must never be silently dropped (e.g. the
+     * END_FRAME sentinel). Blocks until the frame is accepted or the queue is
+     * closed. A silently dropped END_FRAME would leave consumers blocked
+     * forever on {@link #receive()}, so critical frames get unbounded wait
+     * (backpressure) instead of the bounded-retry-and-drop behavior of
+     * {@link #send(Object)}.
+     * 
+     * @param data the critical frame to send
+     * @since 0.1.7
+     */
+    public void sendCritical(Object data) {
+        if (isClosed.get()) {
+            throw new IllegalStateException("StreamQueue is already isClosed");
+        }
+        while (!isClosed.get()) {
+            try {
+                if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                    Loggers.SESSION.debug("Critical stream data sent");
+                    return;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Loggers.SESSION.error("Critical stream data send interrupted");
+                return;
+            }
+        }
+        throw new IllegalStateException("StreamQueue is already isClosed");
     }
 
     /**
