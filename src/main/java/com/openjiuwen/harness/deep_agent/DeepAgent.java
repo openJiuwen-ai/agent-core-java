@@ -2117,12 +2117,6 @@ public class DeepAgent implements AutoCloseable {
         }
         // Release all per-session state eagerly to prevent retention in long-running scenarios.
         sessionLoopCoordinators.clear();
-        if (taskScheduler != null) {
-            taskScheduler.stop();
-        }
-        if (eventQueue != null) {
-            eventQueue.stop();
-        }
         if (taskManager != null) {
             taskManager.clearState();
         }

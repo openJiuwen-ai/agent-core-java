@@ -26,7 +26,6 @@ import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.session.tracer.Tracer;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -433,10 +432,12 @@ public class Controller {
     /**
      * cleanup.
      * <p>
-     * Removes the session from the scheduler, clears the context engine
-     * to prevent SessionModelContext (and its sessionRef → AgentSession
-     * → Tracer → SpanManager reference chain) from leaking, and explicitly
-     * clears tracer span data.
+     * Called by {@code ControllerStreamIterator.finishStream()} at the end of
+     * each invoke/stream iteration. Performs scheduling-layer cleanup only
+     * (save state, unsubscribe, remove session). Do NOT add business-layer
+     * data clearing (e.g. {@code contextEngine.clearContextBySession}) here,
+     * because multi-round scenarios (interrupt → resume) require context and
+     * tracer data to persist across invokes within the same session.
      * </p>
      *
      * @param agentId agentId
@@ -448,16 +449,6 @@ public class Controller {
         saveTaskManagerState(session);
         eventQueue.unsubscribe(agentId, sessionId);
         taskScheduler.getSessions().remove(sessionId);
-        // Clear context engine to break the reference chain:
-        // contextPool → SessionModelContext → sessionRef → AgentSession
-        //   → Tracer → SpanManager → sessionSpans → spans
-        contextEngine.clearContextBySession(sessionId);
-        // Explicitly clear tracer span data to release span references
-        // even if other code paths still hold a tracer reference.
-        Tracer tracer = session.getInner().tracerTyped();
-        if (tracer != null) {
-            tracer.clear();
-        }
         Loggers.CONTROLLER.info("Session {} completed, {} active sessions remaining", sessionId,
                 taskScheduler.getSessions().size());
     }
