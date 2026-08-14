@@ -20,7 +20,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
-        <jackson.version>2.18.8</jackson.version>
+        <!-- 与 agent-runtime-java 严格对齐：runtime 侧 a2a-sdk 需要 jackson-annotations 2.21+（JsonSerializeAs），整体升到 jackson-bom 2.21.4 -->
+        <jackson.version>2.21.4</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.5.37</logback.version>
@@ -36,7 +37,8 @@
         <jsonschema.version>4.38.0</jsonschema.version>
         <kotlin.version>2.4.10</kotlin.version>
         <milvus.version>2.6.22</milvus.version>
-        <protobuf.version>3.25.9</protobuf.version>
+        <!-- 与 agent-runtime-java 严格对齐：a2a-sdk 1.0.0.Final 由 protoc 4.x 生成，需 protobuf 4.x -->
+        <protobuf.version>4.33.2</protobuf.version>
         <pulsar.version>4.2.3</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.12</postgresql.version>
@@ -44,17 +46,20 @@
         <sqlite-jdbc.version>3.53.2.1</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
-        <jedis.version>5.1.5</jedis.version>
+        <!-- 与 agent-runtime-java 严格对齐：runtime 由 spring-boot 4.0.7 管理 jedis 7.0.0 -->
+        <jedis.version>7.0.0</jedis.version>
         <jeromq.version>0.6.0</jeromq.version>
         <pdfbox.version>2.0.37</pdfbox.version>
         <poi.version>5.5.1</poi.version>
         <openai-java.version>4.32.0</openai-java.version>
-        <reactor.version>3.6.2</reactor.version>
+        <!-- 与 agent-runtime-java 严格对齐：runtime 由 spring-boot 4.0.7 管理 reactor-bom 2025.0.6（reactor-core 3.8.6） -->
+        <reactor.version>3.8.6</reactor.version>
         <h2.version>2.2.224</h2.version>
         <open-telemetry.version>1.64.0</open-telemetry.version>
 
         <!-- Test dependencies -->
-        <junit.version>5.10.2</junit.version>
+        <!-- 与 agent-runtime-java 严格对齐：spring-boot-starter-test 4.0.7 字节码级绑定 JUnit 6 -->
+        <junit.version>6.0.3</junit.version>
         <!-- 5.2.0 pulls ByteBuddy 1.14.x (Java <=20 only); JDK21 CI needs 5.11+ -->
         <mockito.version>5.14.2</mockito.version>
         <byte-buddy.version>1.15.11</byte-buddy.version>
@@ -65,7 +70,8 @@
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <!-- JUnit 6.0.3 需要 surefire 3.5+（对齐 spring-boot-dependencies 4.0.7 的 3.5.6） -->
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     </properties>
 
     <!--
