@@ -431,7 +431,15 @@ public class Controller {
 
     /**
      * cleanup.
-     * 
+     * <p>
+     * Called by {@code ControllerStreamIterator.finishStream()} at the end of
+     * each invoke/stream iteration. Performs scheduling-layer cleanup only
+     * (save state, unsubscribe, remove session). Do NOT add business-layer
+     * data clearing (e.g. {@code contextEngine.clearContextBySession}) here,
+     * because multi-round scenarios (interrupt → resume) require context and
+     * tracer data to persist across invokes within the same session.
+     * </p>
+     *
      * @param agentId agentId
      * @param sessionId sessionId
      * @param session session

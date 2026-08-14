@@ -40,6 +40,7 @@ import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -1588,6 +1589,16 @@ public class DeepAgent implements AutoCloseable {
         // Only non-default sessions are cleaned — the default session is a shared resource.
         if (sessionId != null && !TaskLoopController.DEFAULT_SESSION_ID.equals(sessionId)) {
             sessionLoopCoordinators.remove(sessionId);
+            // Clear context engine to break the reference chain:
+            // contextPool → SessionModelContext → sessionRef → AgentSession
+            //   → Tracer → SpanManager → sessionSpans → spans
+            agent.getContextEngine().clearContextBySession(sessionId);
+            // Explicitly clear tracer span data to release span references
+            // even if other code paths still hold a tracer reference.
+            Tracer tracer = session.getInner().tracerTyped();
+            if (tracer != null) {
+                tracer.clear();
+            }
             if (loopController != null) {
                 loopController.clearSession(sessionId);
             }
