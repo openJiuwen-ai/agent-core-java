@@ -51,6 +51,11 @@ javac -encoding UTF-8 -parameters -cp "$compile_classpath" \
     -d "$temporary_classes" "${source_files[@]}" ||
     fail "GitCode Feature Evolver compilation failed"
 
+resource_root="$feature_root/src/main/resources"
+if [[ -d "$resource_root" ]]; then
+    cp -R -- "$resource_root/." "$temporary_classes/"
+fi
+
 rm -rf -- "$classes_dir"
 mv -- "$temporary_classes" "$classes_dir"
 cp -- "$issue_runtime/compile-classpath.txt" "$classpath_file"

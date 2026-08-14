@@ -22,6 +22,8 @@ final class FeaturePollingStatus {
 
     void recordAttempt(Instant instant) {
         lastAttemptAt.set(instant.toEpochMilli());
+        result.set(FeaturePollingStatusSnapshot.Result.RUNNING);
+        summary.set("");
     }
 
     void recordSuccess(Instant instant, String safeSummary) {

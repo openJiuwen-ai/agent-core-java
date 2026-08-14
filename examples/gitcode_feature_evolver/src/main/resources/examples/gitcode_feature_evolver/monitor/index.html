@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Feature Evolver · Live Delivery</title>
+    <link rel="stylesheet" href="/monitor/app.css">
+</head>
+<body>
+<div class="ambient ambient-one"></div>
+<div class="ambient ambient-two"></div>
+<main class="shell">
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true"><span>F</span></div>
+            <div>
+                <p class="eyebrow">GITCODE AUTOMATION</p>
+                <h1>Feature Evolver</h1>
+            </div>
+        </div>
+        <div class="live-cluster">
+            <span id="connection-dot" class="connection-dot"></span>
+            <span id="connection-label">正在连接</span>
+            <span class="divider"></span>
+            <time id="generated-at">--</time>
+        </div>
+    </header>
+
+    <section class="hero panel">
+        <div class="hero-copy">
+            <p class="eyebrow">TARGET REPOSITORY</p>
+            <h2 id="target-repository">加载中…</h2>
+            <p class="hero-subtitle">
+                <span id="base-branch">730</span>
+                <span>·</span>
+                <span id="workflow-mode">unattended</span>
+                <span>·</span>
+                <span id="trigger-label">feature</span>
+            </p>
+            <p class="hero-subtitle secondary-target">
+                <span>系统测试</span>
+                <span id="system-test-repository">加载中…</span>
+                <span>←</span>
+                <span id="system-test-publish-repository">加载中…</span>
+                <span>·</span>
+                <span id="system-test-base-branch">agent_core_java</span>
+            </p>
+        </div>
+        <div class="poll-card">
+            <div class="poll-icon" aria-hidden="true">
+                <span></span><span></span><span></span>
+            </div>
+            <div class="poll-copy">
+                <p class="eyebrow">POLLING INTAKE</p>
+                <strong id="poll-result">等待首次扫描</strong>
+                <p id="poll-time">每 15 分钟 · 启动后立即执行</p>
+                <div class="poll-control">
+                    <button id="poll-now" type="button" hidden>立即轮询</button>
+                    <span id="poll-action-status" role="status" aria-live="polite"></span>
+                </div>
+            </div>
+            <div class="poll-metrics">
+                <div><span id="metric-inspected">0</span><small>读取</small></div>
+                <div><span id="metric-admitted">0</span><small>建单</small></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="pipeline panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">DELIVERY PIPELINE</p>
+                <h2>从 Issue 到可评审 PR</h2>
+            </div>
+            <span id="active-stage" class="stage-pill">等待 Issue</span>
+        </div>
+        <div id="pipeline-track" class="pipeline-track" aria-label="Feature 交付流水线"></div>
+    </section>
+
+    <section class="content-grid">
+        <article class="panel jobs-panel">
+            <div class="section-heading compact">
+                <div>
+                    <p class="eyebrow">RECENT JOBS</p>
+                    <h2>任务队列</h2>
+                </div>
+                <span id="job-count" class="count-pill">0</span>
+            </div>
+            <div id="job-list" class="job-list">
+                <div class="empty-state">尚未发现符合条件的 Feature Issue</div>
+            </div>
+        </article>
+
+        <article class="panel detail-panel">
+            <div class="section-heading compact">
+                <div>
+                    <p class="eyebrow">SELECTED JOB</p>
+                    <h2 id="job-title">等待任务</h2>
+                </div>
+                <span id="job-active" class="worker-pill muted">IDLE</span>
+            </div>
+            <div class="detail-grid">
+                <div class="detail-item wide">
+                    <span>Issue</span>
+                    <a id="issue-link" class="value-link disabled">--</a>
+                </div>
+                <div class="detail-item">
+                    <span>当前阶段</span>
+                    <strong id="job-stage">--</strong>
+                </div>
+                <div class="detail-item">
+                    <span>最近更新</span>
+                    <strong id="job-updated">--</strong>
+                </div>
+                <div class="detail-item wide">
+                    <span>工作分支</span>
+                    <code id="job-branch">--</code>
+                </div>
+                <div class="detail-item">
+                    <span>Feature 提交</span>
+                    <code id="job-sha">--</code>
+                </div>
+                <div class="detail-item">
+                    <span>Feature Pull Request</span>
+                    <a id="pr-link" class="value-link disabled">尚未创建</a>
+                </div>
+                <div class="detail-item">
+                    <span>System-test 提交</span>
+                    <code id="system-test-sha">--</code>
+                </div>
+                <div class="detail-item">
+                    <span>System-test Pull Request</span>
+                    <a id="system-test-pr-link" class="value-link disabled">尚未创建</a>
+                </div>
+                <div class="detail-item">
+                    <span>自动修复</span>
+                    <code id="repair-rounds">--</code>
+                </div>
+                <div class="detail-item">
+                    <span>瞬时重试 / 依赖预取</span>
+                    <code id="retry-rounds">--</code>
+                </div>
+                <div class="detail-item wide">
+                    <span>最近故障</span>
+                    <code id="failure-code">--</code>
+                </div>
+                <div class="detail-item wide">
+                    <span>Approved Gate</span>
+                    <code id="gate-receipt">--</code>
+                </div>
+                <div class="detail-item wide">
+                    <span>下次重试</span>
+                    <strong id="next-retry">--</strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="panel timeline-panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">DURABLE AUDIT TIMELINE</p>
+                <h2>真实执行轨迹</h2>
+            </div>
+            <p class="privacy-note">仅展示控制器元数据；Prompt、模型正文和工具原始输出不会进入此页面</p>
+        </div>
+        <ol id="timeline" class="timeline">
+            <li class="empty-state">Job 建立后将在这里显示执行轨迹</li>
+        </ol>
+    </section>
+</main>
+<script src="/monitor/app.js" defer></script>
+</body>
+</html>

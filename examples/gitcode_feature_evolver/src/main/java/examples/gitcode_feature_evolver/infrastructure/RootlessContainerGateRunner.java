@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 
 /**
  * Runs fixed Maven profiles in a rootless, networkless, credential-free Podman container.
@@ -36,6 +38,14 @@ public final class RootlessContainerGateRunner {
     private static final Duration TERMINATION_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration OUTPUT_TIMEOUT = Duration.ofSeconds(5);
     private static final int MAX_OUTPUT_CHARS = 16_000;
+    private static final int MAX_TEST_SELECTOR_CHARS = 4000;
+    private static final String NATIVE_LIBRARY_TMP = "/native-tmp";
+    private static final String BASELINE_TEST_SELECTOR =
+            "com.openjiuwen.core.application.schema.ConstrainConfigValidationTest";
+    private static final String CONTAINER_JVM_OPTIONS = "-Duser.home=/tmp -Djansi.tmpdir="
+            + NATIVE_LIBRARY_TMP + " -Dorg.sqlite.tmpdir=" + NATIVE_LIBRARY_TMP;
+    private static final Pattern SINGLE_TEST_SELECTOR = Pattern.compile(
+            "[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
     private final FeatureEvolvingConfig config;
     private final ProcessExecutor executor;
 
@@ -77,25 +87,96 @@ public final class RootlessContainerGateRunner {
     /**
      * Run one fixed verification profile.
      *
-     * @param profile RED or final full-suite profile
+     * @param profile fixed baseline profile
      * @param worktree persistent feature Worktree
      * @return classified container result
      */
     public ContainerGateResult run(Profile profile, Path worktree) {
         Profile required = Objects.requireNonNull(profile, "profile must not be null");
+        if (required != Profile.BASELINE) {
+            throw new IllegalArgumentException(
+                    "The selected feature profile requires exact test selectors");
+        }
+        return runProfile(required, worktree, List.of(), config.containerMavenCache());
+    }
+
+    /**
+     * Run one controller-selected test profile with exact Java test classes.
+     *
+     * @param profile RED or non-RED targeted profile
+     * @param worktree persistent feature Worktree
+     * @param testSelectors exact Java test classes from the approved plan
+     * @return classified container result
+     */
+    public ContainerGateResult run(Profile profile, Path worktree, List<String> testSelectors) {
+        Profile required = Objects.requireNonNull(profile, "profile must not be null");
+        if (!required.requiresTestSelectors()) {
+            throw new IllegalArgumentException(
+                    "The fixed baseline profile does not accept test selectors");
+        }
+        return runProfile(required, worktree, exactSelectors(testSelectors),
+                config.containerMavenCache());
+    }
+
+    /** Run a fixed feature Gate against an isolated per-Job dependency cache. */
+    public ContainerGateResult run(Profile profile, Path worktree,
+                                   List<String> testSelectors, Path mavenCache) {
+        Profile required = Objects.requireNonNull(profile, "profile must not be null");
+        List<String> selectors = required.requiresTestSelectors()
+                ? exactSelectors(testSelectors) : List.of();
+        return runProfile(required, worktree, selectors, normalizedCache(mavenCache));
+    }
+
+    private ContainerGateResult runProfile(Profile profile, Path worktree,
+                                           List<String> testSelectors, Path mavenCache) {
         Path root = Objects.requireNonNull(worktree, "worktree must not be null")
                 .toAbsolutePath().normalize();
         if (!Files.isDirectory(root)) {
             return new ContainerGateResult(ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
                     1, "Feature Worktree is unavailable", List.of());
         }
-        List<String> command = containerCommand(required, root);
+        List<String> command = containerCommand(profile, root, testSelectors, mavenCache);
         Duration timeout = Duration.ofMinutes(config.containerTimeoutMinutes());
         Execution execution = executor.execute(command, config.dataDir(), timeout);
-        return classify(required, command, execution);
+        return classify(profile, command, execution);
     }
 
-    private List<String> containerCommand(Profile profile, Path worktree) {
+    /**
+     * Build the merged feature artifact and compile or run focused tests in the separate test Worktree.
+     *
+     * @param profile fixed system-test profile
+     * @param sourceWorktree merged feature source
+     * @param testWorktree system-test repository Worktree
+     * @param testSelectors exact Java test classes for the selected-test profile
+     * @return classified credential-free container result
+     */
+    public ContainerGateResult runSystemTest(SystemTestProfile profile, Path sourceWorktree,
+                                             Path testWorktree, List<String> testSelectors) {
+        return runSystemTest(profile, sourceWorktree, testWorktree, testSelectors,
+                config.containerMavenCache());
+    }
+
+    /** Run a system-test Gate against an isolated per-Job dependency cache. */
+    public ContainerGateResult runSystemTest(SystemTestProfile profile, Path sourceWorktree,
+                                             Path testWorktree, List<String> testSelectors,
+                                             Path mavenCache) {
+        SystemTestProfile required = Objects.requireNonNull(profile, "profile must not be null");
+        Path source = normalizedDirectory(sourceWorktree);
+        Path tests = normalizedDirectory(testWorktree);
+        if (source == null || tests == null) {
+            return new ContainerGateResult(ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
+                    1, "Source or system-test Worktree is unavailable", List.of());
+        }
+        String selectors = selectors(required, testSelectors);
+        List<String> command = systemTestCommand(required, source, tests, selectors,
+                normalizedCache(mavenCache));
+        Execution execution = executor.execute(command, config.dataDir(),
+                Duration.ofMinutes(config.containerTimeoutMinutes()));
+        return classify(Profile.TARGETED, command, execution);
+    }
+
+    private List<String> containerCommand(Profile profile, Path worktree,
+                                          List<String> testSelectors, Path mavenCache) {
         FeatureEvolvingConfig.ContainerLimits limits = config.containerLimits();
         UserIdentity identity = UserIdentity.parse(config.containerUser());
         List<String> command = new ArrayList<>(List.of(
@@ -105,14 +186,93 @@ public final class RootlessContainerGateRunner {
                 "--pids-limit=" + limits.pidsLimit(), "--memory=" + limits.memoryMb() + "m",
                 "--cpus=" + limits.cpus(), "--userns=keep-id:uid=" + identity.uid()
                         + ",gid=" + identity.gid(), "--user=" + config.containerUser(),
-                "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m", "--env=HOME=/tmp",
+                "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
+                "--tmpfs=" + NATIVE_LIBRARY_TMP + ":rw,exec,nosuid,nodev,size=64m",
+                "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
+                "--env=JAVA_TOOL_OPTIONS=" + CONTAINER_JVM_OPTIONS,
                 "--mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true",
                 "--volume=" + worktree + ":/workspace:rw,Z",
-                "--volume=" + config.containerMavenCache() + ":/m2:ro,Z",
+                "--volume=" + mavenCache + ":/m2:ro,Z",
                 "--workdir=/workspace", config.containerImage(),
                 "mvn", "-B", "-ntp", "-o", "-Dmaven.repo.local=/m2"));
-        command.addAll(profile.mavenArguments());
+        command.addAll(profile.mavenArguments(testSelectors));
         return List.copyOf(command);
+    }
+
+    List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
+                                   Path testWorktree, String selectors) {
+        return systemTestCommand(profile, sourceWorktree, testWorktree, selectors,
+                config.containerMavenCache());
+    }
+
+    private List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
+                                           Path testWorktree, String selectors,
+                                           Path mavenCache) {
+        FeatureEvolvingConfig.ContainerLimits limits = config.containerLimits();
+        UserIdentity identity = UserIdentity.parse(config.containerUser());
+        String script = "set -eu; "
+                + "version=$(mvn -B -ntp -o -Dmaven.repo.local=/m2 -f /source/pom.xml "
+                + "help:evaluate -Dexpression=project.version -q -DforceStdout); "
+                + "mvn -B -ntp -o -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
+                + "-f /source/pom.xml install; "
+                + "mvn -B -ntp -o -Dmaven.repo.local=/m2 -Dagent-core-java.version=\"$version\" "
+                + "-f /tests/pom.xml " + profile.mavenGoal(selectors);
+        return List.of(config.containerRuntime(), "run", "--rm", "--pull=never",
+                "--network=none", "--http-proxy=false", "--read-only=true", "--cap-drop=ALL",
+                "--security-opt=no-new-privileges", "--pids-limit=" + limits.pidsLimit(),
+                "--memory=" + limits.memoryMb() + "m", "--cpus=" + limits.cpus(),
+                "--userns=keep-id:uid=" + identity.uid() + ",gid=" + identity.gid(),
+                "--user=" + config.containerUser(),
+                "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
+                "--tmpfs=" + NATIVE_LIBRARY_TMP + ":rw,exec,nosuid,nodev,size=64m",
+                "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
+                "--env=JAVA_TOOL_OPTIONS=" + CONTAINER_JVM_OPTIONS,
+                "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true",
+                "--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true",
+                "--volume=" + sourceWorktree + ":/source:rw,Z",
+                "--volume=" + testWorktree + ":/tests:rw,Z",
+                "--volume=" + mavenCache + ":/m2:O",
+                "--workdir=/tests", config.containerImage(), "sh", "-eu", "-c", script);
+    }
+
+    private static Path normalizedDirectory(Path path) {
+        if (path == null) {
+            return null;
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        return Files.isDirectory(normalized) ? normalized : null;
+    }
+
+    private static Path normalizedCache(Path path) {
+        Path normalized = normalizedDirectory(path);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Maven dependency cache is unavailable");
+        }
+        return normalized;
+    }
+
+    private static String selectors(SystemTestProfile profile, List<String> supplied) {
+        return String.join(",", exactSelectors(supplied));
+    }
+
+    private static List<String> exactSelectors(List<String> supplied) {
+        List<String> candidates = supplied == null ? List.of() : supplied;
+        LinkedHashSet<String> selectors = new LinkedHashSet<>();
+        int totalChars = 0;
+        for (String candidate : candidates) {
+            if (candidate == null || !SINGLE_TEST_SELECTOR.matcher(candidate).matches()) {
+                throw new IllegalArgumentException("Test selectors must be exact Java class names");
+            }
+            totalChars += candidate.length() + 1;
+            if (totalChars > MAX_TEST_SELECTOR_CHARS) {
+                throw new IllegalArgumentException("Test selectors exceed the fixed size limit");
+            }
+            selectors.add(candidate);
+        }
+        if (selectors.isEmpty()) {
+            throw new IllegalArgumentException("At least one exact test selector is required");
+        }
+        return List.copyOf(selectors);
     }
 
     private static ContainerGateResult classify(Profile profile, List<String> command,
@@ -130,8 +290,7 @@ public final class RootlessContainerGateRunner {
         if (dependencyMissing(lower)) {
             return result(ContainerGateResult.Outcome.DEPENDENCY_MISSING, execution, output, command);
         }
-        if (execution.exitCode() == 125 || lower.contains("error: crun")
-                || lower.contains("cannot connect to podman") || lower.contains("permission denied")) {
+        if (execution.exitCode() == 125 || infrastructureFailure(lower)) {
             return result(ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED, execution, output, command);
         }
         if (profile == Profile.RED && isTrustworthyRed(lower)) {
@@ -145,6 +304,15 @@ public final class RootlessContainerGateRunner {
                 || output.contains("cannot access central in offline mode")
                 || output.contains("has not been downloaded from it before")
                 || output.contains("failure to find") && output.contains("offline");
+    }
+
+    private static boolean infrastructureFailure(String output) {
+        return output.contains("error: crun") || output.contains("cannot connect to podman")
+                || output.contains("permission denied")
+                || output.contains("unable to create native thread")
+                || output.contains("unable to create new native thread")
+                || output.contains("pthread_create failed (eagain)")
+                || output.contains("possibly out of memory or process/resource limits reached");
     }
 
     private static boolean isTrustworthyRed(String output) {
@@ -258,19 +426,30 @@ public final class RootlessContainerGateRunner {
         }
     }
 
-    /** Fixed verification profiles; Agents cannot supply commands. */
+    /** Fixed verification profiles; Agents cannot supply Maven arguments. */
     public enum Profile {
-        RED(List.of("-DskipITs", "test")),
-        FULL(List.of("verify"));
+        BASELINE,
+        RED,
+        TARGETED;
 
-        private final List<String> mavenArguments;
-
-        Profile(List<String> mavenArguments) {
-            this.mavenArguments = List.copyOf(mavenArguments);
+        private boolean requiresTestSelectors() {
+            return this != BASELINE;
         }
 
-        private List<String> mavenArguments() {
-            return mavenArguments;
+        private List<String> mavenArguments(List<String> testSelectors) {
+            String selectors = this == BASELINE
+                    ? BASELINE_TEST_SELECTOR : String.join(",", testSelectors);
+            return List.of("-DskipITs", "-Dtest=" + selectors, "-DfailIfNoTests=true",
+                    "-Dsurefire.failIfNoSpecifiedTests=true", "test");
+        }
+    }
+
+    /** Fixed post-merge test-repository profiles. */
+    public enum SystemTestProfile {
+        SELECTED;
+
+        private String mavenGoal(String selectors) {
+            return "-Dtest=\"" + selectors + "\" test";
         }
     }
 

@@ -30,10 +30,19 @@ public final class FeatureEvolvingConfig {
     private static final Pattern ACCOUNT_PATTERN = Pattern.compile("[A-Za-z0-9_.-]+");
     private static final Pattern IMAGE_DIGEST_PATTERN = Pattern.compile(
             "[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-fA-F]{64}");
+    private static final Pattern TEST_SELECTOR_PATTERN = Pattern.compile(
+            "[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
+    private static final int MAX_SYSTEM_TEST_SMOKE_SELECTORS = 3;
+    private static final List<String> DEFAULT_SYSTEM_TEST_WRITE_SCOPES = List.of(
+            "src/test/java/", "src/test/resources/");
     private final Builder values;
 
     private FeatureEvolvingConfig(Builder builder) {
-        this.values = new Builder(Objects.requireNonNull(builder, "builder must not be null"));
+        Builder resolved = new Builder(Objects.requireNonNull(builder, "builder must not be null"));
+        if (resolved.dependencyPrefetchCacheRoot == null && resolved.dataDir != null) {
+            resolved.dependencyPrefetchCacheRoot = resolved.dataDir.resolve("prefetch").normalize();
+        }
+        this.values = resolved;
     }
 
     /** @return a mutable builder initialized with secure defaults */
@@ -86,6 +95,27 @@ public final class FeatureEvolvingConfig {
         return values.gitCodeToken;
     }
 
+    /** @return GitCode login that owns the Evolver bot PAT */
+    public String gitCodeUsername() {
+        return isUnset(values.gitCodeUsername)
+                ? coordinates().publishOwner() : values.gitCodeUsername;
+    }
+
+    /** @return GitCode login used for test-repository Git operations */
+    public String systemTestGitCodeUsername() {
+        if (!isUnset(values.systemTestGitCodeUsername)) {
+            return values.systemTestGitCodeUsername;
+        }
+        return isUnset(values.systemTestGitCodeToken)
+                ? gitCodeUsername() : systemTestCoordinates().publishOwner();
+    }
+
+    /** @return isolated test-repository PAT, or the Feature Bot PAT when absent */
+    public String systemTestGitCodeToken() {
+        return isUnset(values.systemTestGitCodeToken)
+                ? values.gitCodeToken : values.systemTestGitCodeToken;
+    }
+
     /** @return configured trigger mode */
     public TriggerMode triggerMode() {
         return values.triggerMode;
@@ -104,6 +134,11 @@ public final class FeatureEvolvingConfig {
     /** @return fixed polling delay in minutes */
     public int pollIntervalMinutes() {
         return values.pollIntervalMinutes;
+    }
+
+    /** @return whether the loopback-only manual polling endpoint is enabled */
+    public boolean manualPollingEnabled() {
+        return values.manualPollingEnabled;
     }
 
     /** @return maximum Issue pages per scan iteration */
@@ -135,6 +170,27 @@ public final class FeatureEvolvingConfig {
     public RepositoryCoordinates coordinates() {
         return RepositoryCoordinates.from(values.targetRepository,
                 values.publishRepository, values.baseBranch);
+    }
+
+    /** @return whether a merged feature must produce a separate system-test PR */
+    public boolean systemTestEnabled() {
+        return values.systemTestEnabled;
+    }
+
+    /** @return target and fork-publication coordinates for post-merge system tests */
+    public RepositoryCoordinates systemTestCoordinates() {
+        return RepositoryCoordinates.from(values.systemTestRepository,
+                values.systemTestPublishRepository, values.systemTestBaseBranch);
+    }
+
+    /** @return exact test-code/resource directory scopes writable after feature merge */
+    public List<String> systemTestWriteScopes() {
+        return List.copyOf(values.systemTestWriteScopes);
+    }
+
+    /** @return operator-approved smoke classes always run with new system tests */
+    public List<String> systemTestSmokeSelectors() {
+        return List.copyOf(values.systemTestSmokeSelectors);
     }
 
     /** @return fixed official GitCode API base */
@@ -182,6 +238,41 @@ public final class FeatureEvolvingConfig {
         return values.containerLimits;
     }
 
+    /** @return maximum input-changing repairs in the primary Agent session */
+    public int maxPrimaryRepairRounds() {
+        return values.maxPrimaryRepairRounds;
+    }
+
+    /** @return maximum repairs in the independent diagnostic Agent session */
+    public int maxDiagnosticRepairRounds() {
+        return values.maxDiagnosticRepairRounds;
+    }
+
+    /** @return maximum scheduled retries for one transient stage failure */
+    public int maxTransientStageRetries() {
+        return values.maxTransientStageRetries;
+    }
+
+    /** @return maximum automatic dependency-prefetch rounds */
+    public int maxDependencyPrefetchRounds() {
+        return values.maxDependencyPrefetchRounds;
+    }
+
+    /** @return whether isolated automatic dependency prefetch is enabled */
+    public boolean dependencyPrefetchEnabled() {
+        return values.dependencyPrefetchEnabled;
+    }
+
+    /** @return root for isolated per-Job Maven caches */
+    public Path dependencyPrefetchCacheRoot() {
+        return values.dependencyPrefetchCacheRoot;
+    }
+
+    /** @return terminal Job cache retention in hours */
+    public int dependencyPrefetchRetentionHours() {
+        return values.dependencyPrefetchRetentionHours;
+    }
+
     /** @return model-only settings without GitCode credentials */
     public AgentModelSettings modelSettings() {
         return new AgentModelSettings(values.modelProvider, values.modelApiKey,
@@ -208,6 +299,7 @@ public final class FeatureEvolvingConfig {
         validateNetwork(errors);
         validateCredentials(errors);
         validateRepository(errors);
+        validateSystemTest(errors);
         validatePaths(errors);
         validateContainer(errors);
         validateModel(errors);
@@ -234,6 +326,13 @@ public final class FeatureEvolvingConfig {
         }
         if (values.pollIntervalMinutes < 1 || values.pollIntervalMinutes > 1440) {
             errors.add("pollIntervalMinutes must be between 1 and 1440");
+        }
+        if (values.manualPollingEnabled && !"127.0.0.1".equals(values.bindHost)) {
+            errors.add("manualPollingEnabled requires bindHost 127.0.0.1");
+        }
+        if (values.manualPollingEnabled
+                && (values.triggerMode == null || !values.triggerMode.usesPolling())) {
+            errors.add("manualPollingEnabled requires polling or both triggerMode");
         }
         if (values.maxIssueScanPages < 1 || values.maxIssueScanPages > 100) {
             errors.add("maxIssueScanPages must be between 1 and 100");
@@ -271,6 +370,45 @@ public final class FeatureEvolvingConfig {
         if (values.gitUserName.isBlank() || values.gitUserEmail.isBlank()) {
             errors.add("Git author name and email are required");
         }
+    }
+
+    private void validateSystemTest(List<String> errors) {
+        if (!values.systemTestEnabled) {
+            return;
+        }
+        if (!RepositoryCoordinates.isValidRepository(values.systemTestRepository)) {
+            errors.add("systemTestRepository must use owner/name format");
+        }
+        if (!RepositoryCoordinates.isValidRepository(values.systemTestPublishRepository)) {
+            errors.add("systemTestPublishRepository must use owner/name format");
+        }
+        if (!RepositoryCoordinates.isValidBaseBranch(values.systemTestBaseBranch)) {
+            errors.add("systemTestBaseBranch is invalid");
+        }
+        if (values.systemTestWriteScopes.isEmpty()
+                || values.systemTestWriteScopes.stream().anyMatch(
+                scope -> !isSafeSystemTestScope(scope))) {
+            errors.add("systemTestWriteScopes must contain only src/test/java/ or src/test/resources/ directories");
+        }
+        if (values.systemTestSmokeSelectors.isEmpty()
+                || values.systemTestSmokeSelectors.size() > MAX_SYSTEM_TEST_SMOKE_SELECTORS
+                || values.systemTestSmokeSelectors.stream().anyMatch(
+                selector -> !isExactTestSelector(selector))) {
+            errors.add("systemTestSmokeSelectors must contain between 1 and 3 exact Java test class names");
+        }
+    }
+
+    private static boolean isExactTestSelector(String selector) {
+        return selector != null && TEST_SELECTOR_PATTERN.matcher(selector).matches();
+    }
+
+    private static boolean isSafeSystemTestScope(String scope) {
+        if (scope == null || !scope.endsWith("/")) {
+            return false;
+        }
+        String value = scope.replace('\\', '/');
+        return "src/test/java/".equals(value) || value.startsWith("src/test/java/")
+                || "src/test/resources/".equals(value) || value.startsWith("src/test/resources/");
     }
 
     private void validateAccounts(List<String> accounts, String name, List<String> errors) {
@@ -347,6 +485,32 @@ public final class FeatureEvolvingConfig {
         }
         if (!values.containerLimits.isValid()) {
             errors.add("container resource limits are invalid");
+        }
+        if (values.maxPrimaryRepairRounds < 1 || values.maxPrimaryRepairRounds > 20) {
+            errors.add("maxPrimaryRepairRounds must be between 1 and 20");
+        }
+        if (values.maxDiagnosticRepairRounds < 0 || values.maxDiagnosticRepairRounds > 10) {
+            errors.add("maxDiagnosticRepairRounds must be between 0 and 10");
+        }
+        if (values.maxTransientStageRetries < 1 || values.maxTransientStageRetries > 5) {
+            errors.add("maxTransientStageRetries must be between 1 and 5");
+        }
+        if (values.maxDependencyPrefetchRounds < 0 || values.maxDependencyPrefetchRounds > 5) {
+            errors.add("maxDependencyPrefetchRounds must be between 0 and 5");
+        }
+        if (values.dependencyPrefetchRetentionHours < 1
+                || values.dependencyPrefetchRetentionHours > 168) {
+            errors.add("dependencyPrefetchRetentionHours must be between 1 and 168");
+        }
+        if (values.dependencyPrefetchEnabled
+                && !ensureWritableDirectory(values.dependencyPrefetchCacheRoot)) {
+            errors.add("dependencyPrefetchCacheRoot must be creatable and writable");
+        }
+        if (values.dependencyPrefetchEnabled
+                && (overlaps(values.dependencyPrefetchCacheRoot, values.localRepository)
+                || overlaps(values.dependencyPrefetchCacheRoot, values.worktreeRoot)
+                || overlaps(values.dependencyPrefetchCacheRoot, values.containerMavenCache))) {
+            errors.add("dependencyPrefetchCacheRoot must be isolated from repositories and shared cache");
         }
     }
 
@@ -465,18 +629,28 @@ public final class FeatureEvolvingConfig {
         private Path codingStandardSkill;
         private String webhookSecret = "";
         private String gitCodeToken = "";
+        private String gitCodeUsername = "";
+        private String systemTestGitCodeToken = "";
+        private String systemTestGitCodeUsername = "";
         private TriggerMode triggerMode = TriggerMode.BOTH;
         private String triggerLabel = DEFAULT_TRIGGER_LABEL;
         private int issueScanWindowHours = 24;
         private int pollIntervalMinutes = 15;
+        private boolean manualPollingEnabled;
         private int maxIssueScanPages = 10;
-        private FeatureWorkflowMode defaultWorkflowMode = FeatureWorkflowMode.ATTENDED;
+        private FeatureWorkflowMode defaultWorkflowMode = FeatureWorkflowMode.UNATTENDED;
         private List<String> approverLogins = List.of();
         private List<String> assignees = List.of();
         private String componentRoot = ".";
         private String targetRepository = RepositoryCoordinates.DEFAULT_TARGET_REPOSITORY;
         private String publishRepository = RepositoryCoordinates.DEFAULT_TARGET_REPOSITORY;
         private String baseBranch = "730";
+        private boolean systemTestEnabled;
+        private String systemTestRepository = "openJiuwen/jiuwen-test";
+        private String systemTestPublishRepository = "antonjli/jiuwen-test-bot";
+        private String systemTestBaseBranch = "agent_core_java";
+        private List<String> systemTestWriteScopes = DEFAULT_SYSTEM_TEST_WRITE_SCOPES;
+        private List<String> systemTestSmokeSelectors = List.of();
         private String gitUserName = "gitcode-feature-evolver";
         private String gitUserEmail = "gitcode-feature-evolver@localhost";
         private String containerRuntime = "podman";
@@ -485,6 +659,13 @@ public final class FeatureEvolvingConfig {
         private String containerUser = "1000:1000";
         private int containerTimeoutMinutes = 30;
         private ContainerLimits containerLimits = new ContainerLimits(2048, "2.0", 256);
+        private int maxPrimaryRepairRounds = 5;
+        private int maxDiagnosticRepairRounds = 3;
+        private int maxTransientStageRetries = 5;
+        private int maxDependencyPrefetchRounds = 2;
+        private boolean dependencyPrefetchEnabled = true;
+        private Path dependencyPrefetchCacheRoot;
+        private int dependencyPrefetchRetentionHours = 24;
         private String modelProvider = "";
         private String modelName = "";
         private String modelApiBase = "";
@@ -504,10 +685,14 @@ public final class FeatureEvolvingConfig {
             this.codingStandardSkill = source.codingStandardSkill;
             this.webhookSecret = source.webhookSecret;
             this.gitCodeToken = source.gitCodeToken;
+            this.gitCodeUsername = source.gitCodeUsername;
+            this.systemTestGitCodeToken = source.systemTestGitCodeToken;
+            this.systemTestGitCodeUsername = source.systemTestGitCodeUsername;
             this.triggerMode = source.triggerMode;
             this.triggerLabel = source.triggerLabel;
             this.issueScanWindowHours = source.issueScanWindowHours;
             this.pollIntervalMinutes = source.pollIntervalMinutes;
+            this.manualPollingEnabled = source.manualPollingEnabled;
             this.maxIssueScanPages = source.maxIssueScanPages;
             this.defaultWorkflowMode = source.defaultWorkflowMode;
             this.approverLogins = List.copyOf(source.approverLogins);
@@ -516,6 +701,12 @@ public final class FeatureEvolvingConfig {
             this.targetRepository = source.targetRepository;
             this.publishRepository = source.publishRepository;
             this.baseBranch = source.baseBranch;
+            this.systemTestEnabled = source.systemTestEnabled;
+            this.systemTestRepository = source.systemTestRepository;
+            this.systemTestPublishRepository = source.systemTestPublishRepository;
+            this.systemTestBaseBranch = source.systemTestBaseBranch;
+            this.systemTestWriteScopes = List.copyOf(source.systemTestWriteScopes);
+            this.systemTestSmokeSelectors = List.copyOf(source.systemTestSmokeSelectors);
             this.gitUserName = source.gitUserName;
             this.gitUserEmail = source.gitUserEmail;
             this.containerRuntime = source.containerRuntime;
@@ -524,6 +715,13 @@ public final class FeatureEvolvingConfig {
             this.containerUser = source.containerUser;
             this.containerTimeoutMinutes = source.containerTimeoutMinutes;
             this.containerLimits = source.containerLimits;
+            this.maxPrimaryRepairRounds = source.maxPrimaryRepairRounds;
+            this.maxDiagnosticRepairRounds = source.maxDiagnosticRepairRounds;
+            this.maxTransientStageRetries = source.maxTransientStageRetries;
+            this.maxDependencyPrefetchRounds = source.maxDependencyPrefetchRounds;
+            this.dependencyPrefetchEnabled = source.dependencyPrefetchEnabled;
+            this.dependencyPrefetchCacheRoot = source.dependencyPrefetchCacheRoot;
+            this.dependencyPrefetchRetentionHours = source.dependencyPrefetchRetentionHours;
             this.modelProvider = source.modelProvider;
             this.modelName = source.modelName;
             this.modelApiBase = source.modelApiBase;
@@ -585,6 +783,24 @@ public final class FeatureEvolvingConfig {
             return this;
         }
 
+        /** @param value login that owns the GitCode PAT @return this builder */
+        public Builder gitCodeUsername(String value) {
+            this.gitCodeUsername = text(value);
+            return this;
+        }
+
+        /** @param value optional isolated test-repository PAT @return this builder */
+        public Builder systemTestGitCodeToken(String value) {
+            this.systemTestGitCodeToken = text(value);
+            return this;
+        }
+
+        /** @param value login that owns the isolated test-repository PAT @return this builder */
+        public Builder systemTestGitCodeUsername(String value) {
+            this.systemTestGitCodeUsername = text(value);
+            return this;
+        }
+
         /** @param value trigger mode @return this builder */
         public Builder triggerMode(TriggerMode value) {
             this.triggerMode = value;
@@ -606,6 +822,12 @@ public final class FeatureEvolvingConfig {
         /** @param value fixed polling delay minutes @return this builder */
         public Builder pollIntervalMinutes(int value) {
             this.pollIntervalMinutes = value;
+            return this;
+        }
+
+        /** @param value enable the loopback-only manual polling endpoint @return this builder */
+        public Builder manualPollingEnabled(boolean value) {
+            this.manualPollingEnabled = value;
             return this;
         }
 
@@ -657,6 +879,42 @@ public final class FeatureEvolvingConfig {
             return this;
         }
 
+        /** @param value enable post-merge system-test delivery @return this builder */
+        public Builder systemTestEnabled(boolean value) {
+            this.systemTestEnabled = value;
+            return this;
+        }
+
+        /** @param value target system-test repository @return this builder */
+        public Builder systemTestRepository(String value) {
+            this.systemTestRepository = text(value);
+            return this;
+        }
+
+        /** @param value fork repository used to publish test branches @return this builder */
+        public Builder systemTestPublishRepository(String value) {
+            this.systemTestPublishRepository = text(value);
+            return this;
+        }
+
+        /** @param value system-test repository base branch @return this builder */
+        public Builder systemTestBaseBranch(String value) {
+            this.systemTestBaseBranch = text(value);
+            return this;
+        }
+
+        /** @param value exact writable test directories @return this builder */
+        public Builder systemTestWriteScopes(List<String> value) {
+            this.systemTestWriteScopes = copy(value);
+            return this;
+        }
+
+        /** @param value operator-approved exact smoke test classes @return this builder */
+        public Builder systemTestSmokeSelectors(List<String> value) {
+            this.systemTestSmokeSelectors = copy(value);
+            return this;
+        }
+
         /** @param value Git author name @return this builder */
         public Builder gitUserName(String value) {
             this.gitUserName = text(value);
@@ -702,6 +960,48 @@ public final class FeatureEvolvingConfig {
         /** @param value immutable container limits @return this builder */
         public Builder containerLimits(ContainerLimits value) {
             this.containerLimits = value;
+            return this;
+        }
+
+        /** @param value primary Agent repair budget @return this builder */
+        public Builder maxPrimaryRepairRounds(int value) {
+            this.maxPrimaryRepairRounds = value;
+            return this;
+        }
+
+        /** @param value diagnostic Agent repair budget @return this builder */
+        public Builder maxDiagnosticRepairRounds(int value) {
+            this.maxDiagnosticRepairRounds = value;
+            return this;
+        }
+
+        /** @param value transient stage retry budget @return this builder */
+        public Builder maxTransientStageRetries(int value) {
+            this.maxTransientStageRetries = value;
+            return this;
+        }
+
+        /** @param value dependency-prefetch budget @return this builder */
+        public Builder maxDependencyPrefetchRounds(int value) {
+            this.maxDependencyPrefetchRounds = value;
+            return this;
+        }
+
+        /** @param value enable isolated dependency prefetch @return this builder */
+        public Builder dependencyPrefetchEnabled(boolean value) {
+            this.dependencyPrefetchEnabled = value;
+            return this;
+        }
+
+        /** @param value per-Job dependency-cache root @return this builder */
+        public Builder dependencyPrefetchCacheRoot(Path value) {
+            this.dependencyPrefetchCacheRoot = normalize(value);
+            return this;
+        }
+
+        /** @param value terminal Job cache retention hours @return this builder */
+        public Builder dependencyPrefetchRetentionHours(int value) {
+            this.dependencyPrefetchRetentionHours = value;
             return this;
         }
 

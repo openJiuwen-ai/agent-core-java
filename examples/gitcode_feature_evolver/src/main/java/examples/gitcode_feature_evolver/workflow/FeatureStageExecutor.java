@@ -11,16 +11,28 @@ import examples.gitcode_feature_evolver.gitcode.FeatureComment;
 import examples.gitcode_feature_evolver.gitcode.FeatureIssue;
 import examples.gitcode_feature_evolver.gitcode.FeaturePullRequest;
 import examples.gitcode_feature_evolver.infrastructure.ContainerGateResult;
+import examples.gitcode_feature_evolver.infrastructure.DependencyPrefetcher;
 import examples.gitcode_feature_evolver.infrastructure.FeatureGitPublisher;
 import examples.gitcode_feature_evolver.infrastructure.FeatureWorktreeManager;
 import examples.gitcode_feature_evolver.infrastructure.RootlessContainerGateRunner;
+import examples.gitcode_feature_evolver.infrastructure.SystemTestWorktreeManager;
 import examples.gitcode_feature_evolver.job.FeatureJob;
+import examples.gitcode_feature_evolver.job.ApprovedGateReceipt;
+import examples.gitcode_feature_evolver.job.FeatureExecutionException;
+import examples.gitcode_feature_evolver.job.FeatureFailure;
+import examples.gitcode_feature_evolver.job.FeatureFailureCategory;
+import examples.gitcode_feature_evolver.job.FeatureFailureEvent;
 import examples.gitcode_feature_evolver.job.FeatureJobMutation;
+import examples.gitcode_feature_evolver.job.FeatureJobStore;
 import examples.gitcode_feature_evolver.job.FeatureStage;
 import examples.gitcode_feature_evolver.publish.FeaturePullRequestPublisher;
+import examples.gitcode_feature_evolver.publish.SystemTestPullRequestPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -32,13 +44,17 @@ import java.util.concurrent.CancellationException;
  * @since 0.1.12
  */
 public final class FeatureStageExecutor implements FeatureStageRunner {
-    private static final int MAX_AUTOMATED_ATTEMPTS = 3;
+    private static final Logger LOGGER = LoggerFactory.getLogger(FeatureStageExecutor.class);
     private final FeatureEvolvingConfig config;
+    private final FeatureJobStore store;
     private final FeatureStageAgent agent;
     private final FeatureWorktreeManager worktrees;
     private final RootlessContainerGateRunner container;
     private final FeatureGitPublisher gitPublisher;
+    private final DependencyPrefetcher dependencyPrefetcher;
     private final FeaturePullRequestPublisher pullRequests;
+    private final SystemTestWorktreeManager systemTestWorktrees;
+    private final SystemTestPullRequestPublisher systemTestPullRequests;
 
     /**
      * Create the complete bounded stage executor.
@@ -47,16 +63,20 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
      * @param agent restricted stage Agent
      * @param infrastructure trusted Worktree, container, Git, and PR boundaries
      */
-    public FeatureStageExecutor(FeatureEvolvingConfig config, FeatureStageAgent agent,
-                                Infrastructure infrastructure) {
+    public FeatureStageExecutor(FeatureEvolvingConfig config, FeatureJobStore store,
+                                FeatureStageAgent agent, Infrastructure infrastructure) {
         this.config = Objects.requireNonNull(config, "config must not be null");
+        this.store = Objects.requireNonNull(store, "store must not be null");
         this.agent = Objects.requireNonNull(agent, "agent must not be null");
         Infrastructure required = Objects.requireNonNull(infrastructure,
                 "infrastructure must not be null");
         this.worktrees = required.worktrees();
         this.container = required.container();
         this.gitPublisher = required.gitPublisher();
+        this.dependencyPrefetcher = new DependencyPrefetcher(config);
         this.pullRequests = required.pullRequests();
+        this.systemTestWorktrees = required.systemTests().worktrees();
+        this.systemTestPullRequests = required.systemTests().pullRequests();
     }
 
     /**
@@ -70,12 +90,18 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         ExecutionRequest required = Objects.requireNonNull(request, "request must not be null");
         FeatureJob job = required.job();
         FeatureStage stage = job.progress().stage();
-        if (stage == FeatureStage.FAILED_RETRYABLE) {
+        if (stage == FeatureStage.RETRY_SCHEDULED) {
             return restoreRetry(job);
+        }
+        if (stage == FeatureStage.DEPENDENCY_PREFETCH) {
+            return dependencyPrefetch(required);
         }
         if (stage == FeatureStage.CANCEL_REQUESTED) {
             return transition(job, FeatureStage.CANCELLED,
                     job.progress().gateRound(), job.progress().taskAttempt(), "Cancellation completed");
+        }
+        if (isSystemTestStage(stage)) {
+            return executeSystemTestStage(required);
         }
         StageContext context = context(required);
         return switch (stage) {
@@ -91,10 +117,145 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
             case PUBLISH_TASK -> publishTask(context);
             case REVIEW_R3 -> reviewR3(context);
             case SHIP -> ship(context);
-            case FAILED_RETRYABLE, CANCEL_REQUESTED -> throw new IllegalStateException(
+            case RETRY_SCHEDULED, DEPENDENCY_PREFETCH, CANCEL_REQUESTED -> throw new IllegalStateException(
                     "Preprocessed feature stage reached the stage dispatcher");
             default -> waitingState(job);
         };
+    }
+
+    private FeatureStageOutcome executeSystemTestStage(ExecutionRequest request) {
+        if (!config.systemTestEnabled()) {
+            return configurationFailure(request.job(),
+                    "System-test stage is disabled by the current configuration");
+        }
+        SystemTestContext context = systemTestContext(request);
+        return switch (request.job().progress().stage()) {
+            case SYSTEM_TEST -> systemTest(context);
+            case REVIEW_SYSTEM_TEST -> reviewSystemTest(context);
+            case PUBLISH_SYSTEM_TEST -> publishSystemTest(context);
+            default -> throw new IllegalStateException("Unsupported system-test stage");
+        };
+    }
+
+    private FeatureStageOutcome dependencyPrefetch(ExecutionRequest request) {
+        FeatureJob job = request.job();
+        FeatureStage resume = job.progress().resumeStage();
+        if (resume == null) {
+            return transition(job, FeatureStage.FAILED_INTERNAL,
+                    job.progress().gateRound(), job.progress().taskAttempt(),
+                    "Dependency prefetch has no recovery stage");
+        }
+        int round = job.recovery().retries().dependencyPrefetchRounds() + 1;
+        if (round > config.maxDependencyPrefetchRounds()) {
+            throw new FeatureExecutionException(new FeatureFailure(
+                    "DEPENDENCY_PREFETCH_EXHAUSTED", FeatureFailureCategory.DEPENDENCY_MISSING,
+                    FeatureStage.DEPENDENCY_PREFETCH, resume,
+                    new FeatureFailure.Diagnostic(
+                    "Automatic dependency prefetch budget exhausted", "")));
+        }
+        request.cancellation().check();
+        DependencyPrefetcher.Result result = isSystemTestStage(resume)
+                ? prefetchSystemTest(request) : prefetchFeature(request);
+        recordPrefetch(job, resume, round, result);
+        if (result.status() == DependencyPrefetcher.Status.POLICY_VIOLATION) {
+            restorePrefetchPolicy(job, resume);
+        }
+        return prefetchOutcome(job, resume, result);
+    }
+
+    private void restorePrefetchPolicy(FeatureJob job, FeatureStage resume) {
+        if (isSystemTestStage(resume)) {
+            FeatureWorktreeManager.PreparedMergedSource source = worktrees.prepareMergedSource(job);
+            SystemTestWorktreeManager.PreparedSystemTestWorktree tests =
+                    systemTestWorktrees.prepare(job);
+            restorePolicySnapshot(source.path(), false, FeatureStage.DEPENDENCY_PREFETCH);
+            restorePolicySnapshot(tests.path(), true, FeatureStage.DEPENDENCY_PREFETCH);
+            return;
+        }
+        FeatureWorktreeManager.PreparedWorktree feature = worktrees.prepare(job);
+        restorePolicySnapshot(feature.path(), false, FeatureStage.DEPENDENCY_PREFETCH);
+    }
+
+    private DependencyPrefetcher.Result prefetchFeature(ExecutionRequest request) {
+        FeatureWorktreeManager.PreparedWorktree prepared = worktrees.prepare(request.job());
+        List<String> dirty = gitPublisher.dirtyFiles(prepared.path());
+        return dependencyPrefetcher.prefetchFeature(request.job(), prepared.path(), dirty);
+    }
+
+    private DependencyPrefetcher.Result prefetchSystemTest(ExecutionRequest request) {
+        FeatureWorktreeManager.PreparedMergedSource source =
+                worktrees.prepareMergedSource(request.job());
+        SystemTestWorktreeManager.PreparedSystemTestWorktree tests =
+                systemTestWorktrees.prepare(request.job());
+        List<String> dirty = new java.util.ArrayList<>(
+                gitPublisher.dirtyFiles(source.path()));
+        dirty.addAll(gitPublisher.systemTestChangedFiles(tests.path()));
+        return dependencyPrefetcher.prefetchSystemTest(request.job(), source.path(),
+                tests.path(), dirty);
+    }
+
+    private void recordPrefetch(FeatureJob job, FeatureStage resume, int round,
+                                DependencyPrefetcher.Result result) {
+        FeatureFailureEvent.RepairAttempt attempt =
+                new FeatureFailureEvent.RepairAttempt("PREFETCH", round);
+        if (result.status() == DependencyPrefetcher.Status.PASSED) {
+            store.recordRecoveryProgress(job.identity().id(), job.record().version(),
+                    attempt, result.summary());
+            return;
+        }
+        FeatureFailureCategory category = switch (result.status()) {
+            case DEPENDENCY_UNAVAILABLE -> FeatureFailureCategory.DEPENDENCY_MISSING;
+            case TRANSIENT -> FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE;
+            case POLICY_VIOLATION -> FeatureFailureCategory.POLICY_VIOLATION;
+            case PASSED -> throw new IllegalStateException("Passed prefetch was not short-circuited");
+        };
+        FeatureFailure failure = new FeatureFailure("DEPENDENCY_PREFETCH_" + result.status(),
+                category, FeatureStage.DEPENDENCY_PREFETCH, resume,
+                new FeatureFailure.Diagnostic(result.summary(), ""));
+        store.recordFailure(job.identity().id(), job.record().version(), failure, attempt, 0L);
+    }
+
+    private FeatureStageOutcome prefetchOutcome(FeatureJob job, FeatureStage resume,
+                                                DependencyPrefetcher.Result result) {
+        return switch (result.status()) {
+            case PASSED -> transition(job, resume, job.progress().gateRound(),
+                    job.progress().taskAttempt(), "Dependency prefetch completed");
+            case DEPENDENCY_UNAVAILABLE -> throw new FeatureExecutionException(
+                    new FeatureFailure("DEPENDENCY_UNAVAILABLE",
+                            FeatureFailureCategory.DEPENDENCY_MISSING,
+                            FeatureStage.DEPENDENCY_PREFETCH, resume,
+                            new FeatureFailure.Diagnostic(result.summary(), "")));
+            case POLICY_VIOLATION -> throw new FeatureExecutionException(
+                    new FeatureFailure("DEPENDENCY_PREFETCH_POLICY_VIOLATION",
+                            FeatureFailureCategory.POLICY_VIOLATION,
+                            FeatureStage.DEPENDENCY_PREFETCH, null,
+                            new FeatureFailure.Diagnostic(result.summary(), "")));
+            case TRANSIENT -> throw new FeatureExecutionException(new FeatureFailure(
+                    "DEPENDENCY_PREFETCH_TRANSIENT",
+                    FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE,
+                    FeatureStage.DEPENDENCY_PREFETCH, FeatureStage.DEPENDENCY_PREFETCH,
+                    new FeatureFailure.Diagnostic(result.summary(), "")));
+        };
+    }
+
+    private Path gateCache(FeatureJob job) {
+        Path isolated = dependencyPrefetcher.cacheFor(job);
+        return java.nio.file.Files.isDirectory(isolated)
+                ? isolated : config.containerMavenCache();
+    }
+
+    private SystemTestContext systemTestContext(ExecutionRequest request) {
+        request.cancellation().check();
+        FeatureWorktreeManager.PreparedMergedSource source =
+                worktrees.prepareMergedSource(request.job());
+        SystemTestWorktreeManager.PreparedSystemTestWorktree tests =
+                systemTestWorktrees.prepare(request.job());
+        request.cancellation().check();
+        SystemTestArtifactInspector inspector = new SystemTestArtifactInspector(
+                tests.path(), request.job(), config.systemTestWriteScopes(), source.revision());
+        return new SystemTestContext(request.job(), new IssueData(request.issue(), request.comments()),
+                source.path(), source.revision(), tests.path(), tests.branch(), inspector,
+                request.cancellation());
     }
 
     private StageContext context(ExecutionRequest request) {
@@ -111,9 +272,9 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private FeatureStageOutcome specify(StageContext context) {
         AgentScope scope = AgentScope.same(context.inspector().artifactWriteScope(), "N/A");
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.SPECIFY, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.SPECIFY, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         List<String> errors = context.inspector().validateArtifacts(FeatureStage.SPECIFY);
         if (!errors.isEmpty()) {
@@ -129,9 +290,9 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         String reviewPath = context.inspector().reviewPath(FeatureStage.REVIEW_R1, round);
         AgentScope scope = new AgentScope(List.of(reviewPath),
                 context.inspector().artifactWriteScope(), context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.REVIEW_R1, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.REVIEW_R1, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         FeatureArtifactInspector.Verdict verdict = context.inspector().verdict(reviewPath);
         if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
@@ -143,15 +304,14 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
     }
 
     private FeatureStageOutcome createDraftPullRequest(StageContext context) {
-        FeatureStage next = context.job().progress().mode().requiresApproval()
-                ? FeatureStage.WAIT_R1_APPROVAL : FeatureStage.DESIGN;
+        FeatureStage next = FeatureStage.DESIGN;
         Publication publication = publish(context, context.inspector().artifactWriteScope(),
                 "docs(devflow): complete R1 artifacts", next, false);
         if (!publication.success()) {
             return publication.failure().orElseThrow();
         }
         FeatureJobMutation mutation = new FeatureJobMutation(next, null,
-                next == FeatureStage.DESIGN ? 0 : reviewRound(context.job()), 0,
+                0, 0,
                 "Long-lived Draft PR created or reconciled");
         return new FeatureStageOutcome(mutation, Optional.of(publication.binding().orElseThrow()));
     }
@@ -159,9 +319,9 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
     private FeatureStageOutcome design(StageContext context) {
         AgentScope scope = AgentScope.same(context.inspector().artifactWriteScope(),
                 context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.DESIGN, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.DESIGN, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         List<String> errors = context.inspector().validateArtifacts(FeatureStage.DESIGN);
         if (!errors.isEmpty()) {
@@ -182,17 +342,14 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         String reviewPath = context.inspector().reviewPath(FeatureStage.REVIEW_R2, round);
         AgentScope scope = new AgentScope(List.of(reviewPath),
                 context.inspector().artifactWriteScope(), context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.REVIEW_R2, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.REVIEW_R2, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         FeatureArtifactInspector.Verdict verdict = context.inspector().verdict(reviewPath);
         if (verdict == FeatureArtifactInspector.Verdict.PASS) {
             try {
-                if (context.inspector().nextTask().totalTasks() == 0) {
-                    return retryAgentStage(context.job(), FeatureStage.DESIGN,
-                            "R2 cannot pass because plan.md has no executable TDD tasks");
-                }
+                context.inspector().validateVerificationPlan();
             } catch (IllegalStateException ex) {
                 return retryAgentStage(context.job(), FeatureStage.DESIGN, ex.getMessage());
             }
@@ -209,32 +366,90 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private FeatureStageOutcome red(StageContext context) {
         List<String> scopes = context.inspector().tddWriteScopes(FeatureStage.IMPLEMENT_RED);
+        Optional<FeatureStageOutcome> retryRestore = restoreRedRetry(context, scopes);
+        if (retryRestore.isPresent()) {
+            return retryRestore.orElseThrow();
+        }
         FeatureArtifactInspector.PlanCursor task = context.inspector().nextTask();
         if (task.complete() && context.job().progress().gateRound() <= 1) {
             return transition(context.job(), FeatureStage.REVIEW_R3, 1, 0,
                     "All planned tasks completed");
         }
-        Optional<FeatureStageOutcome> baselineFailure = verifyGreenBaseline(context, task);
-        if (baselineFailure.isPresent()) {
-            return baselineFailure.orElseThrow();
+        Optional<VerificationSelection> verification;
+        try {
+            verification = redSelection(context.inspector(), task);
+        } catch (IllegalStateException ex) {
+            return retryAgentStage(context.job(), FeatureStage.DESIGN,
+                    "RED selector contract is invalid: " + ex.getMessage());
+        }
+        BaselineVerification baseline = verifyGreenBaseline(context);
+        if (baseline.failure().isPresent()) {
+            return baseline.failure().orElseThrow();
         }
         AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.IMPLEMENT_RED, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.IMPLEMENT_RED, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
+        return verifyRed(context, task, verification, baseline.gate(), invocation);
+    }
+
+    private Optional<FeatureStageOutcome> restoreRedRetry(
+            StageContext context, List<String> scopes) {
+        if (context.job().progress().taskAttempt() == 0) {
+            return Optional.empty();
+        }
+        FeatureGitPublisher.RestoreResult restored = gitPublisher.restoreRetrySnapshot(
+                context.worktree(), scopes);
+        if (restored.success()) {
+            if (!restored.restoredFiles().isEmpty()) {
+                LOGGER.info("Restored {} path(s) before retrying IMPLEMENT_RED for Issue #{}",
+                        restored.restoredFiles().size(),
+                        context.job().identity().issue().iid());
+            }
+            return Optional.empty();
+        }
+        if (restored.retryable()) {
+            return Optional.of(publicationFailure(context.job(), FeatureStage.IMPLEMENT_RED,
+                    restored.error(), true));
+        }
+        return Optional.of(failedInternal(context.job(), restored.error()));
+    }
+
+    private FeatureStageOutcome verifyRed(
+            StageContext context, FeatureArtifactInspector.PlanCursor task,
+            Optional<VerificationSelection> expected, ContainerGateResult baseline,
+            AgentInvocation invocation) {
+        FeatureArtifactInspector.PlanCursor selectedTask = task;
+        VerificationSelection verification;
         if (task.complete()) {
-            task = context.inspector().nextTask();
-            if (task.complete()) {
+            selectedTask = context.inspector().nextTask();
+            if (selectedTask.complete()) {
                 return retryAgentStage(context.job(), FeatureStage.IMPLEMENT_RED,
                         "R3 rework did not create a bounded plan task");
             }
+            try {
+                verification = verificationSelection(context.inspector(), selectedTask.taskId(),
+                        FeatureArtifactInspector.TestPhase.RED);
+            } catch (IllegalStateException ex) {
+                return retryAgentStage(context.job(), FeatureStage.IMPLEMENT_RED,
+                        ex.getMessage());
+            }
+        } else {
+            verification = expected.orElseThrow();
+            if (!verification.contract().equals(
+                    context.inspector().verificationContract(selectedTask.taskId()))) {
+                return failedPolicy(context,
+                        "Agent changed the R2-approved test selector contract during RED");
+            }
         }
-        ContainerGateResult gate = container.run(RootlessContainerGateRunner.Profile.RED,
-                context.worktree());
+        ContainerGateResult gate = receiptResult(invocation.receipt().orElseThrow(), true);
         context.cancellation().check();
         if (gate.expectedRed()) {
-            context.inspector().appendEvidence("RED " + task.taskId(), gate, "pending");
+            context.inspector().recordTaskStatus(selectedTask.taskId(), "red");
+            context.inspector().appendEvidence(
+                    "BASELINE " + selectedTask.taskId(), baseline, "pending");
+            context.inspector().appendEvidence("RED " + selectedTask.taskId(), gate, "pending");
             return transition(context.job(), FeatureStage.IMPLEMENT_GREEN,
                     context.job().progress().gateRound(), 0, "Trustworthy RED captured");
         }
@@ -242,48 +457,72 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                 "RED did not produce the expected test failure");
     }
 
-    private Optional<FeatureStageOutcome> verifyGreenBaseline(
-            StageContext context, FeatureArtifactInspector.PlanCursor task) {
+    private static Optional<VerificationSelection> redSelection(
+            FeatureArtifactInspector inspector, FeatureArtifactInspector.PlanCursor task) {
+        if (task.complete()) {
+            return Optional.empty();
+        }
+        return Optional.of(verificationSelection(inspector, task.taskId(),
+                FeatureArtifactInspector.TestPhase.RED));
+    }
+
+    private BaselineVerification verifyGreenBaseline(StageContext context) {
         ContainerGateResult baseline = container.run(
-                RootlessContainerGateRunner.Profile.FULL, context.worktree());
+                RootlessContainerGateRunner.Profile.BASELINE, context.worktree(), List.of(),
+                gateCache(context.job()));
         context.cancellation().check();
         if (baseline.passed()) {
             List<String> dirty = gitPublisher.dirtyFiles(context.worktree());
             if (!dirty.isEmpty()) {
-                return Optional.of(failedFinal(context.job(),
-                        "Pre-RED verification modified tracked files: "
+                return BaselineVerification.failed(baseline, failedInternal(context.job(),
+                        "Pre-RED verification left Worktree changes: "
                                 + String.join(", ", dirty)));
             }
-            context.inspector().appendEvidence("BASELINE " + task.taskId(), baseline, "pending");
-            return Optional.empty();
+            return BaselineVerification.passed(baseline);
         }
         if (baseline.outcome() == ContainerGateResult.Outcome.DEPENDENCY_MISSING) {
-            return Optional.of(failedGate(context.job(), FeatureStage.IMPLEMENT_RED,
-                    baseline, "Pre-RED baseline dependency is unavailable"));
+            return BaselineVerification.failed(baseline, failedGate(context.job(),
+                    FeatureStage.IMPLEMENT_RED, baseline,
+                    "Pre-RED baseline dependency is unavailable"));
         }
         if (baseline.outcome() == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED
                 || baseline.outcome() == ContainerGateResult.Outcome.TIMED_OUT) {
-            return Optional.of(publicationFailure(context.job(), FeatureStage.IMPLEMENT_RED,
+            return BaselineVerification.failed(baseline, publicationFailure(context.job(),
+                    FeatureStage.IMPLEMENT_RED,
                     "Pre-RED baseline infrastructure failed: " + baseline.outcome(), true));
         }
-        return Optional.of(waitingHuman(context.job(), FeatureStage.IMPLEMENT_RED,
+        return BaselineVerification.failed(baseline, blockedExternal(context.job(),
+                FeatureStage.IMPLEMENT_RED,
                 "Pre-RED baseline is not green: " + baseline.outcome()));
     }
 
     private FeatureStageOutcome green(StageContext context) {
         List<String> scopes = context.inspector().tddWriteScopes(FeatureStage.IMPLEMENT_GREEN);
-        AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.IMPLEMENT_GREEN, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        FeatureArtifactInspector.PlanCursor task = context.inspector().nextTask();
+        VerificationSelection verification;
+        try {
+            verification = verificationSelection(context.inspector(), task.taskId(),
+                    FeatureArtifactInspector.TestPhase.GREEN);
+        } catch (IllegalStateException ex) {
+            return failedAutomation(context.job(), ex.getMessage());
         }
-        ContainerGateResult gate = container.run(RootlessContainerGateRunner.Profile.FULL,
-                context.worktree());
+        AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
+        AgentInvocation invocation = invoke(context, FeatureStage.IMPLEMENT_GREEN, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
+        }
+        if (!verification.contract().equals(
+                context.inspector().verificationContract(task.taskId()))) {
+            return failedPolicy(context,
+                    "Agent changed the R2-approved test selector contract during GREEN");
+        }
+        ContainerGateResult gate = receiptResult(invocation.receipt().orElseThrow(), false);
         context.cancellation().check();
         if (gate.passed()) {
-            context.inspector().appendEvidence("GREEN", gate, "pending");
+            context.inspector().recordTaskStatus(task.taskId(), "green");
+            context.inspector().appendEvidence("GREEN " + task.taskId(), gate, "pending");
             return transition(context.job(), FeatureStage.IMPLEMENT_REFACTOR,
-                    context.job().progress().gateRound(), 0, "GREEN full suite passed");
+                    context.job().progress().gateRound(), 0, "GREEN targeted tests passed");
         }
         return failedGate(context.job(), FeatureStage.IMPLEMENT_GREEN, gate,
                 "GREEN verification did not pass");
@@ -293,56 +532,103 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         List<String> scopes = context.inspector().tddWriteScopes(FeatureStage.IMPLEMENT_REFACTOR);
         FeatureArtifactInspector.PlanCursor before = context.inspector().nextTask();
         String completedTask;
-        if (!before.complete() && List.of("green", "refactor").contains(before.status())) {
-            AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
-            Optional<FeatureStageOutcome> blocked = invoke(
-                    context, FeatureStage.IMPLEMENT_REFACTOR, scope);
-            if (blocked.isPresent()) {
-                return blocked.orElseThrow();
+        VerificationSelection verification;
+        ApprovedGateReceipt receipt;
+        if (!before.complete() && List.of("red", "green", "refactor")
+                .contains(before.status())) {
+            try {
+                verification = verificationSelection(context.inspector(), before.taskId(),
+                        FeatureArtifactInspector.TestPhase.REFACTOR);
+            } catch (IllegalStateException ex) {
+                return failedAutomation(context.job(), ex.getMessage());
             }
-            FeatureArtifactInspector.PlanCursor after = context.inspector().nextTask();
-            Optional<String> latestDone = context.inspector().lastDoneTaskId();
-            if ((!after.complete() && before.taskId().equals(after.taskId()))
-                    || latestDone.isEmpty() || !before.taskId().equals(latestDone.orElseThrow())) {
-                return retryAgentStage(context.job(), FeatureStage.IMPLEMENT_REFACTOR,
-                        "Agent did not mark exactly the completed TDD task done in plan.md");
+            context.inspector().recordTaskStatus(before.taskId(), "refactor");
+            AgentInvocation invocation = invokeRefactorAgent(
+                    context, scopes, before, verification);
+            if (invocation.failure().isPresent()) {
+                return invocation.failure().orElseThrow();
             }
+            receipt = invocation.receipt().orElseThrow();
             completedTask = before.taskId();
         } else {
             Optional<String> latestDone = context.inspector().lastDoneTaskId();
             if (latestDone.isEmpty()) {
-                return waitingHuman(context.job(), FeatureStage.IMPLEMENT_REFACTOR,
+                return failedAutomation(context.job(),
                         "REFACTOR recovery cannot identify the completed task");
             }
             completedTask = latestDone.orElseThrow();
+            try {
+                verification = verificationSelection(context.inspector(), completedTask,
+                        FeatureArtifactInspector.TestPhase.REFACTOR);
+            } catch (IllegalStateException ex) {
+                return failedAutomation(context.job(), ex.getMessage());
+            }
+            AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
+            receipt = featureGate(context, FeatureStage.IMPLEMENT_REFACTOR, scope).get();
         }
-        ContainerGateResult gate = container.run(RootlessContainerGateRunner.Profile.FULL,
-                context.worktree());
+        context.inspector().recordTaskStatus(completedTask, "refactor");
+        ContainerGateResult gate = receiptResult(receipt, false);
         context.cancellation().check();
         if (!gate.passed()) {
             return failedGate(context.job(), FeatureStage.IMPLEMENT_REFACTOR, gate,
                     "REFACTOR verification did not pass");
         }
+        context.inspector().recordTaskStatus(completedTask, "done");
         context.inspector().appendEvidence("REFACTOR " + completedTask, gate, "pending");
         return transition(context.job(), FeatureStage.PUBLISH_TASK,
                 context.job().progress().gateRound(), 0,
                 "Verified task is ready for controlled publication");
     }
 
+    private AgentInvocation invokeRefactorAgent(
+            StageContext context, List<String> scopes,
+            FeatureArtifactInspector.PlanCursor before,
+            VerificationSelection verification) {
+        AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
+        AgentInvocation invocation = invoke(
+                context, FeatureStage.IMPLEMENT_REFACTOR, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation;
+        }
+        FeatureArtifactInspector.PlanCursor after = context.inspector().nextTask();
+        Optional<String> latestDone = context.inspector().lastDoneTaskId();
+        boolean taskRemains = !after.complete() && before.taskId().equals(after.taskId())
+                && List.of("green", "refactor").contains(after.status());
+        boolean taskWasMarkedDone = latestDone.isPresent()
+                && before.taskId().equals(latestDone.orElseThrow());
+        if (!taskRemains && !taskWasMarkedDone) {
+            return new AgentInvocation(Optional.of(retryAgentStage(context.job(),
+                    FeatureStage.IMPLEMENT_REFACTOR,
+                    "Agent changed the active TDD task unexpectedly in plan.md")),
+                    invocation.receipt());
+        }
+        if (!verification.contract().equals(
+                context.inspector().verificationContract(before.taskId()))) {
+            return new AgentInvocation(Optional.of(failedPolicy(context,
+                    "Agent changed the R2-approved test selector contract during REFACTOR")),
+                    invocation.receipt());
+        }
+        return invocation;
+    }
+
     private FeatureStageOutcome publishTask(StageContext context) {
         Optional<String> completed = context.inspector().lastDoneTaskId();
         if (completed.isEmpty()) {
-            return failedFinal(context.job(),
+            return failedAutomation(context.job(),
                     "Task publication cannot identify the verified completed task");
         }
         List<String> scopes = context.inspector().tddWriteScopes(FeatureStage.IMPLEMENT_REFACTOR);
-        FeatureArtifactInspector.PlanCursor after = context.inspector().nextTask();
-        return publishCompletedTask(context, scopes, completed.orElseThrow(), after);
+        return publishCompletedTask(context, scopes, completed.orElseThrow());
     }
 
     private FeatureStageOutcome publishCompletedTask(StageContext context, List<String> scopes,
-                                                     String taskId,
-                                                     FeatureArtifactInspector.PlanCursor after) {
+                                                     String taskId) {
+        boolean hasPendingTddTask;
+        try {
+            hasPendingTddTask = context.inspector().hasPendingTddTask();
+        } catch (IllegalStateException ex) {
+            return failedAutomation(context.job(), ex.getMessage());
+        }
         FeatureGitPublisher.Result codeCommit = gitPublisher.commitAndPush(
                 context.job(), context.worktree(), scopes,
                 "feat: complete " + taskId + " for issue #"
@@ -355,16 +641,18 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         ContainerGateResult anchor = new ContainerGateResult(ContainerGateResult.Outcome.PASSED,
                 0, "Controller recorded verified task commit", List.of());
         context.inspector().appendEvidence("TASK_COMMIT " + taskId, anchor, codeCommit.headSha());
-        FeatureStage next = after.complete() ? FeatureStage.REVIEW_R3 : FeatureStage.IMPLEMENT_RED;
-        int round = after.complete() ? Math.max(1, context.job().progress().gateRound())
-                : context.job().progress().gateRound();
+        FeatureStage next = hasPendingTddTask
+                ? FeatureStage.IMPLEMENT_RED : FeatureStage.REVIEW_R3;
+        int round = hasPendingTddTask ? context.job().progress().gateRound()
+                : Math.max(1, context.job().progress().gateRound());
         Publication publication = publish(context, context.inspector().artifactWriteScope(),
                 "docs(devflow): record task verification evidence", next, false);
         if (!publication.success()) {
             return publication.failure().orElseThrow();
         }
         FeatureJobMutation mutation = new FeatureJobMutation(next, null, round, 0,
-                after.complete() ? "Implementation tasks complete" : "Advance to the next TDD task");
+                hasPendingTddTask ? "Advance to the next source TDD task"
+                        : "Source implementation tasks complete");
         return new FeatureStageOutcome(mutation, Optional.of(publication.binding().orElseThrow()));
     }
 
@@ -373,9 +661,9 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         String reviewPath = context.inspector().reviewPath(FeatureStage.REVIEW_R3, round);
         AgentScope scope = new AgentScope(List.of(reviewPath),
                 context.inspector().artifactWriteScope(), context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.REVIEW_R3, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.REVIEW_R3, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         FeatureArtifactInspector.Verdict verdict = context.inspector().verdict(reviewPath);
         FeatureStage next = r3NextStage(context.job(), verdict, round);
@@ -390,25 +678,139 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private FeatureStageOutcome ship(StageContext context) {
         List<String> scopes = context.inspector().shipWriteScopes();
+        List<String> testSelectors = context.inspector().allTestSelectors();
+        if (testSelectors.isEmpty()) {
+            return failedAutomation(context.job(),
+                    "Final targeted verification has no approved test selectors");
+        }
         AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
-        Optional<FeatureStageOutcome> blocked = invoke(context, FeatureStage.SHIP, scope);
-        if (blocked.isPresent()) {
-            return blocked.orElseThrow();
+        AgentInvocation invocation = invoke(context, FeatureStage.SHIP, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
         }
         List<String> errors = context.inspector().validateArtifacts(FeatureStage.SHIP);
         if (!errors.isEmpty()) {
             return retryAgentStage(context.job(), FeatureStage.SHIP,
                     "SHIP artifacts failed validation: " + String.join(", ", errors));
         }
-        ContainerGateResult gate = container.run(RootlessContainerGateRunner.Profile.FULL,
-                context.worktree());
+        if (!testSelectors.equals(context.inspector().allTestSelectors())) {
+            return failedPolicy(context,
+                    "Agent changed the R2-approved test selectors during SHIP");
+        }
+        ContainerGateResult gate = receiptResult(invocation.receipt().orElseThrow(), false);
         context.cancellation().check();
         if (!gate.passed()) {
             return failedGate(context.job(), FeatureStage.SHIP, gate,
-                    "Final SHIP verification did not pass");
+                    "Final SHIP targeted verification did not pass");
         }
         context.inspector().appendEvidence("FINAL", gate, "pending");
         return publishShip(context, scopes);
+    }
+
+    private FeatureStageOutcome systemTest(SystemTestContext context) {
+        AgentScope scope = AgentScope.same(context.inspector().authorWriteScopes(),
+                context.inspector().currentEvidence());
+        AgentInvocation invocation = invokeSystemTest(
+                context, FeatureStage.SYSTEM_TEST, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
+        }
+        List<String> dirty = gitPublisher.systemTestChangedFiles(context.testWorktree());
+        SystemTestArtifactInspector.Validation validation =
+                context.inspector().validateAuthor(dirty);
+        if (!validation.valid()) {
+            return retryAgentStage(context.job(), FeatureStage.SYSTEM_TEST,
+                    "System-test output failed validation: "
+                            + String.join(", ", validation.errors()));
+        }
+        ContainerGateResult selected = receiptResult(invocation.receipt().orElseThrow(), false);
+        context.cancellation().check();
+        if (!selected.passed()) {
+            return failedGate(context.job(), FeatureStage.SYSTEM_TEST, selected,
+                    "Configured smoke and new post-merge system tests did not pass");
+        }
+        context.inspector().appendEvidence("SELECTED_SYSTEM_TEST", selected, "pending");
+        return transition(context.job(), FeatureStage.REVIEW_SYSTEM_TEST,
+                reviewRound(context.job()), 0,
+                "Post-merge system tests are ready for independent review");
+    }
+
+    private FeatureStageOutcome reviewSystemTest(SystemTestContext context) {
+        int round = reviewRound(context.job());
+        String reviewPath = context.inspector().reviewPath(round);
+        AgentScope scope = new AgentScope(List.of(reviewPath),
+                context.inspector().authorWriteScopes(), context.inspector().currentEvidence());
+        AgentInvocation invocation = invokeSystemTest(
+                context, FeatureStage.REVIEW_SYSTEM_TEST, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
+        }
+        FeatureArtifactInspector.Verdict verdict = context.inspector().verdict(reviewPath);
+        if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
+            return reviewRework(context.job(), FeatureStage.SYSTEM_TEST,
+                    FeatureStage.REVIEW_SYSTEM_TEST, round,
+                    "System-test review requested rework");
+        }
+        return transition(context.job(), FeatureStage.PUBLISH_SYSTEM_TEST, 0, 0,
+                "System-test review passed; publish the separate test PR");
+    }
+
+    private FeatureStageOutcome publishSystemTest(SystemTestContext context) {
+        List<String> dirty = gitPublisher.systemTestChangedFiles(context.testWorktree());
+        SystemTestArtifactInspector.Validation validation =
+                context.inspector().validateAuthor(dirty);
+        if (!validation.valid()) {
+            return retryAgentStage(context.job(), FeatureStage.SYSTEM_TEST,
+                    "System-test publication validation failed: "
+                            + String.join(", ", validation.errors()));
+        }
+        AgentScope receiptScope = AgentScope.same(context.inspector().authorWriteScopes(), "N/A");
+        ApprovedGateReceipt receipt = systemTestGate(
+                context, FeatureStage.SYSTEM_TEST, receiptScope).get();
+        ContainerGateResult selected = receiptResult(receipt, false);
+        context.cancellation().check();
+        if (!selected.passed()) {
+            return failedGate(context.job(), FeatureStage.PUBLISH_SYSTEM_TEST, selected,
+                    "Final configured smoke and new system tests did not pass");
+        }
+        FeatureGitPublisher.Result testedCommit = gitPublisher.commitAndPushSystemTests(
+                context.branch(), context.testWorktree(), context.inspector().authorWriteScopes(),
+                "test(system): cover feature issue #" + context.job().identity().issue().iid());
+        context.cancellation().check();
+        if (!testedCommit.success()) {
+            return publicationFailure(context.job(), FeatureStage.PUBLISH_SYSTEM_TEST,
+                    testedCommit.error(), testedCommit.retryable());
+        }
+        context.inspector().appendEvidence("FINAL_SELECTED_SYSTEM_TEST", selected,
+                testedCommit.headSha());
+        FeatureGitPublisher.Result evidenceCommit = gitPublisher.commitAndPushSystemTests(
+                context.branch(), context.testWorktree(), context.inspector().authorWriteScopes(),
+                "docs(devflow): record system-test evidence");
+        context.cancellation().check();
+        if (!evidenceCommit.success()) {
+            return publicationFailure(context.job(), FeatureStage.PUBLISH_SYSTEM_TEST,
+                    evidenceCommit.error(), evidenceCommit.retryable());
+        }
+        SystemTestPullRequestPublisher.Result remote = systemTestPullRequests.publish(
+                context.job(), context.branch(), context.sourceRevision(),
+                evidenceCommit.headSha());
+        context.cancellation().check();
+        if (!remote.success() || remote.pullRequest() == null) {
+            return publicationFailure(context.job(), FeatureStage.PUBLISH_SYSTEM_TEST,
+                    remote.error(), remote.retryable());
+        }
+        FeatureJob.PullRequest binding = binding(remote.pullRequest(), evidenceCommit.headSha());
+        FeatureJobMutation mutation = new FeatureJobMutation(
+                FeatureStage.SYSTEM_TEST_READY_FOR_REVIEW, null, 0, 0,
+                "System-test PR is ready for human review and merge");
+        return new FeatureStageOutcome(mutation, Optional.empty(), Optional.of(binding));
+    }
+
+    static List<String> selectedSystemTests(List<String> smokeSelectors,
+                                            List<String> newTestSelectors) {
+        LinkedHashSet<String> selected = new LinkedHashSet<>(smokeSelectors);
+        selected.addAll(newTestSelectors);
+        return List.copyOf(selected);
     }
 
     private FeatureStageOutcome publishShip(StageContext context, List<String> scopes) {
@@ -432,26 +834,384 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         return new FeatureStageOutcome(mutation, Optional.of(publication.binding().orElseThrow()));
     }
 
-    private Optional<FeatureStageOutcome> invoke(StageContext context, FeatureStage stage,
-                                                 AgentScope scope) {
+    private AgentInvocation invoke(StageContext context, FeatureStage stage,
+                                   AgentScope scope) {
         FeatureStageAgent.Assignment assignment = new FeatureStageAgent.Assignment(
                 context.job(), stage, config.componentRoot(),
-                context.job().progress().taskAttempt() + 1, scope.evidence());
+                context.job().progress().taskAttempt() + 1,
+                assignmentEvidence(context.job(), stage, scope.evidence()));
         context.cancellation().check();
-        FeatureStageAgent.Result result = agent.execute(assignment, context.issueData().issue(),
-                context.issueData().comments(), context.worktree(), scope.writeScopes());
-        context.cancellation().check();
-        if (result.status() != FeatureStageAgent.Status.DONE) {
-            return Optional.of(waitingHuman(context.job(), stage,
-                    "Agent returned " + result.status() + ": " + result.summary()));
+        ApprovedGateController gate = featureGate(context, stage, scope);
+        FeatureStageAgent.RepairExecution execution;
+        try {
+            execution = agent.executeWithGate(
+                    assignment, context.issueData().issue(), context.issueData().comments(),
+                    context.worktree(), scope.writeScopes(), gateControl(
+                            context.job(), gate, context.worktree(), false));
+        } catch (FeatureExecutionException ex) {
+            restoreThrownPolicy(ex, context.worktree(), false, stage);
+            throw ex;
         }
-        List<String> dirty = gitPublisher.dirtyFiles(context.worktree());
-        List<String> violations = FeaturePathPolicy.violations(dirty, scope.validationScopes());
+        context.cancellation().check();
+        restorePolicyViolation(execution, context.worktree(), false);
+        return invocation(context.job(), stage, execution);
+    }
+
+    static String assignmentEvidence(FeatureJob job, FeatureStage stage, String evidence) {
+        String current = evidence == null || evidence.isBlank() ? "N/A" : evidence;
+        if (stage != FeatureStage.IMPLEMENT_RED) {
+            return current;
+        }
+        StringBuilder result = new StringBuilder(current)
+                .append("\n\nTRUSTED RED GATE CONTRACT\n")
+                .append("The selected test sources must compile and the fixed Maven selector must ")
+                .append("reach a JUnit test failure or error. Java compilation failure is never ")
+                .append("accepted as RED. When the feature introduces a missing Java API, use a ")
+                .append("compile-safe behavioral probe such as reflection, fail through JUnit when ")
+                .append("the API is absent, and continue to assert its behavior once present.");
+        if (job.progress().taskAttempt() > 0) {
+            result.append("\n\nTRUSTED RETRY FEEDBACK\n")
+                    .append(redRetryFeedback(job.record().lastError()));
+        }
+        return result.toString();
+    }
+
+    private static String redRetryFeedback(String lastError) {
+        String error = lastError == null ? "" : lastError;
+        if (error.startsWith("RED did not produce the expected test failure: TEST_FAILED")) {
+            return "The previous selected RED command ended in TEST_FAILED rather than a "
+                    + "trustworthy JUnit failure. Rebuild the test from the clean committed "
+                    + "snapshot, ensure it compiles, and make the missing behavior fail inside "
+                    + "the test runtime.";
+        }
+        if (error.startsWith("Agent returned INVALID_OUTPUT")) {
+            return "The previous invocation did not satisfy the structured-result contract. "
+                    + "Rebuild the bounded test change and return exactly the required JSON object.";
+        }
+        if (error.startsWith("Feature stage execution failed:")) {
+            return "The previous invocation terminated unexpectedly. Rebuild the bounded test "
+                    + "change from the clean committed snapshot and keep tool reads focused.";
+        }
+        return "The previous RED attempt was rejected by the controller. Rebuild one bounded, "
+                + "compilable test change from the clean committed snapshot.";
+    }
+
+    private AgentInvocation invokeSystemTest(SystemTestContext context,
+                                             FeatureStage stage,
+                                             AgentScope scope) {
+        FeatureStageAgent.Assignment assignment = new FeatureStageAgent.Assignment(
+                context.job(), stage, ".", context.job().progress().taskAttempt() + 1,
+                scope.evidence());
+        context.cancellation().check();
+        ApprovedGateController gate = systemTestGate(context, stage, scope);
+        FeatureStageAgent.RepairExecution execution;
+        try {
+            execution = agent.executeSystemTestWithGate(assignment,
+                    context.issueData().issue(), context.issueData().comments(),
+                    context.sourceWorktree(), context.sourceRevision(), context.testWorktree(),
+                    scope.writeScopes(), gateControl(
+                            context.job(), gate, context.testWorktree(), true));
+        } catch (FeatureExecutionException ex) {
+            restoreThrownPolicy(ex, context.testWorktree(), true, stage);
+            throw ex;
+        }
+        context.cancellation().check();
+        restorePolicyViolation(execution, context.testWorktree(), true);
+        return invocation(context.job(), stage, execution);
+    }
+
+    private void restorePolicyViolation(FeatureStageAgent.RepairExecution execution,
+                                        Path worktree, boolean systemTest) {
+        boolean violation = execution.failure().map(FeatureFailure::category)
+                .filter(category -> category == FeatureFailureCategory.POLICY_VIOLATION)
+                .isPresent();
+        if (!violation) {
+            return;
+        }
+        restorePolicySnapshot(worktree, systemTest, execution.agentResult().stage());
+    }
+
+    private void restoreThrownPolicy(FeatureExecutionException failure, Path worktree,
+                                     boolean systemTest, FeatureStage stage) {
+        if (failure.failure().category() == FeatureFailureCategory.POLICY_VIOLATION) {
+            restorePolicySnapshot(worktree, systemTest, stage);
+        }
+    }
+
+    private void restorePolicySnapshot(Path worktree, boolean systemTest, FeatureStage stage) {
+        FeatureGitPublisher.RestoreResult restored =
+                gitPublisher.restorePolicySnapshot(worktree, systemTest);
+        if (!restored.success()) {
+            throw new FeatureExecutionException(new FeatureFailure(
+                    "POLICY_SNAPSHOT_RESTORE_FAILED",
+                    restored.retryable() ? FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE
+                            : FeatureFailureCategory.INTERNAL,
+                    stage, restored.retryable() ? stage : null,
+                    new FeatureFailure.Diagnostic(restored.error(), "")));
+        }
+    }
+
+    private FeatureStageAgent.GateControl gateControl(FeatureJob job,
+                                                       ApprovedGateController gate,
+                                                       Path worktree,
+                                                       boolean systemTest) {
+        return new FeatureStageAgent.GateControl(gate,
+                config.maxPrimaryRepairRounds(), config.maxDiagnosticRepairRounds(),
+                job.recovery().repairs().primary(),
+                job.recovery().repairs().diagnostic(),
+                (tier, round, failure) -> recordRepair(job, tier, round, failure),
+                failureHistory(job) + "\nCURRENT BOUNDED DIFF\n"
+                        + gitPublisher.boundedDiff(worktree, systemTest));
+    }
+
+    private void recordRepair(FeatureJob job, String tier, int round, FeatureFailure failure) {
+        store.recordFailure(job.identity().id(), job.record().version(), failure,
+                new FeatureFailureEvent.RepairAttempt(tier, round), 0L);
+    }
+
+    private String failureHistory(FeatureJob job) {
+        StringBuilder history = new StringBuilder();
+        store.listFailureEvents(job.identity().id(), 20).forEach(event -> history
+                .append(event.attempt().tier()).append('#').append(event.attempt().number())
+                .append(' ').append(event.failure().code()).append(": ")
+                .append(event.failure().diagnostic().summary()).append('\n'));
+        return history.toString();
+    }
+
+    private AgentInvocation invocation(FeatureJob job, FeatureStage stage,
+                                       FeatureStageAgent.RepairExecution execution) {
+        if (execution.success()) {
+            return new AgentInvocation(Optional.empty(), execution.gateReceipt());
+        }
+        FeatureFailure failure = execution.failure().orElseGet(() -> new FeatureFailure(
+                "REPAIR_BUDGET_EXHAUSTED", FeatureFailureCategory.AGENT_CORRECTABLE,
+                stage, stage, new FeatureFailure.Diagnostic(
+                "Automatic repair budget exhausted", execution.agentResult().summary())));
+        return new AgentInvocation(Optional.of(failureOutcome(job, failure)),
+                execution.gateReceipt());
+    }
+
+    private FeatureStageOutcome failureOutcome(FeatureJob job, FeatureFailure failure) {
+        return switch (failure.category()) {
+            case DEPENDENCY_MISSING -> transition(job, FeatureStage.DEPENDENCY_PREFETCH,
+                    job.progress().gateRound(), job.progress().taskAttempt(),
+                    failure.diagnostic().summary(), failure.originStage());
+            case TRANSIENT_MODEL, TRANSIENT_GITCODE, TRANSIENT_INFRASTRUCTURE ->
+                    throw new FeatureExecutionException(failure);
+            case POLICY_VIOLATION, CONFIGURATION, PRODUCT_DECISION,
+                    ENVIRONMENT_BLOCKER, INTERNAL, AGENT_CORRECTABLE ->
+                    throw new FeatureExecutionException(failure);
+        };
+    }
+
+    private ApprovedGateController featureGate(StageContext context, FeatureStage stage,
+                                                AgentScope scope) {
+        List<String> selectors = featureSelectors(context, stage);
+        String profile = gateProfile(stage);
+        ApprovedGateController.GateIdentity identity = new ApprovedGateController.GateIdentity(
+                profile, selectors, config.containerImage(), "");
+        ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
+                context.worktree(), () -> gitPublisher.currentHead(context.worktree()),
+                () -> gitPublisher.dirtyFiles(context.worktree()));
+        ApprovedGateController.GateSpec spec = new ApprovedGateController.GateSpec(
+                context.job(), stage, identity, state,
+                () -> evaluateFeatureGate(context, stage, scope,
+                        featureSelectors(context, stage)),
+                () -> featureSelectors(context, stage));
+        return new ApprovedGateController(store, spec);
+    }
+
+    private ApprovedGateController systemTestGate(SystemTestContext context, FeatureStage stage,
+                                                   AgentScope scope) {
+        List<String> selectors = stage == FeatureStage.SYSTEM_TEST
+                ? config.systemTestSmokeSelectors() : List.of();
+        ApprovedGateController.GateIdentity identity = new ApprovedGateController.GateIdentity(
+                stage == FeatureStage.SYSTEM_TEST ? "SYSTEM_TEST_SELECTED" : "STATIC",
+                selectors, config.containerImage(), context.sourceRevision());
+        ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
+                context.testWorktree(),
+                () -> gitPublisher.currentSystemTestHead(context.testWorktree()),
+                () -> systemTestFingerprintPaths(context, stage));
+        ApprovedGateController.GateSpec spec = new ApprovedGateController.GateSpec(
+                context.job(), stage, identity, state,
+                () -> evaluateSystemTestGate(context, stage, scope),
+                () -> systemTestSelectors(context, stage));
+        return new ApprovedGateController(store, spec);
+    }
+
+    private ApprovedGateReceipt.Result evaluateFeatureGate(
+            StageContext context, FeatureStage stage, AgentScope scope,
+            List<String> selectors) {
+        List<String> violations = FeaturePathPolicy.violations(
+                gitPublisher.dirtyFiles(context.worktree()), scope.validationScopes());
         if (!violations.isEmpty()) {
-            return Optional.of(failedFinal(context.job(),
-                    "Agent changed paths outside the stage scope: " + String.join(", ", violations)));
+            return ApprovedGateResults.policy(stage, String.join(", ", violations));
         }
-        return Optional.empty();
+        try {
+            return switch (stage) {
+                case SPECIFY -> ApprovedGateResults.staticValidation(stage,
+                        context.inspector().validateArtifacts(stage));
+                case DESIGN -> designGate(context);
+                case REVIEW_R1, REVIEW_R2, REVIEW_R3 -> reviewGate(context, stage);
+                case IMPLEMENT_RED -> ApprovedGateResults.container(stage,
+                        container.run(RootlessContainerGateRunner.Profile.RED,
+                                context.worktree(), selectors, gateCache(context.job())), true);
+                case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, SHIP -> featureTestGate(
+                        context, stage, selectors);
+                default -> ApprovedGateResults.staticValidation(stage, List.of());
+            };
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ApprovedGateResults.staticValidation(stage, List.of(safe(ex.getMessage())));
+        }
+    }
+
+    private ApprovedGateReceipt.Result designGate(StageContext context) {
+        List<String> errors = new java.util.ArrayList<>(
+                context.inspector().validateArtifacts(FeatureStage.DESIGN));
+        try {
+            context.inspector().implementationScopes();
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            errors.add(safe(ex.getMessage()));
+        }
+        return ApprovedGateResults.staticValidation(FeatureStage.DESIGN, errors);
+    }
+
+    private ApprovedGateReceipt.Result reviewGate(StageContext context, FeatureStage stage) {
+        String reviewPath = context.inspector().reviewPath(stage, reviewRound(context.job()));
+        FeatureArtifactInspector.Verdict verdict = context.inspector().verdict(reviewPath);
+        if (stage == FeatureStage.REVIEW_R2
+                && verdict == FeatureArtifactInspector.Verdict.PASS) {
+            context.inspector().validateVerificationPlan();
+        }
+        return ApprovedGateResults.staticValidation(stage, List.of());
+    }
+
+    private ApprovedGateReceipt.Result featureTestGate(StageContext context, FeatureStage stage,
+                                                        List<String> selectors) {
+        if (stage == FeatureStage.SHIP) {
+            List<String> errors = context.inspector().validateArtifacts(stage);
+            if (!errors.isEmpty()) {
+                return ApprovedGateResults.staticValidation(stage, errors);
+            }
+        }
+        return ApprovedGateResults.container(stage,
+                container.run(RootlessContainerGateRunner.Profile.TARGETED,
+                        context.worktree(), selectors, gateCache(context.job())), false);
+    }
+
+    private ApprovedGateReceipt.Result evaluateSystemTestGate(
+            SystemTestContext context, FeatureStage stage, AgentScope scope) {
+        List<String> changed = gitPublisher.systemTestChangedFiles(context.testWorktree());
+        List<String> violations = FeaturePathPolicy.violations(changed, scope.validationScopes());
+        if (!violations.isEmpty()) {
+            return ApprovedGateResults.policy(stage, String.join(", ", violations));
+        }
+        try {
+            if (stage == FeatureStage.REVIEW_SYSTEM_TEST) {
+                context.inspector().verdict(
+                        context.inspector().reviewPath(reviewRound(context.job())));
+                return ApprovedGateResults.staticValidation(stage, List.of());
+            }
+            SystemTestArtifactInspector.Validation validation =
+                    context.inspector().validateAuthor(changed);
+            if (!validation.valid()) {
+                return ApprovedGateResults.staticValidation(stage, validation.errors());
+            }
+            List<String> selected = selectedSystemTests(config.systemTestSmokeSelectors(),
+                    validation.testSelectors());
+            return ApprovedGateResults.container(stage, container.runSystemTest(
+                    RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                    context.sourceWorktree(), context.testWorktree(), selected,
+                    gateCache(context.job())), false);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ApprovedGateResults.staticValidation(stage, List.of(safe(ex.getMessage())));
+        }
+    }
+
+    private List<String> featureSelectors(StageContext context, FeatureStage stage) {
+        try {
+            return switch (stage) {
+                case IMPLEMENT_RED -> currentSelectors(context,
+                        FeatureArtifactInspector.TestPhase.RED);
+                case IMPLEMENT_GREEN -> currentSelectors(context,
+                        FeatureArtifactInspector.TestPhase.GREEN);
+                case IMPLEMENT_REFACTOR -> refactorSelectors(context);
+                case SHIP -> context.inspector().allTestSelectors();
+                default -> List.of();
+            };
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return List.of();
+        }
+    }
+
+    private static List<String> currentSelectors(StageContext context,
+                                                 FeatureArtifactInspector.TestPhase phase) {
+        FeatureArtifactInspector.PlanCursor task = context.inspector().nextTask();
+        return task.complete() ? List.of() : context.inspector().testSelectors(task.taskId(), phase);
+    }
+
+    private static List<String> refactorSelectors(StageContext context) {
+        FeatureArtifactInspector.PlanCursor task = context.inspector().nextTask();
+        if (!task.complete()) {
+            return context.inspector().testSelectors(task.taskId(),
+                    FeatureArtifactInspector.TestPhase.REFACTOR);
+        }
+        return context.inspector().lastDoneTaskId().map(taskId -> context.inspector()
+                .testSelectors(taskId, FeatureArtifactInspector.TestPhase.REFACTOR))
+                .orElse(List.of());
+    }
+
+    private static String gateProfile(FeatureStage stage) {
+        return switch (stage) {
+            case IMPLEMENT_RED -> "RED";
+            case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, SHIP -> "TARGETED";
+            default -> "STATIC";
+        };
+    }
+
+    private List<String> systemTestFingerprintPaths(SystemTestContext context,
+                                                    FeatureStage stage) {
+        List<String> changed = gitPublisher.systemTestChangedFiles(context.testWorktree());
+        if (stage != FeatureStage.SYSTEM_TEST) {
+            return changed;
+        }
+        String artifactPrefix = context.inspector().artifactWriteScope();
+        return changed.stream().filter(path -> !path.startsWith(artifactPrefix)).toList();
+    }
+
+    private List<String> systemTestSelectors(SystemTestContext context, FeatureStage stage) {
+        if (stage != FeatureStage.SYSTEM_TEST) {
+            return List.of();
+        }
+        try {
+            List<String> changed = gitPublisher.systemTestChangedFiles(context.testWorktree());
+            SystemTestArtifactInspector.Validation validation =
+                    context.inspector().validateAuthor(changed);
+            if (validation.valid()) {
+                return selectedSystemTests(config.systemTestSmokeSelectors(),
+                        validation.testSelectors());
+            }
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+            // The evaluator returns the bounded validation failure.
+        }
+        return config.systemTestSmokeSelectors();
+    }
+
+    private static ContainerGateResult receiptResult(ApprovedGateReceipt receipt,
+                                                     boolean expectedRed) {
+        ContainerGateResult.Outcome outcome;
+        if (receipt.result().status() == ApprovedGateReceipt.Status.PASSED) {
+            outcome = expectedRed ? ContainerGateResult.Outcome.EXPECTED_RED
+                    : ContainerGateResult.Outcome.PASSED;
+        } else if (receipt.result().status() == ApprovedGateReceipt.Status.DEPENDENCY_MISSING) {
+            outcome = ContainerGateResult.Outcome.DEPENDENCY_MISSING;
+        } else if (receipt.result().status() == ApprovedGateReceipt.Status.TRANSIENT) {
+            outcome = ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED;
+        } else {
+            outcome = ContainerGateResult.Outcome.TEST_FAILED;
+        }
+        return new ContainerGateResult(outcome, receipt.result().evidence().exitCode(),
+                receipt.result().evidence().outputTail(), List.of());
     }
 
     private Publication publish(StageContext context, List<String> scopes,
@@ -483,7 +1243,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                                            ContainerGateResult gate, String message) {
         if (gate.outcome() == ContainerGateResult.Outcome.DEPENDENCY_MISSING) {
             return FeatureStageOutcome.transition(new FeatureJobMutation(
-                    FeatureStage.WAITING_DEPENDENCY_PREFETCH, resume, job.progress().gateRound(),
+                    FeatureStage.DEPENDENCY_PREFETCH, resume, job.progress().gateRound(),
                     job.progress().taskAttempt(), "Dependency prefetch required"));
         }
         if (gate.outcome() == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED
@@ -495,16 +1255,16 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private FeatureStageOutcome retryAgentStage(FeatureJob job, FeatureStage stage, String error) {
         int attempt = job.progress().taskAttempt() + 1;
-        if (attempt >= MAX_AUTOMATED_ATTEMPTS) {
-            return waitingHuman(job, stage, "Automated stage attempt limit reached: " + error);
+        if (attempt >= maxAutomatedRounds()) {
+            return failedAutomation(job, "Automated stage attempt limit reached: " + error);
         }
         return transition(job, stage, job.progress().gateRound(), attempt, error);
     }
 
     private FeatureStageOutcome reviewRework(FeatureJob job, FeatureStage author,
                                              FeatureStage reviewer, int round, String message) {
-        if (round >= MAX_AUTOMATED_ATTEMPTS) {
-            return waitingHuman(job, reviewer, "Automated review round limit reached: " + message);
+        if (round >= maxAutomatedRounds()) {
+            return failedAutomation(job, "Automated review round limit reached: " + message);
         }
         return transition(job, author, round + 1, 0, message);
     }
@@ -513,40 +1273,38 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                                               FeatureArtifactInspector.Verdict verdict,
                                               FeatureStage next, int round, String gate) {
         if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
-            if (round >= MAX_AUTOMATED_ATTEMPTS) {
-                return new FeatureJobMutation(FeatureStage.WAITING_HUMAN,
-                        job.progress().stage(), round, 0,
+            if (round >= maxAutomatedRounds()) {
+                return new FeatureJobMutation(FeatureStage.FAILED_AUTOMATION,
+                        null, round, 0,
                         gate + " automated review round limit reached");
             }
             return new FeatureJobMutation(next, null, round + 1, 0, gate + " requested rework");
         }
-        int nextRound = next.isApprovalWait() ? round : 0;
-        return new FeatureJobMutation(next, null, nextRound, 0, gate + " passed");
+        return new FeatureJobMutation(next, null, 0, 0, gate + " passed");
     }
 
     private FeatureStage r2NextStage(FeatureJob job, FeatureArtifactInspector.Verdict verdict,
                                      int round) {
         if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
-            return round >= MAX_AUTOMATED_ATTEMPTS ? FeatureStage.WAITING_HUMAN : FeatureStage.DESIGN;
+            return round >= maxAutomatedRounds()
+                    ? FeatureStage.FAILED_AUTOMATION : FeatureStage.DESIGN;
         }
-        return job.progress().mode().requiresApproval()
-                ? FeatureStage.WAIT_R2_APPROVAL : FeatureStage.IMPLEMENT_RED;
+        return FeatureStage.IMPLEMENT_RED;
     }
 
     private FeatureStage r3NextStage(FeatureJob job, FeatureArtifactInspector.Verdict verdict,
                                      int round) {
         if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
-            return round >= MAX_AUTOMATED_ATTEMPTS
-                    ? FeatureStage.WAITING_HUMAN : FeatureStage.IMPLEMENT_RED;
+            return round >= maxAutomatedRounds()
+                    ? FeatureStage.FAILED_AUTOMATION : FeatureStage.IMPLEMENT_RED;
         }
-        return job.progress().mode().requiresApproval()
-                ? FeatureStage.WAIT_R3_APPROVAL : FeatureStage.SHIP;
+        return FeatureStage.SHIP;
     }
 
     private FeatureStageOutcome restoreRetry(FeatureJob job) {
         FeatureStage resume = job.progress().resumeStage();
         if (resume == null) {
-            return failedFinal(job, "Retryable state has no resume stage");
+            return failedInternal(job, "Retryable state has no resume stage");
         }
         return transition(job, resume, job.progress().gateRound(),
                 job.progress().taskAttempt(), "Retrying bounded stage");
@@ -554,35 +1312,69 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private FeatureStageOutcome publicationFailure(FeatureJob job, FeatureStage resume,
                                                    String error, boolean retryable) {
-        if (!retryable) {
-            return failedFinal(job, error);
+        FeatureFailure failure = publicationFailure(resume, error, retryable);
+        if (failure.safeToReplay()) {
+            throw new FeatureExecutionException(failure);
         }
-        int attempt = job.progress().taskAttempt() + 1;
-        if (attempt >= MAX_AUTOMATED_ATTEMPTS) {
-            FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.WAITING_HUMAN,
-                    resume, job.progress().gateRound(), attempt, safe(
-                    "Automated publication/infrastructure retry limit reached: " + error));
-            return FeatureStageOutcome.transition(mutation);
-        }
-        FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.FAILED_RETRYABLE,
-                resume, job.progress().gateRound(), attempt, safe(error));
-        return FeatureStageOutcome.transition(mutation);
+        return failureOutcome(job, failure);
     }
 
-    private FeatureStageOutcome waitingHuman(FeatureJob job, FeatureStage resume, String message) {
-        FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.WAITING_HUMAN,
+    private static FeatureFailure publicationFailure(FeatureStage stage, String error,
+                                                      boolean retryable) {
+        String detail = safe(error);
+        if (retryable) {
+            return new FeatureFailure("PUBLICATION_TRANSIENT",
+                    FeatureFailureCategory.TRANSIENT_GITCODE, stage, stage,
+                    new FeatureFailure.Diagnostic("Publication failed transiently", detail));
+        }
+        String lower = detail.toLowerCase(java.util.Locale.ROOT);
+        FeatureFailureCategory category = lower.contains("credential")
+                || lower.contains("authorization") || lower.contains("401")
+                || lower.contains("403") ? FeatureFailureCategory.CONFIGURATION
+                : lower.contains("disallowed") || lower.contains("invalid owned")
+                || lower.contains("does not match") ? FeatureFailureCategory.POLICY_VIOLATION
+                : FeatureFailureCategory.INTERNAL;
+        return new FeatureFailure("PUBLICATION_REJECTED", category, stage, null,
+                new FeatureFailure.Diagnostic("Publication was rejected", detail));
+    }
+
+    private int maxAutomatedRounds() {
+        return config.maxPrimaryRepairRounds() + config.maxDiagnosticRepairRounds();
+    }
+
+    private FeatureStageOutcome blockedExternal(FeatureJob job, FeatureStage resume,
+                                                String message) {
+        FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.BLOCKED_EXTERNAL,
                 resume, job.progress().gateRound(), job.progress().taskAttempt(), safe(message));
         return FeatureStageOutcome.transition(mutation);
     }
 
-    private FeatureStageOutcome failedFinal(FeatureJob job, String message) {
-        FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.FAILED_FINAL,
+    private FeatureStageOutcome failedAutomation(FeatureJob job, String message) {
+        FeatureJobMutation mutation = new FeatureJobMutation(FeatureStage.FAILED_AUTOMATION,
                 null, job.progress().gateRound(), job.progress().taskAttempt(), safe(message));
         return FeatureStageOutcome.transition(mutation);
     }
 
+    private FeatureStageOutcome failedPolicy(StageContext context, String message) {
+        restorePolicySnapshot(context.worktree(), false,
+                context.job().progress().stage());
+        FeatureJob job = context.job();
+        return transition(job, FeatureStage.FAILED_POLICY, job.progress().gateRound(),
+                job.progress().taskAttempt(), message);
+    }
+
+    private FeatureStageOutcome failedInternal(FeatureJob job, String message) {
+        return transition(job, FeatureStage.FAILED_INTERNAL, job.progress().gateRound(),
+                job.progress().taskAttempt(), message);
+    }
+
+    private FeatureStageOutcome configurationFailure(FeatureJob job, String message) {
+        return transition(job, FeatureStage.FAILED_CONFIGURATION,
+                job.progress().gateRound(), job.progress().taskAttempt(), message);
+    }
+
     private FeatureStageOutcome waitingState(FeatureJob job) {
-        return waitingHuman(job, job.progress().stage(),
+        return failedInternal(job,
                 "Worker leased a state that is not executable");
     }
 
@@ -590,6 +1382,13 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                                            int round, int attempt, String message) {
         return FeatureStageOutcome.transition(new FeatureJobMutation(
                 stage, null, round, attempt, safe(message)));
+    }
+
+    private FeatureStageOutcome transition(FeatureJob job, FeatureStage stage,
+                                           int round, int attempt, String message,
+                                           FeatureStage resumeStage) {
+        return FeatureStageOutcome.transition(new FeatureJobMutation(
+                stage, resumeStage, round, attempt, safe(message)));
     }
 
     private static int reviewRound(FeatureJob job) {
@@ -601,9 +1400,40 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         return value.substring(0, Math.min(value.length(), 1000));
     }
 
+    private static boolean isSystemTestStage(FeatureStage stage) {
+        return stage == FeatureStage.SYSTEM_TEST || stage == FeatureStage.REVIEW_SYSTEM_TEST
+                || stage == FeatureStage.PUBLISH_SYSTEM_TEST;
+    }
+
+    private static String gateEvidence(String profile, ContainerGateResult result) {
+        String output = result.output().replace('\r', ' ').replace('\n', ' ').strip();
+        output = output.substring(0, Math.min(output.length(), 1000));
+        return profile + "=" + result.outcome() + ", exit=" + result.exitCode()
+                + ", output=" + output;
+    }
+
+    private static VerificationSelection verificationSelection(
+            FeatureArtifactInspector inspector, String taskId,
+            FeatureArtifactInspector.TestPhase phase) {
+        FeatureArtifactInspector.TestSelectorContract contract =
+                inspector.verificationContract(taskId);
+        List<String> testSelectors = inspector.testSelectors(taskId, phase);
+        if (testSelectors.isEmpty()) {
+            throw new IllegalStateException(
+                    "Plan task " + taskId + " has no exact " + phase + " test selector");
+        }
+        return new VerificationSelection(contract, testSelectors);
+    }
+
     private record StageContext(FeatureJob job, IssueData issueData, Path worktree,
                                 FeatureArtifactInspector inspector,
                                 CancellationCheckpoint cancellation) {
+    }
+
+    private record SystemTestContext(FeatureJob job, IssueData issueData,
+                                     Path sourceWorktree, String sourceRevision, Path testWorktree,
+                                     String branch, SystemTestArtifactInspector inspector,
+                                     CancellationCheckpoint cancellation) {
     }
 
     private record IssueData(FeatureIssue issue, List<FeatureComment> comments) {
@@ -626,6 +1456,40 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         }
     }
 
+    private record VerificationSelection(
+            FeatureArtifactInspector.TestSelectorContract contract,
+            List<String> testSelectors) {
+        private VerificationSelection {
+            contract = Objects.requireNonNull(contract, "contract must not be null");
+            testSelectors = List.copyOf(testSelectors);
+        }
+    }
+
+    private record BaselineVerification(
+            ContainerGateResult gate, Optional<FeatureStageOutcome> failure) {
+        private BaselineVerification {
+            gate = Objects.requireNonNull(gate, "gate must not be null");
+            failure = Objects.requireNonNull(failure, "failure must not be null");
+        }
+
+        private static BaselineVerification passed(ContainerGateResult gate) {
+            return new BaselineVerification(gate, Optional.empty());
+        }
+
+        private static BaselineVerification failed(
+                ContainerGateResult gate, FeatureStageOutcome failure) {
+            return new BaselineVerification(gate, Optional.of(failure));
+        }
+    }
+
+    private record AgentInvocation(Optional<FeatureStageOutcome> failure,
+                                   Optional<ApprovedGateReceipt> receipt) {
+        private AgentInvocation {
+            failure = failure == null ? Optional.empty() : failure;
+            receipt = receipt == null ? Optional.empty() : receipt;
+        }
+    }
+
     private record Publication(boolean success, Optional<FeatureJob.PullRequest> binding,
                                Optional<FeatureStageOutcome> failure) {
         private static Publication success(FeatureJob.PullRequest binding) {
@@ -641,13 +1505,27 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
     public record Infrastructure(FeatureWorktreeManager worktrees,
                                  RootlessContainerGateRunner container,
                                  FeatureGitPublisher gitPublisher,
-                                 FeaturePullRequestPublisher pullRequests) {
+                                 FeaturePullRequestPublisher pullRequests,
+                                 SystemTestInfrastructure systemTests) {
         /** Validate every privileged boundary. */
         public Infrastructure {
             worktrees = Objects.requireNonNull(worktrees, "worktrees must not be null");
             container = Objects.requireNonNull(container, "container must not be null");
             gitPublisher = Objects.requireNonNull(gitPublisher, "gitPublisher must not be null");
             pullRequests = Objects.requireNonNull(pullRequests, "pullRequests must not be null");
+            systemTests = Objects.requireNonNull(systemTests, "systemTests must not be null");
+        }
+    }
+
+    /** Trusted post-merge test-repository boundaries. */
+    public record SystemTestInfrastructure(SystemTestWorktreeManager worktrees,
+                                           SystemTestPullRequestPublisher pullRequests) {
+        /** Validate both post-merge boundaries. */
+        public SystemTestInfrastructure {
+            worktrees = Objects.requireNonNull(worktrees,
+                    "system-test worktrees must not be null");
+            pullRequests = Objects.requireNonNull(pullRequests,
+                    "system-test pull requests must not be null");
         }
     }
 

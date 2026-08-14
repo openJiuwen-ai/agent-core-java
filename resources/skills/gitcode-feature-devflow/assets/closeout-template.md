@@ -24,3 +24,8 @@
 ## Process Learning
 
 ## PR Readiness Recommendation
+
+## Post-merge System-test Handoff
+
+| Test repository / base | Acceptance IDs to cover | Merged-source evidence required |
+| --- | --- | --- |

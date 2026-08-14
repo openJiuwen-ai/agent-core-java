@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import examples.gitcode_issue_evolver.RepositoryCoordinates;
 import examples.gitcode_issue_evolver.TriggerMode;
 import examples.utils.SharedExampleApiConfigLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,6 +26,7 @@ import java.util.Objects;
  */
 public final class FeatureConfigLoader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Logger LOGGER = LoggerFactory.getLogger(FeatureConfigLoader.class);
 
     private FeatureConfigLoader() {
     }
@@ -51,6 +54,10 @@ public final class FeatureConfigLoader {
 
     private static FeatureEvolvingConfig.Builder baseBuilder(
             JsonNode settings, JsonNode secrets, String target) {
+        String workflowMode = text(settings, "defaultWorkflowMode", "unattended");
+        if ("attended".equalsIgnoreCase(workflowMode)) {
+            LOGGER.warn("Legacy attended mode is mapped to unattended; only PR merge waits remain");
+        }
         return FeatureEvolvingConfig.builder()
                 .bindHost(text(settings, "bindHost", "127.0.0.1"))
                 .port(integer(settings, "port", 8082))
@@ -61,19 +68,31 @@ public final class FeatureConfigLoader {
                 .codingStandardSkill(path(settings, "codingStandardSkill", "resources/skills/coding-standard"))
                 .webhookSecret(text(secrets, "webhookSecret", ""))
                 .gitCodeToken(text(secrets, "gitCodeToken", ""))
+                .gitCodeUsername(text(secrets, "gitCodeUsername", ""))
+                .systemTestGitCodeToken(text(secrets, "systemTestGitCodeToken", ""))
+                .systemTestGitCodeUsername(text(secrets, "systemTestGitCodeUsername", ""))
                 .triggerMode(TriggerMode.parse(text(settings, "triggerMode", "both")))
                 .triggerLabel(text(settings, "triggerLabel", FeatureEvolvingConfig.DEFAULT_TRIGGER_LABEL))
                 .issueScanWindowHours(integer(settings, "issueScanWindowHours", 24))
                 .pollIntervalMinutes(integer(settings, "pollIntervalMinutes", 15))
+                .manualPollingEnabled(bool(settings, "manualPollingEnabled", false))
                 .maxIssueScanPages(integer(settings, "maxIssueScanPages", 10))
                 .defaultWorkflowMode(FeatureWorkflowMode.parse(
-                        text(settings, "defaultWorkflowMode", "attended")))
+                        workflowMode))
                 .approverLogins(strings(settings.path("approverLogins")))
                 .assignees(strings(settings.path("assignees")))
                 .componentRoot(text(settings, "componentRoot", "."))
                 .targetRepository(target)
                 .publishRepository(text(settings, "publishRepository", target))
                 .baseBranch(text(settings, "baseBranch", "730"))
+                .systemTestEnabled(bool(settings, "systemTestEnabled", false))
+                .systemTestRepository(text(settings, "systemTestRepository",
+                        "openJiuwen/jiuwen-test"))
+                .systemTestPublishRepository(text(settings, "systemTestPublishRepository",
+                        "antonjli/jiuwen-test-bot"))
+                .systemTestBaseBranch(text(settings, "systemTestBaseBranch", "agent_core_java"))
+                .systemTestWriteScopes(systemTestScopes(settings.path("systemTestWriteScopes")))
+                .systemTestSmokeSelectors(strings(settings.path("systemTestSmokeSelectors")))
                 .gitUserName(text(settings, "gitUserName", "gitcode-feature-evolver"))
                 .gitUserEmail(text(settings, "gitUserEmail", "gitcode-feature-evolver@localhost"));
     }
@@ -89,7 +108,16 @@ public final class FeatureConfigLoader {
                         "../gitcode-feature-evolver-m2"))
                 .containerUser(text(settings, "containerUser", "1000:1000"))
                 .containerTimeoutMinutes(integer(settings, "containerTimeoutMinutes", 30))
-                .containerLimits(limits);
+                .containerLimits(limits)
+                .maxPrimaryRepairRounds(integer(settings, "maxPrimaryRepairRounds", 5))
+                .maxDiagnosticRepairRounds(integer(settings, "maxDiagnosticRepairRounds", 3))
+                .maxTransientStageRetries(integer(settings, "maxTransientStageRetries", 5))
+                .maxDependencyPrefetchRounds(integer(settings, "maxDependencyPrefetchRounds", 2))
+                .dependencyPrefetchEnabled(bool(settings, "dependencyPrefetchEnabled", true))
+                .dependencyPrefetchCacheRoot(path(settings, "dependencyPrefetchCacheRoot",
+                        "../gitcode-feature-evolver-prefetch"))
+                .dependencyPrefetchRetentionHours(integer(
+                        settings, "dependencyPrefetchRetentionHours", 24));
     }
 
     private static void applyModel(FeatureEvolvingConfig.Builder builder) {
@@ -133,6 +161,17 @@ public final class FeatureConfigLoader {
     private static int integer(JsonNode node, String field, int fallback) {
         JsonNode value = node.path(field);
         return value.canConvertToInt() ? value.asInt() : fallback;
+    }
+
+    private static boolean bool(JsonNode node, String field, boolean fallback) {
+        JsonNode value = node.path(field);
+        return value.isBoolean() ? value.asBoolean() : fallback;
+    }
+
+    private static List<String> systemTestScopes(JsonNode node) {
+        List<String> configured = strings(node);
+        return configured.isEmpty()
+                ? List.of("src/test/java/", "src/test/resources/") : configured;
     }
 
     private static List<String> strings(JsonNode node) {

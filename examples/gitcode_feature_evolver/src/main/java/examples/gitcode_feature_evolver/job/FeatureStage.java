@@ -16,36 +16,41 @@ public enum FeatureStage {
     ADMITTED,
     SPECIFY,
     REVIEW_R1,
-    WAIT_R1_APPROVAL,
     CREATE_DRAFT_PR,
     DESIGN,
     REVIEW_R2,
-    WAIT_R2_APPROVAL,
     IMPLEMENT_RED,
     IMPLEMENT_GREEN,
     IMPLEMENT_REFACTOR,
     PUBLISH_TASK,
     REVIEW_R3,
-    WAIT_R3_APPROVAL,
     SHIP,
     READY_FOR_REVIEW,
+    SYSTEM_TEST,
+    REVIEW_SYSTEM_TEST,
+    PUBLISH_SYSTEM_TEST,
+    SYSTEM_TEST_READY_FOR_REVIEW,
     PAUSED,
-    WAITING_HUMAN,
-    WAITING_DEPENDENCY_PREFETCH,
+    RETRY_SCHEDULED,
+    DEPENDENCY_PREFETCH,
+    BLOCKED_EXTERNAL,
     CANCEL_REQUESTED,
     CANCELLED,
     MERGED,
     CLOSED,
-    FAILED_RETRYABLE,
-    FAILED_FINAL;
+    FAILED_AUTOMATION,
+    FAILED_CONFIGURATION,
+    FAILED_POLICY,
+    FAILED_INTERNAL;
 
     private static final Set<FeatureStage> RUNNABLE = EnumSet.of(
             ADMITTED, SPECIFY, REVIEW_R1, CREATE_DRAFT_PR, DESIGN, REVIEW_R2,
             IMPLEMENT_RED, IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, PUBLISH_TASK,
-            REVIEW_R3, SHIP,
-            CANCEL_REQUESTED, FAILED_RETRYABLE);
+            REVIEW_R3, SHIP, SYSTEM_TEST, REVIEW_SYSTEM_TEST, PUBLISH_SYSTEM_TEST,
+            CANCEL_REQUESTED, RETRY_SCHEDULED, DEPENDENCY_PREFETCH);
     private static final Set<FeatureStage> TERMINAL = EnumSet.of(
-            CANCELLED, MERGED, CLOSED, FAILED_FINAL);
+            CANCELLED, MERGED, CLOSED, BLOCKED_EXTERNAL, FAILED_AUTOMATION,
+            FAILED_CONFIGURATION, FAILED_POLICY, FAILED_INTERNAL);
 
     /**
      * Report whether a worker may lease this state.
@@ -66,11 +71,11 @@ public enum FeatureStage {
     }
 
     /**
-     * Report whether this state is one of the authenticated human gates.
+     * Report whether this state waits for GitCode review and merge.
      *
-     * @return {@code true} for R1, R2, or R3 approval waits
+     * @return {@code true} for either normal PR review boundary
      */
     public boolean isApprovalWait() {
-        return this == WAIT_R1_APPROVAL || this == WAIT_R2_APPROVAL || this == WAIT_R3_APPROVAL;
+        return this == READY_FOR_REVIEW || this == SYSTEM_TEST_READY_FOR_REVIEW;
     }
 }

@@ -33,31 +33,39 @@ public final class FeatureStatusComment {
         }
         String pullRequest = job.pullRequest().number() == null
                 ? "not created" : job.pullRequest().url();
+        String systemTestPullRequest = job.systemTestPullRequest().number() == null
+                ? "not created" : job.systemTestPullRequest().url();
         return "## Feature Evolver status\n\n"
                 + "- Command result: `" + result.status() + "`\n"
                 + "- Job: `" + job.identity().id() + "`\n"
                 + "- Stage: `" + job.progress().stage() + "`\n"
                 + "- Artifacts: `" + job.identity().artifactRoot() + "`\n"
                 + "- Pull request: " + pullRequest + "\n"
+                + "- System-test pull request: " + systemTestPullRequest + "\n"
                 + "- Next action: " + nextAction(job.progress().stage());
     }
 
     private static String nextAction(FeatureStage stage) {
         return switch (stage) {
-            case WAIT_R1_APPROVAL -> "an approver may run `/feature approve r1` or reject R1.";
-            case WAIT_R2_APPROVAL -> "an approver may run `/feature approve r2` or reject R2.";
-            case WAIT_R3_APPROVAL -> "an approver may run `/feature approve r3` or reject R3.";
             case PAUSED -> "an approver may run `/feature resume` or `/feature cancel`.";
-            case WAITING_DEPENDENCY_PREFETCH ->
-                    "an operator must refresh the credential-free cache, then approve resume.";
-            case WAITING_HUMAN ->
-                    "inspect durable artifacts and controller logs, resolve the blocker, then resume.";
+            case RETRY_SCHEDULED -> "the controller will retry after the persisted backoff.";
+            case DEPENDENCY_PREFETCH ->
+                    "the controller will refresh an isolated credential-free dependency cache.";
             case READY_FOR_REVIEW -> "perform human PR review and merge when acceptable.";
+            case SYSTEM_TEST -> "the controller will add focused post-merge system tests.";
+            case REVIEW_SYSTEM_TEST -> "an independent Agent is reviewing the system-test diff.";
+            case PUBLISH_SYSTEM_TEST -> "the controller will verify and publish the system-test PR.";
+            case SYSTEM_TEST_READY_FOR_REVIEW ->
+                    "perform human system-test PR review and merge when acceptable.";
             case MERGED -> "the workflow is complete; release remains a separate human process.";
             case CLOSED -> "the canonical PR was closed without merge; human disposition is required.";
             case CANCEL_REQUESTED -> "the worker will stop at its next safe boundary.";
             case CANCELLED -> "the job is terminal; retained artifacts and PR remain available.";
-            case FAILED_FINAL -> "inspect the durable failure and decide a manual follow-up.";
+            case BLOCKED_EXTERNAL -> "resolve the audited product or environment blocker.";
+            case FAILED_AUTOMATION -> "inspect the exhausted automatic repair history.";
+            case FAILED_CONFIGURATION -> "correct the service configuration and admit a new job.";
+            case FAILED_POLICY -> "inspect the immutable-contract or path-policy violation.";
+            case FAILED_INTERNAL -> "inspect the unclassified controller defect.";
             default -> "the controller will execute the next bounded stage automatically.";
         };
     }

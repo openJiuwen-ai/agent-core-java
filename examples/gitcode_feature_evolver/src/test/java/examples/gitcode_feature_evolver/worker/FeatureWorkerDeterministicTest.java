@@ -14,6 +14,9 @@ import examples.gitcode_feature_evolver.gitcode.FeatureIssueScanRequest;
 import examples.gitcode_feature_evolver.gitcode.FeaturePullRequest;
 import examples.gitcode_feature_evolver.gitcode.UpdateFeaturePullRequest;
 import examples.gitcode_feature_evolver.job.FeatureCommand;
+import examples.gitcode_feature_evolver.job.FeatureExecutionException;
+import examples.gitcode_feature_evolver.job.FeatureFailure;
+import examples.gitcode_feature_evolver.job.FeatureFailureCategory;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureJobMutation;
 import examples.gitcode_feature_evolver.job.FeatureJobRequest;
@@ -45,32 +48,88 @@ public final class FeatureWorkerDeterministicTest {
     public static void main(String[] args) throws Exception {
         testOneStageProgression();
         testRetryExhaustion();
+        testTransientRetrySchedule();
+        testShutdownReleasesLease();
         testControlInterruption(FeatureCommand.Action.PAUSE, FeatureStage.PAUSED);
         testControlInterruption(FeatureCommand.Action.CANCEL, FeatureStage.CANCELLED);
         System.out.println("FeatureWorkerDeterministicTest: PASS");
+    }
+
+    private static void testShutdownReleasesLease() throws Exception {
+        try (SqliteFeatureJobStore store = store("shutdown-release")) {
+            FeatureJob admitted = store.admit(request(3)).job().orElseThrow();
+            CountDownLatch started = new CountDownLatch(1);
+            FeatureWorker worker = worker(store,
+                    execution -> blockingStage(execution, started), "stopping-worker");
+            Thread workerThread = new Thread(worker::runOnce, "feature-worker-shutdown-test");
+            workerThread.start();
+            require(started.await(5, TimeUnit.SECONDS), "shutdown stage runner did not start");
+
+            FeatureJob leased = store.findById(admitted.identity().id()).orElseThrow();
+            long leasedVersion = leased.record().version();
+            require(leased.lease().owner().equals("stopping-worker"),
+                    "shutdown test Job was not leased by its worker");
+
+            worker.stop();
+            workerThread.join(5000L);
+            require(!workerThread.isAlive(), "stopping worker did not leave its active stage");
+            FeatureJob released = store.findById(admitted.identity().id()).orElseThrow();
+            require(released.lease().owner().isBlank() && released.lease().until() == 0L,
+                    "stopping worker retained its durable lease");
+            require(released.record().version() > leasedVersion,
+                    "shutdown release did not fence a late stage result");
+            require(released.progress().stage() == FeatureStage.ADMITTED,
+                    "shutdown release unexpectedly advanced the workflow");
+
+            FeatureWorker replacement = worker(store, execution -> FeatureStageOutcome.transition(
+                    new FeatureJobMutation(FeatureStage.SPECIFY, null, 0, 0, "recovered")),
+                    "replacement-worker");
+            require(replacement.runOnce(), "replacement worker could not immediately reclaim Job");
+            require(store.findById(admitted.identity().id()).orElseThrow().progress().stage()
+                            == FeatureStage.SPECIFY,
+                    "replacement worker did not resume the released Job");
+        }
     }
 
     private static void testRetryExhaustion() throws Exception {
         try (SqliteFeatureJobStore store = store("retry-limit")) {
             FeatureJob admitted = store.admit(request(2)).job().orElseThrow();
             FeatureStageRunner runner = execution -> {
-                if (execution.job().progress().stage() == FeatureStage.FAILED_RETRYABLE) {
-                    return FeatureStageOutcome.transition(new FeatureJobMutation(
-                            execution.job().progress().resumeStage(), null,
-                            execution.job().progress().gateRound(),
-                            execution.job().progress().taskAttempt(), "retry restored"));
-                }
                 throw new IllegalStateException("deterministic stage failure");
             };
             FeatureWorker worker = worker(store, runner, "retry-worker");
-            for (int iteration = 0; iteration < 5; iteration++) {
-                require(worker.runOnce(), "retry state was not runnable");
-            }
+            require(worker.runOnce(), "failing state was not runnable");
             FeatureJob failed = store.findById(admitted.identity().id()).orElseThrow();
-            require(failed.progress().stage() == FeatureStage.WAITING_HUMAN,
-                    "retry exhaustion did not stop for human action");
-            require(failed.progress().taskAttempt() == 3,
-                    "retry attempt count was not persisted");
+            require(failed.progress().stage() == FeatureStage.FAILED_INTERNAL,
+                    "unknown exception was incorrectly replayed");
+            require("UNCLASSIFIED_STAGE_EXCEPTION".equals(
+                    failed.recovery().lastFailureCode()),
+                    "classified internal failure was not persisted");
+        }
+    }
+
+    private static void testTransientRetrySchedule() throws Exception {
+        try (SqliteFeatureJobStore store = store("transient-schedule")) {
+            FeatureJob admitted = store.admit(request(4)).job().orElseThrow();
+            FeatureStageRunner runner = execution -> {
+                throw new FeatureExecutionException(new FeatureFailure("MODEL_TIMEOUT",
+                        FeatureFailureCategory.TRANSIENT_MODEL,
+                        FeatureStage.ADMITTED, FeatureStage.ADMITTED,
+                        new FeatureFailure.Diagnostic("Model request timed out", "")));
+            };
+            FeatureWorker worker = new FeatureWorker(store, new FakeGitCodeClient(), runner,
+                    "transient-worker", Clock.fixed(NOW, ZoneOffset.UTC), 5);
+            require(worker.runOnce(), "transient failure was not processed");
+            FeatureJob scheduled = store.findById(admitted.identity().id()).orElseThrow();
+            require(scheduled.progress().stage() == FeatureStage.RETRY_SCHEDULED,
+                    "transient failure was not scheduled for retry");
+            require(scheduled.progress().resumeStage() == FeatureStage.ADMITTED,
+                    "transient retry lost its recovery stage");
+            require(scheduled.recovery().retries().transientRetries() == 1,
+                    "transient retry counter was not persisted");
+            require(scheduled.recovery().nextRetryAt() == NOW.toEpochMilli() + 30_000L,
+                    "first transient retry did not use the 30-second backoff");
+            require(!worker.runOnce(), "retry was leased before next_retry_at");
         }
     }
 

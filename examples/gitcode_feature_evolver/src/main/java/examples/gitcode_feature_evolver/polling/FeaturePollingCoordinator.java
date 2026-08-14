@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Polls updated feature Issues, authenticated comment commands, and bound pull requests.
@@ -45,7 +46,9 @@ public final class FeaturePollingCoordinator {
     private final FeatureEvolvingConfig config;
     private final FeatureJobStore store;
     private final FeatureGitCodeClient gitCode;
+    private final FeatureGitCodeClient systemTestGitCode;
     private final Clock clock;
+    private final Consumer<FeatureJob> terminalObserver;
     private final FeaturePollingStatus status = new FeaturePollingStatus();
 
     /**
@@ -57,15 +60,54 @@ public final class FeaturePollingCoordinator {
      */
     public FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
                                      FeatureGitCodeClient gitCode) {
-        this(config, store, gitCode, Clock.systemUTC());
+        this(config, store, gitCode, gitCode, Clock.systemUTC(), job -> { });
+    }
+
+    /**
+     * Create a coordinator with separate feature and system-test repository clients.
+     *
+     * @param config validated configuration
+     * @param store durable job store
+     * @param gitCode original feature repository client
+     * @param systemTestGitCode system-test repository client
+     */
+    public FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
+                                     FeatureGitCodeClient gitCode,
+                                     FeatureGitCodeClient systemTestGitCode) {
+        this(config, store, gitCode, systemTestGitCode, Clock.systemUTC(), job -> { });
+    }
+
+    /** Create a coordinator with a terminal-cache lifecycle observer. */
+    public FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
+                                     FeatureGitCodeClient gitCode,
+                                     FeatureGitCodeClient systemTestGitCode,
+                                     Consumer<FeatureJob> terminalObserver) {
+        this(config, store, gitCode, systemTestGitCode, Clock.systemUTC(), terminalObserver);
     }
 
     FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
                               FeatureGitCodeClient gitCode, Clock clock) {
+        this(config, store, gitCode, gitCode, clock, job -> { });
+    }
+
+    FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
+                              FeatureGitCodeClient gitCode,
+                              FeatureGitCodeClient systemTestGitCode, Clock clock) {
+        this(config, store, gitCode, systemTestGitCode, clock, job -> { });
+    }
+
+    FeaturePollingCoordinator(FeatureEvolvingConfig config, FeatureJobStore store,
+                              FeatureGitCodeClient gitCode,
+                              FeatureGitCodeClient systemTestGitCode, Clock clock,
+                              Consumer<FeatureJob> terminalObserver) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.gitCode = Objects.requireNonNull(gitCode, "gitCode must not be null");
+        this.systemTestGitCode = Objects.requireNonNull(
+                systemTestGitCode, "systemTestGitCode must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.terminalObserver = Objects.requireNonNull(
+                terminalObserver, "terminal observer must not be null");
     }
 
     /** Run one bounded Issue scan, command scan, and PR reconciliation cycle. */
@@ -76,8 +118,11 @@ public final class FeaturePollingCoordinator {
             ScanCounts issues = scanIssues(attempt);
             int commands = pollCommands();
             int pullRequests = reconcilePullRequests();
+            int systemTestPullRequests = reconcileSystemTestPullRequests();
+            markTerminalCaches();
             String summary = "issues=" + issues.inspected() + ",admitted=" + issues.admitted()
-                    + ",commands=" + commands + ",prs=" + pullRequests;
+                    + ",commands=" + commands + ",prs=" + pullRequests
+                    + ",systemTestPrs=" + systemTestPullRequests;
             status.recordSuccess(clock.instant(), summary);
             LOGGER.info("GitCode feature polling completed: {}", summary);
         } catch (RuntimeException ex) {
@@ -205,9 +250,12 @@ public final class FeaturePollingCoordinator {
         for (FeatureJob job : store.listPullRequestsForReconciliation(MAX_ACTIVE_JOBS)) {
             FeaturePullRequest pullRequest = gitCode.getPullRequest(job.pullRequest().number());
             if (pullRequest.isMerged()) {
-                transitionTerminal(job, FeatureStage.MERGED);
+                FeatureStage next = config.systemTestEnabled()
+                        ? FeatureStage.SYSTEM_TEST : FeatureStage.MERGED;
+                transitionReconciled(job, next, "Feature PR polling reconciliation");
             } else if (pullRequest.isClosed()) {
-                transitionTerminal(job, FeatureStage.CLOSED);
+                transitionReconciled(job, FeatureStage.CLOSED,
+                        "Feature PR polling reconciliation");
             } else {
                 store.markPullRequestChecked(job.identity().id(), clock.millis());
                 if (!pullRequest.isOpen()) {
@@ -219,16 +267,43 @@ public final class FeaturePollingCoordinator {
         return reconciled;
     }
 
-    private void transitionTerminal(FeatureJob job, FeatureStage terminal) {
+    private int reconcileSystemTestPullRequests() {
+        if (!config.systemTestEnabled()) {
+            return 0;
+        }
+        int reconciled = 0;
+        for (FeatureJob job : store.listSystemTestPullRequestsForReconciliation(MAX_ACTIVE_JOBS)) {
+            FeaturePullRequest pullRequest = systemTestGitCode.getPullRequest(
+                    job.systemTestPullRequest().number());
+            if (pullRequest.isMerged()) {
+                transitionReconciled(job, FeatureStage.MERGED,
+                        "System-test PR polling reconciliation");
+            } else if (pullRequest.isClosed()) {
+                transitionReconciled(job, FeatureStage.CLOSED,
+                        "System-test PR polling reconciliation");
+            } else {
+                store.markSystemTestPullRequestChecked(job.identity().id(), clock.millis());
+                if (!pullRequest.isOpen()) {
+                    LOGGER.warn("Ignored unsupported system-test PR state for PR {}",
+                            pullRequest.number());
+                }
+            }
+            reconciled++;
+        }
+        return reconciled;
+    }
+
+    private void transitionReconciled(FeatureJob job, FeatureStage next, String detail) {
         FeatureJob current = job;
         for (int attempt = 0; attempt < 2; attempt++) {
             if (current.progress().stage().isTerminal()) {
                 return;
             }
             try {
-                store.transition(current.identity().id(), current.record().version(),
-                        FeatureJobMutation.transition(
-                                current, terminal, "PR polling reconciliation"));
+                FeatureJob transitioned = store.transition(
+                        current.identity().id(), current.record().version(),
+                        FeatureJobMutation.transition(current, next, detail));
+                markTerminalCache(transitioned);
                 return;
             } catch (IllegalStateException ex) {
                 Optional<FeatureJob> latest = store.findById(current.identity().id());
@@ -239,7 +314,24 @@ public final class FeaturePollingCoordinator {
             }
         }
         if (!current.progress().stage().isTerminal()) {
-            throw new IllegalStateException("Feature PR reconciliation changed concurrently");
+            throw new IllegalStateException("Pull-request reconciliation changed concurrently");
+        }
+    }
+
+    private void markTerminalCaches() {
+        store.listRecentJobs(MAX_ACTIVE_JOBS).stream()
+                .filter(job -> job.progress().stage().isTerminal())
+                .forEach(this::markTerminalCache);
+    }
+
+    private void markTerminalCache(FeatureJob job) {
+        if (!job.progress().stage().isTerminal()) {
+            return;
+        }
+        try {
+            terminalObserver.accept(job);
+        } catch (RuntimeException ex) {
+            LOGGER.warn("Unable to mark terminal Feature Job cache for retention");
         }
     }
 

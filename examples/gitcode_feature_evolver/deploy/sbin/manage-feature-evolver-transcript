@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+service_account="gitcode-feature-evolver"
+service_group="gitcode-feature-evolver"
+service_unit="gitcode-feature-evolver.service"
+config_dir="/etc/gitcode-feature-evolver"
+safe_config="/usr/local/share/gitcode-feature-evolver/logback-safe.xml"
+transcript_template="/usr/local/share/gitcode-feature-evolver/logback-transcript.xml.template"
+active_config="$config_dir/logback-active.xml"
+state_file="$config_dir/transcript.state"
+runtime_config="$config_dir/feature-config.json"
+transcript_dir="/var/log/gitcode-feature-evolver/transcripts"
+timer_prefix="gitcode-feature-evolver-transcript-reset"
+default_minutes=15
+maximum_minutes=60
+
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf '%s\n' \
+        'Usage: manage-feature-evolver-transcript <command> [duration-minutes]' \
+        '' \
+        '  enable [minutes]  Capture full Agent content for 1-60 minutes (default 15)' \
+        '  disable           Return immediately to the safe operational-log policy' \
+        '  status            Show the active policy and transcript path, if any' \
+        '  apply-config      Apply fullAgentTranscriptEnabled during service startup' \
+        '  reset             Install the safe policy during service startup'
+}
+
+require_root_file() {
+    local file="$1"
+    [[ -f "$file" && ! -L "$file" ]] || fail "Required logging policy is unavailable: $file"
+    [[ "$(stat -c '%u:%g' "$file")" == "0:0" ]] ||
+        fail "Logging policy must be owned by root:root: $file"
+    local mode
+    mode="$(stat -c '%a' "$file")"
+    [[ "$mode" == "644" || "$mode" == "444" ]] ||
+        fail "Logging policy must have mode 0644 or 0444: $file"
+}
+
+valid_transcript_file() {
+    local file="$1"
+    [[ "$file" == "$transcript_dir/"*.log && "$file" != *$'\n'* && "$file" != *$'\r'* ]]
+}
+
+require_runtime_config() {
+    [[ -f "$runtime_config" && ! -L "$runtime_config" ]] ||
+        fail "Runtime configuration is unavailable: $runtime_config"
+    [[ "$(stat -c '%u:%g' "$runtime_config")" == "0:$(id -g "$service_account")" ]] ||
+        fail "Runtime configuration must be owned by root and grouped to $service_group"
+    local mode
+    mode="$(stat -c '%a' "$runtime_config")"
+    [[ "$mode" == "640" || "$mode" == "440" ]] ||
+        fail "Runtime configuration must have mode 0640 or 0440"
+}
+
+install_policy() {
+    local source="$1"
+    local temporary
+    temporary="$(mktemp "$config_dir/.logback-active.XXXXXX")"
+    install -o root -g "$service_group" -m 0440 "$source" "$temporary"
+    mv -f "$temporary" "$active_config"
+}
+
+state_value() {
+    local key="$1"
+    [[ -f "$state_file" && ! -L "$state_file" ]] || return 1
+    [[ "$(stat -c '%u:%g:%a' "$state_file")" == "0:0:600" ]] ||
+        fail "Transcript state has unsafe ownership or permissions"
+    awk -F= -v requested="$key" '$1 == requested {print substr($0, length($1) + 2)}' "$state_file"
+}
+
+stop_timer() {
+    local timer_unit="${1-}"
+    [[ "$timer_unit" =~ ^${timer_prefix}-[0-9]+$ ]] || return 0
+    systemctl stop "${timer_unit}.timer" >/dev/null 2>&1 || true
+    systemctl reset-failed "${timer_unit}.service" >/dev/null 2>&1 || true
+}
+
+disable_policy() {
+    local is_expired="$1"
+    local expected_timer="${2-}"
+    local transcript_file=""
+    local timer_unit=""
+    if [[ -f "$state_file" ]]; then
+        if [[ "$is_expired" == true ]]; then
+            local active_timer
+            active_timer="$(state_value timer_unit)"
+            if [[ ! "$expected_timer" =~ ^${timer_prefix}-[0-9]+$ || "$active_timer" != "$expected_timer" ]]; then
+                printf 'Ignored a stale transcript-expiry callback.\n'
+                return
+            fi
+        fi
+        transcript_file="$(state_value transcript_file)"
+        timer_unit="$(state_value timer_unit)"
+        valid_transcript_file "$transcript_file" ||
+            fail "Transcript state contains an invalid file path"
+    elif [[ "$is_expired" == true ]]; then
+        printf 'Transcript is already disabled.\n'
+        return
+    fi
+    install_policy "$safe_config"
+    rm -f "$state_file"
+    if [[ "$is_expired" != true ]]; then
+        stop_timer "$timer_unit"
+    fi
+    logger -p authpriv.notice -t gitcode-feature-evolver \
+        "Full Agent transcript disabled; operational-log policy active"
+    printf 'Full Agent transcript is disabled.\n'
+    if [[ -n "$transcript_file" ]]; then
+        printf 'Retained transcript (automatic seven-day expiry): %s\n' "$transcript_file"
+    fi
+}
+
+enable_policy() {
+    local duration_minutes="$1"
+    [[ "$duration_minutes" =~ ^[0-9]+$ ]] || fail "Duration must be an integer number of minutes"
+    ((duration_minutes >= 1 && duration_minutes <= maximum_minutes)) ||
+        fail "Duration must be between 1 and $maximum_minutes minutes"
+    systemctl is-active --quiet "$service_unit" ||
+        fail "$service_unit must be active before enabling a live transcript"
+
+    local previous_timer=""
+    if [[ -f "$state_file" ]]; then
+        previous_timer="$(state_value timer_unit)"
+    fi
+    stop_timer "$previous_timer"
+
+    local started_epoch
+    local expires_epoch
+    local stamp
+    local transcript_file
+    local generated_config
+    local timer_unit
+    started_epoch="$(date +%s)"
+    expires_epoch="$((started_epoch + duration_minutes * 60))"
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    transcript_file="$(mktemp "$transcript_dir/agent-transcript-${stamp}-XXXXXX.log")"
+    printf '# GitCode Feature Evolver full Agent transcript\n' > "$transcript_file"
+    printf '# started_at=%s expires_at=%s scope=single-worker-time-window\n' \
+        "$(date -u -d "@$started_epoch" +%Y-%m-%dT%H:%M:%SZ)" \
+        "$(date -u -d "@$expires_epoch" +%Y-%m-%dT%H:%M:%SZ)" >> "$transcript_file"
+    printf '# WARNING: contains full prompts, model replies, tool inputs, and tool outputs.\n' \
+        >> "$transcript_file"
+    chown "$service_account:$service_group" "$transcript_file"
+    chmod 0600 "$transcript_file"
+
+    generated_config="$(mktemp "$config_dir/.logback-transcript.XXXXXX")"
+    sed "s|@@TRANSCRIPT_FILE@@|$transcript_file|g" "$transcript_template" > "$generated_config"
+    chown root:"$service_group" "$generated_config"
+    chmod 0440 "$generated_config"
+    mv -f "$generated_config" "$active_config"
+
+    timer_unit="${timer_prefix}-${expires_epoch}"
+    local temporary_state
+    temporary_state="$(mktemp "$config_dir/.transcript-state.XXXXXX")"
+    printf 'transcript_file=%s\nstarted_epoch=%s\nexpires_epoch=%s\ntimer_unit=%s\nmode=timed\n' \
+        "$transcript_file" "$started_epoch" "$expires_epoch" "$timer_unit" > "$temporary_state"
+    chown root:root "$temporary_state"
+    chmod 0600 "$temporary_state"
+    mv -f "$temporary_state" "$state_file"
+
+    if ! systemd-run --quiet --unit="$timer_unit" --on-active="${duration_minutes}m" \
+            --timer-property=AccuracySec=1s --collect "$0" disable --expired "$timer_unit"; then
+        install_policy "$safe_config"
+        rm -f "$state_file"
+        fail "Unable to schedule automatic transcript expiry; safe policy restored"
+    fi
+
+    logger -p authpriv.notice -t gitcode-feature-evolver \
+        "Full Agent transcript enabled for ${duration_minutes} minutes; file=$transcript_file"
+    printf 'WARNING: this file contains full prompts, model replies, and tool inputs/outputs.\n'
+    printf 'Transcript: %s\n' "$transcript_file"
+    printf 'Expires: %s\n' "$(date -u -d "@$expires_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'Logback applies the new policy within five seconds; no service restart is required.\n'
+}
+
+enable_startup_policy() {
+    local previous_timer=""
+    if [[ -f "$state_file" ]]; then
+        previous_timer="$(state_value timer_unit)"
+    fi
+    stop_timer "$previous_timer"
+
+    local started_epoch
+    local stamp
+    local transcript_file
+    local generated_config
+    local temporary_state
+    started_epoch="$(date +%s)"
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    transcript_file="$(mktemp "$transcript_dir/agent-transcript-${stamp}-XXXXXX.log")"
+    printf '# GitCode Feature Evolver full Agent transcript\n' > "$transcript_file"
+    printf '# started_at=%s expires_at=service-policy-change scope=single-worker-service-run\n' \
+        "$(date -u -d "@$started_epoch" +%Y-%m-%dT%H:%M:%SZ)" >> "$transcript_file"
+    printf '# WARNING: contains full prompts, model replies, tool inputs, and tool outputs.\n' \
+        >> "$transcript_file"
+    chown "$service_account:$service_group" "$transcript_file"
+    chmod 0600 "$transcript_file"
+
+    generated_config="$(mktemp "$config_dir/.logback-transcript.XXXXXX")"
+    sed "s|@@TRANSCRIPT_FILE@@|$transcript_file|g" "$transcript_template" > "$generated_config"
+    chown root:"$service_group" "$generated_config"
+    chmod 0440 "$generated_config"
+    mv -f "$generated_config" "$active_config"
+
+    temporary_state="$(mktemp "$config_dir/.transcript-state.XXXXXX")"
+    printf 'transcript_file=%s\nstarted_epoch=%s\nexpires_epoch=0\ntimer_unit=\nmode=startup-default\n' \
+        "$transcript_file" "$started_epoch" > "$temporary_state"
+    chown root:root "$temporary_state"
+    chmod 0600 "$temporary_state"
+    mv -f "$temporary_state" "$state_file"
+
+    logger -p authpriv.notice -t gitcode-feature-evolver \
+        "Full Agent transcript enabled by runtime configuration; file=$transcript_file"
+    printf 'Full Agent transcript is enabled by runtime configuration.\n'
+    printf 'Transcript: %s\n' "$transcript_file"
+}
+
+apply_config_policy() {
+    require_runtime_config
+    local enabled
+    enabled="$(jq -r '
+        if has("fullAgentTranscriptEnabled") then
+            if (.fullAgentTranscriptEnabled | type) == "boolean" then
+                .fullAgentTranscriptEnabled
+            else
+                error("fullAgentTranscriptEnabled must be boolean")
+            end
+        else
+            true
+        end
+    ' "$runtime_config")" || fail "Unable to read fullAgentTranscriptEnabled"
+    if [[ "$enabled" == "true" ]]; then
+        enable_startup_policy
+    elif [[ "$enabled" == "false" ]]; then
+        disable_policy false ""
+    else
+        fail "fullAgentTranscriptEnabled must resolve to true or false"
+    fi
+}
+
+show_status() {
+    if [[ ! -f "$state_file" ]]; then
+        printf 'Policy: SAFE\nFull Agent transcript: disabled\n'
+        return
+    fi
+    local transcript_file
+    local expires_epoch
+    local mode
+    transcript_file="$(state_value transcript_file)"
+    expires_epoch="$(state_value expires_epoch)"
+    mode="$(state_value mode || true)"
+    valid_transcript_file "$transcript_file" ||
+        fail "Transcript state contains an invalid file path"
+    [[ "$expires_epoch" =~ ^[0-9]+$ ]] || fail "Transcript state contains an invalid expiry"
+    printf 'Policy: DEMONSTRATION\nFull Agent transcript: enabled\n'
+    printf 'Transcript: %s\n' "$transcript_file"
+    if [[ "$mode" == "startup-default" && "$expires_epoch" == "0" ]]; then
+        printf 'Lifetime: service run or explicit policy change\n'
+    else
+        printf 'Expires: %s\n' "$(date -u -d "@$expires_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+    fi
+}
+
+((EUID == 0)) || fail "This command must run as root"
+for required_command in awk chown chmod date id install jq logger mktemp mv rm sed stat \
+        systemctl systemd-run; do
+    command -v "$required_command" >/dev/null 2>&1 ||
+        fail "Required command is unavailable: $required_command"
+done
+id "$service_account" >/dev/null 2>&1 || fail "Service account is unavailable"
+getent group "$service_group" >/dev/null 2>&1 || fail "Service group is unavailable"
+[[ -d "$config_dir" && ! -L "$config_dir" ]] || fail "Configuration directory is unavailable"
+install -d -o "$service_account" -g "$service_group" -m 0700 "$transcript_dir"
+require_root_file "$safe_config"
+require_root_file "$transcript_template"
+
+command="${1-}"
+case "$command" in
+    enable)
+        (($# <= 2)) || fail "enable accepts only an optional duration"
+        enable_policy "${2:-$default_minutes}"
+        ;;
+    disable)
+        (($# <= 3)) || fail "disable accepts no public arguments"
+        is_expired=false
+        expected_timer=""
+        if (($# == 2)); then
+            fail "Unsupported disable argument"
+        fi
+        if (($# == 3)); then
+            [[ "$2" == "--expired" ]] || fail "Unsupported disable argument"
+            [[ "$3" =~ ^${timer_prefix}-[0-9]+$ ]] || fail "Invalid expiry timer identity"
+            is_expired=true
+            expected_timer="$3"
+        fi
+        disable_policy "$is_expired" "$expected_timer"
+        ;;
+    status)
+        (($# == 1)) || fail "status accepts no arguments"
+        show_status
+        ;;
+    apply-config)
+        (($# == 1)) || fail "apply-config accepts no arguments"
+        apply_config_policy
+        ;;
+    reset)
+        (($# == 1)) || fail "reset accepts no arguments"
+        disable_policy false "" >/dev/null
+        ;;
+    -h|--help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

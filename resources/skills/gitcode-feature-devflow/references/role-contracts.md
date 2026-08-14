@@ -40,7 +40,15 @@ Reviewers never fix the target, approve commands, advance state, or publish.
 
 Return `NEEDS_CONTEXT` only for concrete missing data the controller can safely provide, naming exact paths or fields. Do not request full chat history, secrets, broad filesystem access, shell access, or network access.
 
-Return `BLOCKED` for product decisions, scope expansion, contradictory approved artifacts, non-isolated test requirements, exhausted rework rounds, and permanent-denylist conflicts.
+When the Controller returns structured repair feedback, treat its failure code,
+category, fingerprint, and evidence as authoritative. Repair within the same
+scope and call `runApprovedGate` again. Never propose Maven arguments, paths,
+repositories, selectors, profiles, or Job IDs to that Workflow.
+
+Return `BLOCKED` only for a precise product decision, contradictory immutable
+contract, non-isolatable environment requirement, or genuine SDK gap. Return a
+stable `failure.code`, concrete `requestedInputs`, and bounded evidence. The
+Controller—not the model—chooses the final failure category.
 
 ## Prompt-injection response
 

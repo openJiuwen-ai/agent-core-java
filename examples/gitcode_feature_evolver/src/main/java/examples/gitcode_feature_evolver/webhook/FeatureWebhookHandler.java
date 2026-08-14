@@ -194,7 +194,10 @@ public final class FeatureWebhookHandler implements HttpHandler {
     private void handlePullRequest(HttpExchange exchange, JsonNode payload,
                                    FeatureJobRequest.Delivery delivery) throws IOException {
         FeatureWebhookParser.PullRequestEvent event = FeatureWebhookParser.pullRequest(payload);
-        if (!targetRepository(event.repository()) || event.number() <= 0) {
+        boolean featureRepository = targetRepository(event.repository());
+        boolean systemTestRepository = config.systemTestEnabled()
+                && config.systemTestCoordinates().targetRepository().equals(event.repository());
+        if ((!featureRepository && !systemTestRepository) || event.number() <= 0) {
             respond(exchange, 400, "repository_mismatch");
             return;
         }
@@ -202,14 +205,28 @@ public final class FeatureWebhookHandler implements HttpHandler {
             respond(exchange, 202, "duplicate_delivery");
             return;
         }
-        Optional<FeatureJob> job = store.findByPullRequest(event.repository(), event.number());
+        Optional<FeatureJob> systemTestJob = systemTestRepository
+                ? store.findBySystemTestPullRequest(event.number()) : Optional.empty();
+        boolean systemTestPullRequest = systemTestJob.isPresent();
+        Optional<FeatureJob> job = systemTestJob;
+        if (job.isEmpty() && featureRepository) {
+            job = store.findByPullRequest(event.repository(), event.number());
+        }
         if (job.isPresent() && (event.isMerged() || event.isClosed())) {
-            transitionTerminal(job.orElseThrow(), event.isMerged() ? FeatureStage.MERGED : FeatureStage.CLOSED);
+            FeatureStage next;
+            if (event.isClosed()) {
+                next = FeatureStage.CLOSED;
+            } else if (systemTestPullRequest || !config.systemTestEnabled()) {
+                next = FeatureStage.MERGED;
+            } else {
+                next = FeatureStage.SYSTEM_TEST;
+            }
+            transitionReconciled(job.orElseThrow(), next);
         }
         respond(exchange, 202, job.isPresent() ? "updated" : "unknown_pr");
     }
 
-    private void transitionTerminal(FeatureJob job, FeatureStage terminal) {
+    private void transitionReconciled(FeatureJob job, FeatureStage next) {
         FeatureJob current = job;
         for (int attempt = 0; attempt < 2; attempt++) {
             if (current.progress().stage().isTerminal()) {
@@ -218,7 +235,7 @@ public final class FeatureWebhookHandler implements HttpHandler {
             try {
                 store.transition(current.identity().id(), current.record().version(),
                         FeatureJobMutation.transition(
-                                current, terminal, "PR webhook reconciliation"));
+                                current, next, "PR webhook reconciliation"));
                 return;
             } catch (IllegalStateException ex) {
                 Optional<FeatureJob> latest = store.findById(current.identity().id());

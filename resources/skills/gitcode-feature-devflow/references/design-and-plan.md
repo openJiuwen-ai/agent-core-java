@@ -31,12 +31,21 @@ Expand `plan.md` only after the design is coherent. Each task must be independen
 - stable `T-*` ID and mapped `CASE-*`/requirement IDs;
 - exact writable production and test paths;
 - dependencies and one unambiguous readiness condition;
-- RED action and fixed test selector;
-- GREEN behavior boundary;
+- RED action and one or more exact Java class selectors written as
+  `-Dtest=Class[,Class]` (no methods, globs, profiles, goals, or extra flags);
+- a compile-safe RED mechanism that reaches JUnit; compilation failure is never
+  accepted, so a missing new Java API requires a probe such as reflection;
+- GREEN behavior boundary and exact new/regression test classes;
 - REFACTOR quality checks;
 - completion definition and evidence slots.
 
 The set of CASE IDs across tasks must equal the design test table's in-scope CASE IDs. Do not use “same as above” or conversation memory.
+
+Keep only source-behavior TDD tasks under `## Tasks`, with all such tasks before
+any deferred entry. Record documentation promotion/release notes under
+`Deferred Delivery` for SHIP. Record post-merge system-test requirements there
+as well; the separate `SYSTEM_TEST` stage owns their code and evidence. Never
+invent a RED result for documentation or another artifact-only change.
 
 ## R2 author check
 

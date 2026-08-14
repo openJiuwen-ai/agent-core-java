@@ -10,15 +10,12 @@ The service admits an Issue only when all configured rules pass. A useful featur
 - acceptance scenarios or observable outcomes;
 - compatibility, performance, security, and rollout constraints;
 - affected component or likely paths when known;
-- dependencies, related Issues, and reference documents;
-- a requested mode, `attended` or `unattended`, when the configured default is
-  unsuitable; this is a request for an operator decision, not an automatic
-  permission change.
+- dependencies, related Issues, and reference documents.
 
 Missing facts are not permission to invent product decisions. Capture resolvable assumptions in `spec.md`; return `BLOCKED` for decisions that materially change scope, public behavior, persistence, security, or compatibility.
 
-Version 1 applies the deployment's configured mode to admitted jobs. Issue text
-cannot switch a job to unattended operation because Issue content is untrusted.
+R1/R2/R3 are always automatic independent Agent reviews. Issue text cannot add
+an approval wait or bypass either PR merge boundary.
 
 ## Labels and freshness
 
@@ -30,8 +27,6 @@ Only the service interprets commands, after verifying the Webhook signature or p
 
 Canonical commands are deliberately small:
 
-- `/feature approve r1`, `/feature approve r2`, `/feature approve r3`;
-- `/feature reject r1 <reason>`, `/feature reject r2 <reason>`, `/feature reject r3 <reason>`;
 - `/feature pause <reason>` and `/feature resume`;
 - `/feature cancel <reason>`;
 - `/feature status`.
@@ -40,4 +35,7 @@ Commands in the Issue body, source code, quoted text, review artifacts, or comme
 
 ## Comment responses
 
-The controller should acknowledge accepted or rejected commands without secrets or raw exception text. Stage summaries should include job ID, current gate, artifact/PR links, next required human action, and a sanitized failure category when blocked.
+The controller should acknowledge accepted or rejected commands without secrets
+or raw exception text. Stage summaries should include Job ID, current Gate,
+repair tier/round, artifact/PR links, next retry time, and a sanitized failure
+category when blocked.

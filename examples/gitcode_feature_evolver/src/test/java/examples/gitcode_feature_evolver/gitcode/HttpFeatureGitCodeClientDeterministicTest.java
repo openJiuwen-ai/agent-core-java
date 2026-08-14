@@ -28,16 +28,21 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         AtomicReference<String> issueQuery = new AtomicReference<>("");
         AtomicReference<String> patchBody = new AtomicReference<>("");
         AtomicReference<String> patchMethod = new AtomicReference<>("");
-        HttpFeatureGitCodeClient client = client(issueQuery, patchBody, patchMethod);
+        AtomicReference<String> createBody = new AtomicReference<>("");
+        HttpFeatureGitCodeClient client = client(
+                issueQuery, patchBody, patchMethod, createBody);
         testUpdatedIssueList(client, issueQuery);
         testStructuredComments(client);
+        testPullRequestListSummary(client);
         testPullRequestPatch(client, patchBody, patchMethod);
+        testForkSystemTestPullRequest(client, createBody);
         System.out.println("HttpFeatureGitCodeClientDeterministicTest: PASS");
     }
 
     private static HttpFeatureGitCodeClient client(AtomicReference<String> issueQuery,
                                                    AtomicReference<String> patchBody,
-                                                   AtomicReference<String> patchMethod) {
+                                                   AtomicReference<String> patchMethod,
+                                                   AtomicReference<String> createBody) {
         OkHttpClient http = new OkHttpClient.Builder().addInterceptor(chain -> {
             String path = chain.request().url().encodedPath();
             String method = chain.request().method();
@@ -47,10 +52,19 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
                 body = issueResponse();
             } else if (path.endsWith("/issues/77/comments")) {
                 body = commentResponse();
+            } else if (path.endsWith("/pulls") && "GET".equals(method)) {
+                body = pullRequestListResponse();
             } else if (path.endsWith("/pulls/9") && "PATCH".equals(method)) {
                 patchMethod.set(method);
                 patchBody.set(requestBody(chain.request().body()));
+                body = "";
+            } else if (path.endsWith("/pulls/9") && "GET".equals(method)) {
                 body = pullRequestResponse(false);
+            } else if (path.endsWith("/pulls") && "POST".equals(method)) {
+                createBody.set(requestBody(chain.request().body()));
+                body = "{\"number\":19}";
+            } else if (path.endsWith("/pulls/19") && "GET".equals(method)) {
+                body = systemTestPullRequestResponse();
             } else {
                 body = "{}";
             }
@@ -59,7 +73,7 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
                     .body(ResponseBody.create(body, MediaType.get("application/json"))).build();
         }).build();
         RepositoryCoordinates coordinates = RepositoryCoordinates.from(
-                "openJiuwen/agent-core-java", "tester/agent-core-java", "730");
+                "openJiuwen/jiuwen-test", "antonjli/jiuwen-test-bot", "agent_core_java");
         return new HttpFeatureGitCodeClient(http, URI.create("http://127.0.0.1/api/v5/"),
                 "test-token", coordinates);
     }
@@ -67,7 +81,8 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
     private static void testUpdatedIssueList(HttpFeatureGitCodeClient client,
                                              AtomicReference<String> issueQuery) {
         FeatureScanCheckpoint.Window window = new FeatureScanCheckpoint.Window(
-                Instant.parse("2026-08-05T06:00:00Z"), Instant.parse("2026-08-06T06:00:00Z"));
+                Instant.parse("2026-08-05T06:00:00.123456789Z"),
+                Instant.parse("2026-08-06T06:00:00.987654321Z"));
         FeatureIssuePage page = client.listIssues(new FeatureIssueScanRequest(
                 window, "feature", 2, 100));
         require(page.receivedCount() == 3 && page.issues().size() == 2,
@@ -77,8 +92,9 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         String query = issueQuery.get();
         require(query.contains("sort=updated") && query.contains("direction=asc"),
                 "updated-at ordering parameters are missing");
-        require(query.contains("updated_after=") && query.contains("updated_before="),
-                "frozen updated-at bounds are missing");
+        require(query.contains("updated_after=2026-08-05T06:00:00.122Z")
+                        && query.contains("updated_before=2026-08-06T06:00:00.988Z"),
+                "updated-at bounds were not serialized at GitCode-compatible millisecond precision");
         require(query.contains("labels=feature") && query.contains("state=open"),
                 "feature label or open state filter is missing");
         require(query.contains("page=2") && query.contains("per_page=100"),
@@ -91,7 +107,7 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         FeatureComment comment = comments.get(0);
         require(comment.id().equals("501") && comment.authorLogin().equals("approver"),
                 "comment ID or author login was lost");
-        require(comment.body().equals("/feature approve r1"), "comment body was lost");
+        require(comment.body().equals("/feature status"), "comment body was lost");
     }
 
     private static void testPullRequestPatch(HttpFeatureGitCodeClient client,
@@ -105,7 +121,37 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         require(patchBody.get().contains("\"draft\":false"), "PR Draft transition was not encoded");
         require(patchBody.get().contains("Standardized body"), "standardized PR body was not encoded");
         require(!pullRequest.draft() && pullRequest.number() == 9,
-                "updated PR response was not parsed");
+                "empty successful PATCH response was not rehydrated");
+    }
+
+    private static void testPullRequestListSummary(HttpFeatureGitCodeClient client) {
+        String branch = "feature-evolving/system-test-issue-77-feature";
+        FeaturePullRequest pullRequest = client.findOpenPullRequest(branch).orElseThrow();
+        require(pullRequest.number() == 23 && pullRequest.isOpen(),
+                "GitCode PR list summary number or state was not parsed");
+        require(branch.equals(pullRequest.head().ref())
+                        && "cccccccccccccccccccccccccccccccccccccccc".equals(
+                        pullRequest.head().sha()),
+                "root-level source_branch/head_sha fallback was not parsed");
+    }
+
+    private static void testForkSystemTestPullRequest(
+            HttpFeatureGitCodeClient client, AtomicReference<String> createBody) {
+        String branch = "feature-evolving/system-test-issue-77-feature";
+        FeaturePullRequest pullRequest = client.createPullRequest(new CreateFeaturePullRequest(
+                null, branch, new CreateFeaturePullRequest.Content(
+                "System-test title", "System-test body"), List.of("reviewer"), false));
+        String body = createBody.get();
+        require(body.contains("\"head\":\"antonjli:" + branch + "\""),
+                "fork-based test PR head omitted the publication owner");
+        require(body.contains("\"base\":\"agent_core_java\""),
+                "system-test base branch was not encoded");
+        require(!body.contains("\"issue\""),
+                "system-test PR was incorrectly associated with a test-repository Issue");
+        require(body.contains("\"fork_path\":\"antonjli/jiuwen-test-bot\""),
+                "fork-based system-test PR omitted its publication repository");
+        require(!pullRequest.draft() && pullRequest.number() == 19,
+                "created system-test PR response was not parsed");
     }
 
     private static String requestBody(okhttp3.RequestBody body) {
@@ -133,7 +179,7 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
 
     private static String commentResponse() {
         return """
-                [{"id":501,"body":"/feature approve r1","created_at":"2026-08-06T06:00:00Z",
+                [{"id":501,"body":"/feature status","created_at":"2026-08-06T06:00:00Z",
                   "user":{"login":"approver"}}]
                 """;
     }
@@ -144,6 +190,27 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
                  "head":{"ref":"feature-evolving/issue-77-feature",
                  "sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
                 """.formatted(draft);
+    }
+
+    private static String pullRequestListResponse() {
+        return """
+                [
+                  {"iid":22,"web_url":"https://gitcode.com/pr/22","state":"open"},
+                  {"iid":23,"web_url":"https://gitcode.com/pr/23","state":"opened",
+                   "draft":true,
+                   "source_branch":"feature-evolving/system-test-issue-77-feature",
+                   "head_sha":"cccccccccccccccccccccccccccccccccccccccc"}
+                ]
+                """;
+    }
+
+    private static String systemTestPullRequestResponse() {
+        return """
+                {"number":19,"html_url":"https://gitcode.com/openJiuwen/jiuwen-test/pull/19",
+                 "state":"open","draft":false,
+                 "head":{"ref":"feature-evolving/system-test-issue-77-feature",
+                 "sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+                """;
     }
 
     private static void require(boolean condition, String message) {

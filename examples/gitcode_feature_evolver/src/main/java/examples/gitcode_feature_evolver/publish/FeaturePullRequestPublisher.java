@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.LongConsumer;
 import java.util.regex.Pattern;
 
 /**
@@ -28,17 +29,23 @@ import java.util.regex.Pattern;
  */
 public final class FeaturePullRequestPublisher {
     private static final Pattern SHA_PATTERN = Pattern.compile("[0-9a-fA-F]{40}");
+    private static final long[] HEAD_VISIBILITY_DELAYS_MILLIS = {1000L, 2000L, 4000L, 8000L};
     private static final Set<FeatureStage> R2_PASSED_STAGES = Set.of(
             FeatureStage.IMPLEMENT_RED, FeatureStage.IMPLEMENT_GREEN,
             FeatureStage.IMPLEMENT_REFACTOR, FeatureStage.PUBLISH_TASK, FeatureStage.REVIEW_R3,
-            FeatureStage.WAIT_R2_APPROVAL, FeatureStage.WAIT_R3_APPROVAL, FeatureStage.SHIP,
-            FeatureStage.READY_FOR_REVIEW, FeatureStage.MERGED);
+            FeatureStage.SHIP,
+            FeatureStage.READY_FOR_REVIEW, FeatureStage.SYSTEM_TEST,
+            FeatureStage.REVIEW_SYSTEM_TEST, FeatureStage.PUBLISH_SYSTEM_TEST,
+            FeatureStage.SYSTEM_TEST_READY_FOR_REVIEW, FeatureStage.MERGED);
     private static final Set<FeatureStage> R3_PASSED_STAGES = Set.of(
-            FeatureStage.WAIT_R3_APPROVAL, FeatureStage.SHIP,
-            FeatureStage.READY_FOR_REVIEW, FeatureStage.MERGED);
+            FeatureStage.SHIP,
+            FeatureStage.READY_FOR_REVIEW, FeatureStage.SYSTEM_TEST,
+            FeatureStage.REVIEW_SYSTEM_TEST, FeatureStage.PUBLISH_SYSTEM_TEST,
+            FeatureStage.SYSTEM_TEST_READY_FOR_REVIEW, FeatureStage.MERGED);
     private final FeatureEvolvingConfig config;
     private final FeatureGitCodeClient gitCode;
     private final RepositoryCoordinates coordinates;
+    private final LongConsumer visibilityDelay;
 
     /**
      * Create a PR lifecycle publisher.
@@ -48,9 +55,17 @@ public final class FeaturePullRequestPublisher {
      */
     public FeaturePullRequestPublisher(FeatureEvolvingConfig config,
                                        FeatureGitCodeClient gitCode) {
+        this(config, gitCode, FeaturePullRequestPublisher::delay);
+    }
+
+    FeaturePullRequestPublisher(FeatureEvolvingConfig config,
+                                FeatureGitCodeClient gitCode,
+                                LongConsumer visibilityDelay) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.gitCode = Objects.requireNonNull(gitCode, "gitCode must not be null");
         this.coordinates = config.coordinates();
+        this.visibilityDelay = Objects.requireNonNull(
+                visibilityDelay, "visibilityDelay must not be null");
     }
 
     /**
@@ -82,12 +97,14 @@ public final class FeaturePullRequestPublisher {
             Publication publication = required.pullRequest().number() == null
                     ? createOrReconcile(required, content)
                     : updateExisting(required, content, readyForReview);
-            if (!sameHead(publication.pullRequest(), expectedHeadSha)) {
+            FeaturePullRequest visible = awaitExpectedHead(
+                    publication.pullRequest(), expectedHeadSha);
+            if (!sameHead(visible, expectedHeadSha)) {
                 return Result.failure("Feature PR head does not match the verified commit", true);
             }
             boolean initialBinding = required.pullRequest().number() == null;
-            notifyIfNeeded(required, publication.pullRequest(), readyForReview, initialBinding);
-            return new Result(true, false, publication.created(), publication.pullRequest(), "");
+            notifyIfNeeded(required, visible, readyForReview, initialBinding);
+            return new Result(true, false, publication.created(), visible, "");
         } catch (GitCodeApiException ex) {
             return Result.failure(ex.getMessage(), retryable(ex));
         }
@@ -151,8 +168,11 @@ public final class FeaturePullRequestPublisher {
                 + "## Durable artifacts\n\n"
                 + "Artifacts and controller evidence are under `" + job.identity().artifactRoot() + "`.\n\n"
                 + "## Verification boundary\n\n"
-                + "Tests are run by the service in a digest-pinned, rootless, networkless container with no "
-                + "GitCode or model credentials. Actual RED/GREEN/REFACTOR evidence is recorded in `plan.md`.\n\n"
+                + "The service runs a fixed baseline probe and controller-approved exact test classes in a "
+                + "digest-pinned, rootless, networkless container with no GitCode or model credentials. "
+                + "Actual RED/GREEN/REFACTOR evidence is recorded in `plan.md`. The repository-wide full "
+                + "suite is not claimed by this sandbox and remains mandatory in target CI or the human "
+                + "merge gate.\n\n"
                 + "## Human boundary\n\n"
                 + "This service never auto-merges or deploys. Human review and merge are required.";
         return new CreateFeaturePullRequest.Content(title, body);
@@ -183,6 +203,27 @@ public final class FeaturePullRequestPublisher {
     private static boolean sameHead(FeaturePullRequest pullRequest, String expected) {
         return pullRequest.head().sha() != null
                 && pullRequest.head().sha().equalsIgnoreCase(expected);
+    }
+
+    private FeaturePullRequest awaitExpectedHead(FeaturePullRequest initial, String expected) {
+        FeaturePullRequest current = initial;
+        for (long delayMillis : HEAD_VISIBILITY_DELAYS_MILLIS) {
+            if (sameHead(current, expected)) {
+                return current;
+            }
+            visibilityDelay.accept(delayMillis);
+            current = gitCode.getPullRequest(current.number());
+        }
+        return current;
+    }
+
+    private static void delay(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new GitCodeApiException("GitCode PR visibility wait interrupted", 0, false);
+        }
     }
 
     private static boolean retryable(GitCodeApiException exception) {

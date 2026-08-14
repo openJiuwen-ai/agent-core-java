@@ -13,7 +13,17 @@ secrets_file="$config_dir/feature-secrets.json"
 model_file="$config_dir/apiconfig.json"
 unit_name="gitcode-feature-evolver.service"
 unit_target="/etc/systemd/system/$unit_name"
-unit_digest="52015fca5369878780a74756e7fc7448e37884a444e75f13d427f2eb402098e8"
+unit_digest="133f6450fb3a99a4fac1a96f617b8796a782c867c48a564c730987a379cd6ec1"
+podman_wrapper="/usr/local/libexec/gitcode-feature-evolver/podman"
+podman_wrapper_digest="21f634bcc6af7cb05343d994cef9fc11512a4f961864f83e83f18813ab9ace62"
+safe_logging_policy="/usr/local/share/gitcode-feature-evolver/logback-safe.xml"
+safe_logging_digest="c7f598db645a00b6bd8161779c08bffdc786e59b3696e21a1127f29694c8cc2e"
+transcript_logging_template="/usr/local/share/gitcode-feature-evolver/logback-transcript.xml.template"
+transcript_logging_digest="8d1951ef201bc800d5f6edfc91ff95651dd379eb97d31c3dd5c150be4c1844d1"
+transcript_helper="/usr/local/sbin/manage-feature-evolver-transcript"
+transcript_helper_digest="7ab8eab2394763a2c514adf6e17fe397e7d82ce8258499a47c4a23500c088df4"
+tmpfiles_policy="/etc/tmpfiles.d/gitcode-feature-evolver.conf"
+tmpfiles_digest="c207ce50c33c9a024e1d6f99f6977d2590cdd941dce3641739b2d59db3a584eb"
 auth_file="$config_dir/empty-container-auth.json"
 gate_stamp="$config_dir/deployment-gate"
 activate=false
@@ -57,8 +67,8 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "Required command is unavailable: $1"
 }
 
-for required_command in awk getent grep id install jq loginctl mktemp mv podman \
-    readlink runuser sha256sum sort stat systemctl useradd usermod; do
+for required_command in awk cmp getent grep id install jq loginctl mktemp mv podman \
+    readlink rm runuser sha256sum sort stat systemctl systemd-tmpfiles useradd usermod; do
     require_command "$required_command"
 done
 
@@ -73,6 +83,8 @@ account_home="$(getent passwd "$service_account" | awk -F: '{print $6}')"
 service_uid="$(id -u "$service_account")"
 service_gid="$(id -g "$service_account")"
 ((service_uid > 0 && service_gid > 0)) || fail "The service account must not be root"
+podman_runtime_dir="/run/user/$service_uid"
+podman_bus="unix:path=$podman_runtime_dir/bus"
 [[ "$(id -gn "$service_account")" == "$service_group" ]] ||
     fail "$service_account must use $service_group as its primary group"
 [[ -f /etc/subuid && -f /etc/subgid ]] ||
@@ -108,24 +120,64 @@ fi
 
 install -d -o "$service_account" -g "$service_group" -m 0700 "$service_home"
 install -d -o "$service_account" -g "$service_group" -m 0700 \
-    "$service_home/data" "$service_home/worktrees" "$service_home/m2" "$runtime_dir"
+    "$service_home/data" "$service_home/worktrees" "$service_home/m2" \
+    "$service_home/prefetch" "$runtime_dir"
 install -d -o "$service_account" -g "$service_group" -m 0755 \
     /opt/gitcode-feature-evolver
 install -d -o root -g "$service_group" -m 0750 "$config_dir"
 install -d -o "$service_account" -g "$service_group" -m 0700 \
-    /var/log/gitcode-feature-evolver
+    /var/log/gitcode-feature-evolver /var/log/gitcode-feature-evolver/transcripts
+
+user_manager_unit="user@${service_uid}.service"
+delegate_dir="/etc/systemd/system/${user_manager_unit}.d"
+delegate_file="$delegate_dir/gitcode-feature-evolver.conf"
+install -d -o root -g root -m 0755 "$delegate_dir"
+temporary_delegate="$(mktemp "$delegate_dir/.gitcode-feature-evolver.XXXXXX")"
+printf '[Service]\nDelegate=memory pids cpu cpuset\n' > "$temporary_delegate"
+chown root:root "$temporary_delegate"
+chmod 0644 "$temporary_delegate"
+is_delegate_changed=true
+if [[ -f "$delegate_file" && ! -L "$delegate_file" ]] &&
+        cmp -s "$temporary_delegate" "$delegate_file"; then
+    rm -f "$temporary_delegate"
+    is_delegate_changed=false
+else
+    if systemctl is-active --quiet "$unit_name"; then
+        rm -f "$temporary_delegate"
+        fail "Stop $unit_name before changing rootless cgroup delegation"
+    fi
+    mv -f "$temporary_delegate" "$delegate_file"
+fi
+systemctl daemon-reload
+loginctl enable-linger "$service_account"
+if [[ "$is_delegate_changed" == true ]] &&
+        systemctl is-active --quiet "$user_manager_unit"; then
+    systemctl restart "$user_manager_unit"
+else
+    systemctl start "$user_manager_unit"
+fi
+[[ -d "$podman_runtime_dir" && -S "$podman_runtime_dir/bus" ]] ||
+    fail "The rootless systemd user session did not become ready"
+controllers_file="/sys/fs/cgroup/user.slice/user-${service_uid}.slice/user@${service_uid}.service/cgroup.controllers"
+[[ -r "$controllers_file" ]] || fail "Rootless cgroup controllers are unavailable"
+for controller in cpu memory pids; do
+    grep -qw "$controller" "$controllers_file" ||
+        fail "Rootless cgroup controller was not delegated: $controller"
+done
+
 temporary_auth="$(mktemp "$config_dir/.empty-container-auth.XXXXXX")"
 printf '{}\n' > "$temporary_auth"
 chown root:"$service_group" "$temporary_auth"
 chmod 0440 "$temporary_auth"
 mv -f "$temporary_auth" "$auth_file"
-loginctl enable-linger "$service_account"
 
 run_as_service() {
     runuser --user "$service_account" -- env -i \
         HOME="$service_home" USER="$service_account" LOGNAME="$service_account" \
-        XDG_RUNTIME_DIR="$runtime_dir" REGISTRY_AUTH_FILE="$auth_file" \
-        PATH=/usr/local/bin:/usr/bin:/bin GIT_TERMINAL_PROMPT=0 "$@"
+        XDG_RUNTIME_DIR="$podman_runtime_dir" DBUS_SESSION_BUS_ADDRESS="$podman_bus" \
+        REGISTRY_AUTH_FILE="$auth_file" \
+        PATH=/usr/local/libexec/gitcode-feature-evolver:/usr/local/bin:/usr/bin:/bin \
+        GIT_TERMINAL_PROMPT=0 "$@"
 }
 
 if [[ ! -e "$repository_dir" ]]; then
@@ -148,7 +200,29 @@ chown -R -h "$service_account:$service_group" "$repository_dir"
     fail "$unit_target must be owned by root:root with mode 0644"
 [[ "$(sha256sum "$unit_target" | awk '{print $1}')" == "$unit_digest" ]] ||
     fail "$unit_target does not match this provision helper"
-systemctl daemon-reload
+[[ -f "$podman_wrapper" && ! -L "$podman_wrapper" ]] ||
+    fail "Install the root-owned Feature Evolver Podman launcher first"
+[[ "$(stat -c '%u:%g:%a' "$podman_wrapper")" == "0:0:755" ]] ||
+    fail "$podman_wrapper must be owned by root:root with mode 0755"
+[[ "$(sha256sum "$podman_wrapper" | awk '{print $1}')" == "$podman_wrapper_digest" ]] ||
+    fail "$podman_wrapper does not match this provision helper"
+verify_root_artifact() {
+    local file="$1"
+    local mode="$2"
+    local digest="$3"
+    [[ -f "$file" && ! -L "$file" ]] || fail "Install the root-owned artifact first: $file"
+    [[ "$(stat -c '%u:%g:%a' "$file")" == "0:0:$mode" ]] ||
+        fail "$file must be owned by root:root with mode 0$mode"
+    [[ "$(sha256sum "$file" | awk '{print $1}')" == "$digest" ]] ||
+        fail "$file does not match this provision helper"
+}
+
+verify_root_artifact "$safe_logging_policy" 644 "$safe_logging_digest"
+verify_root_artifact "$transcript_logging_template" 644 "$transcript_logging_digest"
+verify_root_artifact "$transcript_helper" 755 "$transcript_helper_digest"
+verify_root_artifact "$tmpfiles_policy" 644 "$tmpfiles_digest"
+systemd-tmpfiles --create "$tmpfiles_policy"
+"$transcript_helper" reset
 
 if [[ ! -f "$config_file" || -L "$config_file" ]]; then
     printf 'Rootless account, directories, and systemd unit are provisioned.\n'
@@ -186,6 +260,8 @@ json_string() {
     fail "worktreeRoot must be $service_home/worktrees"
 [[ "$(json_string containerMavenCache)" == "$service_home/m2" ]] ||
     fail "containerMavenCache must be $service_home/m2"
+[[ "$(json_string dependencyPrefetchCacheRoot)" == "$service_home/prefetch" ]] ||
+    fail "dependencyPrefetchCacheRoot must be $service_home/prefetch"
 [[ "$(json_string containerRuntime)" == "podman" ]] ||
     fail "containerRuntime must be podman"
 [[ "$(json_string containerUser)" == "$service_uid:$service_gid" ]] ||
@@ -197,9 +273,14 @@ container_image="$(json_string containerImage)"
 
 rootless="$(run_as_service podman info --format '{{.Host.Security.Rootless}}')"
 [[ "$rootless" == "true" ]] || fail "Podman is not rootless for $service_account"
-run_as_service podman pull --authfile "$auth_file" "$container_image"
+if run_as_service podman image exists "$container_image"; then
+    printf 'Pinned image is already present; skipping registry pull.\n'
+else
+    printf 'Pinned image is not present; pulling it from the registry.\n'
+    run_as_service podman pull --authfile "$auth_file" "$container_image"
+fi
 run_as_service podman image exists "$container_image" ||
-    fail "Pinned image is unavailable after pull"
+    fail "Pinned image is unavailable"
 
 if [[ "$activate" != true ]]; then
     printf 'Provisioning complete. Run /usr/local/sbin/run-feature-evolver-test next.\n'

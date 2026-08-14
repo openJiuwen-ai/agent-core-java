@@ -8,6 +8,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import examples.gitcode_feature_evolver.gitcode.FeatureGitCodeClient;
 import examples.gitcode_feature_evolver.job.FeatureJobStore;
+import examples.gitcode_feature_evolver.monitor.FeatureMonitorApiHandler;
+import examples.gitcode_feature_evolver.monitor.FeatureMonitorAssetsHandler;
 import examples.gitcode_feature_evolver.polling.FeaturePollingCoordinator;
 import examples.gitcode_feature_evolver.polling.FeaturePollingStatusSnapshot;
 import examples.gitcode_feature_evolver.webhook.FeatureWebhookHandler;
@@ -26,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -40,6 +43,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class FeatureEvolvingService implements AutoCloseable {
     private static final int HTTP_WORKERS = 4;
     private static final int HTTP_QUEUE_CAPACITY = 256;
+    private static final String MANUAL_POLL_PATH = "/admin/poll";
+    private static final String MANUAL_POLL_HEADER = "X-Feature-Evolver-Admin";
+    private static final String MANUAL_POLL_HEADER_VALUE = "poll";
     private static final Logger LOGGER = LoggerFactory.getLogger(FeatureEvolvingService.class);
     private final FeatureEvolvingConfig config;
     private final Components components;
@@ -50,6 +56,7 @@ public final class FeatureEvolvingService implements AutoCloseable {
     private final ScheduledThreadPoolExecutor pollingExecutor;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean pollingClaimed = new AtomicBoolean();
     private volatile Optional<ScheduledFuture<?>> workerTask = Optional.empty();
     private volatile Optional<ScheduledFuture<?>> pollingTask = Optional.empty();
 
@@ -107,6 +114,7 @@ public final class FeatureEvolvingService implements AutoCloseable {
         }
         workerTask.ifPresent(task -> task.cancel(false));
         pollingTask.ifPresent(task -> task.cancel(false));
+        components.worker().stop();
         server.stop(1);
         shutdown(pollingExecutor);
         shutdown(workerExecutor);
@@ -121,6 +129,12 @@ public final class FeatureEvolvingService implements AutoCloseable {
         server.createContext("/health/live", exchange -> writeJson(exchange, 200,
                 "{\"status\":\"UP\"}"));
         server.createContext("/health/ready", this::readiness);
+        server.createContext("/api/monitor", new FeatureMonitorApiHandler(
+                config, store, components.polling()));
+        server.createContext("/monitor", new FeatureMonitorAssetsHandler());
+        if (config.manualPollingEnabled()) {
+            server.createContext(MANUAL_POLL_PATH, this::manualPoll);
+        }
     }
 
     private ExecutorService newHttpExecutor() {
@@ -149,11 +163,80 @@ public final class FeatureEvolvingService implements AutoCloseable {
     }
 
     private void runPollingSafely() {
+        if (!pollingClaimed.compareAndSet(false, true)) {
+            LOGGER.info("Skipped scheduled feature polling because another iteration is queued or running");
+            return;
+        }
+        runClaimedPollingSafely();
+    }
+
+    private void runClaimedPollingSafely() {
         try {
             components.polling().runOnce();
         } catch (RuntimeException ex) {
             LOGGER.error("Feature polling iteration failed", ex);
+        } finally {
+            pollingClaimed.set(false);
         }
+    }
+
+    private void manualPoll(HttpExchange exchange) throws IOException {
+        if (!MANUAL_POLL_PATH.equals(exchange.getRequestURI().getPath())) {
+            writeJson(exchange, 404, "{\"error\":\"not_found\"}");
+            return;
+        }
+        if (!isLoopback(exchange)) {
+            writeJson(exchange, 403, "{\"error\":\"loopback_required\"}");
+            return;
+        }
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            exchange.getResponseHeaders().set("Allow", "POST");
+            writeJson(exchange, 405, "{\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        if (!MANUAL_POLL_HEADER_VALUE.equals(
+                exchange.getRequestHeaders().getFirst(MANUAL_POLL_HEADER))) {
+            writeJson(exchange, 403, "{\"error\":\"admin_header_required\"}");
+            return;
+        }
+        if (!readinessErrors.isEmpty()) {
+            writeJson(exchange, 503, "{\"status\":\"UNAVAILABLE\"}");
+            return;
+        }
+        writeManualPollResult(exchange, requestManualPoll());
+    }
+
+    private ManualPollResult requestManualPoll() {
+        if (closed.get() || pollingExecutor.isShutdown()) {
+            return ManualPollResult.UNAVAILABLE;
+        }
+        if (!pollingClaimed.compareAndSet(false, true)) {
+            return ManualPollResult.BUSY;
+        }
+        try {
+            pollingExecutor.execute(this::runClaimedPollingSafely);
+            return ManualPollResult.ACCEPTED;
+        } catch (RejectedExecutionException ex) {
+            pollingClaimed.set(false);
+            LOGGER.warn("Unable to queue manual feature polling because the executor rejected it");
+            return ManualPollResult.UNAVAILABLE;
+        }
+    }
+
+    private static void writeManualPollResult(HttpExchange exchange, ManualPollResult result)
+            throws IOException {
+        switch (result) {
+            case ACCEPTED -> writeJson(exchange, 202, "{\"status\":\"ACCEPTED\"}");
+            case BUSY -> writeJson(exchange, 409, "{\"status\":\"BUSY\"}");
+            case UNAVAILABLE -> writeJson(exchange, 503, "{\"status\":\"UNAVAILABLE\"}");
+            default -> throw new IllegalStateException("Unsupported manual polling result");
+        }
+    }
+
+    private static boolean isLoopback(HttpExchange exchange) {
+        InetSocketAddress remote = exchange.getRemoteAddress();
+        return remote != null && remote.getAddress() != null
+                && remote.getAddress().isLoopbackAddress();
     }
 
     private void readiness(HttpExchange exchange) throws IOException {
@@ -162,7 +245,9 @@ public final class FeatureEvolvingService implements AutoCloseable {
         String mode = config.triggerMode().name().toLowerCase(Locale.ROOT);
         String errors = ready ? "[]" : jsonArray(readinessErrors);
         String body = "{\"status\":\"" + status + "\",\"triggerMode\":\"" + mode
-                + "\",\"containerExecutor\":\"" + (ready ? "READY" : "NOT_READY")
+                + "\",\"systemTestEnabled\":" + config.systemTestEnabled()
+                + ",\"manualPollingEnabled\":" + config.manualPollingEnabled()
+                + ",\"containerExecutor\":\"" + (ready ? "READY" : "NOT_READY")
                 + "\",\"polling\":" + pollingJson() + ",\"errors\":" + errors + "}";
         writeJson(exchange, readinessStatus(readinessErrors), body);
     }
@@ -185,6 +270,8 @@ public final class FeatureEvolvingService implements AutoCloseable {
     private static void writeJson(HttpExchange exchange, int status, String bodyText) throws IOException {
         byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(body);
@@ -221,6 +308,12 @@ public final class FeatureEvolvingService implements AutoCloseable {
 
     static int readinessStatus(List<String> startupErrors) {
         return startupErrors == null || startupErrors.isEmpty() ? 200 : 503;
+    }
+
+    private enum ManualPollResult {
+        ACCEPTED,
+        BUSY,
+        UNAVAILABLE
     }
 
     /** Runtime service components grouped for explicit lifecycle construction. */
