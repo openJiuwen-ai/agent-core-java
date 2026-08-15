@@ -29,7 +29,7 @@ import java.util.UUID;
  * @since 0.1.12
  */
 public final class SqliteFeatureJobStore implements FeatureJobStore {
-    private static final int SCHEMA_VERSION = 3;
+    private static final int SCHEMA_VERSION = 4;
     private final String jdbcUrl;
     private final String repositoryScope;
 
@@ -596,7 +596,7 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
                 attempt, "attempt must not be null");
         long now = System.currentTimeMillis();
         String sql = "UPDATE feature_jobs SET " + recoveryCounter(requiredAttempt.tier())
-                + "=?,next_retry_at=0,updated_at=? WHERE id=? AND version=?";
+                + "=?,next_retry_at=0,retry_stage=NULL,updated_at=? WHERE id=? AND version=?";
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -750,18 +750,20 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
             return;
         }
         String counter = recoveryCounter(attempt.tier());
-        String sql = "UPDATE feature_jobs SET " + counter + "=?,next_retry_at=?,failure_code=?,"
-                + "failure_category=?,last_error=?,updated_at=? "
+        String sql = "UPDATE feature_jobs SET " + counter + "=?,next_retry_at=?,retry_stage=?,"
+                + "failure_code=?,failure_category=?,last_error=?,updated_at=? "
                 + "WHERE id=? AND version=?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, attempt.number());
             statement.setLong(2, Math.max(0L, nextRetryAt));
-            statement.setString(3, failure.code());
-            statement.setString(4, failure.category().name());
-            statement.setString(5, safe(failure.diagnostic().summary()));
-            statement.setLong(6, now);
-            statement.setString(7, jobId);
-            statement.setLong(8, version);
+            setOptionalStage(statement, 3,
+                    nextRetryAt > 0L ? failure.originStage() : null);
+            statement.setString(4, failure.code());
+            statement.setString(5, failure.category().name());
+            statement.setString(6, safe(failure.diagnostic().summary()));
+            statement.setLong(7, now);
+            statement.setString(8, jobId);
+            statement.setLong(9, version);
             requireOne(statement.executeUpdate(), "feature job changed concurrently");
         }
     }
@@ -769,7 +771,7 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
     private static void updateFailureOnly(Connection connection, String jobId, long version,
                                           FeatureFailure failure, long nextRetryAt, long now)
             throws SQLException {
-        String sql = "UPDATE feature_jobs SET next_retry_at=?,failure_code=?,"
+        String sql = "UPDATE feature_jobs SET next_retry_at=?,retry_stage=NULL,failure_code=?,"
                 + "failure_category=?,last_error=?,updated_at=? WHERE id=? AND version=?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, Math.max(0L, nextRetryAt));
@@ -918,6 +920,7 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
                 + "transient_retry_count INTEGER NOT NULL DEFAULT 0,"
                 + "dependency_prefetch_round INTEGER NOT NULL DEFAULT 0,"
                 + "next_retry_at INTEGER NOT NULL DEFAULT 0,"
+                + "retry_stage TEXT,"
                 + "failure_code TEXT NOT NULL DEFAULT '',failure_category TEXT,"
                 + "last_error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)");
         statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_feature_jobs_runnable "
@@ -947,6 +950,10 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
             }
             if (version == 2) {
                 migrateVersionTwo(statement);
+                version = 3;
+            }
+            if (version == 3) {
+                migrateVersionThree(statement);
             }
         }
     }
@@ -980,6 +987,19 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
         statement.executeUpdate("ALTER TABLE feature_jobs ADD COLUMN failure_category TEXT");
         migrateLegacyStates(statement);
         statement.executeUpdate("UPDATE feature_schema_version SET version=3 WHERE version=2");
+    }
+
+    private static void migrateVersionThree(Statement statement) throws SQLException {
+        statement.executeUpdate("ALTER TABLE feature_jobs ADD COLUMN retry_stage TEXT");
+        statement.executeUpdate("UPDATE feature_jobs SET retry_stage=resume_state "
+                + "WHERE state='RETRY_SCHEDULED'");
+        statement.executeUpdate("UPDATE feature_jobs SET retry_stage='DEPENDENCY_PREFETCH',"
+                + "resume_state=COALESCE((SELECT recovery_stage FROM feature_failure_events "
+                + "WHERE job_id=feature_jobs.id AND repair_tier='PREFETCH' "
+                + "ORDER BY id DESC LIMIT 1),resume_state) "
+                + "WHERE state='RETRY_SCHEDULED' "
+                + "AND failure_code LIKE 'DEPENDENCY_PREFETCH_%'");
+        statement.executeUpdate("UPDATE feature_schema_version SET version=4 WHERE version=3");
     }
 
     private static void migrateLegacyStates(Statement statement) throws SQLException {
@@ -1192,7 +1212,7 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
     private static void resetRecovery(Connection connection, String jobId) throws SQLException {
         String sql = "UPDATE feature_jobs SET primary_repair_round=0,"
                 + "diagnostic_repair_round=0,transient_retry_count=0,"
-                + "dependency_prefetch_round=0,next_retry_at=0,failure_code='',"
+                + "dependency_prefetch_round=0,next_retry_at=0,retry_stage=NULL,failure_code='',"
                 + "failure_category=NULL WHERE id=?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, jobId);
@@ -1321,7 +1341,8 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
                         result.getInt("diagnostic_repair_round")),
                 new FeatureJob.RetryCounters(result.getInt("transient_retry_count"),
                         result.getInt("dependency_prefetch_round")),
-                result.getLong("next_retry_at"), result.getString("failure_code"),
+                result.getLong("next_retry_at"), optionalStage(result.getString("retry_stage")),
+                result.getString("failure_code"),
                 optionalFailureCategory(result.getString("failure_category")));
         FeatureJob.RecordMetadata metadata = new FeatureJob.RecordMetadata(
                 result.getLong("version"), result.getString("last_error"), result.getLong("created_at"),

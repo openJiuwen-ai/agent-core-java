@@ -172,11 +172,13 @@ public record FeatureJob(Identity identity, Progress progress, PullRequests pull
      * @param repairs primary and diagnostic repair counters
      * @param retries transient and dependency-prefetch counters
      * @param nextRetryAt scheduled retry epoch milliseconds, or zero
+     * @param retryStage exact durable stage retried after backoff, or {@code null}
      * @param lastFailureCode latest stable failure code
      * @param lastFailureCategory latest category, or {@code null}
      */
     public record Recovery(RepairCounters repairs, RetryCounters retries, long nextRetryAt,
-                           String lastFailureCode, FeatureFailureCategory lastFailureCategory) {
+                           FeatureStage retryStage, String lastFailureCode,
+                           FeatureFailureCategory lastFailureCategory) {
         /** Validate recovery counters. */
         public Recovery {
             repairs = Objects.requireNonNull(repairs, "repair counters must not be null");
@@ -189,7 +191,8 @@ public record FeatureJob(Identity identity, Progress progress, PullRequests pull
 
         /** @return empty recovery state */
         public static Recovery empty() {
-            return new Recovery(new RepairCounters(0, 0), new RetryCounters(0, 0), 0L, "", null);
+            return new Recovery(new RepairCounters(0, 0), new RetryCounters(0, 0), 0L,
+                    null, "", null);
         }
     }
 

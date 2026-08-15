@@ -201,7 +201,9 @@ function renderDetail(job) {
     setText('gate-receipt', job.gateProfile
         ? job.gateProfile + ' / ' + job.gateStatus + ' / ' + fingerprint
             + (job.gateCached ? ' / cached' : '') : '--');
-    setText('next-retry', job.nextRetryAt ? formatTime(job.nextRetryAt, true) : '--');
+    setText('next-retry', job.nextRetryAt
+        ? formatTime(job.nextRetryAt, true) + (job.retryStage ? ' → ' + job.retryStage : '')
+        : '--');
     safeGitCodeLink(element('issue-link'), job.issueUrl, '#' + job.issueIid + ' · 打开 GitCode Issue');
     const prLabel = job.pullRequestNumber
         ? 'PR #' + job.pullRequestNumber + (job.draft ? ' · Draft' : ' · Ready')

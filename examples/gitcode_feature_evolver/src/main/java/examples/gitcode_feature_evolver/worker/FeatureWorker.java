@@ -501,7 +501,8 @@ public final class FeatureWorker {
     }
 
     private static FeatureStage retryResume(FeatureJob job) {
-        if (job.progress().stage() == FeatureStage.RETRY_SCHEDULED
+        if ((job.progress().stage() == FeatureStage.RETRY_SCHEDULED
+                || job.progress().stage() == FeatureStage.DEPENDENCY_PREFETCH)
                 && job.progress().resumeStage() != null) {
             return job.progress().resumeStage();
         }

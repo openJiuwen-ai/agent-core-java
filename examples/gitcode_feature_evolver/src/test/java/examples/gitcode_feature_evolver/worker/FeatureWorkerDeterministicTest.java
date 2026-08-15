@@ -49,6 +49,7 @@ public final class FeatureWorkerDeterministicTest {
         testOneStageProgression();
         testRetryExhaustion();
         testTransientRetrySchedule();
+        testDependencyPrefetchRetrySchedule();
         testShutdownReleasesLease();
         testControlInterruption(FeatureCommand.Action.PAUSE, FeatureStage.PAUSED);
         testControlInterruption(FeatureCommand.Action.CANCEL, FeatureStage.CANCELLED);
@@ -130,6 +131,32 @@ public final class FeatureWorkerDeterministicTest {
             require(scheduled.recovery().nextRetryAt() == NOW.toEpochMilli() + 30_000L,
                     "first transient retry did not use the 30-second backoff");
             require(!worker.runOnce(), "retry was leased before next_retry_at");
+        }
+    }
+
+    private static void testDependencyPrefetchRetrySchedule() throws Exception {
+        try (SqliteFeatureJobStore store = store("prefetch-retry")) {
+            FeatureJob admitted = store.admit(request(5)).job().orElseThrow();
+            FeatureJob prefetch = store.transition(admitted.identity().id(),
+                    admitted.record().version(), new FeatureJobMutation(
+                            FeatureStage.DEPENDENCY_PREFETCH, FeatureStage.SYSTEM_TEST,
+                            0, 0, "dependency cache required"));
+            FeatureStageRunner runner = execution -> {
+                throw new FeatureExecutionException(new FeatureFailure(
+                        "DEPENDENCY_PREFETCH_TRANSIENT",
+                        FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE,
+                        FeatureStage.DEPENDENCY_PREFETCH, FeatureStage.SYSTEM_TEST,
+                        new FeatureFailure.Diagnostic("Repository timed out", "")));
+            };
+            FeatureWorker worker = new FeatureWorker(store, new FakeGitCodeClient(), runner,
+                    "prefetch-worker", Clock.fixed(NOW, ZoneOffset.UTC), 5);
+            require(worker.runOnce(), "prefetch transient failure was not processed");
+            FeatureJob scheduled = store.findById(prefetch.identity().id()).orElseThrow();
+            require(scheduled.progress().stage() == FeatureStage.RETRY_SCHEDULED
+                            && scheduled.progress().resumeStage() == FeatureStage.SYSTEM_TEST,
+                    "prefetch retry lost the ultimate recovery stage");
+            require(scheduled.recovery().retryStage() == FeatureStage.DEPENDENCY_PREFETCH,
+                    "prefetch retry did not persist its immediate executable stage");
         }
     }
 

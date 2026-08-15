@@ -239,7 +239,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
             case TRANSIENT -> throw new FeatureExecutionException(new FeatureFailure(
                     "DEPENDENCY_PREFETCH_TRANSIENT",
                     FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE,
-                    FeatureStage.DEPENDENCY_PREFETCH, FeatureStage.DEPENDENCY_PREFETCH,
+                    FeatureStage.DEPENDENCY_PREFETCH, resume,
                     new FeatureFailure.Diagnostic(result.summary(), "")));
         };
     }
@@ -1342,12 +1342,21 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
     }
 
     private FeatureStageOutcome restoreRetry(FeatureJob job) {
-        FeatureStage resume = job.progress().resumeStage();
-        if (resume == null) {
+        FeatureStage retry = job.recovery().retryStage();
+        if (retry == null) {
+            retry = job.progress().resumeStage();
+        }
+        if (retry == null) {
             return failedInternal(job, "Retryable state has no resume stage");
         }
-        return transition(job, resume, job.progress().gateRound(),
-                job.progress().taskAttempt(), "Retrying bounded stage");
+        FeatureStage resume = retry == FeatureStage.DEPENDENCY_PREFETCH
+                ? job.progress().resumeStage() : null;
+        if (retry == FeatureStage.DEPENDENCY_PREFETCH
+                && (resume == null || resume == FeatureStage.DEPENDENCY_PREFETCH)) {
+            return failedInternal(job, "Dependency prefetch retry lost its recovery stage");
+        }
+        return transition(job, retry, job.progress().gateRound(),
+                job.progress().taskAttempt(), "Retrying bounded stage", resume);
     }
 
     private FeatureStageOutcome publicationFailure(FeatureJob job, FeatureStage resume,
