@@ -80,7 +80,10 @@ public final class RootlessContainerGateRunner {
         List<String> errors = new ArrayList<>();
         Execution rootless = executor.execute(List.of(config.containerRuntime(), "info",
                 "--format={{.Host.Security.Rootless}}"), config.dataDir(), READINESS_TIMEOUT);
-        if (rootless.exitCode() != 0 || !rootless.output().strip().equalsIgnoreCase("true")) {
+        boolean rootlessConfirmed = rootless.output().lines()
+                .map(String::strip)
+                .anyMatch(line -> line.equalsIgnoreCase("true"));
+        if (rootless.exitCode() != 0 || !rootlessConfirmed) {
             errors.add("rootless Podman is unavailable for the service account");
             return List.copyOf(errors);
         }

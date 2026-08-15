@@ -49,6 +49,21 @@ public final class ContainerAndPathPolicyDeterministicTest {
         results.add(new RootlessContainerGateRunner.Execution(0, "", false));
         require(runner.readinessErrors().isEmpty(), "valid rootless runtime was rejected");
 
+        Deque<RootlessContainerGateRunner.Execution> noisyReadiness = new ArrayDeque<>();
+        RootlessContainerGateRunner noisyRunner = new RootlessContainerGateRunner(config,
+                (command, directory, timeout) -> noisyReadiness.removeFirst());
+        noisyReadiness.add(new RootlessContainerGateRunner.Execution(
+                0, "Podman transient refresh warning\ntrue\n", false));
+        noisyReadiness.add(new RootlessContainerGateRunner.Execution(0, "", false));
+        require(noisyRunner.readinessErrors().isEmpty(),
+                "valid rootless runtime with diagnostic output was rejected");
+
+        noisyReadiness.add(new RootlessContainerGateRunner.Execution(
+                0, "Podman transient refresh warning\n", false));
+        require(noisyRunner.readinessErrors().contains(
+                        "rootless Podman is unavailable for the service account"),
+                "diagnostic output without a positive rootless result was accepted");
+
         testFeatureProfiles(root, runner, results, commands);
         testSystemTestContainer(root, runner, results, commands);
         testMavenVersionResolution(root);
