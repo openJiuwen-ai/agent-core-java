@@ -38,7 +38,10 @@ public final class SystemTestArtifactInspectorDeterministicTest {
                 + "\n\n## Scenario Selection\n\n| ST ID | Assertion |\n|---|---|\n"
                 + "| ST-001 | exact state |\n\n## API Testability\n\nstandalone\n\n"
                 + "## Changed Paths and Fixtures\n\nfocused test\n\n"
-                + "## Controller Evidence\n\npending\n\n"
+                + "## Controller Evidence\n\n"
+                + "| Profile | Source revision | Test revision | Result | Evidence handle |\n"
+                + "| --- | --- | --- | --- | --- |\n"
+                + "| Configured smoke + new system tests | pending | pending | pending | pending |\n\n"
                 + "## SDK Gap / Blocker\n\nN/A\n\n"
                 + "## Review Readiness\n\n- [x] ready\n");
         Files.writeString(test, "package com.openjiuwen.test;\n"
@@ -60,6 +63,19 @@ public final class SystemTestArtifactInspectorDeterministicTest {
                         .equals(List.of("com.openjiuwen.test.SmokeTest",
                                 "com.openjiuwen.test.FeatureSystemTest")),
                 "configured smoke and new system-test selectors were not combined");
+
+        String approvedEvidence = Files.readString(evidence);
+        Files.writeString(evidence, approvedEvidence.replace(
+                "| Configured smoke + new system tests | pending | pending | pending | pending |",
+                "| Compile (no tests executed) | pending | pending | pending | pending |\n"
+                        + "| Configured smoke + new system tests | pending | pending | pending | pending |"));
+        SystemTestArtifactInspector.Validation legacyEvidence = inspector.validateAuthor(changed);
+        require(!legacyEvidence.valid(),
+                "retired compile-only system-test evidence profile bypassed the contract");
+        require(legacyEvidence.errors().stream().anyMatch(
+                        error -> error.contains("retired compile-only evidence profile")),
+                "retired evidence profile did not produce an actionable validation error");
+        Files.writeString(evidence, approvedEvidence);
 
         Path review = worktree.resolve(inspector.reviewPath(1));
         Files.createDirectories(review.getParent());

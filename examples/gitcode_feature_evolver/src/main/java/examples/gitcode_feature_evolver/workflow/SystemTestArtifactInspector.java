@@ -40,6 +40,12 @@ public final class SystemTestArtifactInspector {
             "## Identity", "## Scenario Selection", "## API Testability",
             "## Changed Paths and Fixtures", "## Controller Evidence",
             "## SDK Gap / Blocker", "## Review Readiness");
+    private static final String APPROVED_GATE_PROFILE =
+            "Configured smoke + new system tests";
+    private static final Pattern APPROVED_GATE_PROFILE_ROW = Pattern.compile(
+            "(?m)^\\s*\\|\\s*" + Pattern.quote(APPROVED_GATE_PROFILE) + "\\s*\\|");
+    private static final Pattern RETIRED_COMPILE_PROFILE_ROW = Pattern.compile(
+            "(?im)^\\s*\\|\\s*compile\\s*\\(no tests executed\\)\\s*\\|");
     private final Path worktree;
     private final FeatureJob job;
     private final String sourceRevision;
@@ -118,6 +124,7 @@ public final class SystemTestArtifactInspector {
             requireText(evidenceText, job.identity().issue().url(), errors);
             requireText(evidenceText, job.pullRequest().url(), errors);
             requireText(evidenceText, sourceRevision, errors);
+            validateControllerEvidenceContract(evidenceText, errors);
         }
         Set<String> selectors = new LinkedHashSet<>();
         for (String relative : normalized) {
@@ -229,6 +236,28 @@ public final class SystemTestArtifactInspector {
         if (required == null || required.isBlank() || !content.contains(required)) {
             errors.add("system-test.md is missing required identity/evidence: " + required);
         }
+    }
+
+    private static void validateControllerEvidenceContract(String content,
+                                                             List<String> errors) {
+        int approvedProfiles = countMatches(APPROVED_GATE_PROFILE_ROW, content);
+        if (approvedProfiles != 1) {
+            errors.add("system-test.md must contain exactly one approved controller profile: "
+                    + APPROVED_GATE_PROFILE);
+        }
+        if (RETIRED_COMPILE_PROFILE_ROW.matcher(content).find()) {
+            errors.add("system-test.md contains the retired compile-only evidence profile; "
+                    + "remove it because the controller runs only smoke plus new tests");
+        }
+    }
+
+    private static int countMatches(Pattern pattern, String content) {
+        int count = 0;
+        Matcher matcher = pattern.matcher(content);
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
     }
 
     private static boolean hasOpenBlockingFinding(String review) {

@@ -18,6 +18,11 @@ Create system/end-to-end coverage, not unit tests. A valid scenario starts from 
 
 Create or update `system-test.md` from `assets/system-test-template.md`. Keep one compact scenario table, API-testability decision, changed paths, and controller evidence. Add focused Java tests using the repository's established packages, fixtures, naming, and tags.
 
+The Controller Evidence table must contain exactly one profile row named
+`Configured smoke + new system tests`. When resuming an artifact created by an
+older workflow, remove any `Compile (no tests executed)` row; that profile is
+retired and fails the current artifact contract.
+
 Automated tests must be deterministic and isolated:
 
 - prefer explicit state probes, latches, clocks, or deterministic seams over sleeps;
