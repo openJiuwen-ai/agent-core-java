@@ -29,6 +29,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("feature-container-");
         FeatureEvolvingConfig config = config(root, TriggerMode.POLLING, "");
+        writePom(root.resolve("worktree"), "0.1.14.post1");
         require(config.readinessErrors().isEmpty(),
                 "polling-only configuration unexpectedly required a Webhook secret");
         FeatureEvolvingConfig webhook = config(root, TriggerMode.WEBHOOK, "");
@@ -49,6 +50,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
 
         testFeatureProfiles(root, runner, results, commands);
         testSystemTestContainer(root, runner, results, commands);
+        testMavenVersionResolution(root);
         testDependencyPrefetch(config, root);
 
         testTargetRepositoryFetch(config);
@@ -78,6 +80,8 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && command.contains("--pull=never")
                         && command.stream().anyMatch(value -> value.startsWith(
                         "--tmpfs=/native-tmp:"))
+                        && command.contains(
+                        "--tmpfs=/native-tmp:rw,exec,nosuid,nodev,size=64m")
                         && command.contains("-DskipTests")
                         && command.contains("dependency:go-offline")
                         && command.contains("test-compile"),
@@ -87,15 +91,41 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && command.stream().noneMatch(value -> value.contains(
                         config.containerMavenCache().toString() + ":/m2")),
                 "prefetch container received credentials or the shared cache mount");
+        require(command.stream().anyMatch(value -> value.startsWith(
+                        "--env=JAVA_TOOL_OPTIONS=-Duser.home=/tmp")
+                        && value.contains("-Djansi.tmpdir=/native-tmp")
+                        && value.contains("-Dorg.sqlite.tmpdir=/native-tmp"))
+                        && command.stream().noneMatch(value -> value.contains(
+                        "-Djava.io.tmpdir=/native-tmp")),
+                "prefetch exposed general Maven temporary files on an executable mount");
         require(Files.readString(config.containerMavenCache().resolve("shared-marker"))
                         .equals("trusted\n")
                         && Files.isRegularFile(prefetcher.cacheFor(job).resolve("shared-marker")),
                 "prefetch modified or failed to clone the shared cache");
+        testSystemTestPrefetch(root, prefetcher, job, commands);
         DependencyPrefetcher.Result policy = prefetcher.prefetchFeature(
                 job, root.resolve("worktree"), List.of("pom.xml"));
         require(policy.status() == DependencyPrefetcher.Status.POLICY_VIOLATION
-                        && commands.size() == 1,
+                        && commands.size() == 2,
                 "modified Maven build contract reached the networked prefetch container");
+    }
+
+    private static void testSystemTestPrefetch(
+            Path root, DependencyPrefetcher prefetcher, FeatureJob job,
+            List<List<String>> commands) {
+        DependencyPrefetcher.Result systemTest = prefetcher.prefetchSystemTest(
+                job, root.resolve("worktree"), root.resolve("system-tests"),
+                List.of("src/test/java/example/FeatureSystemTest.java"));
+        require(systemTest.passed() && commands.size() == 2,
+                "system-test dependency prefetch did not run");
+        List<String> systemCommand = commands.get(1);
+        String systemScript = systemCommand.get(systemCommand.size() - 1);
+        require(systemCommand.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
+                        && systemCommand.contains(
+                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
+                        && systemCommand.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1")
+                        && !systemScript.contains("help:evaluate"),
+                "system-test prefetch did not preserve the frozen-source contract");
     }
 
     private static FeatureJob featureJob() {
@@ -238,12 +268,87 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(command.stream().anyMatch(value -> value.contains("dst=/source/.git"))
                         && command.stream().anyMatch(value -> value.contains("dst=/tests/.git")),
                 "system-test Git control files were not masked");
+        require(command.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
+                        && command.contains(
+                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m"),
+                "frozen source was not mounted read-only with isolated build output");
+        require(command.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1"),
+                "system-test command did not use the Controller-resolved source version");
         String script = command.get(command.size() - 1);
         require(script.contains("-Dmaven.test.skip=true")
                         && script.contains("-Dtest=\"com.openjiuwen.test.FeatureSystemTest\" test"),
                 "system-test command did not install source without tests then run exact selectors");
-        require(!script.contains(" verify"),
-                "system-test command ran the main source full Maven verification suite");
+        require(!script.contains(" verify") && !script.contains("help:evaluate")
+                        && script.contains("[feature-evolver:step=source-install]")
+                        && script.contains("[feature-evolver:step=system-test]"),
+                "system-test command widened tests or hid its fixed phase boundaries");
+
+        testSystemTestFailureClassification(root, tests, runner, results);
+    }
+
+    private static void testSystemTestFailureClassification(
+            Path root, Path tests, RootlessContainerGateRunner runner,
+            Deque<RootlessContainerGateRunner.Execution> results) {
+        results.add(new RootlessContainerGateRunner.Execution(1,
+                "[feature-evolver:step=source-install]\n"
+                        + "Plugin org.apache.maven.plugins:maven-install-plugin has not been "
+                        + "downloaded from it before", false));
+        ContainerGateResult dependency = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(dependency.outcome() == ContainerGateResult.Outcome.DEPENDENCY_MISSING,
+                "offline system-test plugin miss was not routed to prefetch");
+
+        results.add(new RootlessContainerGateRunner.Execution(1,
+                "[feature-evolver:step=source-install]\n"
+                        + "[feature-evolver:step=system-test]\nCompilation error", false));
+        ContainerGateResult compilation = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(compilation.outcome()
+                        == ContainerGateResult.Outcome.TEST_COMPILATION_FAILED,
+                "system-test compilation failure was not classified for Agent repair");
+
+        results.add(new RootlessContainerGateRunner.Execution(1,
+                "Picked up JAVA_TOOL_OPTIONS: bounded", false));
+        ContainerGateResult unobservable = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(unobservable.outcome()
+                        == ContainerGateResult.Outcome.UNOBSERVABLE_FAILURE,
+                "evidence-free failure was incorrectly assigned to Agent repair");
+    }
+
+    private static void testMavenVersionResolution(Path root) throws Exception {
+        Path source = root.resolve("version-source");
+        Files.createDirectories(source);
+        writePom(source, "${revision}");
+        Path pom = source.resolve("pom.xml");
+        String content = Files.readString(pom).replace("</project>",
+                "<properties><revision>0.2.0-rc1</revision></properties></project>");
+        Files.writeString(pom, content);
+        require("0.2.0-rc1".equals(MavenProjectVersionResolver.resolve(source)),
+                "Maven project version property was not resolved");
+
+        Files.writeString(pom, "<!DOCTYPE project [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]>"
+                + "<project><version>&xxe;</version></project>");
+        try {
+            MavenProjectVersionResolver.resolve(source);
+            throw new IllegalStateException("unsafe Maven XML was accepted");
+        } catch (MavenProjectVersionResolver.ProjectVersionException expected) {
+            require(expected.getMessage().contains("cannot be parsed safely"),
+                    "unsafe Maven XML failed for an unexpected reason");
+        }
+    }
+
+    private static void writePom(Path worktree, String version) throws Exception {
+        Files.createDirectories(worktree);
+        Files.writeString(worktree.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
+                + "<groupId>example</groupId><artifactId>feature</artifactId><version>"
+                + version + "</version></project>");
     }
 
     private static void testTargetRepositoryFetch(FeatureEvolvingConfig source) {
@@ -296,7 +401,10 @@ public final class ContainerAndPathPolicyDeterministicTest {
                 "deployment gate did not run the Maven cache probe online and offline");
         require(script.contains("ConstrainConfigValidationTest")
                         && script.contains("-Dsurefire.failIfNoSpecifiedTests=true")
-                        && script.contains("-Duser.home=/tmp"),
+                        && script.contains("-Duser.home=/tmp")
+                        && script.contains("maven_source_install_arguments")
+                        && script.contains("--tmpfs=/workspace/target:")
+                        && script.contains("$offline_worktree:/workspace:ro,Z"),
                 "deployment gate cache probe was not fixed to a real deterministic JUnit test");
         require(wrapper.contains("JAVA_TOOL_OPTIONS=-Duser.home=/tmp"),
                 "root-owned Podman launcher did not confine the JVM home to tmpfs");

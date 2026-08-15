@@ -25,10 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -143,8 +146,15 @@ public final class DependencyPrefetcher {
         if (!preparation.passed()) {
             return preparation;
         }
+        String sourceVersion;
+        try {
+            sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
+        } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
+            return new Result(Status.BUILD_CONTRACT_INVALID, ex.getMessage());
+        }
         Path cache = cacheFor(job);
-        List<String> command = systemTestCommand(sourceWorktree, testWorktree, cache);
+        List<String> command = systemTestCommand(
+                sourceWorktree, testWorktree, cache, sourceVersion);
         return classify(executor.execute(command, config.dataDir(), timeout()));
     }
 
@@ -180,28 +190,30 @@ public final class DependencyPrefetcher {
                         .replace(",", ",gid="),
                 "--user=" + config.containerUser(),
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
-                "--tmpfs=/native-tmp:rw,noexec,nosuid,nodev,size=128m",
+                "--tmpfs=/native-tmp:rw,exec,nosuid,nodev,size=64m",
                 "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
-                "--env=JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=/native-tmp -Djansi.tmpdir=/native-tmp",
+                "--env=JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Djansi.tmpdir=/native-tmp "
+                        + "-Dorg.sqlite.tmpdir=/native-tmp",
                 "--mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true",
                 "--volume=" + normalized(worktree) + ":/workspace:rw,Z",
                 "--volume=" + cache + ":/m2:rw,Z"));
         return command;
     }
 
-    private List<String> systemTestCommand(Path source, Path tests, Path cache) {
+    private List<String> systemTestCommand(Path source, Path tests, Path cache,
+                                           String sourceVersion) {
         List<String> command = baseCommand(source, cache);
         int mount = command.indexOf("--mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true");
         command.set(mount, "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true");
         int volume = command.indexOf("--volume=" + normalized(source) + ":/workspace:rw,Z");
-        command.set(volume, "--volume=" + normalized(source) + ":/source:rw,Z");
+        command.set(volume, "--volume=" + normalized(source) + ":/source:ro,Z");
+        command.add("--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m");
+        command.add("--env=FEATURE_SOURCE_VERSION=" + sourceVersion);
         command.add("--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true");
         command.add("--volume=" + normalized(tests) + ":/tests:rw,Z");
-        String script = "set -eu; version=$(mvn -B -ntp -Dmaven.repo.local=/m2 "
-                + "-f /source/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout); "
-                + "mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
+        String script = "set -eu; mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
                 + "-f /source/pom.xml install; mvn -B -ntp -Dmaven.repo.local=/m2 -DskipTests "
-                + "-Dagent-core-java.version=\"$version\" -f /tests/pom.xml "
+                + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" -f /tests/pom.xml "
                 + "dependency:go-offline test-compile";
         command.addAll(List.of("--workdir=/tests", config.containerImage(),
                 "sh", "-eu", "-c", script));
@@ -269,7 +281,6 @@ public final class DependencyPrefetcher {
         } catch (IOException ex) {
             return false;
         } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
             return false;
         } finally {
             if (process != null && process.isAlive()) {
@@ -316,15 +327,19 @@ public final class DependencyPrefetcher {
             ProcessEnvironmentPolicy.sanitize(builder);
             process = builder.start();
             Process running = process;
-            reader = Executors.newSingleThreadExecutor(
-                    new AutoEvolvingThreadFactory("feature-prefetch-output"));
+            reader = singleTaskExecutor("feature-prefetch-output");
             Future<String> output = reader.submit(() -> read(running));
             if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
                 return new Execution(124, "Dependency prefetch timed out");
             }
             return new Execution(process.exitValue(), output.get(5, TimeUnit.SECONDS));
-        } catch (Exception ex) {
+        } catch (InterruptedException ex) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            return new Execution(130, "Dependency prefetch was interrupted");
+        } catch (IOException | ExecutionException | TimeoutException ex) {
             if (process != null) {
                 process.destroyForcibly();
             }
@@ -334,6 +349,12 @@ public final class DependencyPrefetcher {
                 reader.shutdownNow();
             }
         }
+    }
+
+    private static ExecutorService singleTaskExecutor(String name) {
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(1), new AutoEvolvingThreadFactory(name),
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     private static String read(Process process) throws IOException {
@@ -407,6 +428,7 @@ public final class DependencyPrefetcher {
     public enum Status {
         PASSED,
         DEPENDENCY_UNAVAILABLE,
+        BUILD_CONTRACT_INVALID,
         TRANSIENT,
         POLICY_VIOLATION
     }

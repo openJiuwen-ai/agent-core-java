@@ -29,7 +29,6 @@
 
 | Profile | Source revision | Test revision | Result | Evidence handle |
 | --- | --- | --- | --- | --- |
-| Compile (no tests executed) | | | | |
 | Configured smoke + new system tests | | | | |
 
 ## SDK Gap / Blocker

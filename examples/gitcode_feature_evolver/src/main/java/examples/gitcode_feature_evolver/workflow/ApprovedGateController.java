@@ -25,6 +25,7 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
     private final FeatureJobStore store;
     private final GateSpec spec;
     private final Clock clock;
+    private final Object gateLock = new Object();
 
     /** Create a production approved gate. */
     public ApprovedGateController(FeatureJobStore store, GateSpec spec) {
@@ -39,9 +40,22 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
 
     /** Serialize concurrent model/final validation calls for this stage session. */
     @Override
-    public synchronized ApprovedGateReceipt get() {
+    public ApprovedGateReceipt get() {
+        synchronized (gateLock) {
+            return getLocked();
+        }
+    }
+
+    private ApprovedGateReceipt getLocked() {
         GateIdentity identity = spec.currentIdentity();
-        String fingerprint = fingerprint(identity);
+        Optional<ApprovedGateReceipt.Result> rejection = Objects.requireNonNull(
+                spec.evaluation().precondition().get(),
+                "Gate precondition result must not be null");
+        if (rejection.isPresent()) {
+            String fingerprint = fingerprint(identity, spec.worktree().preconditionPaths());
+            return receipt(identity, fingerprint, rejection.orElseThrow());
+        }
+        String fingerprint = fingerprint(identity, spec.worktree().changedPaths());
         Optional<ApprovedGateReceipt> cached = store.findGateReceipt(spec.job().identity().id(),
                 spec.stage(), identity.profile(), fingerprint);
         if (cached.isPresent()) {
@@ -50,21 +64,26 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
             return receipt;
         }
         ApprovedGateReceipt.Result result = Objects.requireNonNull(
-                spec.evaluator().get(), "Gate result must not be null");
-        ApprovedGateReceipt receipt = new ApprovedGateReceipt(spec.job().identity().id(),
-                spec.stage(), new ApprovedGateReceipt.Identity(identity.profile(),
-                fingerprint, selectorSummary(identity.selectors())), result,
-                clock.millis());
+                spec.evaluation().evaluator().get(), "Gate result must not be null");
+        ApprovedGateReceipt receipt = receipt(identity, fingerprint, result);
         return cacheable(result.status()) ? store.recordGateReceipt(receipt) : receipt;
     }
 
-    private String fingerprint(GateIdentity currentIdentity) {
+    private ApprovedGateReceipt receipt(GateIdentity identity, String fingerprint,
+                                        ApprovedGateReceipt.Result result) {
+        return new ApprovedGateReceipt(spec.job().identity().id(), spec.stage(),
+                new ApprovedGateReceipt.Identity(identity.profile(), fingerprint,
+                        selectorSummary(identity.selectors())), result, clock.millis());
+    }
+
+    private String fingerprint(GateIdentity currentIdentity,
+                               Supplier<List<String>> pathSupplier) {
         WorktreeState state = spec.worktree();
         FeatureGateFingerprint.GateIdentity identity = new FeatureGateFingerprint.GateIdentity(
                 spec.stage().name(), currentIdentity.profile(), currentIdentity.selectors(),
                 currentIdentity.imageDigest(), currentIdentity.sourceRevision());
         return FeatureGateFingerprint.compute(state.root(), state.head().get(),
-                state.changedPaths().get(), identity);
+                pathSupplier.get(), identity);
     }
 
     private static boolean cacheable(ApprovedGateReceipt.Status status) {
@@ -91,7 +110,14 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
 
     /** Worktree suppliers evaluated immediately before every Gate call. */
     public record WorktreeState(Path root, Supplier<String> head,
-                                Supplier<List<String>> changedPaths) {
+                                Supplier<List<String>> changedPaths,
+                                Supplier<List<String>> preconditionPaths) {
+        /** Use the execution fingerprint paths for precondition failures too. */
+        public WorktreeState(Path root, Supplier<String> head,
+                             Supplier<List<String>> changedPaths) {
+            this(root, head, changedPaths, changedPaths);
+        }
+
         /** Validate state suppliers. */
         public WorktreeState {
             root = Objects.requireNonNull(root, "root must not be null")
@@ -99,19 +125,20 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
             head = Objects.requireNonNull(head, "head supplier must not be null");
             changedPaths = Objects.requireNonNull(
                     changedPaths, "changed paths supplier must not be null");
+            preconditionPaths = Objects.requireNonNull(
+                    preconditionPaths, "precondition paths supplier must not be null");
         }
     }
 
     /** Complete Controller-bound Gate specification. */
     public record GateSpec(FeatureJob job, FeatureStage stage, GateIdentity identity,
-                           WorktreeState worktree,
-                           Supplier<ApprovedGateReceipt.Result> evaluator,
-                           Supplier<List<String>> currentSelectors) {
+                           WorktreeState worktree, GateEvaluation evaluation) {
         /** Create a Gate whose selector identity is immutable. */
         public GateSpec(FeatureJob job, FeatureStage stage, GateIdentity identity,
                         WorktreeState worktree,
                         Supplier<ApprovedGateReceipt.Result> evaluator) {
-            this(job, stage, identity, worktree, evaluator, identity::selectors);
+            this(job, stage, identity, worktree,
+                    GateEvaluation.withoutPrecondition(evaluator, identity::selectors));
         }
 
         /** Validate the immutable specification. */
@@ -120,15 +147,35 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
             stage = Objects.requireNonNull(stage, "stage must not be null");
             identity = Objects.requireNonNull(identity, "identity must not be null");
             worktree = Objects.requireNonNull(worktree, "worktree must not be null");
-            evaluator = Objects.requireNonNull(evaluator, "evaluator must not be null");
+            evaluation = Objects.requireNonNull(
+                    evaluation, "Gate evaluation must not be null");
+        }
+
+        private GateIdentity currentIdentity() {
+            List<String> selectors = evaluation.currentSelectors().get();
+            return new GateIdentity(identity.profile(), selectors,
+                    identity.imageDigest(), identity.sourceRevision());
+        }
+    }
+
+    /** Static precondition, expensive evaluation, and current selector bindings. */
+    public record GateEvaluation(
+            Supplier<Optional<ApprovedGateReceipt.Result>> precondition,
+            Supplier<ApprovedGateReceipt.Result> evaluator,
+            Supplier<List<String>> currentSelectors) {
+        /** Validate Gate callbacks. */
+        public GateEvaluation {
+            precondition = Objects.requireNonNull(
+                    precondition, "Gate precondition must not be null");
+            evaluator = Objects.requireNonNull(evaluator, "Gate evaluator must not be null");
             currentSelectors = Objects.requireNonNull(
                     currentSelectors, "selector supplier must not be null");
         }
 
-        private GateIdentity currentIdentity() {
-            List<String> selectors = currentSelectors.get();
-            return new GateIdentity(identity.profile(), selectors,
-                    identity.imageDigest(), identity.sourceRevision());
+        private static GateEvaluation withoutPrecondition(
+                Supplier<ApprovedGateReceipt.Result> evaluator,
+                Supplier<List<String>> currentSelectors) {
+            return new GateEvaluation(Optional::empty, evaluator, currentSelectors);
         }
     }
 }

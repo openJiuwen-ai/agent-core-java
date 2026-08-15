@@ -20,10 +20,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
@@ -40,6 +42,9 @@ public final class RootlessContainerGateRunner {
     private static final int MAX_OUTPUT_CHARS = 16_000;
     private static final int MAX_TEST_SELECTOR_CHARS = 4000;
     private static final String NATIVE_LIBRARY_TMP = "/native-tmp";
+    private static final String SOURCE_BUILD_TMP = "/source/target";
+    private static final String SOURCE_INSTALL_MARKER = "[feature-evolver:step=source-install]";
+    private static final String SYSTEM_TEST_MARKER = "[feature-evolver:step=system-test]";
     private static final String BASELINE_TEST_SELECTOR =
             "com.openjiuwen.core.application.schema.ConstrainConfigValidationTest";
     private static final String CONTAINER_JVM_OPTIONS = "-Duser.home=/tmp -Djansi.tmpdir="
@@ -161,15 +166,24 @@ public final class RootlessContainerGateRunner {
                                              Path testWorktree, List<String> testSelectors,
                                              Path mavenCache) {
         SystemTestProfile required = Objects.requireNonNull(profile, "profile must not be null");
-        Path source = normalizedDirectory(sourceWorktree);
-        Path tests = normalizedDirectory(testWorktree);
-        if (source == null || tests == null) {
+        Optional<Path> sourceCandidate = normalizedDirectory(sourceWorktree);
+        Optional<Path> testCandidate = normalizedDirectory(testWorktree);
+        if (sourceCandidate.isEmpty() || testCandidate.isEmpty()) {
             return new ContainerGateResult(ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
                     1, "Source or system-test Worktree is unavailable", List.of());
         }
+        Path source = sourceCandidate.orElseThrow();
+        Path tests = testCandidate.orElseThrow();
+        String sourceVersion;
+        try {
+            sourceVersion = MavenProjectVersionResolver.resolve(source);
+        } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
+            return new ContainerGateResult(ContainerGateResult.Outcome.BUILD_CONTRACT_FAILED,
+                    1, ex.getMessage(), List.of());
+        }
         String selectors = selectors(required, testSelectors);
-        List<String> command = systemTestCommand(required, source, tests, selectors,
-                normalizedCache(mavenCache));
+        List<String> command = systemTestCommand(required, source, tests,
+                new SystemTestInvocation(selectors, sourceVersion, normalizedCache(mavenCache)));
         Execution execution = executor.execute(command, config.dataDir(),
                 Duration.ofMinutes(config.containerTimeoutMinutes()));
         return classify(Profile.TARGETED, command, execution);
@@ -201,22 +215,21 @@ public final class RootlessContainerGateRunner {
 
     List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
                                    Path testWorktree, String selectors) {
-        return systemTestCommand(profile, sourceWorktree, testWorktree, selectors,
-                config.containerMavenCache());
+        String sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
+        return systemTestCommand(profile, sourceWorktree, testWorktree,
+                new SystemTestInvocation(selectors, sourceVersion, config.containerMavenCache()));
     }
 
     private List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
-                                           Path testWorktree, String selectors,
-                                           Path mavenCache) {
+                                           Path testWorktree, SystemTestInvocation invocation) {
         FeatureEvolvingConfig.ContainerLimits limits = config.containerLimits();
         UserIdentity identity = UserIdentity.parse(config.containerUser());
-        String script = "set -eu; "
-                + "version=$(mvn -B -ntp -o -Dmaven.repo.local=/m2 -f /source/pom.xml "
-                + "help:evaluate -Dexpression=project.version -q -DforceStdout); "
+        String script = "set -eu; printf '%s\\n' '" + SOURCE_INSTALL_MARKER + "'; "
                 + "mvn -B -ntp -o -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
-                + "-f /source/pom.xml install; "
-                + "mvn -B -ntp -o -Dmaven.repo.local=/m2 -Dagent-core-java.version=\"$version\" "
-                + "-f /tests/pom.xml " + profile.mavenGoal(selectors);
+                + "-f /source/pom.xml install; printf '%s\\n' '" + SYSTEM_TEST_MARKER + "'; "
+                + "mvn -B -ntp -o -Dmaven.repo.local=/m2 "
+                + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" "
+                + "-f /tests/pom.xml " + profile.mavenGoal(invocation.selectors());
         return List.of(config.containerRuntime(), "run", "--rm", "--pull=never",
                 "--network=none", "--http-proxy=false", "--read-only=true", "--cap-drop=ALL",
                 "--security-opt=no-new-privileges", "--pids-limit=" + limits.pidsLimit(),
@@ -225,30 +238,29 @@ public final class RootlessContainerGateRunner {
                 "--user=" + config.containerUser(),
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
                 "--tmpfs=" + NATIVE_LIBRARY_TMP + ":rw,exec,nosuid,nodev,size=64m",
+                "--tmpfs=" + SOURCE_BUILD_TMP + ":rw,noexec,nosuid,nodev,size=2048m",
                 "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
                 "--env=JAVA_TOOL_OPTIONS=" + CONTAINER_JVM_OPTIONS,
+                "--env=FEATURE_SOURCE_VERSION=" + invocation.sourceVersion(),
                 "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true",
                 "--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true",
-                "--volume=" + sourceWorktree + ":/source:rw,Z",
+                "--volume=" + sourceWorktree + ":/source:ro,Z",
                 "--volume=" + testWorktree + ":/tests:rw,Z",
-                "--volume=" + mavenCache + ":/m2:O",
+                "--volume=" + invocation.mavenCache() + ":/m2:O",
                 "--workdir=/tests", config.containerImage(), "sh", "-eu", "-c", script);
     }
 
-    private static Path normalizedDirectory(Path path) {
+    private static Optional<Path> normalizedDirectory(Path path) {
         if (path == null) {
-            return null;
+            return Optional.empty();
         }
         Path normalized = path.toAbsolutePath().normalize();
-        return Files.isDirectory(normalized) ? normalized : null;
+        return Files.isDirectory(normalized) ? Optional.of(normalized) : Optional.empty();
     }
 
     private static Path normalizedCache(Path path) {
-        Path normalized = normalizedDirectory(path);
-        if (normalized == null) {
-            throw new IllegalArgumentException("Maven dependency cache is unavailable");
-        }
-        return normalized;
+        return normalizedDirectory(path).orElseThrow(
+                () -> new IllegalArgumentException("Maven dependency cache is unavailable"));
     }
 
     private static String selectors(SystemTestProfile profile, List<String> supplied) {
@@ -296,14 +308,34 @@ public final class RootlessContainerGateRunner {
         if (profile == Profile.RED && isTrustworthyRed(lower)) {
             return result(ContainerGateResult.Outcome.EXPECTED_RED, execution, output, command);
         }
-        return result(ContainerGateResult.Outcome.TEST_FAILED, execution, output, command);
+        if (sourceBuildFailure(lower)) {
+            return result(ContainerGateResult.Outcome.SOURCE_BUILD_FAILED,
+                    execution, output, command);
+        }
+        if (testCompilationFailure(lower)) {
+            return result(ContainerGateResult.Outcome.TEST_COMPILATION_FAILED,
+                    execution, output, command);
+        }
+        if (testDiscoveryFailure(lower)) {
+            return result(ContainerGateResult.Outcome.TEST_DISCOVERY_FAILED,
+                    execution, output, command);
+        }
+        if (testFailure(lower)) {
+            return result(ContainerGateResult.Outcome.TEST_FAILED, execution, output, command);
+        }
+        return result(ContainerGateResult.Outcome.UNOBSERVABLE_FAILURE,
+                execution, output, command);
     }
 
     private static boolean dependencyMissing(String output) {
         return output.contains("could not resolve dependencies")
                 || output.contains("cannot access central in offline mode")
                 || output.contains("has not been downloaded from it before")
-                || output.contains("failure to find") && output.contains("offline");
+                || output.contains("plugin or one of its dependencies could not be resolved")
+                || output.contains("could not resolve plugin")
+                || (output.contains("no plugin found for prefix")
+                && output.contains("offline"))
+                || (output.contains("failure to find") && output.contains("offline"));
     }
 
     private static boolean infrastructureFailure(String output) {
@@ -313,6 +345,27 @@ public final class RootlessContainerGateRunner {
                 || output.contains("unable to create new native thread")
                 || output.contains("pthread_create failed (eagain)")
                 || output.contains("possibly out of memory or process/resource limits reached");
+    }
+
+    private static boolean testCompilationFailure(String output) {
+        return output.contains("compilation error")
+                || (output.contains("maven-compiler-plugin")
+                && output.contains("compilation failure"));
+    }
+
+    private static boolean testDiscoveryFailure(String output) {
+        return output.contains("no tests were executed")
+                || output.contains("no tests matching pattern");
+    }
+
+    private static boolean testFailure(String output) {
+        return output.contains("tests run:")
+                && (output.matches("(?s).*failures: [1-9][0-9]*.*")
+                || output.matches("(?s).*errors: [1-9][0-9]*.*"));
+    }
+
+    private static boolean sourceBuildFailure(String output) {
+        return output.contains(SOURCE_INSTALL_MARKER) && !output.contains(SYSTEM_TEST_MARKER);
     }
 
     private static boolean isTrustworthyRed(String output) {
@@ -353,8 +406,7 @@ public final class RootlessContainerGateRunner {
             ProcessEnvironmentPolicy.sanitize(builder);
             process = builder.start();
             Process started = process;
-            outputExecutor = Executors.newSingleThreadExecutor(
-                    new AutoEvolvingThreadFactory("feature-container-output"));
+            outputExecutor = singleTaskExecutor("feature-container-output");
             output = outputExecutor.submit(() -> readBounded(started));
             boolean completed = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!completed) {
@@ -366,7 +418,6 @@ public final class RootlessContainerGateRunner {
             return new Execution(125, "Unable to start rootless container process", false);
         } catch (InterruptedException ex) {
             terminate(process);
-            Thread.currentThread().interrupt();
             return new Execution(130, "Rootless container process interrupted", false);
         } finally {
             if (outputExecutor != null) {
@@ -388,7 +439,6 @@ public final class RootlessContainerGateRunner {
             }
         } catch (InterruptedException ex) {
             process.destroyForcibly();
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -416,7 +466,6 @@ public final class RootlessContainerGateRunner {
         try {
             return output.get(OUTPUT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
             return "Container output collection was interrupted";
         } catch (ExecutionException ex) {
             return "Container output could not be decoded";
@@ -424,6 +473,12 @@ public final class RootlessContainerGateRunner {
             output.cancel(true);
             return "Container output collection timed out";
         }
+    }
+
+    private static ExecutorService singleTaskExecutor(String name) {
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(1), new AutoEvolvingThreadFactory(name),
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     /** Fixed verification profiles; Agents cannot supply Maven arguments. */
@@ -471,6 +526,16 @@ public final class RootlessContainerGateRunner {
                 throw new IllegalArgumentException("containerUser must use UID:GID format");
             }
             return new UserIdentity(parts[0], parts[1]);
+        }
+    }
+
+    private record SystemTestInvocation(String selectors, String sourceVersion,
+                                        Path mavenCache) {
+        private SystemTestInvocation {
+            selectors = Objects.requireNonNull(selectors, "selectors must not be null");
+            sourceVersion = Objects.requireNonNull(
+                    sourceVersion, "source version must not be null");
+            mavenCache = normalizedCache(mavenCache);
         }
     }
 }

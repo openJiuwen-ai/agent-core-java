@@ -46,6 +46,27 @@ final class ApprovedGateResults {
                             FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE, stage,
                             "The isolated approved Gate could not complete", gate.outcome().name()),
                     gate.exitCode(), gate.output());
+            case BUILD_CONTRACT_FAILED -> failed(ApprovedGateReceipt.Status.FAILED,
+                    failure("MAVEN_BUILD_CONTRACT_INVALID",
+                            FeatureFailureCategory.CONFIGURATION, stage,
+                            "The frozen source Maven version contract is invalid", gate.output()),
+                    gate.exitCode(), gate.output());
+            case SOURCE_BUILD_FAILED -> failed(ApprovedGateReceipt.Status.FAILED,
+                    failure("FROZEN_SOURCE_BUILD_FAILED", FeatureFailureCategory.INTERNAL,
+                            stage, "The frozen merged source could not be installed offline",
+                            gate.output()), gate.exitCode(), gate.output());
+            case UNOBSERVABLE_FAILURE -> failed(ApprovedGateReceipt.Status.FAILED,
+                    failure("CONTAINER_GATE_UNOBSERVABLE", FeatureFailureCategory.INTERNAL,
+                            stage, "The approved Gate failed without actionable Maven evidence",
+                            gate.output()), gate.exitCode(), gate.output());
+            case TEST_COMPILATION_FAILED -> failed(ApprovedGateReceipt.Status.FAILED,
+                    failure("TEST_COMPILATION_FAILED", FeatureFailureCategory.AGENT_CORRECTABLE,
+                            stage, "The Controller-selected test sources did not compile",
+                            gate.output()), gate.exitCode(), gate.output());
+            case TEST_DISCOVERY_FAILED -> failed(ApprovedGateReceipt.Status.FAILED,
+                    failure("TEST_DISCOVERY_FAILED", FeatureFailureCategory.AGENT_CORRECTABLE,
+                            stage, "The Controller-selected test classes were not discovered",
+                            gate.output()), gate.exitCode(), gate.output());
             case TEST_FAILED, EXPECTED_RED, PASSED -> failed(ApprovedGateReceipt.Status.FAILED,
                     failure(expectedRed ? "RED_EXPECTATION_FAILED" : "TEST_ASSERTION_FAILED",
                             FeatureFailureCategory.AGENT_CORRECTABLE, stage,

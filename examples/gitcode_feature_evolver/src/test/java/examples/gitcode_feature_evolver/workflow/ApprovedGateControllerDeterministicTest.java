@@ -5,7 +5,9 @@
 package examples.gitcode_feature_evolver.workflow;
 
 import examples.gitcode_feature_evolver.FeatureWorkflowMode;
+import examples.gitcode_feature_evolver.infrastructure.ContainerGateResult;
 import examples.gitcode_feature_evolver.job.ApprovedGateReceipt;
+import examples.gitcode_feature_evolver.job.FeatureFailureCategory;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureStage;
 import examples.gitcode_feature_evolver.job.SqliteFeatureJobStore;
@@ -48,8 +50,97 @@ public final class ApprovedGateControllerDeterministicTest {
                             && executions.get() == 2,
                     "changed file input did not invalidate the Gate receipt");
             concurrentCacheHit(controller, executions);
+            preconditionDoesNotPoisonExecutionCache(store, root, job);
         }
+        evidenceKeepsActualTail();
+        gateFailuresKeepControllerOwnership();
         System.out.println("ApprovedGateControllerDeterministicTest: PASS");
+    }
+
+    private static void preconditionDoesNotPoisonExecutionCache(
+            SqliteFeatureJobStore store, Path root, FeatureJob job) throws Exception {
+        Path test = root.resolve("SystemTest.java");
+        Path artifact = root.resolve("system-test.md");
+        Files.writeString(test, "class SystemTest {}\n");
+        Files.writeString(artifact, "missing identity\n");
+        AtomicInteger executions = new AtomicInteger();
+        ApprovedGateController.GateIdentity identity = new ApprovedGateController.GateIdentity(
+                "SYSTEM_TEST_SELECTED", List.of("example.SystemTest"),
+                "image@sha256:" + "c".repeat(64), "d".repeat(40));
+        ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
+                root, () -> "e".repeat(40), () -> List.of("SystemTest.java"),
+                () -> List.of("SystemTest.java", "system-test.md"));
+        ApprovedGateController.GateEvaluation evaluation =
+                new ApprovedGateController.GateEvaluation(
+                        () -> precondition(artifact),
+                        () -> {
+                            executions.incrementAndGet();
+                            return ApprovedGateResults.staticValidation(
+                                    FeatureStage.SYSTEM_TEST, List.of());
+                        }, identity::selectors);
+        ApprovedGateController.GateSpec spec = new ApprovedGateController.GateSpec(
+                job, FeatureStage.SYSTEM_TEST, identity, state, evaluation);
+        ApprovedGateController controller = new ApprovedGateController(store, spec,
+                Clock.fixed(Instant.parse("2026-08-14T08:00:00Z"), ZoneOffset.UTC));
+
+        ApprovedGateReceipt rejected = controller.get();
+        require(rejected.result().status() == ApprovedGateReceipt.Status.FAILED
+                        && executions.get() == 0,
+                "invalid system-test artifact reached the expensive Gate");
+        Files.writeString(artifact, "identity complete\n");
+        ApprovedGateReceipt passed = controller.get();
+        require(passed.result().status() == ApprovedGateReceipt.Status.PASSED
+                        && executions.get() == 1
+                        && !passed.identity().fingerprint().equals(
+                        rejected.identity().fingerprint()),
+                "artifact correction remained poisoned by the failed receipt");
+        Files.writeString(artifact, "identity complete\nevidence appended\n");
+        ApprovedGateReceipt cached = controller.get();
+        require(cached.result().cached() && executions.get() == 1
+                        && cached.identity().fingerprint().equals(
+                        passed.identity().fingerprint()),
+                "evidence-only artifact update reran the system-test Gate");
+    }
+
+    private static Optional<ApprovedGateReceipt.Result> precondition(Path artifact) {
+        try {
+            if (Files.readString(artifact).contains("identity complete")) {
+                return Optional.empty();
+            }
+            return Optional.of(ApprovedGateResults.staticValidation(
+                    FeatureStage.SYSTEM_TEST, List.of("identity missing")));
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException("Unable to read deterministic Gate artifact", ex);
+        }
+    }
+
+    private static void evidenceKeepsActualTail() {
+        String prefix = "old-prefix-".repeat(2_000);
+        String suffix = "ACTUAL_FINAL_FAILURE";
+        ApprovedGateReceipt.Evidence evidence = new ApprovedGateReceipt.Evidence(
+                1, prefix + suffix);
+        require(evidence.outputTail().endsWith(suffix)
+                        && evidence.outputTail().length() == 12_000,
+                "approved Gate evidence retained the prefix instead of the actual tail");
+    }
+
+    private static void gateFailuresKeepControllerOwnership() {
+        ApprovedGateReceipt.Result invisible = ApprovedGateResults.container(
+                FeatureStage.SYSTEM_TEST,
+                new ContainerGateResult(ContainerGateResult.Outcome.UNOBSERVABLE_FAILURE,
+                        1, "bounded but inconclusive", List.of()), false);
+        require(invisible.failure().orElseThrow().category()
+                        == FeatureFailureCategory.INTERNAL,
+                "unobservable container failure was delegated to the Agent");
+        ApprovedGateReceipt.Result compilation = ApprovedGateResults.container(
+                FeatureStage.SYSTEM_TEST,
+                new ContainerGateResult(ContainerGateResult.Outcome.TEST_COMPILATION_FAILED,
+                        1, "compilation error", List.of()), false);
+        require(compilation.failure().orElseThrow().category()
+                        == FeatureFailureCategory.AGENT_CORRECTABLE
+                        && "TEST_COMPILATION_FAILED".equals(
+                        compilation.failure().orElseThrow().code()),
+                "test compilation failure was not delegated to bounded Agent repair");
     }
 
     private static ApprovedGateController controller(SqliteFeatureJobStore store, Path root,
@@ -72,8 +163,8 @@ public final class ApprovedGateControllerDeterministicTest {
                                            AtomicInteger executions) throws Exception {
         int before = executions.get();
         CountDownLatch start = new CountDownLatch(1);
-        Thread first = new Thread(() -> runAfter(start, controller));
-        Thread second = new Thread(() -> runAfter(start, controller));
+        Thread first = new Thread(() -> runAfter(start, controller), "gate-cache-first");
+        Thread second = new Thread(() -> runAfter(start, controller), "gate-cache-second");
         first.start();
         second.start();
         start.countDown();
@@ -87,8 +178,7 @@ public final class ApprovedGateControllerDeterministicTest {
             start.await();
             controller.get();
         } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(ex);
+            throw new IllegalStateException("Deterministic Gate cache test was interrupted", ex);
         }
     }
 

@@ -189,6 +189,9 @@ maven_cache_probe_arguments=(
     "-Dtest=$maven_cache_probe_test" -DfailIfNoTests=true
     -Dsurefire.failIfNoSpecifiedTests=true test
 )
+maven_source_install_arguments=(
+    -B -ntp -o -Dmaven.repo.local=/m2 -Dmaven.test.skip=true -DskipITs install
+)
 
 run_podman_as_service "${common_container_arguments[@]}" \
     --network=slirp4netns:allow_host_loopback=false \
@@ -229,15 +232,24 @@ run_as_service git -C "$repository_dir" worktree add --detach "$offline_worktree
 printf 'Validating the no-test Maven build with networking disabled.\n'
 run_podman_as_service "${common_container_arguments[@]}" \
     --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
     --volume="$maven_cache:/m2:ro,Z" \
-    --volume="$offline_worktree:/workspace:rw,Z" "$container_image" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
     mvn -o "${maven_no_test_arguments[@]}"
 printf 'Validating the focused Maven test runtime with networking disabled.\n'
 run_podman_as_service "${common_container_arguments[@]}" \
     --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
     --volume="$maven_cache:/m2:ro,Z" \
-    --volume="$offline_worktree:/workspace:rw,Z" "$container_image" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
     mvn -o "${maven_cache_probe_arguments[@]}"
+printf 'Validating frozen-source installation with a read-only source tree.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
+    --volume="$maven_cache:/m2:O" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
+    mvn "${maven_source_install_arguments[@]}"
 run_as_service git -C "$repository_dir" worktree remove --force "$offline_worktree"
 offline_worktree=""
 

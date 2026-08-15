@@ -51,7 +51,8 @@ public record ApprovedGateReceipt(String jobId, FeatureStage stage, Identity ide
         /** Bound the evidence. */
         public Evidence {
             String output = outputTail == null ? "" : outputTail.replace('\r', ' ').strip();
-            outputTail = output.substring(0, Math.min(output.length(), MAX_OUTPUT));
+            int start = Math.max(0, output.length() - MAX_OUTPUT);
+            outputTail = output.substring(start);
         }
     }
 

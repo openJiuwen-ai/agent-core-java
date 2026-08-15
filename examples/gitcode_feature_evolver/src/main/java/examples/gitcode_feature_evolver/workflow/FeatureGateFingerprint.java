@@ -18,6 +18,9 @@ import java.util.Objects;
 
 /** Computes an immutable approved-gate fingerprint from trusted identity and actual files. */
 final class FeatureGateFingerprint {
+    /** Bump when Gate execution or classification semantics change. */
+    private static final String CONTRACT_VERSION = "2";
+
     private FeatureGateFingerprint() {
     }
 
@@ -26,6 +29,7 @@ final class FeatureGateFingerprint {
         Path root = Objects.requireNonNull(worktree, "worktree must not be null")
                 .toAbsolutePath().normalize();
         MessageDigest digest = sha256();
+        update(digest, "contract=" + CONTRACT_VERSION);
         update(digest, "head=" + value(head));
         update(digest, "stage=" + identity.stage());
         update(digest, "profile=" + identity.profile());

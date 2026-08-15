@@ -205,6 +205,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         }
         FeatureFailureCategory category = switch (result.status()) {
             case DEPENDENCY_UNAVAILABLE -> FeatureFailureCategory.DEPENDENCY_MISSING;
+            case BUILD_CONTRACT_INVALID -> FeatureFailureCategory.CONFIGURATION;
             case TRANSIENT -> FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE;
             case POLICY_VIOLATION -> FeatureFailureCategory.POLICY_VIOLATION;
             case PASSED -> throw new IllegalStateException("Passed prefetch was not short-circuited");
@@ -224,6 +225,11 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                     new FeatureFailure("DEPENDENCY_UNAVAILABLE",
                             FeatureFailureCategory.DEPENDENCY_MISSING,
                             FeatureStage.DEPENDENCY_PREFETCH, resume,
+                            new FeatureFailure.Diagnostic(result.summary(), "")));
+            case BUILD_CONTRACT_INVALID -> throw new FeatureExecutionException(
+                    new FeatureFailure("DEPENDENCY_PREFETCH_BUILD_CONTRACT_INVALID",
+                            FeatureFailureCategory.CONFIGURATION,
+                            FeatureStage.DEPENDENCY_PREFETCH, null,
                             new FeatureFailure.Diagnostic(result.summary(), "")));
             case POLICY_VIOLATION -> throw new FeatureExecutionException(
                     new FeatureFailure("DEPENDENCY_PREFETCH_POLICY_VIOLATION",
@@ -1013,11 +1019,13 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
                 context.worktree(), () -> gitPublisher.currentHead(context.worktree()),
                 () -> gitPublisher.dirtyFiles(context.worktree()));
+        ApprovedGateController.GateEvaluation evaluation =
+                new ApprovedGateController.GateEvaluation(Optional::empty,
+                        () -> evaluateFeatureGate(context, stage, scope,
+                                featureSelectors(context, stage)),
+                        () -> featureSelectors(context, stage));
         ApprovedGateController.GateSpec spec = new ApprovedGateController.GateSpec(
-                context.job(), stage, identity, state,
-                () -> evaluateFeatureGate(context, stage, scope,
-                        featureSelectors(context, stage)),
-                () -> featureSelectors(context, stage));
+                context.job(), stage, identity, state, evaluation);
         return new ApprovedGateController(store, spec);
     }
 
@@ -1031,12 +1039,26 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
                 context.testWorktree(),
                 () -> gitPublisher.currentSystemTestHead(context.testWorktree()),
-                () -> systemTestFingerprintPaths(context, stage));
+                () -> systemTestFingerprintPaths(context, stage),
+                () -> gitPublisher.systemTestChangedFiles(context.testWorktree()));
+        ApprovedGateController.GateEvaluation evaluation = systemTestGateEvaluation(
+                context, stage, scope);
         ApprovedGateController.GateSpec spec = new ApprovedGateController.GateSpec(
-                context.job(), stage, identity, state,
+                context.job(), stage, identity, state, evaluation);
+        return new ApprovedGateController(store, spec);
+    }
+
+    private ApprovedGateController.GateEvaluation systemTestGateEvaluation(
+            SystemTestContext context, FeatureStage stage, AgentScope scope) {
+        if (stage != FeatureStage.SYSTEM_TEST) {
+            return new ApprovedGateController.GateEvaluation(Optional::empty,
+                    () -> evaluateSystemTestGate(context, stage, scope),
+                    () -> systemTestSelectors(context, stage));
+        }
+        return new ApprovedGateController.GateEvaluation(
+                () -> evaluateSystemTestPrecondition(context, stage, scope),
                 () -> evaluateSystemTestGate(context, stage, scope),
                 () -> systemTestSelectors(context, stage));
-        return new ApprovedGateController(store, spec);
     }
 
     private ApprovedGateReceipt.Result evaluateFeatureGate(
@@ -1101,6 +1123,13 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     private ApprovedGateReceipt.Result evaluateSystemTestGate(
             SystemTestContext context, FeatureStage stage, AgentScope scope) {
+        if (stage == FeatureStage.SYSTEM_TEST) {
+            List<String> selected = systemTestSelectors(context, stage);
+            return ApprovedGateResults.container(stage, container.runSystemTest(
+                    RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                    context.sourceWorktree(), context.testWorktree(), selected,
+                    gateCache(context.job())), false);
+        }
         List<String> changed = gitPublisher.systemTestChangedFiles(context.testWorktree());
         List<String> violations = FeaturePathPolicy.violations(changed, scope.validationScopes());
         if (!violations.isEmpty()) {
@@ -1112,19 +1141,30 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                         context.inspector().reviewPath(reviewRound(context.job())));
                 return ApprovedGateResults.staticValidation(stage, List.of());
             }
+            return ApprovedGateResults.staticValidation(stage, List.of());
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ApprovedGateResults.staticValidation(stage, List.of(safe(ex.getMessage())));
+        }
+    }
+
+    private Optional<ApprovedGateReceipt.Result> evaluateSystemTestPrecondition(
+            SystemTestContext context, FeatureStage stage, AgentScope scope) {
+        List<String> changed = gitPublisher.systemTestChangedFiles(context.testWorktree());
+        List<String> violations = FeaturePathPolicy.violations(changed, scope.validationScopes());
+        if (!violations.isEmpty()) {
+            return Optional.of(ApprovedGateResults.policy(stage, String.join(", ", violations)));
+        }
+        try {
             SystemTestArtifactInspector.Validation validation =
                     context.inspector().validateAuthor(changed);
             if (!validation.valid()) {
-                return ApprovedGateResults.staticValidation(stage, validation.errors());
+                return Optional.of(ApprovedGateResults.staticValidation(
+                        stage, validation.errors()));
             }
-            List<String> selected = selectedSystemTests(config.systemTestSmokeSelectors(),
-                    validation.testSelectors());
-            return ApprovedGateResults.container(stage, container.runSystemTest(
-                    RootlessContainerGateRunner.SystemTestProfile.SELECTED,
-                    context.sourceWorktree(), context.testWorktree(), selected,
-                    gateCache(context.job())), false);
+            return Optional.empty();
         } catch (IllegalArgumentException | IllegalStateException ex) {
-            return ApprovedGateResults.staticValidation(stage, List.of(safe(ex.getMessage())));
+            return Optional.of(ApprovedGateResults.staticValidation(
+                    stage, List.of(safe(ex.getMessage()))));
         }
     }
 
