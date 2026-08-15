@@ -166,7 +166,10 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && systemScript.contains(
                         "org.apache.maven.surefire:surefire-junit-platform:")
                         && systemScript.contains(
-                        "org.junit.platform:junit-platform-launcher:"),
+                        "org.junit.platform:junit-platform-launcher:")
+                        && systemScript.contains(
+                        "[feature-evolver:prefetch-postcondition-missing]")
+                        && systemScript.contains("test -s /m2/"),
                 "system-test prefetch did not preserve the frozen-source contract");
     }
 

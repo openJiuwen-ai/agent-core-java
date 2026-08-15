@@ -41,7 +41,8 @@ unrelated repository test sources cannot alter or broaden the Gate.
 Dependency prefetch resolves declared artifacts only and
 must not compile the complete test tree or execute an online probe test;
 dynamically selected Surefire provider and aligned JUnit launcher artifacts are
-Controller concerns.
+Controller concerns, including verifying that they were persisted before an
+offline Gate resumes.
 Review and publish reuse the passing receipt while the test-code fingerprint is
 unchanged. The model cannot add Maven arguments, widen the smoke set, select a
 tag, or remove either selector group.

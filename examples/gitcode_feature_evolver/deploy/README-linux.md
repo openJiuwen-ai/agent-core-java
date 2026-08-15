@@ -246,8 +246,9 @@ credential-free networked container, then the original Gate is repeated with
 networking disabled. Prefetch resolves dependencies but does not run
 `test-compile`; it resolves both the dynamically selected JUnit Platform
 provider and the launcher aligned to the trusted POM's JUnit release without
-running an online test. `pom.xml` and `.mvn` changes are rejected before
-prefetch.
+running an online test. The Controller verifies both runtime JARs were actually
+persisted before resuming an offline Gate. `pom.xml` and `.mvn` changes are
+rejected before prefetch.
 Terminal Job caches are retained for `dependencyPrefetchRetentionHours`.
 Only after the gate passes can the provision helper activate the service:
 

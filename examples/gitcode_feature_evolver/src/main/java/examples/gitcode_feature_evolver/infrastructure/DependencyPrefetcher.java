@@ -231,7 +231,16 @@ public final class DependencyPrefetcher {
                 + "\"$SUREFIRE_VERSION\" -Dtransitive=true; "
                 + "mvn -B -ntp -Dmaven.repo.local=/m2 -f /tests/pom.xml dependency:get "
                 + "-Dartifact=org.junit.platform:junit-platform-launcher:"
-                + "\"$JUNIT_PLATFORM_LAUNCHER_VERSION\" -Dtransitive=true";
+                + "\"$JUNIT_PLATFORM_LAUNCHER_VERSION\" -Dtransitive=true; "
+                + "test -s /m2/org/apache/maven/surefire/surefire-junit-platform/"
+                + "\"$SUREFIRE_VERSION\"/surefire-junit-platform-"
+                + "\"$SUREFIRE_VERSION\".jar || { printf '%s\\n' "
+                + "'[feature-evolver:prefetch-postcondition-missing] surefire provider'; "
+                + "exit 125; }; test -s /m2/org/junit/platform/junit-platform-launcher/"
+                + "\"$JUNIT_PLATFORM_LAUNCHER_VERSION\"/junit-platform-launcher-"
+                + "\"$JUNIT_PLATFORM_LAUNCHER_VERSION\".jar || { printf '%s\\n' "
+                + "'[feature-evolver:prefetch-postcondition-missing] junit launcher'; "
+                + "exit 125; }";
         command.addAll(List.of("--workdir=/tests", config.containerImage(),
                 "sh", "-eu", "-c", script));
         return command;

@@ -170,11 +170,21 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
         String owner = requireText(workerId, "workerId");
         Instant instant = Objects.requireNonNull(now, "now must not be null");
         Duration leaseDuration = requirePositive(duration, "duration");
-        try (Connection connection = connection()) {
-            connection.setAutoCommit(false);
-            Optional<FeatureJob> leased = leaseTransaction(connection, owner, instant, leaseDuration);
-            connection.commit();
-            return leased;
+        try (Connection connection = connection();
+             Statement transaction = connection.createStatement()) {
+            transaction.execute("BEGIN IMMEDIATE");
+            boolean committed = false;
+            try {
+                Optional<FeatureJob> leased = leaseTransaction(
+                        connection, owner, instant, leaseDuration);
+                transaction.execute("COMMIT");
+                committed = true;
+                return leased;
+            } finally {
+                if (!committed) {
+                    rollback(transaction);
+                }
+            }
         } catch (SQLException ex) {
             throw failure("Unable to lease feature job", ex);
         }
@@ -1082,11 +1092,28 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
 
     private Connection connection() throws SQLException {
         Connection connection = DriverManager.getConnection(jdbcUrl);
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("PRAGMA foreign_keys=ON");
-            statement.execute("PRAGMA busy_timeout=5000");
+        try {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("PRAGMA foreign_keys=ON");
+                statement.execute("PRAGMA busy_timeout=5000");
+            }
+            return connection;
+        } catch (SQLException ex) {
+            try {
+                connection.close();
+            } catch (SQLException closeFailure) {
+                ex.addSuppressed(closeFailure);
+            }
+            throw ex;
         }
-        return connection;
+    }
+
+    private static void rollback(Statement transaction) {
+        try {
+            transaction.execute("ROLLBACK");
+        } catch (SQLException ignored) {
+            // Preserve the authoritative lease failure.
+        }
     }
 
     private static boolean insertDelivery(Connection connection, FeatureJobRequest.Delivery delivery,

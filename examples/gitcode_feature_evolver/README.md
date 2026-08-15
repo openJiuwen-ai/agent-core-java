@@ -170,7 +170,8 @@ runs dependency resolution without `test-compile` in a credential-free
 networked container. It also resolves the JUnit Platform provider selected at
 runtime by the explicitly version-pinned Surefire plugin and the launcher
 aligned to the trusted POM's JUnit release, without executing an online probe
-test. The prefetch uses
+test. A successful process is accepted only after the Controller verifies both
+runtime JARs exist in the persistent Job cache. The prefetch uses
 only repositories declared by the trusted POM. It never mounts PATs, model
 keys, SSH material, host configuration, or another Job. The original Gate then
 retries with `network=none`; caches are retained for 24 hours after terminal

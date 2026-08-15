@@ -13,6 +13,7 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -37,6 +38,7 @@ public final class SqliteFeatureJobStoreDeterministicTest {
         testRecoveryPersistence(Files.createTempDirectory("feature-recovery-").resolve("feature.db"));
         testRepositoryScope(Files.createTempDirectory("feature-scope-").resolve("feature.db"));
         testConcurrentAdmission(Files.createTempDirectory("feature-concurrent-").resolve("feature.db"));
+        testConcurrentLeases(Files.createTempDirectory("feature-leases-").resolve("feature.db"));
         System.out.println("SqliteFeatureJobStoreDeterministicTest: PASS");
     }
 
@@ -257,6 +259,44 @@ public final class SqliteFeatureJobStoreDeterministicTest {
             require(created == 1L, "concurrent trigger channels must create exactly one job");
             require(store.findByIssue(REPOSITORY, 2).isPresent(),
                     "concurrently admitted Issue is missing");
+        }
+    }
+
+    private static void testConcurrentLeases(Path database) throws InterruptedException {
+        int workers = 8;
+        try (SqliteFeatureJobStore store = new SqliteFeatureJobStore(database)) {
+            for (int index = 0; index < workers; index++) {
+                store.admit(request("lease-" + index, 200 + index));
+            }
+            CountDownLatch start = new CountDownLatch(1);
+            List<String> leased = new CopyOnWriteArrayList<>();
+            List<Throwable> failures = new CopyOnWriteArrayList<>();
+            List<Thread> threads = new ArrayList<>();
+            for (int index = 0; index < workers; index++) {
+                String owner = "concurrent-worker-" + index;
+                Thread thread = new Thread(() -> {
+                    try {
+                        start.await();
+                        store.leaseNext(owner, NOW, Duration.ofMinutes(5))
+                                .ifPresent(job -> leased.add(job.identity().id()));
+                    } catch (InterruptedException failure) {
+                        Thread.currentThread().interrupt();
+                        failures.add(failure);
+                    } catch (RuntimeException failure) {
+                        failures.add(failure);
+                    }
+                });
+                threads.add(thread);
+                thread.start();
+            }
+            start.countDown();
+            for (Thread thread : threads) {
+                thread.join();
+            }
+            require(failures.isEmpty(),
+                    "concurrent worker leasing raised a SQLite contention error");
+            require(leased.size() == workers && leased.stream().distinct().count() == workers,
+                    "concurrent workers did not lease distinct runnable Jobs");
         }
     }
 
