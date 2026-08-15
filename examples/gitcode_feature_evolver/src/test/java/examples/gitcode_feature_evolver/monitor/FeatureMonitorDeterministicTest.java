@@ -15,6 +15,9 @@ import examples.gitcode_feature_evolver.gitcode.FeatureIssuePage;
 import examples.gitcode_feature_evolver.gitcode.FeatureIssueScanRequest;
 import examples.gitcode_feature_evolver.gitcode.FeaturePullRequest;
 import examples.gitcode_feature_evolver.gitcode.UpdateFeaturePullRequest;
+import examples.gitcode_feature_evolver.job.ApprovedGateReceipt;
+import examples.gitcode_feature_evolver.job.FeatureFailure;
+import examples.gitcode_feature_evolver.job.FeatureFailureCategory;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureJobMutation;
 import examples.gitcode_feature_evolver.job.FeatureJobRequest;
@@ -97,7 +100,27 @@ public final class FeatureMonitorDeterministicTest {
                         "https://gitcode.com/openJiuwen/jiuwen-test/pull/19",
                         "fedcba9876543210fedcba9876543210fedcba98", false,
                         NOW.toEpochMilli()));
+        recordGateReceipts(store, created.identity().id());
         return store;
+    }
+
+    private static void recordGateReceipts(SqliteFeatureJobStore store, String jobId) {
+        ApprovedGateReceipt.Result current = new ApprovedGateReceipt.Result(
+                ApprovedGateReceipt.Status.TRANSIENT,
+                Optional.of(new FeatureFailure("CONTAINER_RUNTIME_FAILED",
+                        FeatureFailureCategory.TRANSIENT_INFRASTRUCTURE,
+                        FeatureStage.IMPLEMENT_GREEN, FeatureStage.IMPLEMENT_GREEN,
+                        new FeatureFailure.Diagnostic("Container runtime unavailable", ""))),
+                new ApprovedGateReceipt.Evidence(126, "bounded infrastructure failure"), false);
+        store.recordGateReceipt(new ApprovedGateReceipt(jobId, FeatureStage.IMPLEMENT_GREEN,
+                new ApprovedGateReceipt.Identity("TARGETED", "1".repeat(64),
+                        "example.FeatureTest"), current, NOW.toEpochMilli()));
+        ApprovedGateReceipt.Result stale = new ApprovedGateReceipt.Result(
+                ApprovedGateReceipt.Status.PASSED, Optional.empty(),
+                new ApprovedGateReceipt.Evidence(0, "passed"), false);
+        store.recordGateReceipt(new ApprovedGateReceipt(jobId, FeatureStage.SHIP,
+                new ApprovedGateReceipt.Identity("TARGETED", "2".repeat(64),
+                        "example.FeatureTest"), stale, NOW.plusSeconds(60).toEpochMilli()));
     }
 
     private static FeatureEvolvingService service(FeatureEvolvingConfig config,
@@ -141,6 +164,9 @@ public final class FeatureMonitorDeterministicTest {
                 "monitor API omitted the Issue title");
         require(api.body().contains("IMPLEMENT_GREEN"),
                 "monitor API omitted the current workflow stage");
+        require(api.body().contains("\"gateStage\":\"IMPLEMENT_GREEN\"")
+                        && api.body().contains("\"gateStatus\":\"TRANSIENT\""),
+                "monitor API displayed a stale Gate receipt from another stage");
         require(api.body().contains("Polling 扫描命中 Feature Issue"),
                 "monitor API did not identify polling admission");
         require(api.body().contains("/pull/88"), "monitor API omitted the PR link");

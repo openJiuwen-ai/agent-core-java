@@ -200,7 +200,7 @@ function renderDetail(job) {
         ? job.failureCategory + ' / ' + job.failureCode : '--');
     const fingerprint = job.gateFingerprint ? job.gateFingerprint.slice(0, 12) : '--';
     setText('gate-receipt', job.gateProfile
-        ? job.gateProfile + ' / ' + job.gateStatus + ' / ' + fingerprint
+        ? job.gateStage + ' / ' + job.gateProfile + ' / ' + job.gateStatus + ' / ' + fingerprint
             + (job.gateCached ? ' / cached' : '') : '--');
     setText('next-retry', job.nextRetryAt
         ? formatTime(job.nextRetryAt, true) + (job.retryStage ? ' → ' + job.retryStage : '')

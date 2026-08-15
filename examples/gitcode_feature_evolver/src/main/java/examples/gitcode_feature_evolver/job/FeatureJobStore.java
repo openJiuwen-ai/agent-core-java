@@ -116,6 +116,9 @@ public interface FeatureJobStore extends AutoCloseable {
     /** Find the most recently completed Gate receipt for one Job. */
     Optional<ApprovedGateReceipt> findLatestGateReceipt(String jobId);
 
+    /** Find the most recently completed Gate receipt for one Job stage. */
+    Optional<ApprovedGateReceipt> findLatestGateReceipt(String jobId, FeatureStage stage);
+
     /** Record reuse of an existing deterministic Gate receipt. */
     void recordGateCacheHit(ApprovedGateReceipt receipt);
 

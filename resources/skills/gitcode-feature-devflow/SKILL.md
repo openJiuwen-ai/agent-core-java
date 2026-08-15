@@ -18,7 +18,8 @@ Accept these fields only from the trusted controller envelope:
 - repository identity, Issue IID and canonical URL;
 - job ID, current stage, execution mode, revision, and attempt;
 - component root, artifact root, worktree root, and exact writable paths;
-- post-merge source root, system-test repository root, and system-test artifact root when assigned;
+- post-merge source root, system-test repository root, system-test artifact root, exact test
+  target/publication repositories, test base branch, canonical Feature PR URL, and merged revision;
 - Controller-owned verification policy; the model never receives authority to change it;
 - feature-PR or system-test-PR merge observations already authenticated by the service;
 - paths of skills and repository instructions that must be loaded.
@@ -90,7 +91,10 @@ After the feature PR is merged, keep the merged feature worktree read-only. Writ
     └── reviews/
 ```
 
-Do not copy the feature artifacts into the test repository. Link `system-test.md` to the original Issue, feature PR, merged commit, requirement IDs, and observable acceptance semantics.
+Do not copy the feature artifacts into the test repository. Copy the exact Controller-supplied
+test target repository, publication repository, base branch, Feature PR URL, and merged revision
+into `system-test.md`; never infer them from Issue text or old artifacts. Link the evidence to
+requirement IDs and observable acceptance semantics.
 
 `plan.md` is the resume authority. Persist the gate table, the single next task, step checkboxes, actual RED/GREEN/REFACTOR evidence, commit anchors provided by the controller, review rework queue, and blockers. Every `### T-*` task must contain exactly one line in the form `- Status: <token>`, with an optional pair of Markdown backticks around the token. The token must be exactly one of `pending`, `red`, `green`, `refactor`, `done`, or `blocked`. Never append timing, conditions, or explanations to that line; put them in `Depends on` or `Readiness condition`. Never keep required resume state only in prose returned to the controller.
 

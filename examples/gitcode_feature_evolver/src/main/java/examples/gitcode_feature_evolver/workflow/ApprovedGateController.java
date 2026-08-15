@@ -54,11 +54,23 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
                 "Gate precondition result must not be null");
         if (rejection.isPresent()) {
             String fingerprint = fingerprint(identity, spec.worktree().preconditionPaths());
-            return receipt(identity, fingerprint, rejection.orElseThrow());
+            Optional<ApprovedGateReceipt> reusable = reusable(identity, fingerprint);
+            return reusable.orElseGet(() -> record(
+                    receipt(identity, fingerprint, rejection.orElseThrow())));
         }
         String fingerprint = fingerprint(identity, spec.worktree().changedPaths());
+        Optional<ApprovedGateReceipt> reusable = reusable(identity, fingerprint);
+        if (reusable.isPresent()) {
+            return reusable.orElseThrow();
+        }
+        ApprovedGateReceipt.Result result = Objects.requireNonNull(
+                spec.evaluation().evaluator().get(), "Gate result must not be null");
+        return record(receipt(identity, fingerprint, result));
+    }
+
+    private Optional<ApprovedGateReceipt> reusable(GateIdentity identity, String fingerprint) {
         if (sameHandoff(identity, fingerprint)) {
-            return asSessionCacheHit(handoffReceipt);
+            return Optional.of(asSessionCacheHit(handoffReceipt));
         }
         Optional<ApprovedGateReceipt> cached = store.findGateReceipt(spec.job().identity().id(),
                 spec.stage(), identity.profile(), fingerprint);
@@ -66,18 +78,19 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
             ApprovedGateReceipt receipt = cached.orElseThrow();
             if (cacheable(receipt.result())) {
                 store.recordGateCacheHit(receipt);
-                return receipt;
+                return Optional.of(receipt);
             }
             store.discardGateReceipt(receipt);
         }
-        ApprovedGateReceipt.Result result = Objects.requireNonNull(
-                spec.evaluation().evaluator().get(), "Gate result must not be null");
-        ApprovedGateReceipt receipt = receipt(identity, fingerprint, result);
-        if (cacheable(result)) {
-            return store.recordGateReceipt(receipt);
+        return Optional.empty();
+    }
+
+    private ApprovedGateReceipt record(ApprovedGateReceipt receipt) {
+        ApprovedGateReceipt stored = store.recordGateReceipt(receipt);
+        if (!cacheable(stored.result())) {
+            handoffReceipt = stored;
         }
-        handoffReceipt = receipt;
-        return receipt;
+        return stored;
     }
 
     private ApprovedGateReceipt receipt(GateIdentity identity, String fingerprint,

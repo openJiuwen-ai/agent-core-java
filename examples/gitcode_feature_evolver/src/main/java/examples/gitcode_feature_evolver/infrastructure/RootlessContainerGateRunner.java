@@ -181,6 +181,7 @@ public final class RootlessContainerGateRunner {
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(source);
             MavenProjectVersionResolver.ensureTargetMountpoint(source);
+            MavenProjectVersionResolver.ensureTargetMountpoint(tests);
         } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
             return new ContainerGateResult(ContainerGateResult.Outcome.BUILD_CONTRACT_FAILED,
                     1, ex.getMessage(), List.of());
@@ -358,6 +359,9 @@ public final class RootlessContainerGateRunner {
 
     private static boolean infrastructureFailure(String output) {
         return output.contains("error: crun") || output.contains("cannot connect to podman")
+                || output.contains("oci runtime error")
+                || output.contains("runc create failed")
+                || output.contains("error mounting \"tmpfs\"")
                 || output.contains("permission denied")
                 || output.contains("unable to create temporary directory /source/target/")
                 || output.contains("unable to create temporary directory /tests/target/")

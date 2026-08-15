@@ -5,8 +5,8 @@
 package examples.gitcode_feature_evolver.monitor;
 
 import examples.gitcode_feature_evolver.FeatureEvolvingConfig;
-import examples.gitcode_feature_evolver.job.FeatureAuditEvent;
 import examples.gitcode_feature_evolver.job.ApprovedGateReceipt;
+import examples.gitcode_feature_evolver.job.FeatureAuditEvent;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureJobStore;
 import examples.gitcode_feature_evolver.job.FeatureStage;
@@ -63,10 +63,21 @@ public record FeatureMonitorSnapshot(long generatedAt, ServiceView service,
         PollingView polling = pollingStatus == null ? null : PollingView.from(pollingStatus);
         List<JobView> jobs = requiredStore.listRecentJobs(JOB_LIMIT).stream()
                 .map(job -> JobView.from(job, now,
-                        requiredStore.findLatestGateReceipt(job.identity().id()))).toList();
+                        requiredStore.findLatestGateReceipt(
+                                job.identity().id(), receiptStage(job)))).toList();
         List<EventView> events = requiredStore.listRecentAuditEvents(EVENT_LIMIT).stream()
                 .map(FeatureMonitorSnapshot::eventView).toList();
         return new FeatureMonitorSnapshot(now, service, polling, jobs, events);
+    }
+
+    private static FeatureStage receiptStage(FeatureJob job) {
+        if (job.recovery().retryStage() != null) {
+            return job.recovery().retryStage();
+        }
+        if (job.progress().resumeStage() != null) {
+            return job.progress().resumeStage();
+        }
+        return job.progress().stage();
     }
 
     private static EventView eventView(FeatureAuditEvent event) {
@@ -211,7 +222,8 @@ public record FeatureMonitorSnapshot(long generatedAt, ServiceView service,
                           int transientRetries, int dependencyPrefetchRounds,
                           long nextRetryAt, String retryStage, String failureCode,
                           String failureCategory,
-                          String gateProfile, String gateFingerprint, String gateStatus,
+                          String gateStage, String gateProfile, String gateFingerprint,
+                          String gateStatus,
                           boolean gateCached, long createdAt, long updatedAt) {
         private static JobView from(FeatureJob job, long now,
                                     Optional<ApprovedGateReceipt> gate) {
@@ -235,6 +247,7 @@ public record FeatureMonitorSnapshot(long generatedAt, ServiceView service,
                     job.recovery().lastFailureCode(),
                     job.recovery().lastFailureCategory() == null ? ""
                             : job.recovery().lastFailureCategory().name(),
+                    receipt == null ? "" : receipt.stage().name(),
                     receipt == null ? "" : receipt.identity().profile(),
                     receipt == null ? "" : receipt.identity().fingerprint(),
                     receipt == null ? "" : receipt.result().status().name(),

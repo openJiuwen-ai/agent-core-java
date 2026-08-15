@@ -8,6 +8,7 @@ import examples.gitcode_feature_evolver.FeatureNaming;
 import examples.gitcode_feature_evolver.agent.FeaturePathPolicy;
 import examples.gitcode_feature_evolver.infrastructure.ContainerGateResult;
 import examples.gitcode_feature_evolver.job.FeatureJob;
+import examples.gitcode_issue_evolver.RepositoryCoordinates;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -49,36 +50,28 @@ public final class SystemTestArtifactInspector {
     private final Path worktree;
     private final FeatureJob job;
     private final String sourceRevision;
+    private final RepositoryCoordinates coordinates;
     private final List<String> configuredScopes;
     private final String artifactRoot;
 
     /**
-     * Bind validation to one owned test Worktree.
-     *
-     * @param worktree system-test repository Worktree
-     * @param job current feature job
-     * @param configuredScopes exact configured test-code/resource scopes
-     */
-    public SystemTestArtifactInspector(Path worktree, FeatureJob job,
-                                       List<String> configuredScopes) {
-        this(worktree, job, configuredScopes,
-                Objects.requireNonNull(job, "job must not be null").pullRequest().headSha());
-    }
-
-    /**
-     * Bind validation to one test Worktree and exact frozen merged-source revision.
+     * Bind validation to one test Worktree and its trusted repository identity.
      *
      * @param worktree system-test repository Worktree
      * @param job current feature job
      * @param configuredScopes exact configured test-code/resource scopes
      * @param sourceRevision frozen merged-source revision
+     * @param coordinates trusted test target, publication, and base coordinates
      */
     public SystemTestArtifactInspector(Path worktree, FeatureJob job,
-                                       List<String> configuredScopes, String sourceRevision) {
+                                       List<String> configuredScopes, String sourceRevision,
+                                       RepositoryCoordinates coordinates) {
         this.worktree = Objects.requireNonNull(worktree, "worktree must not be null")
                 .toAbsolutePath().normalize();
         this.job = Objects.requireNonNull(job, "job must not be null");
         this.sourceRevision = requireRevision(sourceRevision);
+        this.coordinates = Objects.requireNonNull(
+                coordinates, "coordinates must not be null");
         this.configuredScopes = FeaturePathPolicy.normalizeScopes(configuredScopes);
         this.artifactRoot = FeatureNaming.systemTestArtifactRoot(
                 job.identity().issue().iid(), job.identity().issue().title());
@@ -121,9 +114,7 @@ public final class SystemTestArtifactInspector {
         } else {
             REQUIRED_EVIDENCE_SECTIONS.forEach(
                     section -> requireText(evidenceText, section, errors));
-            requireText(evidenceText, job.identity().issue().url(), errors);
-            requireText(evidenceText, job.pullRequest().url(), errors);
-            requireText(evidenceText, sourceRevision, errors);
+            validateIdentity(evidenceText, errors);
             validateControllerEvidenceContract(evidenceText, errors);
         }
         Set<String> selectors = new LinkedHashSet<>();
@@ -148,6 +139,17 @@ public final class SystemTestArtifactInspector {
             errors.add("no changed executable Java system test was found");
         }
         return new Validation(errors, List.copyOf(selectors));
+    }
+
+    private void validateIdentity(String evidence, List<String> errors) {
+        requireText(evidence, job.identity().issue().url(), errors);
+        requireText(evidence, job.pullRequest().url(), errors);
+        requireText(evidence, sourceRevision, errors);
+        requireIdentityRow(evidence, "Test target repository",
+                coordinates.targetRepository(), errors);
+        requireIdentityRow(evidence, "Test publication repository",
+                coordinates.publishRepository(), errors);
+        requireIdentityRow(evidence, "Test base branch", coordinates.baseBranch(), errors);
     }
 
     /** Read a PASS or REWORK verdict from the exact review record. */
@@ -235,6 +237,16 @@ public final class SystemTestArtifactInspector {
     private static void requireText(String content, String required, List<String> errors) {
         if (required == null || required.isBlank() || !content.contains(required)) {
             errors.add("system-test.md is missing required identity/evidence: " + required);
+        }
+    }
+
+    private static void requireIdentityRow(String content, String field, String value,
+                                           List<String> errors) {
+        Pattern row = Pattern.compile("(?m)^\\s*\\|\\s*" + Pattern.quote(field)
+                + "\\s*\\|\\s*`?" + Pattern.quote(value) + "`?\\s*\\|\\s*$");
+        if (!row.matcher(content).find()) {
+            errors.add("system-test.md is missing trusted identity row: "
+                    + field + " = " + value);
         }
     }
 

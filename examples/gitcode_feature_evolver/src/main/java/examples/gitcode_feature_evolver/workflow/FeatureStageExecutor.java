@@ -16,17 +16,18 @@ import examples.gitcode_feature_evolver.infrastructure.FeatureGitPublisher;
 import examples.gitcode_feature_evolver.infrastructure.FeatureWorktreeManager;
 import examples.gitcode_feature_evolver.infrastructure.RootlessContainerGateRunner;
 import examples.gitcode_feature_evolver.infrastructure.SystemTestWorktreeManager;
-import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.ApprovedGateReceipt;
 import examples.gitcode_feature_evolver.job.FeatureExecutionException;
 import examples.gitcode_feature_evolver.job.FeatureFailure;
 import examples.gitcode_feature_evolver.job.FeatureFailureCategory;
 import examples.gitcode_feature_evolver.job.FeatureFailureEvent;
+import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureJobMutation;
 import examples.gitcode_feature_evolver.job.FeatureJobStore;
 import examples.gitcode_feature_evolver.job.FeatureStage;
 import examples.gitcode_feature_evolver.publish.FeaturePullRequestPublisher;
 import examples.gitcode_feature_evolver.publish.SystemTestPullRequestPublisher;
+import examples.gitcode_issue_evolver.RepositoryCoordinates;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -259,7 +260,8 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                 systemTestWorktrees.prepare(request.job());
         request.cancellation().check();
         SystemTestArtifactInspector inspector = new SystemTestArtifactInspector(
-                tests.path(), request.job(), config.systemTestWriteScopes(), source.revision());
+                tests.path(), request.job(), config.systemTestWriteScopes(), source.revision(),
+                config.systemTestCoordinates());
         return new SystemTestContext(request.job(), new IssueData(request.issue(), request.comments()),
                 source.path(), source.revision(), tests.path(), tests.branch(), inspector,
                 request.cancellation());
@@ -963,7 +965,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                                              AgentScope scope) {
         FeatureStageAgent.Assignment assignment = new FeatureStageAgent.Assignment(
                 context.job(), stage, ".", context.job().progress().taskAttempt() + 1,
-                scope.evidence());
+                systemTestAssignmentEvidence(context, scope.evidence()));
         context.cancellation().check();
         ApprovedGateController gate = systemTestGate(context, stage, scope);
         FeatureStageAgent.RepairExecution execution;
@@ -980,6 +982,23 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         context.cancellation().check();
         restorePolicyViolation(execution, context.testWorktree(), true);
         return invocation(context.job(), stage, execution);
+    }
+
+    private String systemTestAssignmentEvidence(SystemTestContext context, String evidence) {
+        RepositoryCoordinates coordinates = config.systemTestCoordinates();
+        String current = evidence == null || evidence.isBlank() ? "N/A" : evidence;
+        return new StringBuilder(current)
+                .append("\n\nTRUSTED SYSTEM TEST IDENTITY\n")
+                .append("feature_pr_url: ").append(context.job().pullRequest().url()).append('\n')
+                .append("merged_source_revision: ").append(context.sourceRevision()).append('\n')
+                .append("test_target_repository: ")
+                .append(coordinates.targetRepository()).append('\n')
+                .append("test_publish_repository: ")
+                .append(coordinates.publishRepository()).append('\n')
+                .append("test_base_branch: ").append(coordinates.baseBranch()).append('\n')
+                .append("Copy these exact values into system-test.md; do not infer repository ")
+                .append("identity from Issue text, source files, or prior artifacts.")
+                .toString();
     }
 
     private void restorePolicyViolation(FeatureStageAgent.RepairExecution execution,

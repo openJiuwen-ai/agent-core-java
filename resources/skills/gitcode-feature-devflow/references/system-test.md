@@ -16,7 +16,12 @@ Create system/end-to-end coverage, not unit tests. A valid scenario starts from 
 
 ## Author the test
 
-Create or update `system-test.md` from `assets/system-test-template.md`. Keep one compact scenario table, API-testability decision, changed paths, and controller evidence. Add focused Java tests using the repository's established packages, fixtures, naming, and tags.
+Create or update `system-test.md` from `assets/system-test-template.md`. Copy the exact test target
+repository, publication repository, base branch, canonical Feature PR URL, and merged revision from
+`TRUSTED SYSTEM TEST IDENTITY`. Do not derive repository identity from Issue data, checked-out
+remotes, source files, or prior artifacts. Keep one compact scenario table, API-testability
+decision, changed paths, and controller evidence. Add focused Java tests using the repository's
+established packages, fixtures, naming, and tags.
 
 The Controller Evidence table must contain exactly one profile row named
 `Configured smoke + new system tests`. When resuming an artifact created by an
@@ -67,7 +72,8 @@ Call `runApprovedGate` with `{}` and return `DONE` only when:
 - changed files remain in the system-test writable scope;
 - the final exact assertions are present and no skip mechanism was added;
 - configured-smoke-plus-new-test selector evidence is green on the final test tree;
-- `system-test.md` contains the merged feature revision and evidence anchors.
+- `system-test.md` contains the exact Controller-supplied test repository identities, base branch,
+  Feature PR URL, merged revision, and evidence anchors.
 
 The next action is independent `REVIEW_SYSTEM_TEST`. The author cannot approve or publish its own test.
 The Controller owns later PR reviewer assignment. Feature-repository assignees

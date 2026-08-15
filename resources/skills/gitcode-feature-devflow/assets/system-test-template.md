@@ -6,7 +6,9 @@
 | --- | --- |
 | Original Issue | |
 | Feature PR / merged revision | |
-| Test repository / base | |
+| Test target repository | |
+| Test publication repository | |
+| Test base branch | |
 | Job / attempt | |
 
 ## Scenario Selection

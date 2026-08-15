@@ -154,6 +154,7 @@ public final class DependencyPrefetcher {
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
             MavenProjectVersionResolver.ensureTargetMountpoint(sourceWorktree);
+            MavenProjectVersionResolver.ensureTargetMountpoint(testWorktree);
             surefireVersion = MavenPluginVersionResolver.resolve(testWorktree, SUREFIRE_PLUGIN);
             launcherVersion = MavenPluginVersionResolver.resolveJUnitPlatformLauncher(testWorktree);
         } catch (MavenProjectVersionResolver.ProjectVersionException

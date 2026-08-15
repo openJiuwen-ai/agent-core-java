@@ -8,6 +8,7 @@ import examples.gitcode_feature_evolver.FeatureNaming;
 import examples.gitcode_feature_evolver.FeatureWorkflowMode;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureStage;
+import examples.gitcode_issue_evolver.RepositoryCoordinates;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +18,8 @@ import java.util.List;
 public final class SystemTestArtifactInspectorDeterministicTest {
     private static final String HEAD = "a".repeat(40);
     private static final String MERGED_SOURCE = "c".repeat(40);
+    private static final RepositoryCoordinates COORDINATES = RepositoryCoordinates.from(
+            "openJiuwen/jiuwen-test", "antonjli/jiuwen-test-bot", "agent_core_java");
 
     private SystemTestArtifactInspectorDeterministicTest() {
     }
@@ -33,8 +36,14 @@ public final class SystemTestArtifactInspectorDeterministicTest {
         Files.createDirectories(evidence.getParent());
         Files.createDirectories(test.getParent());
         Files.writeString(evidence, "# Post-merge System Test\n\n"
-                + "## Identity\n\n" + job.identity().issue().url() + "\n\n"
-                + job.pullRequest().url() + "\n\n" + MERGED_SOURCE
+                + "## Identity\n\n| Field | Value |\n| --- | --- |\n"
+                + "| Original Issue | " + job.identity().issue().url() + " |\n"
+                + "| Feature PR / merged revision | " + job.pullRequest().url() + " / "
+                + MERGED_SOURCE + " |\n"
+                + "| Test target repository | " + COORDINATES.targetRepository() + " |\n"
+                + "| Test publication repository | "
+                + COORDINATES.publishRepository() + " |\n"
+                + "| Test base branch | " + COORDINATES.baseBranch() + " |"
                 + "\n\n## Scenario Selection\n\n| ST ID | Assertion |\n|---|---|\n"
                 + "| ST-001 | exact state |\n\n## API Testability\n\nstandalone\n\n"
                 + "## Changed Paths and Fixtures\n\nfocused test\n\n"
@@ -49,7 +58,7 @@ public final class SystemTestArtifactInspectorDeterministicTest {
                 + "final class FeatureSystemTest { @Test void endToEnd() {} }\n");
         SystemTestArtifactInspector inspector = new SystemTestArtifactInspector(
                 worktree, job, List.of("src/test/java/", "src/test/resources/"),
-                MERGED_SOURCE);
+                MERGED_SOURCE, COORDINATES);
         List<String> changed = List.of(
                 artifactRoot + "/system-test.md",
                 "src/test/java/com/openjiuwen/test/FeatureSystemTest.java");
@@ -63,6 +72,15 @@ public final class SystemTestArtifactInspectorDeterministicTest {
                         .equals(List.of("com.openjiuwen.test.SmokeTest",
                                 "com.openjiuwen.test.FeatureSystemTest")),
                 "configured smoke and new system-test selectors were not combined");
+
+        Files.writeString(evidence, Files.readString(evidence).replace(
+                COORDINATES.publishRepository(), "untrusted/example"));
+        SystemTestArtifactInspector.Validation wrongRepository = inspector.validateAuthor(changed);
+        require(!wrongRepository.valid() && wrongRepository.errors().stream().anyMatch(
+                        error -> error.contains(COORDINATES.publishRepository())),
+                "untrusted system-test publication repository bypassed identity validation");
+        Files.writeString(evidence, Files.readString(evidence).replace(
+                "untrusted/example", COORDINATES.publishRepository()));
 
         String approvedEvidence = Files.readString(evidence);
         Files.writeString(evidence, approvedEvidence.replace(

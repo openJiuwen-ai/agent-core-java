@@ -141,12 +141,16 @@ public final class ContainerAndPathPolicyDeterministicTest {
 
     private static void testSystemTestPrefetch(
             Path root, DependencyPrefetcher prefetcher, FeatureJob job,
-            List<List<String>> commands) {
+            List<List<String>> commands) throws Exception {
+        Files.deleteIfExists(root.resolve("system-tests/target"));
         DependencyPrefetcher.Result systemTest = prefetcher.prefetchSystemTest(
                 job, root.resolve("worktree"), root.resolve("system-tests"),
                 List.of("src/test/java/example/FeatureSystemTest.java"));
         require(systemTest.passed() && commands.size() == 2,
                 "system-test dependency prefetch did not run");
+        require(Files.isDirectory(root.resolve("system-tests/target"))
+                        && !Files.isSymbolicLink(root.resolve("system-tests/target")),
+                "dependency prefetch did not prepare the test target mountpoint");
         List<String> systemCommand = commands.get(1);
         String systemScript = systemCommand.get(systemCommand.size() - 1);
         require(systemCommand.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
@@ -308,8 +312,12 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(Files.isDirectory(root.resolve("worktree/target"))
                         && !Files.isSymbolicLink(root.resolve("worktree/target"))
                         && Files.getPosixFilePermissions(root.resolve("worktree/target"))
+                        .contains(PosixFilePermission.OTHERS_WRITE)
+                        && Files.isDirectory(tests.resolve("target"))
+                        && !Files.isSymbolicLink(tests.resolve("target"))
+                        && Files.getPosixFilePermissions(tests.resolve("target"))
                         .contains(PosixFilePermission.OTHERS_WRITE),
-                "Controller did not prepare the isolated target mountpoint");
+                "Controller did not prepare both isolated target mountpoints");
         List<String> command = commands.get(commands.size() - 1);
         require(command.contains("--network=none"),
                 "system-test container unexpectedly had network access");
@@ -385,6 +393,17 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(mountFailure.outcome()
                         == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
                 "Controller-owned system-test mount failure was assigned to Agent repair");
+
+        results.add(new RootlessContainerGateRunner.Execution(126,
+                "Error: OCI runtime error: runc: runc create failed: error mounting \"tmpfs\" "
+                        + "at /tests/target: read-only file system", false));
+        ContainerGateResult runtimeMountFailure = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(runtimeMountFailure.outcome()
+                        == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
+                "runc tmpfs mount failure was classified as an internal unknown failure");
 
         results.add(new RootlessContainerGateRunner.Execution(1,
                 "Picked up JAVA_TOOL_OPTIONS: bounded", false));
@@ -509,6 +528,9 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && script.contains("-Duser.home=/tmp")
                         && script.contains("maven_source_install_arguments")
                         && script.contains("--tmpfs=/workspace/target:")
+                        && script.contains("--tmpfs=/source/target:")
+                        && script.contains("--tmpfs=/tests/target:")
+                        && script.contains("fresh dual-worktree target mounts")
                         && script.contains("$offline_worktree:/workspace:ro,Z"),
                 "deployment gate cache probe was not fixed to a real deterministic JUnit test");
         require(wrapper.contains("JAVA_TOOL_OPTIONS=-Duser.home=/tmp"),

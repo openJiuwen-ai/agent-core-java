@@ -19,6 +19,7 @@ gate_stamp="/etc/gitcode-feature-evolver/deployment-gate"
 validation_worktree=""
 prefetch_worktree=""
 offline_worktree=""
+system_test_mount=""
 
 fail() {
     printf 'Error: %s\n' "$*" >&2
@@ -128,6 +129,11 @@ cleanup() {
     if [[ -n "$offline_worktree" && -d "$offline_worktree" ]]; then
         run_as_service git -C "$repository_dir" worktree remove --force \
             "$offline_worktree" || true
+    fi
+    if [[ -n "$system_test_mount"
+        && "$system_test_mount" == "$service_home"/.feature-system-test-mount.*
+        && -d "$system_test_mount" ]]; then
+        run_as_service rm -rf -- "$system_test_mount" || true
     fi
 }
 trap cleanup EXIT
@@ -255,6 +261,26 @@ run_podman_as_service "${common_container_arguments[@]}" \
     --volume="$maven_cache:/m2:O" \
     --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
     mvn "${maven_source_install_arguments[@]}"
+system_test_mount="$(run_as_service mktemp \
+    -d "$service_home/.feature-system-test-mount.XXXXXX")"
+run_as_service mkdir -p -- "$system_test_mount/target"
+run_as_service chmod 0777 "$system_test_mount/target"
+install -o "$service_account" -g "$service_group" -m 0600 \
+    /dev/null "$system_test_mount/.git"
+printf 'Validating fresh dual-worktree target mounts with networking disabled.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --mount=type=bind,src=/dev/null,dst=/source/.git,ro=true \
+    --mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true \
+    --volume="$offline_worktree:/workspace:ro,Z" \
+    --volume="$offline_worktree:/source:ro,Z" \
+    --volume="$system_test_mount:/tests:ro,Z" "$container_image" \
+    sh -eu -c 'test -w /workspace/target; test -w /source/target; test -w /tests/target'
+run_as_service rm -rf -- "$system_test_mount"
+system_test_mount=""
 run_as_service git -C "$repository_dir" worktree remove --force "$offline_worktree"
 offline_worktree=""
 

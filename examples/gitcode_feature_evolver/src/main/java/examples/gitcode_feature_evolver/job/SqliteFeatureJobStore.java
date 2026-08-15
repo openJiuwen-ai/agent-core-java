@@ -735,6 +735,25 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
     }
 
     @Override
+    public Optional<ApprovedGateReceipt> findLatestGateReceipt(String jobId,
+                                                               FeatureStage stage) {
+        String sql = "SELECT * FROM feature_gate_receipts WHERE job_id=? AND stage=? "
+                + "ORDER BY completed_at DESC,id DESC LIMIT 1";
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, requireText(jobId, "jobId"));
+            statement.setString(2, Objects.requireNonNull(
+                    stage, "stage must not be null").name());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(gateReceipt(
+                        result, result.getInt("cache_hits") > 0)) : Optional.empty();
+            }
+        } catch (SQLException ex) {
+            throw failure("Unable to read latest stage approved Gate receipt", ex);
+        }
+    }
+
+    @Override
     public void recordGateCacheHit(ApprovedGateReceipt receipt) {
         ApprovedGateReceipt required = Objects.requireNonNull(receipt, "receipt must not be null");
         String sql = "UPDATE feature_gate_receipts SET cache_hits=cache_hits+1 WHERE job_id=? "

@@ -90,6 +90,9 @@ public final class ApprovedGateControllerDeterministicTest {
         require(rejected.result().status() == ApprovedGateReceipt.Status.FAILED
                         && executions.get() == 0,
                 "invalid system-test artifact reached the expensive Gate");
+        require(store.findGateReceipt(job.identity().id(), FeatureStage.SYSTEM_TEST,
+                        identity.profile(), rejected.identity().fingerprint()).isPresent(),
+                "precondition failure was not persisted for monitoring and recovery");
         Files.writeString(artifact, "identity complete\n");
         ApprovedGateReceipt passed = controller.get();
         require(passed.result().status() == ApprovedGateReceipt.Status.PASSED
@@ -138,7 +141,9 @@ public final class ApprovedGateControllerDeterministicTest {
         ApprovedGateReceipt invalid = interrupted.get();
         require(interruptedExecutions.get() == 1 && !invalid.result().cached(),
                 "unobservable Gate result was cached during initial evaluation");
-        store.recordGateReceipt(invalid);
+        require(store.findGateReceipt(job.identity().id(), FeatureStage.IMPLEMENT_GREEN,
+                        identity.profile(), invalid.identity().fingerprint()).isPresent(),
+                "non-cacheable Gate result was not persisted for observability");
 
         AtomicInteger recoveredExecutions = new AtomicInteger();
         ApprovedGateController recovered = new ApprovedGateController(store,

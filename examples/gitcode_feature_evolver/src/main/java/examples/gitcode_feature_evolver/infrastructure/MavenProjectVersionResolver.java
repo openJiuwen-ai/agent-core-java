@@ -61,11 +61,11 @@ final class MavenProjectVersionResolver {
         }
     }
 
-    static void ensureTargetMountpoint(Path sourceWorktree) {
-        Path root = sourceWorktree.toAbsolutePath().normalize();
+    static void ensureTargetMountpoint(Path worktree) {
+        Path root = worktree.toAbsolutePath().normalize();
         Path target = root.resolve("target").normalize();
         if (!target.startsWith(root)) {
-            throw new ProjectVersionException("Frozen source target mountpoint is unsafe");
+            throw new ProjectVersionException("Maven target mountpoint is unsafe");
         }
         try {
             if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
@@ -73,14 +73,13 @@ final class MavenProjectVersionResolver {
             }
             if (!Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(target)) {
-                throw new ProjectVersionException(
-                        "Frozen source target mountpoint is unsafe");
+                throw new ProjectVersionException("Maven target mountpoint is unsafe");
             }
             Files.setPosixFilePermissions(target,
                     PosixFilePermissions.fromString("rwxrwxrwx"));
         } catch (IOException | UnsupportedOperationException ex) {
             throw new ProjectVersionException(
-                    "Frozen source target mountpoint cannot be prepared", ex);
+                    "Maven target mountpoint cannot be prepared", ex);
         }
     }
 
