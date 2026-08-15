@@ -39,6 +39,10 @@ genuine SDK gap (`REAL_SDK_REQUIRED`), or non-isolatable environment
 (`EXTERNAL_ENVIRONMENT_REQUIRED`), with `requestedInputs` and bounded evidence.
 Ordinary artifact, code, test, model-output, and dependency-cache failures belong
 to Controller repair or prefetch and are not human gates.
+The source and system-test trees may be read-only during a Gate; the Controller
+provides writable isolated build-output mounts. A failure to create files below
+those Controller-owned build paths is infrastructure evidence and must not be
+worked around by changing product or test code.
 
 ## Resolve the Current Stage
 

@@ -177,6 +177,12 @@ keys, SSH material, host configuration, or another Job. The original Gate then
 retries with `network=none`; caches are retained for 24 hours after terminal
 state and removed by a path-constrained cleaner.
 
+System-test source trees remain read-only. The Controller overlays their build
+output directories with sticky, explicitly mode-`1777` tmpfs mounts so the
+configured non-root container identity can create Maven and Surefire outputs.
+Failure to create a Controller-owned build directory is classified as
+infrastructure failure rather than test-code repair evidence.
+
 ## Local build and deterministic tests
 
 ```bash

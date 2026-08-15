@@ -151,7 +151,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
         String systemScript = systemCommand.get(systemCommand.size() - 1);
         require(systemCommand.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
                         && systemCommand.contains(
-                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
+                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777")
                         && systemCommand.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1")
                         && systemCommand.contains("--env=SUREFIRE_VERSION=3.2.3")
                         && systemCommand.contains(
@@ -159,7 +159,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && systemCommand.stream().anyMatch(value -> value.endsWith(
                         ":/tests:ro,Z"))
                         && systemCommand.contains(
-                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m")
+                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777")
                         && !systemScript.contains("help:evaluate")
                         && !systemScript.contains("test-compile")
                         && systemScript.contains("dependency:get")
@@ -321,9 +321,9 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(command.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
                         && command.stream().anyMatch(value -> value.endsWith(":/tests:ro,Z"))
                         && command.contains(
-                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
+                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777")
                         && command.contains(
-                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m"),
+                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777"),
                 "frozen source was not mounted read-only with isolated build output");
         String selectedPomMount = command.stream().filter(value -> value.endsWith(
                 ":/tests/pom.xml:ro,Z")).findFirst().orElseThrow();
@@ -373,6 +373,18 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(compilation.outcome()
                         == ContainerGateResult.Outcome.TEST_COMPILATION_FAILED,
                 "system-test compilation failure was not classified for Agent repair");
+
+        results.add(new RootlessContainerGateRunner.Execution(1,
+                "[feature-evolver:step=system-test]\n"
+                        + "java.io.IOException: Unable to create temporary directory "
+                        + "/tests/target/surefire", false));
+        ContainerGateResult mountFailure = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(mountFailure.outcome()
+                        == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
+                "Controller-owned system-test mount failure was assigned to Agent repair");
 
         results.add(new RootlessContainerGateRunner.Execution(1,
                 "Picked up JAVA_TOOL_OPTIONS: bounded", false));

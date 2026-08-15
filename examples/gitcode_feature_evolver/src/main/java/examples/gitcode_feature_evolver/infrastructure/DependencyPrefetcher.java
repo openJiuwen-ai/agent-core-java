@@ -42,6 +42,8 @@ import java.util.regex.Pattern;
  */
 public final class DependencyPrefetcher {
     private static final String SUREFIRE_PLUGIN = "maven-surefire-plugin";
+    private static final String BUILD_TMPFS_OPTIONS =
+            ":rw,noexec,nosuid,nodev,size=2048m,mode=1777";
     private static final Pattern JOB_ID = Pattern.compile("[0-9a-fA-F-]{16,64}");
     private static final int MAX_OUTPUT = 16_000;
     private static final long CLEANUP_INTERVAL_MILLIS = Duration.ofHours(1).toMillis();
@@ -215,13 +217,13 @@ public final class DependencyPrefetcher {
         command.set(mount, "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true");
         int volume = command.indexOf("--volume=" + normalized(source) + ":/workspace:rw,Z");
         command.set(volume, "--volume=" + normalized(source) + ":/source:ro,Z");
-        command.add("--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m");
+        command.add("--tmpfs=/source/target" + BUILD_TMPFS_OPTIONS);
         command.add("--env=FEATURE_SOURCE_VERSION=" + sourceVersion);
         command.add("--env=SUREFIRE_VERSION=" + surefireVersion);
         command.add("--env=JUNIT_PLATFORM_LAUNCHER_VERSION=" + launcherVersion);
         command.add("--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true");
         command.add("--volume=" + normalized(tests) + ":/tests:ro,Z");
-        command.add("--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m");
+        command.add("--tmpfs=/tests/target" + BUILD_TMPFS_OPTIONS);
         String script = "set -eu; mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
                 + "-f /source/pom.xml install; mvn -B -ntp -Dmaven.repo.local=/m2 -DskipTests "
                 + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" -f /tests/pom.xml "

@@ -44,6 +44,8 @@ public final class RootlessContainerGateRunner {
     private static final String NATIVE_LIBRARY_TMP = "/native-tmp";
     private static final String SOURCE_BUILD_TMP = "/source/target";
     private static final String SYSTEM_TEST_BUILD_TMP = "/tests/target";
+    private static final String BUILD_TMPFS_OPTIONS =
+            ":rw,noexec,nosuid,nodev,size=2048m,mode=1777";
     private static final String SOURCE_INSTALL_MARKER = "[feature-evolver:step=source-install]";
     private static final String SYSTEM_TEST_MARKER = "[feature-evolver:step=system-test]";
     private static final String BASELINE_TEST_SELECTOR =
@@ -252,8 +254,8 @@ public final class RootlessContainerGateRunner {
                 "--user=" + config.containerUser(),
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
                 "--tmpfs=" + NATIVE_LIBRARY_TMP + ":rw,exec,nosuid,nodev,size=64m",
-                "--tmpfs=" + SOURCE_BUILD_TMP + ":rw,noexec,nosuid,nodev,size=2048m",
-                "--tmpfs=" + SYSTEM_TEST_BUILD_TMP + ":rw,noexec,nosuid,nodev,size=2048m",
+                "--tmpfs=" + SOURCE_BUILD_TMP + BUILD_TMPFS_OPTIONS,
+                "--tmpfs=" + SYSTEM_TEST_BUILD_TMP + BUILD_TMPFS_OPTIONS,
                 "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
                 "--env=JAVA_TOOL_OPTIONS=" + CONTAINER_JVM_OPTIONS,
                 "--env=FEATURE_SOURCE_VERSION=" + invocation.sourceVersion(),
@@ -357,6 +359,8 @@ public final class RootlessContainerGateRunner {
     private static boolean infrastructureFailure(String output) {
         return output.contains("error: crun") || output.contains("cannot connect to podman")
                 || output.contains("permission denied")
+                || output.contains("unable to create temporary directory /source/target/")
+                || output.contains("unable to create temporary directory /tests/target/")
                 || output.contains("unable to create native thread")
                 || output.contains("unable to create new native thread")
                 || output.contains("pthread_create failed (eagain)")

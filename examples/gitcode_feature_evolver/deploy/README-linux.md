@@ -238,6 +238,11 @@ The Controller also mounts the test tree read-only and constrains Maven test
 compilation to those exact classes through an immutable generated POM overlay
 and a clean ephemeral test build directory; test execution, stale output, and
 unrelated test sources are not a hidden baseline gate.
+Both source and test `target` paths are isolated on sticky mode-`1777` tmpfs
+mounts. This mode is explicit because the rootless container runs Maven as the
+dedicated non-root UID while Podman creates tmpfs roots as container root.
+Creation failures under those Controller-owned paths are infrastructure errors,
+not Agent-correctable test failures.
 
 Runtime dependency misses use the configured
 `dependencyPrefetchCacheRoot` (`/var/lib/gitcode-feature-evolver/prefetch` in
