@@ -166,7 +166,9 @@ write exclusions even when an Issue asks for them.
 An offline dependency miss enters automatic `DEPENDENCY_PREFETCH`. The service
 copies the shared Maven cache into a Job-owned cache without hard links, then
 runs dependency resolution without `test-compile` in a credential-free
-networked container using
+networked container. It also resolves the JUnit Platform provider selected at
+runtime by the explicitly version-pinned Surefire plugin, without executing an
+online probe test. The prefetch uses
 only repositories declared by the trusted POM. It never mounts PATs, model
 keys, SSH material, host configuration, or another Job. The original Gate then
 retries with `network=none`; caches are retained for 24 hours after terminal

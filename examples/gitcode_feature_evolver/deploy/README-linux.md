@@ -243,7 +243,9 @@ Runtime dependency misses use the configured
 the supplied config). A Job-owned copy of the shared cache is populated by a
 credential-free networked container, then the original Gate is repeated with
 networking disabled. Prefetch resolves dependencies but does not run
-`test-compile`. `pom.xml` and `.mvn` changes are rejected before prefetch.
+`test-compile`; it resolves the dynamically selected JUnit Platform provider
+from the test POM's explicitly pinned Surefire version without running an
+online test. `pom.xml` and `.mvn` changes are rejected before prefetch.
 Terminal Job caches are retained for `dependencyPrefetchRetentionHours`.
 Only after the gate passes can the provision helper activate the service:
 

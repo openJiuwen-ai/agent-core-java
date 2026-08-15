@@ -37,7 +37,8 @@ There is no separate COMPILE baseline and no complete test-repository suite.
 The Controller constrains Maven test compilation to the same exact selector
 union with its own immutable POM overlay; unrelated repository test sources are
 outside the Gate. Dependency prefetch resolves declared artifacts only and
-must not compile the complete test tree.
+must not compile the complete test tree or execute an online probe test;
+dynamically selected Surefire provider artifacts are Controller concerns.
 Review and publish reuse the passing receipt while the test-code fingerprint is
 unchanged. The model cannot add Maven arguments, widen the smoke set, select a
 tag, or remove either selector group.

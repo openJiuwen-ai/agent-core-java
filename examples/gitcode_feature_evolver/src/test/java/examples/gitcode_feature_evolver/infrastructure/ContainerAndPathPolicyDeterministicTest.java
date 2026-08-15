@@ -153,8 +153,12 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && systemCommand.contains(
                         "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
                         && systemCommand.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1")
+                        && systemCommand.contains("--env=SUREFIRE_VERSION=3.2.3")
                         && !systemScript.contains("help:evaluate")
-                        && !systemScript.contains("test-compile"),
+                        && !systemScript.contains("test-compile")
+                        && systemScript.contains("dependency:get")
+                        && systemScript.contains(
+                        "org.apache.maven.surefire:surefire-junit-platform:"),
                 "system-test prefetch did not preserve the frozen-source contract");
     }
 
@@ -410,12 +414,16 @@ public final class ContainerAndPathPolicyDeterministicTest {
         Files.createDirectories(worktree);
         Files.writeString(worktree.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
                 + "<groupId>example</groupId><artifactId>system-tests</artifactId>"
-                + "<version>1</version><build><plugins><plugin>"
+                + "<version>1</version><properties><surefire.version>3.2.3</surefire.version>"
+                + "</properties><build><plugins><plugin>"
                 + "<groupId>org.apache.maven.plugins</groupId>"
                 + "<artifactId>maven-compiler-plugin</artifactId>"
                 + "<configuration><release>17</release>"
                 + "<testIncludes><testInclude>**/*.java</testInclude></testIncludes>"
                 + "</configuration>"
+                + "</plugin><plugin><groupId>org.apache.maven.plugins</groupId>"
+                + "<artifactId>maven-surefire-plugin</artifactId>"
+                + "<version>${surefire.version}</version>"
                 + "</plugin></plugins></build></project>");
     }
 

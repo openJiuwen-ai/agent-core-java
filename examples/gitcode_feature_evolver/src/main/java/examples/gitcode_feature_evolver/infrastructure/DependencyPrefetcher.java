@@ -41,6 +41,7 @@ import java.util.regex.Pattern;
  * @since 0.1.12
  */
 public final class DependencyPrefetcher {
+    private static final String SUREFIRE_PLUGIN = "maven-surefire-plugin";
     private static final Pattern JOB_ID = Pattern.compile("[0-9a-fA-F-]{16,64}");
     private static final int MAX_OUTPUT = 16_000;
     private static final long CLEANUP_INTERVAL_MILLIS = Duration.ofHours(1).toMillis();
@@ -146,15 +147,18 @@ public final class DependencyPrefetcher {
             return preparation;
         }
         String sourceVersion;
+        String surefireVersion;
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
             MavenProjectVersionResolver.ensureTargetMountpoint(sourceWorktree);
-        } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
+            surefireVersion = MavenPluginVersionResolver.resolve(testWorktree, SUREFIRE_PLUGIN);
+        } catch (MavenProjectVersionResolver.ProjectVersionException
+                 | MavenPluginVersionResolver.PluginVersionException ex) {
             return new Result(Status.BUILD_CONTRACT_INVALID, ex.getMessage());
         }
         Path cache = cacheFor(job);
         List<String> command = systemTestCommand(
-                sourceWorktree, testWorktree, cache, sourceVersion);
+                sourceWorktree, testWorktree, cache, sourceVersion, surefireVersion);
         return classify(executor.execute(command, config.dataDir(), timeout()));
     }
 
@@ -201,7 +205,7 @@ public final class DependencyPrefetcher {
     }
 
     private List<String> systemTestCommand(Path source, Path tests, Path cache,
-                                           String sourceVersion) {
+                                           String sourceVersion, String surefireVersion) {
         List<String> command = baseCommand(source, cache);
         int mount = command.indexOf("--mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true");
         command.set(mount, "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true");
@@ -209,12 +213,16 @@ public final class DependencyPrefetcher {
         command.set(volume, "--volume=" + normalized(source) + ":/source:ro,Z");
         command.add("--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m");
         command.add("--env=FEATURE_SOURCE_VERSION=" + sourceVersion);
+        command.add("--env=SUREFIRE_VERSION=" + surefireVersion);
         command.add("--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true");
         command.add("--volume=" + normalized(tests) + ":/tests:rw,Z");
         String script = "set -eu; mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
                 + "-f /source/pom.xml install; mvn -B -ntp -Dmaven.repo.local=/m2 -DskipTests "
                 + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" -f /tests/pom.xml "
-                + "dependency:go-offline";
+                + "dependency:go-offline; mvn -B -ntp -Dmaven.repo.local=/m2 "
+                + "-f /tests/pom.xml dependency:get "
+                + "-Dartifact=org.apache.maven.surefire:surefire-junit-platform:"
+                + "\"$SUREFIRE_VERSION\"";
         command.addAll(List.of("--workdir=/tests", config.containerImage(),
                 "sh", "-eu", "-c", script));
         return command;
