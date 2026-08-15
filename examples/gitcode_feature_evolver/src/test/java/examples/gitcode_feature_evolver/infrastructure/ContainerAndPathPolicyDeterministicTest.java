@@ -13,6 +13,7 @@ import examples.gitcode_issue_evolver.TriggerMode;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -260,6 +261,11 @@ public final class ContainerAndPathPolicyDeterministicTest {
                 root.resolve("worktree"), tests,
                 List.of("com.openjiuwen.test.FeatureSystemTest"));
         require(selected.passed(), "post-merge selected-test profile failed");
+        require(Files.isDirectory(root.resolve("worktree/target"))
+                        && !Files.isSymbolicLink(root.resolve("worktree/target"))
+                        && Files.getPosixFilePermissions(root.resolve("worktree/target"))
+                        .contains(PosixFilePermission.OTHERS_WRITE),
+                "Controller did not prepare the isolated target mountpoint");
         List<String> command = commands.get(commands.size() - 1);
         require(command.contains("--network=none"),
                 "system-test container unexpectedly had network access");

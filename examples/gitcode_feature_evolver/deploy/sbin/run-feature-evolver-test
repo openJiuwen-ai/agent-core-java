@@ -28,7 +28,7 @@ fail() {
 (($# == 0)) || fail "run-feature-evolver-test does not accept arguments"
 ((EUID == 0)) || fail "This command must run as root"
 
-for required_command in awk bash cp env find git id install jq mkdir mktemp podman readlink \
+for required_command in awk bash chmod cp env find git id install jq mkdir mktemp podman readlink \
     rm runuser sha256sum stat systemctl systemd-run; do
     command -v "$required_command" >/dev/null 2>&1 ||
         fail "Required command is unavailable: $required_command"
@@ -229,6 +229,11 @@ prefetch_worktree=""
 
 offline_worktree="$(new_worktree_path)"
 run_as_service git -C "$repository_dir" worktree add --detach "$offline_worktree" HEAD
+[[ ! -L "$offline_worktree/target" ]] || fail "Frozen-source target mountpoint is unsafe"
+run_as_service mkdir -p -- "$offline_worktree/target"
+[[ -d "$offline_worktree/target" && ! -L "$offline_worktree/target" ]] ||
+    fail "Frozen-source target mountpoint could not be prepared"
+run_as_service chmod 0777 "$offline_worktree/target"
 printf 'Validating the no-test Maven build with networking disabled.\n'
 run_podman_as_service "${common_container_arguments[@]}" \
     --network=none \

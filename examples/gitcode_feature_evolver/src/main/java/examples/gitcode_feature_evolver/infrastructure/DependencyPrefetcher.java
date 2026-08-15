@@ -149,6 +149,7 @@ public final class DependencyPrefetcher {
         String sourceVersion;
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
+            MavenProjectVersionResolver.ensureTargetMountpoint(sourceWorktree);
         } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
             return new Result(Status.BUILD_CONTRACT_INVALID, ex.getMessage());
         }

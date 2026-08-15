@@ -177,6 +177,7 @@ public final class RootlessContainerGateRunner {
         String sourceVersion;
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(source);
+            MavenProjectVersionResolver.ensureTargetMountpoint(source);
         } catch (MavenProjectVersionResolver.ProjectVersionException ex) {
             return new ContainerGateResult(ContainerGateResult.Outcome.BUILD_CONTRACT_FAILED,
                     1, ex.getMessage(), List.of());

@@ -15,7 +15,9 @@ import org.xml.sax.helpers.DefaultHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -56,6 +58,29 @@ final class MavenProjectVersionResolver {
             return resolved;
         } catch (IOException | ParserConfigurationException | SAXException ex) {
             throw new ProjectVersionException("Frozen source pom.xml cannot be parsed safely", ex);
+        }
+    }
+
+    static void ensureTargetMountpoint(Path sourceWorktree) {
+        Path root = sourceWorktree.toAbsolutePath().normalize();
+        Path target = root.resolve("target").normalize();
+        if (!target.startsWith(root)) {
+            throw new ProjectVersionException("Frozen source target mountpoint is unsafe");
+        }
+        try {
+            if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                Files.createDirectory(target);
+            }
+            if (!Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(target)) {
+                throw new ProjectVersionException(
+                        "Frozen source target mountpoint is unsafe");
+            }
+            Files.setPosixFilePermissions(target,
+                    PosixFilePermissions.fromString("rwxrwxrwx"));
+        } catch (IOException | UnsupportedOperationException ex) {
+            throw new ProjectVersionException(
+                    "Frozen source target mountpoint cannot be prepared", ex);
         }
     }
 
