@@ -43,6 +43,7 @@ public final class RootlessContainerGateRunner {
     private static final int MAX_TEST_SELECTOR_CHARS = 4000;
     private static final String NATIVE_LIBRARY_TMP = "/native-tmp";
     private static final String SOURCE_BUILD_TMP = "/source/target";
+    private static final String SYSTEM_TEST_BUILD_TMP = "/tests/target";
     private static final String SOURCE_INSTALL_MARKER = "[feature-evolver:step=source-install]";
     private static final String SYSTEM_TEST_MARKER = "[feature-evolver:step=system-test]";
     private static final String BASELINE_TEST_SELECTOR =
@@ -252,13 +253,14 @@ public final class RootlessContainerGateRunner {
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m",
                 "--tmpfs=" + NATIVE_LIBRARY_TMP + ":rw,exec,nosuid,nodev,size=64m",
                 "--tmpfs=" + SOURCE_BUILD_TMP + ":rw,noexec,nosuid,nodev,size=2048m",
+                "--tmpfs=" + SYSTEM_TEST_BUILD_TMP + ":rw,noexec,nosuid,nodev,size=2048m",
                 "--env=HOME=/tmp", "--env=MAVEN_CONFIG=/tmp/.m2",
                 "--env=JAVA_TOOL_OPTIONS=" + CONTAINER_JVM_OPTIONS,
                 "--env=FEATURE_SOURCE_VERSION=" + invocation.sourceVersion(),
                 "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true",
                 "--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true",
                 "--volume=" + sourceWorktree + ":/source:ro,Z",
-                "--volume=" + testWorktree + ":/tests:rw,Z",
+                "--volume=" + testWorktree + ":/tests:ro,Z",
                 "--volume=" + invocation.selectedPom() + ":/tests/pom.xml:ro,Z",
                 "--volume=" + invocation.mavenCache() + ":/m2:O",
                 "--workdir=/tests", config.containerImage(), "sh", "-eu", "-c", script);

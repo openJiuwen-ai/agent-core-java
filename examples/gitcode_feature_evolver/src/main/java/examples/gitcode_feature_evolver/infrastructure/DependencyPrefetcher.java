@@ -148,17 +148,20 @@ public final class DependencyPrefetcher {
         }
         String sourceVersion;
         String surefireVersion;
+        String launcherVersion;
         try {
             sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
             MavenProjectVersionResolver.ensureTargetMountpoint(sourceWorktree);
             surefireVersion = MavenPluginVersionResolver.resolve(testWorktree, SUREFIRE_PLUGIN);
+            launcherVersion = MavenPluginVersionResolver.resolveJUnitPlatformLauncher(testWorktree);
         } catch (MavenProjectVersionResolver.ProjectVersionException
                  | MavenPluginVersionResolver.PluginVersionException ex) {
             return new Result(Status.BUILD_CONTRACT_INVALID, ex.getMessage());
         }
         Path cache = cacheFor(job);
         List<String> command = systemTestCommand(
-                sourceWorktree, testWorktree, cache, sourceVersion, surefireVersion);
+                sourceWorktree, testWorktree, cache, sourceVersion, surefireVersion,
+                launcherVersion);
         return classify(executor.execute(command, config.dataDir(), timeout()));
     }
 
@@ -205,7 +208,8 @@ public final class DependencyPrefetcher {
     }
 
     private List<String> systemTestCommand(Path source, Path tests, Path cache,
-                                           String sourceVersion, String surefireVersion) {
+                                           String sourceVersion, String surefireVersion,
+                                           String launcherVersion) {
         List<String> command = baseCommand(source, cache);
         int mount = command.indexOf("--mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true");
         command.set(mount, "--mount=type=bind,src=/dev/null,dst=/source/.git,ro=true");
@@ -214,15 +218,20 @@ public final class DependencyPrefetcher {
         command.add("--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m");
         command.add("--env=FEATURE_SOURCE_VERSION=" + sourceVersion);
         command.add("--env=SUREFIRE_VERSION=" + surefireVersion);
+        command.add("--env=JUNIT_PLATFORM_LAUNCHER_VERSION=" + launcherVersion);
         command.add("--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true");
-        command.add("--volume=" + normalized(tests) + ":/tests:rw,Z");
+        command.add("--volume=" + normalized(tests) + ":/tests:ro,Z");
+        command.add("--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m");
         String script = "set -eu; mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
                 + "-f /source/pom.xml install; mvn -B -ntp -Dmaven.repo.local=/m2 -DskipTests "
                 + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" -f /tests/pom.xml "
                 + "dependency:go-offline; mvn -B -ntp -Dmaven.repo.local=/m2 "
                 + "-f /tests/pom.xml dependency:get "
                 + "-Dartifact=org.apache.maven.surefire:surefire-junit-platform:"
-                + "\"$SUREFIRE_VERSION\"";
+                + "\"$SUREFIRE_VERSION\" -Dtransitive=true; "
+                + "mvn -B -ntp -Dmaven.repo.local=/m2 -f /tests/pom.xml dependency:get "
+                + "-Dartifact=org.junit.platform:junit-platform-launcher:"
+                + "\"$JUNIT_PLATFORM_LAUNCHER_VERSION\" -Dtransitive=true";
         command.addAll(List.of("--workdir=/tests", config.containerImage(),
                 "sh", "-eu", "-c", script));
         return command;

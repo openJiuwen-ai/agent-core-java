@@ -34,11 +34,14 @@ Automated tests must be deterministic and isolated:
 The Controller runs exactly one selector union: a small operator-configured
 smoke set plus every new Java test class derived from this task's changed paths.
 There is no separate COMPILE baseline and no complete test-repository suite.
-The Controller constrains Maven test compilation to the same exact selector
-union with its own immutable POM overlay; unrelated repository test sources are
-outside the Gate. Dependency prefetch resolves declared artifacts only and
+The Controller mounts the test tree read-only and constrains Maven test
+compilation to the same exact selector union with its own immutable POM overlay
+and a clean ephemeral build directory; test execution, stale output, and
+unrelated repository test sources cannot alter or broaden the Gate.
+Dependency prefetch resolves declared artifacts only and
 must not compile the complete test tree or execute an online probe test;
-dynamically selected Surefire provider artifacts are Controller concerns.
+dynamically selected Surefire provider and aligned JUnit launcher artifacts are
+Controller concerns.
 Review and publish reuse the passing receipt while the test-code fingerprint is
 unchanged. The model cannot add Maven arguments, widen the smoke set, select a
 tag, or remove either selector group.

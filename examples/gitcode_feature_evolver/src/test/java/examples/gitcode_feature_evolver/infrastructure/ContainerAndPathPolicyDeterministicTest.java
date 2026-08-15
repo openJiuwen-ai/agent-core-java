@@ -154,11 +154,19 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
                         && systemCommand.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1")
                         && systemCommand.contains("--env=SUREFIRE_VERSION=3.2.3")
+                        && systemCommand.contains(
+                        "--env=JUNIT_PLATFORM_LAUNCHER_VERSION=1.10.1")
+                        && systemCommand.stream().anyMatch(value -> value.endsWith(
+                        ":/tests:ro,Z"))
+                        && systemCommand.contains(
+                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m")
                         && !systemScript.contains("help:evaluate")
                         && !systemScript.contains("test-compile")
                         && systemScript.contains("dependency:get")
                         && systemScript.contains(
-                        "org.apache.maven.surefire:surefire-junit-platform:"),
+                        "org.apache.maven.surefire:surefire-junit-platform:")
+                        && systemScript.contains(
+                        "org.junit.platform:junit-platform-launcher:"),
                 "system-test prefetch did not preserve the frozen-source contract");
     }
 
@@ -308,8 +316,11 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && command.stream().anyMatch(value -> value.contains("dst=/tests/.git")),
                 "system-test Git control files were not masked");
         require(command.stream().anyMatch(value -> value.endsWith(":/source:ro,Z"))
+                        && command.stream().anyMatch(value -> value.endsWith(":/tests:ro,Z"))
                         && command.contains(
-                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m"),
+                        "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
+                        && command.contains(
+                        "--tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m"),
                 "frozen source was not mounted read-only with isolated build output");
         String selectedPomMount = command.stream().filter(value -> value.endsWith(
                 ":/tests/pom.xml:ro,Z")).findFirst().orElseThrow();
@@ -415,7 +426,10 @@ public final class ContainerAndPathPolicyDeterministicTest {
         Files.writeString(worktree.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
                 + "<groupId>example</groupId><artifactId>system-tests</artifactId>"
                 + "<version>1</version><properties><surefire.version>3.2.3</surefire.version>"
-                + "</properties><build><plugins><plugin>"
+                + "<junit.version>5.10.1</junit.version></properties><dependencies><dependency>"
+                + "<groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>"
+                + "<version>${junit.version}</version></dependency></dependencies>"
+                + "<build><plugins><plugin>"
                 + "<groupId>org.apache.maven.plugins</groupId>"
                 + "<artifactId>maven-compiler-plugin</artifactId>"
                 + "<configuration><release>17</release>"
