@@ -32,7 +32,8 @@ public final class FeaturePullRequestPublisher {
     private static final long[] HEAD_VISIBILITY_DELAYS_MILLIS = {1000L, 2000L, 4000L, 8000L};
     private static final Set<FeatureStage> R2_PASSED_STAGES = Set.of(
             FeatureStage.IMPLEMENT_RED, FeatureStage.IMPLEMENT_GREEN,
-            FeatureStage.IMPLEMENT_REFACTOR, FeatureStage.PUBLISH_TASK, FeatureStage.REVIEW_R3,
+            FeatureStage.IMPLEMENT_REFACTOR, FeatureStage.IMPLEMENT_REWORK,
+            FeatureStage.PUBLISH_TASK, FeatureStage.REVIEW_R3,
             FeatureStage.SHIP,
             FeatureStage.READY_FOR_REVIEW, FeatureStage.SYSTEM_TEST,
             FeatureStage.REVIEW_SYSTEM_TEST, FeatureStage.PUBLISH_SYSTEM_TEST,

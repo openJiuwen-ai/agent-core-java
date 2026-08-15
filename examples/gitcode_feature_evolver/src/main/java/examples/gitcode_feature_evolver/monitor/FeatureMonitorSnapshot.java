@@ -144,6 +144,7 @@ public record FeatureMonitorSnapshot(long generatedAt, ServiceView service,
             case IMPLEMENT_RED -> "开始 RED，建立可复现的失败测试";
             case IMPLEMENT_GREEN -> "可信 RED 已捕获，开始最小实现";
             case IMPLEMENT_REFACTOR -> "GREEN 精确选定测试已通过，开始重构";
+            case IMPLEMENT_REWORK -> "R3 发现已绑定到原任务，正在自动返工";
             case PUBLISH_TASK -> "重构后测试已通过，准备提交当前任务";
             case REVIEW_R3 -> "实现任务完成，进入 R3 独立评审";
             case SHIP -> "进入最终交付与精确选定测试复验";

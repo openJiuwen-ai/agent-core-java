@@ -136,7 +136,7 @@ public final class FeatureArtifactInspector {
     /**
      * Select dynamic write scopes for one TDD phase.
      *
-     * @param stage RED, GREEN, or REFACTOR
+     * @param stage RED, GREEN, REFACTOR, or R3 REWORK
      * @return artifact plus R2-approved code scopes
      */
     public List<String> tddWriteScopes(FeatureStage stage) {

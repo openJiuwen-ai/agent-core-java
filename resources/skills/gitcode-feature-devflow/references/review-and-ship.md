@@ -42,6 +42,12 @@ repository-wide test run.
 
 Create a new suffixed review record. Verify every prior critical/important finding has a concrete Resolution and current evidence; then look for regressions. Never overwrite history. Route remaining findings to the owning author stage.
 
+For R3, the owning author stage is `IMPLEMENT_REWORK`. The Controller binds it
+to the most recently completed task, its approved write boundary, and its
+immutable exact selector union. Do not request a replacement plan task, a
+status reset, or another RED. After the bounded repair passes its TARGETED Gate
+and is published, review a new frozen commit in a new R3 record.
+
 ## SHIP
 
 SHIP starts automatically after a passing independent R3. It does not merge or deploy.

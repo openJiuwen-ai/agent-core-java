@@ -114,6 +114,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
             case IMPLEMENT_RED -> red(context);
             case IMPLEMENT_GREEN -> green(context);
             case IMPLEMENT_REFACTOR -> refactor(context);
+            case IMPLEMENT_REWORK -> rework(context);
             case PUBLISH_TASK -> publishTask(context);
             case REVIEW_R3 -> reviewR3(context);
             case SHIP -> ship(context);
@@ -617,6 +618,49 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         return invocation;
     }
 
+    private FeatureStageOutcome rework(StageContext context) {
+        List<String> scopes = context.inspector().tddWriteScopes(FeatureStage.IMPLEMENT_REWORK);
+        Optional<String> completed = context.inspector().lastDoneTaskId();
+        if (completed.isEmpty()) {
+            return failedAutomation(context.job(),
+                    "R3 rework cannot identify the completed task");
+        }
+        String taskId = completed.orElseThrow();
+        VerificationSelection verification;
+        try {
+            verification = verificationSelection(context.inspector(), taskId,
+                    FeatureArtifactInspector.TestPhase.REFACTOR);
+            verifyReworkPlanContract(context.inspector(), taskId,
+                    verification.contract(), context.inspector().allTestSelectors());
+        } catch (IllegalStateException ex) {
+            return failedAutomation(context.job(), ex.getMessage());
+        }
+        List<String> allSelectors = context.inspector().allTestSelectors();
+        AgentScope scope = AgentScope.same(scopes, context.inspector().currentEvidence());
+        AgentInvocation invocation = invoke(context, FeatureStage.IMPLEMENT_REWORK, scope);
+        if (invocation.failure().isPresent()) {
+            return invocation.failure().orElseThrow();
+        }
+        try {
+            verifyReworkPlanContract(context.inspector(), taskId,
+                    verification.contract(), allSelectors);
+        } catch (IllegalStateException ex) {
+            return failedPolicy(context,
+                    "Agent changed the Controller-bound plan contract during R3 rework: "
+                            + ex.getMessage());
+        }
+        ContainerGateResult gate = receiptResult(invocation.receipt().orElseThrow(), false);
+        context.cancellation().check();
+        if (!gate.passed()) {
+            return failedGate(context.job(), FeatureStage.IMPLEMENT_REWORK, gate,
+                    "R3 rework targeted verification did not pass");
+        }
+        context.inspector().appendEvidence("R3_REWORK " + taskId, gate, "pending");
+        return transition(context.job(), FeatureStage.PUBLISH_TASK,
+                context.job().progress().gateRound(), 0,
+                "R3 rework targeted tests passed");
+    }
+
     private FeatureStageOutcome publishTask(StageContext context) {
         Optional<String> completed = context.inspector().lastDoneTaskId();
         if (completed.isEmpty()) {
@@ -865,6 +909,18 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
 
     static String assignmentEvidence(FeatureJob job, FeatureStage stage, String evidence) {
         String current = evidence == null || evidence.isBlank() ? "N/A" : evidence;
+        if (stage == FeatureStage.IMPLEMENT_REWORK) {
+            return new StringBuilder(current)
+                    .append("\n\nTRUSTED R3 REWORK CONTRACT\n")
+                    .append("Resolve the open critical/important findings in the latest R3 review ")
+                    .append("inside the Controller-approved paths. The Controller has bound this ")
+                    .append("stage to the most recently completed task and its immutable exact ")
+                    .append("test selectors. Do not create a replacement plan task, reset its ")
+                    .append("Status, seek a second RED, or change selectors. Update the rework ")
+                    .append("evidence, call runApprovedGate with {}, and return DONE only after ")
+                    .append("the TARGETED gate passes.")
+                    .toString();
+        }
         if (stage != FeatureStage.IMPLEMENT_RED) {
             return current;
         }
@@ -1078,7 +1134,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                 case IMPLEMENT_RED -> ApprovedGateResults.container(stage,
                         container.run(RootlessContainerGateRunner.Profile.RED,
                                 context.worktree(), selectors, gateCache(context.job())), true);
-                case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, SHIP -> featureTestGate(
+                case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, IMPLEMENT_REWORK, SHIP -> featureTestGate(
                         context, stage, selectors);
                 default -> ApprovedGateResults.staticValidation(stage, List.of());
             };
@@ -1176,6 +1232,7 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                 case IMPLEMENT_GREEN -> currentSelectors(context,
                         FeatureArtifactInspector.TestPhase.GREEN);
                 case IMPLEMENT_REFACTOR -> refactorSelectors(context);
+                case IMPLEMENT_REWORK -> reworkSelectors(context.inspector());
                 case SHIP -> context.inspector().allTestSelectors();
                 default -> List.of();
             };
@@ -1201,10 +1258,32 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                 .orElse(List.of());
     }
 
-    private static String gateProfile(FeatureStage stage) {
+    static List<String> reworkSelectors(FeatureArtifactInspector inspector) {
+        return inspector.lastDoneTaskId().map(taskId -> inspector
+                .testSelectors(taskId, FeatureArtifactInspector.TestPhase.REFACTOR))
+                .orElse(List.of());
+    }
+
+    static void verifyReworkPlanContract(
+            FeatureArtifactInspector inspector, String taskId,
+            FeatureArtifactInspector.TestSelectorContract taskContract,
+            List<String> allSelectors) {
+        if (inspector.lastDoneTaskId().filter(taskId::equals).isEmpty()) {
+            throw new IllegalStateException("completed task status or ordering changed");
+        }
+        if (inspector.hasPendingTddTask()) {
+            throw new IllegalStateException("a replacement source task was introduced");
+        }
+        if (!taskContract.equals(inspector.verificationContract(taskId))
+                || !allSelectors.equals(inspector.allTestSelectors())) {
+            throw new IllegalStateException("approved exact test selectors changed");
+        }
+    }
+
+    static String gateProfile(FeatureStage stage) {
         return switch (stage) {
             case IMPLEMENT_RED -> "RED";
-            case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, SHIP -> "TARGETED";
+            case IMPLEMENT_GREEN, IMPLEMENT_REFACTOR, IMPLEMENT_REWORK, SHIP -> "TARGETED";
             default -> "STATIC";
         };
     }
@@ -1336,9 +1415,14 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
                                      int round) {
         if (verdict == FeatureArtifactInspector.Verdict.REWORK) {
             return round >= maxAutomatedRounds()
-                    ? FeatureStage.FAILED_AUTOMATION : FeatureStage.IMPLEMENT_RED;
+                    ? FeatureStage.FAILED_AUTOMATION : r3AuthorStage(verdict);
         }
         return FeatureStage.SHIP;
+    }
+
+    static FeatureStage r3AuthorStage(FeatureArtifactInspector.Verdict verdict) {
+        return verdict == FeatureArtifactInspector.Verdict.REWORK
+                ? FeatureStage.IMPLEMENT_REWORK : FeatureStage.SHIP;
     }
 
     private FeatureStageOutcome restoreRetry(FeatureJob job) {

@@ -25,6 +25,7 @@ const phaseByStage = {
     IMPLEMENT_RED: 5,
     IMPLEMENT_GREEN: 6,
     IMPLEMENT_REFACTOR: 7,
+    IMPLEMENT_REWORK: 7,
     PUBLISH_TASK: 7,
     REVIEW_R3: 8,
     SHIP: 9,

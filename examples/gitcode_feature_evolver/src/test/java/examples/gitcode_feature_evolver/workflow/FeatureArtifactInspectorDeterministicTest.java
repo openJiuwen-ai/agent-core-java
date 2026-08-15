@@ -70,6 +70,7 @@ public final class FeatureArtifactInspectorDeterministicTest {
         testSelectorValidation(inspector, root);
         write(root.resolve("plan.md"), plan());
         testCompletedTaskRecovery(inspector, root);
+        testR3ReworkContract(inspector, root);
         String review = inspector.reviewPath(FeatureStage.REVIEW_R2, 1);
         write(worktree.resolve(review), "# R2 Review\n\n## Verdict\n\nPASS\n");
         require(inspector.verdict(review) == FeatureArtifactInspector.Verdict.PASS,
@@ -144,6 +145,79 @@ public final class FeatureArtifactInspectorDeterministicTest {
                 "publication recovery did not find the sequentially completed task");
         require(inspector.nextTask().taskId().equals("T-002"),
                 "publication recovery changed the next pending task");
+    }
+
+    private static void testR3ReworkContract(FeatureArtifactInspector inspector, Path root)
+            throws Exception {
+        write(root.resolve("plan.md"), """
+                # Plan
+                ### T-001 — reviewed task
+                - Status: `done`
+                - RED: `mvn test -Dtest=example.FeatureContractTest`
+                - GREEN: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                - REFACTOR: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                ## Deferred Delivery
+                """);
+        require(FeatureStage.IMPLEMENT_REWORK.isRunnable(),
+                "R3 rework state was not runnable");
+        require(FeatureStageExecutor.r3AuthorStage(FeatureArtifactInspector.Verdict.REWORK)
+                        == FeatureStage.IMPLEMENT_REWORK,
+                "R3 REWORK was routed back through RED");
+        require(FeatureStageExecutor.r3AuthorStage(FeatureArtifactInspector.Verdict.PASS)
+                        == FeatureStage.SHIP,
+                "passing R3 did not route to SHIP");
+        require(FeatureStageExecutor.gateProfile(FeatureStage.IMPLEMENT_REWORK)
+                        .equals("TARGETED"),
+                "R3 rework did not use the targeted Gate profile");
+        require(FeatureStageExecutor.reworkSelectors(inspector).equals(List.of(
+                        "example.FeatureContractTest", "example.FeatureTest")),
+                "R3 rework did not bind the completed task's immutable selector union");
+        FeatureArtifactInspector.TestSelectorContract taskContract =
+                inspector.verificationContract("T-001");
+        List<String> allSelectors = inspector.allTestSelectors();
+        FeatureStageExecutor.verifyReworkPlanContract(
+                inspector, "T-001", taskContract, allSelectors);
+
+        write(root.resolve("plan.md"), """
+                # Plan
+                ### T-001 — reviewed task
+                - Status: `pending`
+                - RED: `mvn test -Dtest=example.FeatureContractTest`
+                - GREEN: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                - REFACTOR: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                """);
+        expectFailure(() -> FeatureStageExecutor.verifyReworkPlanContract(
+                        inspector, "T-001", taskContract, allSelectors),
+                "R3 rework accepted a reopened completed task");
+        write(root.resolve("plan.md"), """
+                # Plan
+                ### T-001 — reviewed task
+                - Status: `done`
+                - RED: `mvn test -Dtest=example.FeatureContractTest`
+                - GREEN: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                - REFACTOR: `mvn test -Dtest=example.FeatureContractTest,example.FeatureTest`
+                ### T-002 — replacement task
+                - Status: `pending`
+                - RED: `mvn test -Dtest=example.ReplacementTest`
+                - GREEN: `mvn test -Dtest=example.ReplacementTest`
+                - REFACTOR: `mvn test -Dtest=example.ReplacementTest`
+                """);
+        expectFailure(() -> FeatureStageExecutor.verifyReworkPlanContract(
+                        inspector, "T-001", taskContract, allSelectors),
+                "R3 rework accepted a replacement source task");
+
+        FeatureJob base = job();
+        FeatureJob rework = new FeatureJob(base.identity(), new FeatureJob.Progress(
+                FeatureStage.IMPLEMENT_REWORK, null, FeatureWorkflowMode.UNATTENDED, 2, 0),
+                base.pullRequests(), base.lease(), new FeatureJob.RecordMetadata(
+                2, "R3 requested rework", base.record().createdAt(),
+                base.record().updatedAt()));
+        String evidence = FeatureStageExecutor.assignmentEvidence(
+                rework, FeatureStage.IMPLEMENT_REWORK, "review evidence");
+        require(evidence.contains("most recently completed task")
+                        && evidence.contains("Do not create a replacement plan task")
+                        && evidence.contains("TARGETED gate passes"),
+                "R3 rework assignment omitted the trusted Controller contract");
     }
 
     private static void testControllerOwnedTaskStatus(

@@ -54,7 +54,8 @@ Read `references/workflow-state-machine.md` before acting. Execute exactly one a
 | `REVIEW_R1` | `references/review-and-ship.md`, `references/role-contracts.md` | independent specification review record |
 | `DESIGN` | `references/design-and-plan.md` | `design.md`, optional component draft, updated traceability and plan |
 | `REVIEW_R2` | `references/review-and-ship.md`, `references/role-contracts.md` | independent design review record |
-| `IMPLEMENT` | `references/tdd-and-quality.md`, `references/role-contracts.md`, repository `coding-standard` | one bounded TDD task and evidence updates |
+| `IMPLEMENT_RED/GREEN/REFACTOR` | `references/tdd-and-quality.md`, `references/role-contracts.md`, repository `coding-standard` | one bounded TDD task and evidence updates |
+| `IMPLEMENT_REWORK` | `references/tdd-and-quality.md`, `references/review-and-ship.md`, `references/role-contracts.md`, repository `coding-standard` | resolve the latest R3 blocking findings against the Controller-bound completed task |
 | `REVIEW_R3` | `references/review-and-ship.md`, `references/role-contracts.md`, repository `coding-standard` | independent tests/code review record |
 | `SHIP` | `references/review-and-ship.md` | DoD evidence, promotion updates, `closeout.md` |
 | `SYSTEM_TEST` | `references/system-test.md`, `references/role-contracts.md`, repository `coding-standard` | focused end-to-end test code/resources and `system-test.md` |
@@ -124,7 +125,12 @@ Delivery`, so artifact-only work never receives fabricated RED evidence.
    The Controller force-runs the same Gate after the final response, so omitting
    the Workflow cannot bypass validation.
 
-For `IMPLEMENT`, complete at most one uniquely selected task or one bounded rework item. The controller supplies real test results between RED, GREEN, and REFACTOR calls; never manufacture them. If more than one next task is equally eligible, return `BLOCKED` with the ambiguity.
+For `IMPLEMENT_RED/GREEN/REFACTOR`, complete at most one uniquely selected task.
+For `IMPLEMENT_REWORK`, resolve only the latest R3 critical/important findings
+against the completed task and immutable selectors bound by the Controller. Do
+not create a replacement task, reset its `Status`, or seek a second RED. The
+Controller supplies all real test results; never manufacture them. If more than
+one next task is equally eligible, return `BLOCKED` with the ambiguity.
 
 ## Structured Result
 

@@ -2,7 +2,11 @@
 
 ## Select one task
 
-Use `plan.md` to select the first uniquely ready non-done task, or one explicit R3 rework item. If selection is ambiguous, return `BLOCKED`. Confirm every target path is in the controller's writable set and outside the permanent denylist.
+Use `plan.md` to select the first uniquely ready non-done task. During
+`IMPLEMENT_REWORK`, use only the latest R3 critical/important findings and the
+completed task named by Controller evidence. If selection is ambiguous, return
+`BLOCKED`. Confirm every target path is in the controller's writable set and
+outside the permanent denylist.
 
 ## RED
 
@@ -54,6 +58,16 @@ With all approved tests green, review touched code for:
 Run the controller-approved exact test-class union again after any
 behavior-preserving change. If no refactor is warranted, record `REFACTOR: N/A`
 with the completed quality check; omission is not allowed.
+
+## R3 REWORK
+
+Treat an R3 finding as a bounded repair of the most recently completed task,
+not as a new RED/GREEN/REFACTOR task. Preserve its `done` status and exact
+selector contract. Do not add a replacement plan task merely to make a
+selector discoverable. Fix the reviewed code, tests, or evidence within the
+Controller-approved paths, update the rework queue and resolution evidence,
+and run the Controller-bound TARGETED Gate. A passing repair is published and
+sent to a new independent R3 review round.
 
 ## Evidence and completion
 

@@ -8,6 +8,7 @@ ADMITTED
   -> DESIGN -> REVIEW_R2
   -> IMPLEMENT_RED -> IMPLEMENT_GREEN -> IMPLEMENT_REFACTOR
   -> (controller publication checkpoint) -> (next task or REVIEW_R3)
+  -> (R3 REWORK only: IMPLEMENT_REWORK -> publication checkpoint -> REVIEW_R3)
   -> SHIP -> READY_FOR_REVIEW -> FEATURE_PR_MERGED
   -> SYSTEM_TEST -> REVIEW_SYSTEM_TEST -> PUBLISH_SYSTEM_TEST
   -> SYSTEM_TEST_READY_FOR_REVIEW -> MERGED
@@ -38,7 +39,9 @@ A `REWORK` verdict routes back to the author stage that owns the finding:
 
 - R1 -> `SPECIFY`;
 - R2 -> `DESIGN`, or `SPECIFY` only when the specification is proven wrong;
-- R3 -> `IMPLEMENT`, or an upstream stage only when the finding proves an upstream artifact wrong.
+- R3 -> `IMPLEMENT_REWORK`, bound to the most recently completed task's existing
+  writable paths and exact selector contract; an upstream stage is used only
+  when the finding proves an upstream artifact wrong.
 - System-test review -> `SYSTEM_TEST`; a proven SDK gap or non-isolatable
   environment need -> `BLOCKED_EXTERNAL`.
 
@@ -46,6 +49,12 @@ Record every finding in the review file and `plan.md` rework queue. The author
 fills the review record's Resolution field using actual Controller evidence.
 Re-review is always independent. Controller repair budgets end in
 `FAILED_AUTOMATION`; they never create an approval wait.
+
+`IMPLEMENT_REWORK` is not a second TDD cycle. Do not reopen a `done` task,
+invent a replacement task, or require another expected RED after the behavior
+has already passed GREEN. The Controller reuses the completed task's immutable
+REFACTOR selector union, forces a TARGETED Gate, publishes the bounded repair,
+and returns to a new independent R3 review round.
 
 ## Failure states
 

@@ -33,6 +33,11 @@ target test repository. It never merges or deploys.
   configuration is accepted, mapped to `unattended`, and logged as a warning.
   The two normal human waits are feature PR review/merge and system-test PR
   review/merge.
+- An R3 `REWORK` verdict enters the dedicated `IMPLEMENT_REWORK` state. The
+  controller binds that repair to the most recently completed task, preserves
+  its exact R2-approved selector contract, forces the targeted Gate, publishes
+  the bounded fix, and starts a new independent R3 round. It does not reopen
+  RED or require the Agent to invent a replacement plan task.
 - `maxPrimaryRepairRounds` defaults to 5 and keeps structured Gate feedback in
   the same ReAct conversation. `maxDiagnosticRepairRounds` defaults to 3 and
   then uses an independent diagnostic Agent. Exhaustion is terminal
