@@ -35,8 +35,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Deterministic updated-at polling, pagination, commands, and PR reconciliation checks. */
 public final class FeaturePollingDeterministicTest {
@@ -52,6 +52,7 @@ public final class FeaturePollingDeterministicTest {
         testCheckpointAndFailure();
         testAuthenticatedCommands();
         testPullRequestReconciliation();
+        testReadyBindingReconciliation();
         testPostMergeSystemTestReconciliation();
         System.out.println("FeaturePollingDeterministicTest: PASS");
     }
@@ -198,6 +199,23 @@ public final class FeaturePollingDeterministicTest {
                     "merged system-test PR did not complete the workflow");
             require(terminalCaches.get() > 0,
                     "PR reconciliation did not mark the terminal dependency cache");
+        }
+    }
+
+    private static void testReadyBindingReconciliation() throws Exception {
+        FakeGitCodeClient client = new FakeGitCodeClient();
+        client.page(1, new FeatureIssuePage(List.of(), 0));
+        try (SqliteFeatureJobStore store = new SqliteFeatureJobStore(database("ready-pr"))) {
+            FeatureJob feature = bind(store, 42, 420);
+            feature = store.transition(feature.identity().id(), feature.record().version(),
+                    FeatureJobMutation.transition(feature, FeatureStage.READY_FOR_REVIEW,
+                            "feature ready"));
+            client.pullRequests.put(420L, pullRequest(420, "open"));
+            coordinator(config(10), store, client).runOnce();
+            FeatureJob reconciled = store.findById(feature.identity().id()).orElseThrow();
+            require(reconciled.progress().stage() == FeatureStage.READY_FOR_REVIEW
+                            && !reconciled.pullRequest().draft(),
+                    "remote ready state was not reconciled into the durable PR binding");
         }
     }
 

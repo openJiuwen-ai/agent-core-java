@@ -98,10 +98,14 @@ public final class FeaturePullRequestPublisher {
             Publication publication = required.pullRequest().number() == null
                     ? createOrReconcile(required, content)
                     : updateExisting(required, content, readyForReview);
-            FeaturePullRequest visible = awaitExpectedHead(
-                    publication.pullRequest(), expectedHeadSha);
+            boolean expectedDraft = !readyForReview;
+            FeaturePullRequest visible = awaitExpectedPublication(
+                    publication.pullRequest(), expectedHeadSha, expectedDraft);
             if (!sameHead(visible, expectedHeadSha)) {
                 return Result.failure("Feature PR head does not match the verified commit", true);
+            }
+            if (visible.draft() != expectedDraft) {
+                return Result.failure("Feature PR Draft state is not yet visible", true);
             }
             boolean initialBinding = required.pullRequest().number() == null;
             notifyIfNeeded(required, visible, readyForReview, initialBinding);
@@ -206,10 +210,12 @@ public final class FeaturePullRequestPublisher {
                 && pullRequest.head().sha().equalsIgnoreCase(expected);
     }
 
-    private FeaturePullRequest awaitExpectedHead(FeaturePullRequest initial, String expected) {
+    private FeaturePullRequest awaitExpectedPublication(FeaturePullRequest initial,
+                                                        String expectedHead,
+                                                        boolean expectedDraft) {
         FeaturePullRequest current = initial;
         for (long delayMillis : HEAD_VISIBILITY_DELAYS_MILLIS) {
-            if (sameHead(current, expected)) {
+            if (sameHead(current, expectedHead) && current.draft() == expectedDraft) {
                 return current;
             }
             visibilityDelay.accept(delayMillis);

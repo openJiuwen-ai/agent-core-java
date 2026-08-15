@@ -257,7 +257,7 @@ public final class FeaturePollingCoordinator {
                 transitionReconciled(job, FeatureStage.CLOSED,
                         "Feature PR polling reconciliation");
             } else {
-                store.markPullRequestChecked(job.identity().id(), clock.millis());
+                reconcileOpenPullRequest(job, pullRequest);
                 if (!pullRequest.isOpen()) {
                     LOGGER.warn("Ignored unsupported feature PR state for PR {}", pullRequest.number());
                 }
@@ -265,6 +265,21 @@ public final class FeaturePollingCoordinator {
             reconciled++;
         }
         return reconciled;
+    }
+
+    private void reconcileOpenPullRequest(FeatureJob job, FeaturePullRequest pullRequest) {
+        long checkedAt = clock.millis();
+        boolean shouldRepairBinding = job.progress().stage() == FeatureStage.READY_FOR_REVIEW
+                && !pullRequest.draft() && job.pullRequest().draft();
+        if (!shouldRepairBinding) {
+            store.markPullRequestChecked(job.identity().id(), checkedAt);
+            return;
+        }
+        FeatureJob.PullRequest binding = new FeatureJob.PullRequest(
+                job.pullRequest().number(), job.pullRequest().url(),
+                job.pullRequest().headSha(), false, checkedAt);
+        store.recordPullRequest(job.identity().id(), job.record().version(), binding);
+        LOGGER.info("Reconciled ready state for feature PR {}", pullRequest.number());
     }
 
     private int reconcileSystemTestPullRequests() {
