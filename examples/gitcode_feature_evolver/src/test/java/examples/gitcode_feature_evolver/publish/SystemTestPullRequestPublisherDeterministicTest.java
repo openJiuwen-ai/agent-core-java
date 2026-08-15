@@ -38,7 +38,8 @@ public final class SystemTestPullRequestPublisherDeterministicTest {
                 .systemTestRepository("openJiuwen/jiuwen-test")
                 .systemTestPublishRepository("antonjli/jiuwen-test-bot")
                 .systemTestBaseBranch("agent_core_java")
-                .assignees(List.of("reviewer"))
+                .assignees(List.of("feature-reviewer"))
+                .systemTestAssignees(List.of())
                 .build();
         SystemTestPullRequestPublisher publisher = new SystemTestPullRequestPublisher(
                 config, tests, features);
@@ -51,6 +52,8 @@ public final class SystemTestPullRequestPublisherDeterministicTest {
         require(request.issueIid() == null,
                 "test-repository PR incorrectly associated the original repository Issue IID");
         require(!request.draft(), "system-test PR was unexpectedly created as Draft");
+        require(request.assignees().isEmpty(),
+                "feature-repository assignees leaked into the target test repository");
         require(request.content().body().contains("Merged Feature PR")
                         && request.content().body().contains("agent_core_java")
                         && request.content().body().contains("antonjli/jiuwen-test-bot")

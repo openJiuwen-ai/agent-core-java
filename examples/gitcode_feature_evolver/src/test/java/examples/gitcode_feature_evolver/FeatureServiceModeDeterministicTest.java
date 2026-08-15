@@ -36,6 +36,7 @@ public final class FeatureServiceModeDeterministicTest {
         testManualPollingConfig();
         testSystemTestCredentials();
         testSystemTestSmokeConfig();
+        testSystemTestAssigneeIsolation();
         testTransientPollingFailure();
         System.out.println("FeatureServiceModeDeterministicTest: PASS");
     }
@@ -144,6 +145,31 @@ public final class FeatureServiceModeDeterministicTest {
         require(invalid.readinessErrors().contains(
                         "systemTestSmokeSelectors must contain between 1 and 3 exact Java test class names"),
                 "system-test delivery accepted a model-expandable smoke selector");
+    }
+
+    private static void testSystemTestAssigneeIsolation() {
+        FeatureEvolvingConfig defaults = FeatureEvolvingConfig.builder()
+                .assignees(List.of("feature-reviewer"))
+                .build();
+        require(defaults.systemTestAssignees().isEmpty(),
+                "system-test PR inherited feature-repository assignees");
+        FeatureEvolvingConfig configured = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of(
+                        "com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"))
+                .systemTestAssignees(List.of("test-committer"))
+                .build();
+        require(configured.systemTestAssignees().equals(List.of("test-committer")),
+                "independent system-test assignees were not retained");
+        FeatureEvolvingConfig invalid = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of(
+                        "com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"))
+                .systemTestAssignees(List.of("bad account"))
+                .build();
+        require(invalid.readinessErrors().contains(
+                        "systemTestAssignees contains an invalid GitCode username"),
+                "invalid system-test assignee was accepted");
     }
 
     private static void require(boolean condition, String message) {

@@ -167,7 +167,9 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
         if (required.issueIid() != null) {
             payload.put("issue", Long.toString(required.issueIid()));
         }
-        payload.put("assignees", String.join(",", required.assignees()));
+        if (!required.assignees().isEmpty()) {
+            payload.put("assignees", String.join(",", required.assignees()));
+        }
         payload.put("draft", required.draft());
         payload.put("prune_source_branch", false);
         if (!coordinates.sameRepository()) {
@@ -422,9 +424,20 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
         return value.truncatedTo(ChronoUnit.MILLIS).toString();
     }
 
-    private static GitCodeApiException error(Response response, boolean uncertain) {
-        return new GitCodeApiException("GitCode API returned HTTP " + response.code(),
-                response.code(), uncertain);
+    private GitCodeApiException error(Response response, boolean uncertain) {
+        String message = "GitCode API returned HTTP " + response.code();
+        try {
+            String body = response.peekBody(4096).string();
+            JsonNode parsed = mapper.readTree(body);
+            String detail = text(parsed, "error_message", "message");
+            if (!detail.isBlank()) {
+                detail = detail.replaceAll("\\p{Cntrl}", " ").strip();
+                message += ": " + detail.substring(0, Math.min(detail.length(), 500));
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // The HTTP status remains authoritative when GitCode returns a malformed error body.
+        }
+        return new GitCodeApiException(message, response.code(), uncertain);
     }
 
     private static HttpUrl requireBase(URI value) {

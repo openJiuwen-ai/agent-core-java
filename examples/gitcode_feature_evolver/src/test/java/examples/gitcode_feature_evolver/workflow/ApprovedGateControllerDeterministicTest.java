@@ -56,6 +56,7 @@ public final class ApprovedGateControllerDeterministicTest {
         }
         evidenceKeepsActualTail();
         gateFailuresKeepControllerOwnership();
+        publicationRejectionKeepsConfigurationOwnership();
         System.out.println("ApprovedGateControllerDeterministicTest: PASS");
     }
 
@@ -238,6 +239,16 @@ public final class ApprovedGateControllerDeterministicTest {
                 });
         return new ApprovedGateController(store, spec,
                 Clock.fixed(Instant.parse("2026-08-14T08:00:00Z"), ZoneOffset.UTC));
+    }
+
+    private static void publicationRejectionKeepsConfigurationOwnership() {
+        var failure = FeatureStageExecutor.publicationFailure(
+                FeatureStage.PUBLISH_SYSTEM_TEST,
+                "GitCode API returned HTTP 400: The approver user must be Committer", false);
+        require(failure.category() == FeatureFailureCategory.CONFIGURATION
+                        && "PUBLICATION_REJECTED".equals(failure.code())
+                        && !failure.safeToReplay(),
+                "deterministic PR configuration rejection was classified as internal failure");
     }
 
     private static void concurrentCacheHit(ApprovedGateController controller,

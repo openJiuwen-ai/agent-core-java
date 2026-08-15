@@ -54,6 +54,10 @@ target test repository. It never merges or deploys.
   owner when that PAT is configured. If the test PAT is absent, both values
   compatibly fall back to the Feature Bot credentials. Neither login is a PR
   assignee or Git commit author.
+- `systemTestAssignees` is independent from feature-repository `assignees` and
+  defaults to empty. Add only logins that have Committer-or-higher review
+  authority in the target test repository; the service omits the optional
+  GitCode field when this list is empty.
 - A feature PR merge advances to `SYSTEM_TEST`; only a later system-test PR
   merge advances to terminal `MERGED`. Either unmerged PR closing advances to
   `CLOSED`; every merge remains human.
@@ -235,7 +239,8 @@ commit in a detached, job-owned source Worktree. Test Worktrees fetch
 `systemTestRepository/systemTestBaseBranch` into an isolated ref, publish the
 generated branch to `systemTestPublishRepository`, and create the PR against
 the target test repository. Target and publication coordinates are therefore
-kept distinct for both feature and system-test delivery.
+kept distinct for both feature and system-test delivery. Their reviewer
+assignments are also distinct: feature `assignees` never leak into a test PR.
 
 ## Production deployment
 

@@ -81,6 +81,7 @@ public final class FeatureConfigLoader {
                         workflowMode))
                 .approverLogins(strings(settings.path("approverLogins")))
                 .assignees(strings(settings.path("assignees")))
+                .systemTestAssignees(strings(settings.path("systemTestAssignees")))
                 .componentRoot(text(settings, "componentRoot", "."))
                 .targetRepository(target)
                 .publishRepository(text(settings, "publishRepository", target))

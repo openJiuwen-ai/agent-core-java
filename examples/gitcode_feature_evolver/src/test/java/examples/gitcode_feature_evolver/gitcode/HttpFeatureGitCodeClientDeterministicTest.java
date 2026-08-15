@@ -6,6 +6,7 @@ package examples.gitcode_feature_evolver.gitcode;
 
 import examples.gitcode_feature_evolver.job.FeatureScanCheckpoint;
 import examples.gitcode_issue_evolver.RepositoryCoordinates;
+import examples.gitcode_issue_evolver.gitcode.GitCodeApiException;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -36,6 +37,7 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         testPullRequestListSummary(client);
         testPullRequestPatch(client, patchBody, patchMethod);
         testForkSystemTestPullRequest(client, createBody);
+        testActionableErrorMessage();
         System.out.println("HttpFeatureGitCodeClientDeterministicTest: PASS");
     }
 
@@ -140,7 +142,7 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
         String branch = "feature-evolving/system-test-issue-77-feature";
         FeaturePullRequest pullRequest = client.createPullRequest(new CreateFeaturePullRequest(
                 null, branch, new CreateFeaturePullRequest.Content(
-                "System-test title", "System-test body"), List.of("reviewer"), false));
+                "System-test title", "System-test body"), List.of(), false));
         String body = createBody.get();
         require(body.contains("\"head\":\"antonjli:" + branch + "\""),
                 "fork-based test PR head omitted the publication owner");
@@ -150,8 +152,34 @@ public final class HttpFeatureGitCodeClientDeterministicTest {
                 "system-test PR was incorrectly associated with a test-repository Issue");
         require(body.contains("\"fork_path\":\"antonjli/jiuwen-test-bot\""),
                 "fork-based system-test PR omitted its publication repository");
+        require(!body.contains("\"assignees\""),
+                "empty optional system-test assignees were sent to GitCode");
         require(!pullRequest.draft() && pullRequest.number() == 19,
                 "created system-test PR response was not parsed");
+    }
+
+    private static void testActionableErrorMessage() {
+        OkHttpClient http = new OkHttpClient.Builder().addInterceptor(chain ->
+                new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                        .code(400).message("Bad Request")
+                        .body(ResponseBody.create("{\"error_message\":\"The approver user "
+                                        + "must be Committer or higher-level\"}",
+                                MediaType.get("application/json"))).build()).build();
+        RepositoryCoordinates coordinates = RepositoryCoordinates.from(
+                "openJiuwen/jiuwen-test", "antonjli/jiuwen-test-bot", "agent_core_java");
+        HttpFeatureGitCodeClient rejected = new HttpFeatureGitCodeClient(http,
+                URI.create("http://127.0.0.1/api/v5/"), "test-token", coordinates);
+        try {
+            rejected.createPullRequest(new CreateFeaturePullRequest(null,
+                    "feature-evolving/system-test-issue-77-feature",
+                    new CreateFeaturePullRequest.Content("title", "body"),
+                    List.of("unprivileged-reviewer"), false));
+            throw new IllegalStateException("GitCode PR rejection was unexpectedly accepted");
+        } catch (GitCodeApiException expected) {
+            require(expected.getStatusCode() == 400
+                            && expected.getMessage().contains("approver user must be Committer"),
+                    "bounded GitCode error detail was discarded");
+        }
     }
 
     private static String requestBody(okhttp3.RequestBody body) {

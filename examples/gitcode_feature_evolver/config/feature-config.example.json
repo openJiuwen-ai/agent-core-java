@@ -17,6 +17,7 @@
   "systemTestWriteScopes": ["src/test/java/", "src/test/resources/"],
   "systemTestSmokeSelectors": ["com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"],
   "assignees": ["<gitcode-reviewer-login>"],
+  "systemTestAssignees": [],
   "approverLogins": ["<gitcode-approver-login>"],
   "triggerMode": "both",
   "triggerLabel": "feature",

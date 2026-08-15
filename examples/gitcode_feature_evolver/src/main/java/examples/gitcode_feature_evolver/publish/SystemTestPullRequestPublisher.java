@@ -103,7 +103,7 @@ public final class SystemTestPullRequestPublisher {
         }
         try {
             FeaturePullRequest created = testGitCode.createPullRequest(new CreateFeaturePullRequest(
-                    null, branch, content, config.assignees(), false));
+                    null, branch, content, config.systemTestAssignees(), false));
             return new Publication(created, true);
         } catch (GitCodeApiException ex) {
             if (!ex.isUncertain()) {

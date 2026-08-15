@@ -136,6 +136,11 @@ baseline repository, `systemTestBaseBranch` is its base branch, and
 `systemTestPublishRepository` is the fork that receives generated test
 branches. The supplied values are respectively `openJiuwen/jiuwen-test`,
 `agent_core_java`, and `antonjli/jiuwen-test-bot`.
+`systemTestAssignees` defaults to an empty list and never inherits feature
+`assignees`. Populate it only with users that are Committer or higher in the
+target test repository; GitCode rejects unauthorized approvers with HTTP 400.
+With an empty list the optional PR field is omitted and reviewers can be
+assigned under the target repository's normal policy.
 
 Set `systemTestSmokeSelectors` to one to three trusted, network-independent
 smoke classes that already exist on that base branch. These exact classes are

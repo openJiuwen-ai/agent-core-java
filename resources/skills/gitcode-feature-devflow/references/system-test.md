@@ -70,3 +70,6 @@ Call `runApprovedGate` with `{}` and return `DONE` only when:
 - `system-test.md` contains the merged feature revision and evidence anchors.
 
 The next action is independent `REVIEW_SYSTEM_TEST`. The author cannot approve or publish its own test.
+The Controller owns later PR reviewer assignment. Feature-repository assignees
+must not be copied into the target test repository; only the independently
+configured test-repository assignees may be sent, and an empty list is valid.

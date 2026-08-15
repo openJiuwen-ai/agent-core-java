@@ -1368,8 +1368,8 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         return failureOutcome(job, failure);
     }
 
-    private static FeatureFailure publicationFailure(FeatureStage stage, String error,
-                                                      boolean retryable) {
+    static FeatureFailure publicationFailure(FeatureStage stage, String error,
+                                             boolean retryable) {
         String detail = safe(error);
         if (retryable) {
             return new FeatureFailure("PUBLICATION_TRANSIENT",
@@ -1379,7 +1379,8 @@ public final class FeatureStageExecutor implements FeatureStageRunner {
         String lower = detail.toLowerCase(java.util.Locale.ROOT);
         FeatureFailureCategory category = lower.contains("credential")
                 || lower.contains("authorization") || lower.contains("401")
-                || lower.contains("403") ? FeatureFailureCategory.CONFIGURATION
+                || lower.contains("403") || lower.contains("http 400")
+                || lower.contains("approver user") ? FeatureFailureCategory.CONFIGURATION
                 : lower.contains("disallowed") || lower.contains("invalid owned")
                 || lower.contains("does not match") ? FeatureFailureCategory.POLICY_VIOLATION
                 : FeatureFailureCategory.INTERNAL;

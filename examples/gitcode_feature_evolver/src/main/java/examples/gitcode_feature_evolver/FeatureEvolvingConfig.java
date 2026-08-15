@@ -161,6 +161,11 @@ public final class FeatureEvolvingConfig {
         return List.copyOf(values.assignees);
     }
 
+    /** @return optional system-test pull-request assignees in the target test repository */
+    public List<String> systemTestAssignees() {
+        return List.copyOf(values.systemTestAssignees);
+    }
+
     /** @return repository-relative component root used for DevFlow artifacts */
     public String componentRoot() {
         return values.componentRoot;
@@ -385,6 +390,7 @@ public final class FeatureEvolvingConfig {
         if (!RepositoryCoordinates.isValidBaseBranch(values.systemTestBaseBranch)) {
             errors.add("systemTestBaseBranch is invalid");
         }
+        validateOptionalAccounts(values.systemTestAssignees, "systemTestAssignees", errors);
         if (values.systemTestWriteScopes.isEmpty()
                 || values.systemTestWriteScopes.stream().anyMatch(
                 scope -> !isSafeSystemTestScope(scope))) {
@@ -416,6 +422,13 @@ public final class FeatureEvolvingConfig {
             errors.add(name + " requires at least one GitCode username");
             return;
         }
+        if (accounts.stream().anyMatch(this::isInvalidAccount)) {
+            errors.add(name + " contains an invalid GitCode username");
+        }
+    }
+
+    private void validateOptionalAccounts(List<String> accounts, String name,
+                                          List<String> errors) {
         if (accounts.stream().anyMatch(this::isInvalidAccount)) {
             errors.add(name + " contains an invalid GitCode username");
         }
@@ -641,6 +654,7 @@ public final class FeatureEvolvingConfig {
         private FeatureWorkflowMode defaultWorkflowMode = FeatureWorkflowMode.UNATTENDED;
         private List<String> approverLogins = List.of();
         private List<String> assignees = List.of();
+        private List<String> systemTestAssignees = List.of();
         private String componentRoot = ".";
         private String targetRepository = RepositoryCoordinates.DEFAULT_TARGET_REPOSITORY;
         private String publishRepository = RepositoryCoordinates.DEFAULT_TARGET_REPOSITORY;
@@ -697,6 +711,7 @@ public final class FeatureEvolvingConfig {
             this.defaultWorkflowMode = source.defaultWorkflowMode;
             this.approverLogins = List.copyOf(source.approverLogins);
             this.assignees = List.copyOf(source.assignees);
+            this.systemTestAssignees = List.copyOf(source.systemTestAssignees);
             this.componentRoot = source.componentRoot;
             this.targetRepository = source.targetRepository;
             this.publishRepository = source.publishRepository;
@@ -852,6 +867,12 @@ public final class FeatureEvolvingConfig {
         /** @param value pull-request assignees @return this builder */
         public Builder assignees(List<String> value) {
             this.assignees = copy(value);
+            return this;
+        }
+
+        /** @param value optional target-test-repository PR assignees @return this builder */
+        public Builder systemTestAssignees(List<String> value) {
+            this.systemTestAssignees = copy(value);
             return this;
         }
 
