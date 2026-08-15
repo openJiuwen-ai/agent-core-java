@@ -52,6 +52,7 @@ public final class ApprovedGateControllerDeterministicTest {
             concurrentCacheHit(controller, executions);
             preconditionDoesNotPoisonExecutionCache(store, root, job);
             nonCacheableReceiptIsEvicted(store, root, job);
+            dependencyMissingIsMemoizedOnlyWithinStage(store, root, job);
         }
         evidenceKeepsActualTail();
         gateFailuresKeepControllerOwnership();
@@ -154,6 +155,44 @@ public final class ApprovedGateControllerDeterministicTest {
         require(cached.result().status() == ApprovedGateReceipt.Status.PASSED
                         && cached.result().cached(),
                 "fresh deterministic Gate receipt was not reusable after eviction");
+    }
+
+    private static void dependencyMissingIsMemoizedOnlyWithinStage(
+            SqliteFeatureJobStore store, Path root, FeatureJob job) {
+        AtomicInteger missingExecutions = new AtomicInteger();
+        ApprovedGateController.GateIdentity identity = new ApprovedGateController.GateIdentity(
+                "DEPENDENCY_HANDOFF", List.of("example.FeatureTest"),
+                "image@sha256:" + "9".repeat(64), "");
+        ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
+                root, () -> "b".repeat(40), () -> List.of("Feature.java"));
+        ApprovedGateController missing = new ApprovedGateController(store,
+                new ApprovedGateController.GateSpec(job, FeatureStage.IMPLEMENT_GREEN,
+                        identity, state, () -> {
+                    missingExecutions.incrementAndGet();
+                    return ApprovedGateResults.container(FeatureStage.IMPLEMENT_GREEN,
+                            new ContainerGateResult(
+                                    ContainerGateResult.Outcome.DEPENDENCY_MISSING,
+                                    1, "offline dependency is missing", List.of()), false);
+                }));
+        ApprovedGateReceipt first = missing.get();
+        ApprovedGateReceipt repeated = missing.get();
+        require(first.result().status() == ApprovedGateReceipt.Status.DEPENDENCY_MISSING
+                        && !first.result().cached() && repeated.result().cached()
+                        && missingExecutions.get() == 1,
+                "unchanged dependency failure reran inside one stage session");
+
+        AtomicInteger resumedExecutions = new AtomicInteger();
+        ApprovedGateController resumed = new ApprovedGateController(store,
+                new ApprovedGateController.GateSpec(job, FeatureStage.IMPLEMENT_GREEN,
+                        identity, state, () -> {
+                    resumedExecutions.incrementAndGet();
+                    return ApprovedGateResults.staticValidation(
+                            FeatureStage.IMPLEMENT_GREEN, List.of());
+                }));
+        ApprovedGateReceipt afterPrefetch = resumed.get();
+        require(afterPrefetch.result().status() == ApprovedGateReceipt.Status.PASSED
+                        && resumedExecutions.get() == 1,
+                "stage-local dependency handoff survived into the resumed controller");
     }
 
     private static void evidenceKeepsActualTail() {

@@ -26,6 +26,7 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
     private final GateSpec spec;
     private final Clock clock;
     private final Object gateLock = new Object();
+    private ApprovedGateReceipt handoffReceipt;
 
     /** Create a production approved gate. */
     public ApprovedGateController(FeatureJobStore store, GateSpec spec) {
@@ -56,6 +57,9 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
             return receipt(identity, fingerprint, rejection.orElseThrow());
         }
         String fingerprint = fingerprint(identity, spec.worktree().changedPaths());
+        if (sameHandoff(identity, fingerprint)) {
+            return asSessionCacheHit(handoffReceipt);
+        }
         Optional<ApprovedGateReceipt> cached = store.findGateReceipt(spec.job().identity().id(),
                 spec.stage(), identity.profile(), fingerprint);
         if (cached.isPresent()) {
@@ -69,7 +73,11 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
         ApprovedGateReceipt.Result result = Objects.requireNonNull(
                 spec.evaluation().evaluator().get(), "Gate result must not be null");
         ApprovedGateReceipt receipt = receipt(identity, fingerprint, result);
-        return cacheable(result) ? store.recordGateReceipt(receipt) : receipt;
+        if (cacheable(result)) {
+            return store.recordGateReceipt(receipt);
+        }
+        handoffReceipt = receipt;
+        return receipt;
     }
 
     private ApprovedGateReceipt receipt(GateIdentity identity, String fingerprint,
@@ -98,6 +106,17 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
         }
         return result.failure().map(failure -> !"CONTAINER_GATE_UNOBSERVABLE"
                 .equals(failure.code())).orElse(false);
+    }
+
+    private boolean sameHandoff(GateIdentity identity, String fingerprint) {
+        return handoffReceipt != null
+                && handoffReceipt.identity().profile().equals(identity.profile())
+                && handoffReceipt.identity().fingerprint().equals(fingerprint);
+    }
+
+    private static ApprovedGateReceipt asSessionCacheHit(ApprovedGateReceipt receipt) {
+        return new ApprovedGateReceipt(receipt.jobId(), receipt.stage(), receipt.identity(),
+                receipt.result().asCached(), receipt.completedAt());
     }
 
     private static String selectorSummary(List<String> selectors) {
