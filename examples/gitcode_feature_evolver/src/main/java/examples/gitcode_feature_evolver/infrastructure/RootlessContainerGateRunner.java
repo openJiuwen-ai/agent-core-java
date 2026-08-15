@@ -294,6 +294,10 @@ public final class RootlessContainerGateRunner {
         if (execution.timedOut()) {
             return result(ContainerGateResult.Outcome.TIMED_OUT, execution, output, command);
         }
+        if (execution.exitCode() == 130) {
+            return result(ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
+                    execution, output, command);
+        }
         if (execution.exitCode() == 0) {
             ContainerGateResult.Outcome outcome = profile == Profile.RED
                     ? ContainerGateResult.Outcome.TEST_FAILED : ContainerGateResult.Outcome.PASSED;
@@ -419,6 +423,7 @@ public final class RootlessContainerGateRunner {
             return new Execution(125, "Unable to start rootless container process", false);
         } catch (InterruptedException ex) {
             terminate(process);
+            Thread.currentThread().interrupt();
             return new Execution(130, "Rootless container process interrupted", false);
         } finally {
             if (outputExecutor != null) {
@@ -440,6 +445,7 @@ public final class RootlessContainerGateRunner {
             }
         } catch (InterruptedException ex) {
             process.destroyForcibly();
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -467,6 +473,7 @@ public final class RootlessContainerGateRunner {
         try {
             return output.get(OUTPUT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
             return "Container output collection was interrupted";
         } catch (ExecutionException ex) {
             return "Container output could not be decoded";

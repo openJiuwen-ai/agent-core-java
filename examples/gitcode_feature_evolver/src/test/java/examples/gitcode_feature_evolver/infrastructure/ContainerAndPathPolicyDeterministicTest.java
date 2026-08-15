@@ -326,6 +326,16 @@ public final class ContainerAndPathPolicyDeterministicTest {
         require(unobservable.outcome()
                         == ContainerGateResult.Outcome.UNOBSERVABLE_FAILURE,
                 "evidence-free failure was incorrectly assigned to Agent repair");
+
+        results.add(new RootlessContainerGateRunner.Execution(130,
+                "Rootless container process interrupted", false));
+        ContainerGateResult interrupted = runner.runSystemTest(
+                RootlessContainerGateRunner.SystemTestProfile.SELECTED,
+                root.resolve("worktree"), tests,
+                List.of("com.openjiuwen.test.FeatureSystemTest"));
+        require(interrupted.outcome()
+                        == ContainerGateResult.Outcome.INFRASTRUCTURE_FAILED,
+                "interrupted system-test container was treated as a deterministic failure");
     }
 
     private static void testMavenVersionResolution(Path root) throws Exception {

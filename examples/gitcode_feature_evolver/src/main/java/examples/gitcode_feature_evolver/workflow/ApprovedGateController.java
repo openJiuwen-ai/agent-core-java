@@ -60,13 +60,16 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
                 spec.stage(), identity.profile(), fingerprint);
         if (cached.isPresent()) {
             ApprovedGateReceipt receipt = cached.orElseThrow();
-            store.recordGateCacheHit(receipt);
-            return receipt;
+            if (cacheable(receipt.result())) {
+                store.recordGateCacheHit(receipt);
+                return receipt;
+            }
+            store.discardGateReceipt(receipt);
         }
         ApprovedGateReceipt.Result result = Objects.requireNonNull(
                 spec.evaluation().evaluator().get(), "Gate result must not be null");
         ApprovedGateReceipt receipt = receipt(identity, fingerprint, result);
-        return cacheable(result.status()) ? store.recordGateReceipt(receipt) : receipt;
+        return cacheable(result) ? store.recordGateReceipt(receipt) : receipt;
     }
 
     private ApprovedGateReceipt receipt(GateIdentity identity, String fingerprint,
@@ -86,9 +89,15 @@ public final class ApprovedGateController implements Supplier<ApprovedGateReceip
                 pathSupplier.get(), identity);
     }
 
-    private static boolean cacheable(ApprovedGateReceipt.Status status) {
-        return status == ApprovedGateReceipt.Status.PASSED
-                || status == ApprovedGateReceipt.Status.FAILED;
+    private static boolean cacheable(ApprovedGateReceipt.Result result) {
+        if (result.status() == ApprovedGateReceipt.Status.PASSED) {
+            return true;
+        }
+        if (result.status() != ApprovedGateReceipt.Status.FAILED) {
+            return false;
+        }
+        return result.failure().map(failure -> !"CONTAINER_GATE_UNOBSERVABLE"
+                .equals(failure.code())).orElse(false);
     }
 
     private static String selectorSummary(List<String> selectors) {

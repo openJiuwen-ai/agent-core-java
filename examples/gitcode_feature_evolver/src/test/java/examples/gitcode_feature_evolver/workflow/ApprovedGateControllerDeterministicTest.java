@@ -51,6 +51,7 @@ public final class ApprovedGateControllerDeterministicTest {
                     "changed file input did not invalidate the Gate receipt");
             concurrentCacheHit(controller, executions);
             preconditionDoesNotPoisonExecutionCache(store, root, job);
+            nonCacheableReceiptIsEvicted(store, root, job);
         }
         evidenceKeepsActualTail();
         gateFailuresKeepControllerOwnership();
@@ -112,6 +113,47 @@ public final class ApprovedGateControllerDeterministicTest {
         } catch (java.io.IOException ex) {
             throw new IllegalStateException("Unable to read deterministic Gate artifact", ex);
         }
+    }
+
+    private static void nonCacheableReceiptIsEvicted(
+            SqliteFeatureJobStore store, Path root, FeatureJob job) {
+        AtomicInteger interruptedExecutions = new AtomicInteger();
+        ApprovedGateController.GateIdentity identity = new ApprovedGateController.GateIdentity(
+                "INTERRUPTED_GATE", List.of("example.FeatureTest"),
+                "image@sha256:" + "f".repeat(64), "");
+        ApprovedGateController.WorktreeState state = new ApprovedGateController.WorktreeState(
+                root, () -> "b".repeat(40), () -> List.of("Feature.java"));
+        ApprovedGateController interrupted = new ApprovedGateController(store,
+                new ApprovedGateController.GateSpec(job, FeatureStage.IMPLEMENT_GREEN,
+                        identity, state, () -> {
+                    interruptedExecutions.incrementAndGet();
+                    return ApprovedGateResults.container(FeatureStage.IMPLEMENT_GREEN,
+                            new ContainerGateResult(
+                                    ContainerGateResult.Outcome.UNOBSERVABLE_FAILURE,
+                                    130, "Rootless container process interrupted", List.of()),
+                            false);
+                }));
+        ApprovedGateReceipt invalid = interrupted.get();
+        require(interruptedExecutions.get() == 1 && !invalid.result().cached(),
+                "unobservable Gate result was cached during initial evaluation");
+        store.recordGateReceipt(invalid);
+
+        AtomicInteger recoveredExecutions = new AtomicInteger();
+        ApprovedGateController recovered = new ApprovedGateController(store,
+                new ApprovedGateController.GateSpec(job, FeatureStage.IMPLEMENT_GREEN,
+                        identity, state, () -> {
+                    recoveredExecutions.incrementAndGet();
+                    return ApprovedGateResults.staticValidation(
+                            FeatureStage.IMPLEMENT_GREEN, List.of());
+                }));
+        ApprovedGateReceipt fresh = recovered.get();
+        ApprovedGateReceipt cached = recovered.get();
+        require(fresh.result().status() == ApprovedGateReceipt.Status.PASSED
+                        && !fresh.result().cached() && recoveredExecutions.get() == 1,
+                "legacy non-cacheable Gate receipt prevented a fresh evaluation");
+        require(cached.result().status() == ApprovedGateReceipt.Status.PASSED
+                        && cached.result().cached(),
+                "fresh deterministic Gate receipt was not reusable after eviction");
     }
 
     private static void evidenceKeepsActualTail() {

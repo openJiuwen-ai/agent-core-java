@@ -110,6 +110,9 @@ public interface FeatureJobStore extends AutoCloseable {
     /** Persist or reconcile one deterministic Gate receipt. */
     ApprovedGateReceipt recordGateReceipt(ApprovedGateReceipt receipt);
 
+    /** Remove a legacy receipt whose result is not safe for deterministic reuse. */
+    void discardGateReceipt(ApprovedGateReceipt receipt);
+
     /** Find the most recently completed Gate receipt for one Job. */
     Optional<ApprovedGateReceipt> findLatestGateReceipt(String jobId);
 

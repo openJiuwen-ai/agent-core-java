@@ -681,6 +681,34 @@ public final class SqliteFeatureJobStore implements FeatureJobStore {
     }
 
     @Override
+    public void discardGateReceipt(ApprovedGateReceipt receipt) {
+        ApprovedGateReceipt required = Objects.requireNonNull(
+                receipt, "receipt must not be null");
+        String sql = "DELETE FROM feature_gate_receipts WHERE job_id=? AND stage=? "
+                + "AND profile=? AND input_fingerprint=?";
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            int deleted;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, required.jobId());
+                statement.setString(2, required.stage().name());
+                statement.setString(3, required.identity().profile());
+                statement.setString(4, required.identity().fingerprint());
+                deleted = statement.executeUpdate();
+            }
+            if (deleted > 0) {
+                insertAudit(connection, required.jobId(), "GATE",
+                        required.stage() + "/" + required.identity().profile()
+                                + " discarded non-cacheable receipt",
+                        Instant.ofEpochMilli(required.completedAt()));
+            }
+            connection.commit();
+        } catch (SQLException ex) {
+            throw failure("Unable to discard approved Gate receipt", ex);
+        }
+    }
+
+    @Override
     public Optional<ApprovedGateReceipt> findLatestGateReceipt(String jobId) {
         String sql = "SELECT * FROM feature_gate_receipts WHERE job_id=? "
                 + "ORDER BY completed_at DESC,id DESC LIMIT 1";
