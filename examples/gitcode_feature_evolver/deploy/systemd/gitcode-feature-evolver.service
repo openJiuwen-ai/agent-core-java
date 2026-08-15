@@ -14,6 +14,7 @@ Environment=HOME=/var/lib/gitcode-feature-evolver
 Environment=GIT_TERMINAL_PROMPT=0
 Environment=PATH=/usr/local/libexec/gitcode-feature-evolver:/usr/local/bin:/usr/bin:/bin
 
+ExecStartPre=/usr/bin/mkdir -p /run/gitcode-feature-evolver/containers
 ExecStartPre=+/usr/local/sbin/manage-feature-evolver-transcript apply-config
 ExecStartPre=/usr/bin/bash \
   /opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/scripts/run-service.sh \

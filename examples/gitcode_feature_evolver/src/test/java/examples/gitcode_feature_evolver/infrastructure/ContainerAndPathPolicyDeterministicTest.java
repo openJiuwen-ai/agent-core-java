@@ -517,6 +517,9 @@ public final class ContainerAndPathPolicyDeterministicTest {
         String script = Files.readString(helper);
         String wrapper = Files.readString(Path.of(
                 "examples/gitcode_feature_evolver/deploy/libexec/podman"));
+        String unit = Files.readString(Path.of(
+                "examples/gitcode_feature_evolver/deploy/systemd/"
+                        + "gitcode-feature-evolver.service"));
         String probe = "maven_cache_probe_arguments";
         int declaration = script.indexOf(probe);
         int onlineRun = script.indexOf(probe, declaration + probe.length());
@@ -535,6 +538,11 @@ public final class ContainerAndPathPolicyDeterministicTest {
                 "deployment gate cache probe was not fixed to a real deterministic JUnit test");
         require(wrapper.contains("JAVA_TOOL_OPTIONS=-Duser.home=/tmp"),
                 "root-owned Podman launcher did not confine the JVM home to tmpfs");
+        require(unit.contains("ExecStartPre=/usr/bin/mkdir -p "
+                        + "/run/gitcode-feature-evolver/containers")
+                        && unit.indexOf("ExecStartPre=/usr/bin/mkdir -p")
+                        < unit.indexOf("--check"),
+                "systemd readiness did not recreate Podman's volatile RunRoot");
         require(Files.isRegularFile(Path.of("src/test/java/com/openjiuwen/core/application/"
                         + "schema/ConstrainConfigValidationTest.java")),
                 "deployment gate cache probe test is unavailable");
