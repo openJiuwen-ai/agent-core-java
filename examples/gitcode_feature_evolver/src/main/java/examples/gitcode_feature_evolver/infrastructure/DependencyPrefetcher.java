@@ -134,8 +134,7 @@ public final class DependencyPrefetcher {
         Path cache = cacheFor(job);
         List<String> command = baseCommand(worktree, cache);
         command.addAll(List.of("--workdir=/workspace", config.containerImage(), "mvn", "-B",
-                "-ntp", "-Dmaven.repo.local=/m2", "-DskipTests", "dependency:go-offline",
-                "test-compile"));
+                "-ntp", "-Dmaven.repo.local=/m2", "-DskipTests", "dependency:go-offline"));
         return classify(executor.execute(command, config.dataDir(), timeout()));
     }
 
@@ -215,7 +214,7 @@ public final class DependencyPrefetcher {
         String script = "set -eu; mvn -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true "
                 + "-f /source/pom.xml install; mvn -B -ntp -Dmaven.repo.local=/m2 -DskipTests "
                 + "-Dagent-core-java.version=\"$FEATURE_SOURCE_VERSION\" -f /tests/pom.xml "
-                + "dependency:go-offline test-compile";
+                + "dependency:go-offline";
         command.addAll(List.of("--workdir=/tests", config.containerImage(),
                 "sh", "-eu", "-c", script));
         return command;
@@ -377,13 +376,30 @@ public final class DependencyPrefetcher {
         if (execution.exitCode() == 0) {
             return new Result(Status.PASSED, "Dependency prefetch completed");
         }
+        if (execution.exitCode() == 124 || execution.exitCode() == 125
+                || execution.exitCode() == 130) {
+            return new Result(Status.TRANSIENT, "Dependency prefetch infrastructure failed");
+        }
         String lower = execution.output().toLowerCase(Locale.ROOT);
+        if (transientNetworkFailure(lower)) {
+            return new Result(Status.TRANSIENT, "Dependency repository access failed transiently");
+        }
         if (lower.contains("could not resolve") || lower.contains("failure to find")
                 || lower.contains("could not find artifact")) {
             return new Result(Status.DEPENDENCY_UNAVAILABLE,
                     "A declared dependency is unavailable from trusted POM repositories");
         }
-        return new Result(Status.TRANSIENT, "Dependency prefetch infrastructure failed");
+        return new Result(Status.BUILD_CONTRACT_INVALID,
+                "Trusted source or system-test build contract failed during dependency prefetch");
+    }
+
+    private static boolean transientNetworkFailure(String output) {
+        return output.contains("connection timed out") || output.contains("connect timed out")
+                || output.contains("read timed out") || output.contains("connection reset")
+                || output.contains("unknown host")
+                || output.contains("temporary failure in name resolution")
+                || output.contains("status code: 429")
+                || output.matches("(?s).*status code: 5[0-9][0-9].*");
     }
 
     private static boolean buildContractChanged(List<String> paths) {

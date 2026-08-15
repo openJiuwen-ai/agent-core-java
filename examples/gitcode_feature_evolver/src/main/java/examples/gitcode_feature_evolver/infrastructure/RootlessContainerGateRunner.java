@@ -182,9 +182,18 @@ public final class RootlessContainerGateRunner {
             return new ContainerGateResult(ContainerGateResult.Outcome.BUILD_CONTRACT_FAILED,
                     1, ex.getMessage(), List.of());
         }
-        String selectors = selectors(required, testSelectors);
+        List<String> exact = exactSelectors(testSelectors);
+        String selectors = String.join(",", exact);
+        Path selectedPom;
+        try {
+            selectedPom = SelectedSystemTestPom.create(config.dataDir(), tests, exact);
+        } catch (SelectedSystemTestPom.SelectedPomException ex) {
+            return new ContainerGateResult(ContainerGateResult.Outcome.BUILD_CONTRACT_FAILED,
+                    1, ex.getMessage(), List.of());
+        }
         List<String> command = systemTestCommand(required, source, tests,
-                new SystemTestInvocation(selectors, sourceVersion, normalizedCache(mavenCache)));
+                new SystemTestInvocation(selectors, sourceVersion, normalizedCache(mavenCache),
+                        selectedPom));
         Execution execution = executor.execute(command, config.dataDir(),
                 Duration.ofMinutes(config.containerTimeoutMinutes()));
         return classify(Profile.TARGETED, command, execution);
@@ -217,8 +226,11 @@ public final class RootlessContainerGateRunner {
     List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
                                    Path testWorktree, String selectors) {
         String sourceVersion = MavenProjectVersionResolver.resolve(sourceWorktree);
+        List<String> exact = exactSelectors(List.of(selectors.split(",")));
+        Path selectedPom = SelectedSystemTestPom.create(config.dataDir(), testWorktree, exact);
         return systemTestCommand(profile, sourceWorktree, testWorktree,
-                new SystemTestInvocation(selectors, sourceVersion, config.containerMavenCache()));
+                new SystemTestInvocation(String.join(",", exact), sourceVersion,
+                        config.containerMavenCache(), selectedPom));
     }
 
     private List<String> systemTestCommand(SystemTestProfile profile, Path sourceWorktree,
@@ -247,6 +259,7 @@ public final class RootlessContainerGateRunner {
                 "--mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true",
                 "--volume=" + sourceWorktree + ":/source:ro,Z",
                 "--volume=" + testWorktree + ":/tests:rw,Z",
+                "--volume=" + invocation.selectedPom() + ":/tests/pom.xml:ro,Z",
                 "--volume=" + invocation.mavenCache() + ":/m2:O",
                 "--workdir=/tests", config.containerImage(), "sh", "-eu", "-c", script);
     }
@@ -262,10 +275,6 @@ public final class RootlessContainerGateRunner {
     private static Path normalizedCache(Path path) {
         return normalizedDirectory(path).orElseThrow(
                 () -> new IllegalArgumentException("Maven dependency cache is unavailable"));
-    }
-
-    private static String selectors(SystemTestProfile profile, List<String> supplied) {
-        return String.join(",", exactSelectors(supplied));
     }
 
     private static List<String> exactSelectors(List<String> supplied) {
@@ -538,12 +547,14 @@ public final class RootlessContainerGateRunner {
     }
 
     private record SystemTestInvocation(String selectors, String sourceVersion,
-                                        Path mavenCache) {
+                                        Path mavenCache, Path selectedPom) {
         private SystemTestInvocation {
             selectors = Objects.requireNonNull(selectors, "selectors must not be null");
             sourceVersion = Objects.requireNonNull(
                     sourceVersion, "source version must not be null");
             mavenCache = normalizedCache(mavenCache);
+            selectedPom = Objects.requireNonNull(
+                    selectedPom, "selected POM must not be null").toAbsolutePath().normalize();
         }
     }
 }

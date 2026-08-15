@@ -234,12 +234,16 @@ The runtime uses the same fixed light baseline before RED, then runs only exact
 Java test classes from the R2-approved plan for RED/GREEN/REFACTOR/SHIP. It does
 not run or claim the main repository's complete Maven suite. The System Test
 stage runs only configured smoke classes plus newly added test classes.
+The Controller also constrains Maven test compilation to those exact classes
+through an immutable generated POM overlay; unrelated test sources are not a
+hidden baseline gate.
 
 Runtime dependency misses use the configured
 `dependencyPrefetchCacheRoot` (`/var/lib/gitcode-feature-evolver/prefetch` in
 the supplied config). A Job-owned copy of the shared cache is populated by a
 credential-free networked container, then the original Gate is repeated with
-networking disabled. `pom.xml` and `.mvn` changes are rejected before prefetch.
+networking disabled. Prefetch resolves dependencies but does not run
+`test-compile`. `pom.xml` and `.mvn` changes are rejected before prefetch.
 Terminal Job caches are retained for `dependencyPrefetchRetentionHours`.
 Only after the gate passes can the provision helper activate the service:
 

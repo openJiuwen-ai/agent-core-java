@@ -85,7 +85,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         "--tmpfs=/native-tmp:rw,exec,nosuid,nodev,size=64m")
                         && command.contains("-DskipTests")
                         && command.contains("dependency:go-offline")
-                        && command.contains("test-compile"),
+                        && !command.contains("test-compile"),
                 "dependency prefetch did not use the fixed no-test network profile");
         require(command.stream().noneMatch(value -> value.toLowerCase(Locale.ROOT)
                         .contains("token"))
@@ -104,11 +104,39 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && Files.isRegularFile(prefetcher.cacheFor(job).resolve("shared-marker")),
                 "prefetch modified or failed to clone the shared cache");
         testSystemTestPrefetch(root, prefetcher, job, commands);
+        testPrefetchFailureClassification(config, root);
         DependencyPrefetcher.Result policy = prefetcher.prefetchFeature(
                 job, root.resolve("worktree"), List.of("pom.xml"));
         require(policy.status() == DependencyPrefetcher.Status.POLICY_VIOLATION
                         && commands.size() == 2,
                 "modified Maven build contract reached the networked prefetch container");
+    }
+
+    private static void testPrefetchFailureClassification(
+            FeatureEvolvingConfig config, Path root) {
+        DependencyPrefetcher compilation = new DependencyPrefetcher(config,
+                (command, directory, timeout) -> new DependencyPrefetcher.Execution(
+                        1, "COMPILATION ERROR from maven-compiler-plugin"));
+        DependencyPrefetcher.Result invalid = compilation.prefetchFeature(
+                featureJob(), root.resolve("worktree"), List.of());
+        require(invalid.status() == DependencyPrefetcher.Status.BUILD_CONTRACT_INVALID,
+                "deterministic prefetch build failure was treated as transient infrastructure");
+
+        DependencyPrefetcher interrupted = new DependencyPrefetcher(config,
+                (command, directory, timeout) -> new DependencyPrefetcher.Execution(
+                        130, "Dependency prefetch was interrupted"));
+        DependencyPrefetcher.Result transientFailure = interrupted.prefetchFeature(
+                featureJob(), root.resolve("worktree"), List.of());
+        require(transientFailure.status() == DependencyPrefetcher.Status.TRANSIENT,
+                "interrupted prefetch was treated as a deterministic build failure");
+
+        DependencyPrefetcher network = new DependencyPrefetcher(config,
+                (command, directory, timeout) -> new DependencyPrefetcher.Execution(
+                        1, "Could not transfer artifact: Read timed out"));
+        DependencyPrefetcher.Result networkFailure = network.prefetchFeature(
+                featureJob(), root.resolve("worktree"), List.of());
+        require(networkFailure.status() == DependencyPrefetcher.Status.TRANSIENT,
+                "repository timeout was treated as a deterministic build failure");
     }
 
     private static void testSystemTestPrefetch(
@@ -125,7 +153,8 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && systemCommand.contains(
                         "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m")
                         && systemCommand.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1")
-                        && !systemScript.contains("help:evaluate"),
+                        && !systemScript.contains("help:evaluate")
+                        && !systemScript.contains("test-compile"),
                 "system-test prefetch did not preserve the frozen-source contract");
     }
 
@@ -254,7 +283,7 @@ public final class ContainerAndPathPolicyDeterministicTest {
             Deque<RootlessContainerGateRunner.Execution> results,
             List<List<String>> commands) throws Exception {
         Path tests = root.resolve("system-tests");
-        Files.createDirectories(tests);
+        writeSystemTestPom(tests);
         results.add(new RootlessContainerGateRunner.Execution(0, "selected tests passed", false));
         ContainerGateResult selected = runner.runSystemTest(
                 RootlessContainerGateRunner.SystemTestProfile.SELECTED,
@@ -278,6 +307,16 @@ public final class ContainerAndPathPolicyDeterministicTest {
                         && command.contains(
                         "--tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m"),
                 "frozen source was not mounted read-only with isolated build output");
+        String selectedPomMount = command.stream().filter(value -> value.endsWith(
+                ":/tests/pom.xml:ro,Z")).findFirst().orElseThrow();
+        Path selectedPom = Path.of(selectedPomMount.substring("--volume=".length(),
+                selectedPomMount.indexOf(":/tests/pom.xml:ro,Z")));
+        String selectedPomText = Files.readString(selectedPom);
+        require(selectedPomText.contains(
+                        "com/openjiuwen/test/FeatureSystemTest.java")
+                        && !selectedPomText.contains("**/*.java")
+                        && Files.readString(tests.resolve("pom.xml")).contains("**/*.java"),
+                "system-test Gate did not isolate approved compiler roots");
         require(command.contains("--env=FEATURE_SOURCE_VERSION=0.1.14.post1"),
                 "system-test command did not use the Controller-resolved source version");
         String script = command.get(command.size() - 1);
@@ -365,6 +404,19 @@ public final class ContainerAndPathPolicyDeterministicTest {
         Files.writeString(worktree.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
                 + "<groupId>example</groupId><artifactId>feature</artifactId><version>"
                 + version + "</version></project>");
+    }
+
+    private static void writeSystemTestPom(Path worktree) throws Exception {
+        Files.createDirectories(worktree);
+        Files.writeString(worktree.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
+                + "<groupId>example</groupId><artifactId>system-tests</artifactId>"
+                + "<version>1</version><build><plugins><plugin>"
+                + "<groupId>org.apache.maven.plugins</groupId>"
+                + "<artifactId>maven-compiler-plugin</artifactId>"
+                + "<configuration><release>17</release>"
+                + "<testIncludes><testInclude>**/*.java</testInclude></testIncludes>"
+                + "</configuration>"
+                + "</plugin></plugins></build></project>");
     }
 
     private static void testTargetRepositoryFetch(FeatureEvolvingConfig source) {

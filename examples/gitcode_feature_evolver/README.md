@@ -149,6 +149,9 @@ The post-merge profile installs the merged main artifact with
 `maven.test.skip=true` and runs one exact selector union: the configured small
 smoke set plus the Controller-derived new test classes. It has no separate
 COMPILE baseline and does not run the main or test repository's complete suite.
+The Controller mounts an immutable, generated POM overlay that restricts the
+Maven compiler roots to that same selector union, so unrelated test sources are
+not compiled as an accidental repository-wide gate.
 Review and publish reuse the passing receipt unless test code, selectors,
 image digest, or frozen feature revision changes. Tests using external network, credentials,
 `@Disabled`, JUnit assumptions, or sleep-based synchronization are rejected;
@@ -162,7 +165,8 @@ write exclusions even when an Issue asks for them.
 
 An offline dependency miss enters automatic `DEPENDENCY_PREFETCH`. The service
 copies the shared Maven cache into a Job-owned cache without hard links, then
-runs a fixed no-test lifecycle in a credential-free networked container using
+runs dependency resolution without `test-compile` in a credential-free
+networked container using
 only repositories declared by the trusted POM. It never mounts PATs, model
 keys, SSH material, host configuration, or another Job. The original Gate then
 retries with `network=none`; caches are retained for 24 hours after terminal
