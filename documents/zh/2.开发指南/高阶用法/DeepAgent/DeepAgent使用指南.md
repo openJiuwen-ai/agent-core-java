@@ -81,7 +81,7 @@ DeepAgent 的 `stream()`（含开启 task loop 时的 `streamTaskLoop`）将每�
 
 | 项 | 说明 |
 | --- | --- |
-| 默认 max | `max(16, CPU 核数 × 4)`（I/O 型 workload，随 CPU 缩放） |
+| 默认 max | `max(32, CPU 核数 × 8)`（I/O 型 workload，随 CPU 缩放） |
 | 默认 queue | `128` |
 | 覆盖方式 | `-Dopenjiuwen.executor.deep-agent-stream.max-size=N` 或环境变量 `OPENJIUWEN_EXECUTOR_DEEP_AGENT_STREAM_MAX_SIZE` |
 | 读取顺序 | **JVM 系统属性优先**，环境变量兜底；池创建时读取，不支持热更新 |
