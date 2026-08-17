@@ -479,6 +479,11 @@ class ReActAgentTest {
                     .execute(any(AgentCallbackContext.class), any(), any(Session.class), isNull()))
                     .thenReturn(List.of(
                             new AbilityManager.ToolExecutionEntry("30.0", new ToolMessage("30.0", "call-log"))));
+            when(testAgent.getAbilityManager()
+                    .executeStream(any(AgentCallbackContext.class), any(), any(Session.class), isNull(),
+                            any(AgentSessionApi.class)))
+                    .thenReturn(List.of(
+                            new AbilityManager.ToolExecutionEntry("30.0", new ToolMessage("30.0", "call-log"))));
             testAgent.setLlm(model);
             AgentSessionApi session =
                     new AgentSessionApi("react-stream-log-session", null, testAgent.getCard(),

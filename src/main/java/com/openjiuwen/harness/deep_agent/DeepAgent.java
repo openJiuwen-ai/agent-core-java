@@ -1776,6 +1776,16 @@ public class DeepAgent implements AutoCloseable {
             AgentSessionApi session) {
         AgentSessionApi innerSession = new AgentSessionApi(String.valueOf(effectiveInputs.get("conversation_id")),
                 session != null ? session.getEnvs() : null, card, List.of(StreamMode.OUTPUT));
+        // 复用上游（CoreTaskLoopEventExecutor.buildEffectiveInputs L236）注入到 effectiveInputs
+        // 的 task_id，不在此重新生成。该值最终源自 DeepAgent.executeCoreLoopRound L1643
+        // 的 "deep_agent_task_<sessionId>_<handlerRound>"。stream 路径若由用户直接调
+        // DeepAgent.stream 测试（effectiveInputs 无 task_id），则 taskId 为 null，
+        // AbilityManager 会在 tool_output.payload.task_id 写空字符串。
+        Object taskIdRaw = effectiveInputs.get("task_id");
+        String taskId = taskIdRaw == null ? null : String.valueOf(taskIdRaw);
+        if (taskId != null) {
+            innerSession.updateState(java.util.Map.of("task_id", taskId));
+        }
         // 传播租户上下文到 inner session
         TenantContext ctx = session != null ? session.getTenantContext() : null;
         if (ctx != null && ctx.isTenantAware()) {
@@ -1783,6 +1793,10 @@ public class DeepAgent implements AutoCloseable {
         }
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
+        // copySessionState 可能覆盖 inner session state，重新注入 task_id 以确保下游可见
+        if (taskId != null) {
+            innerSession.updateState(java.util.Map.of("task_id", taskId));
+        }
         // task-loop 独立线程需重新绑定租户上下文
         if (ctx != null && ctx.isTenantAware()) {
             TenantContextHolder.setCurrentTenant(ctx);
