@@ -171,19 +171,26 @@ public class QueryRewriter {
      */
     public String loadTemplate(String promptBase) {
         String cacheKey = promptBase + "_" + promptLang;
-        return templateCache.computeIfAbsent(cacheKey, key -> {
-            String resource = "/com/openjiuwen/core/retrieval/query_rewriter/prompts/" + key + ".md";
-            try (InputStream input = QueryRewriter.class.getResourceAsStream(resource)) {
-                if (input == null) {
-                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
-                            "prompt file not found: " + resource);
-                }
-                return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException ex) {
+        String cached = templateCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        // Read the template resource OUTSIDE the map lock: classpath I/O inside
+        // computeIfAbsent would serialize concurrent first loads of the same template.
+        String resource = "/com/openjiuwen/core/retrieval/query_rewriter/prompts/" + cacheKey + ".md";
+        String loaded;
+        try (InputStream input = QueryRewriter.class.getResourceAsStream(resource)) {
+            if (input == null) {
                 throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
-                        "prompt file read failed: " + resource);
+                        "prompt file not found: " + resource);
             }
-        });
+            loaded = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
+                    "prompt file read failed: " + resource);
+        }
+        String previous = templateCache.putIfAbsent(cacheKey, loaded);
+        return previous != null ? previous : loaded;
     }
 
     /**

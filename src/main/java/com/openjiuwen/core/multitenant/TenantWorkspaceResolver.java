@@ -149,22 +149,30 @@ public class TenantWorkspaceResolver {
         if (!ctx.isTenantAware()) {
             return Path.of(baseWorkspacePath).toAbsolutePath().normalize();
         }
-        return initializedTenants.computeIfAbsent(ctx.safeTenantId(), tid -> {
-            Path tenantRoot = resolveTenantRoot(ctx);
-            try {
-                Files.createDirectories(tenantRoot);
-                Files.createDirectories(tenantRoot.resolve("skills"));
-                Files.createDirectories(tenantRoot.resolve("tmp"));
-                Files.createDirectories(tenantRoot.resolve("checkpoints"));
-                Files.createDirectories(tenantRoot.resolve("team_memory"));
-                Files.createDirectories(tenantRoot.resolve("todo"));
-                Files.createDirectories(tenantRoot.resolve(".overlay"));
-            } catch (IOException e) {
-                throw new FrameworkError(StatusCode.ERROR,
-                    "Failed to initialize tenant space: " + tid, null, e, null);
-            }
-            return tenantRoot;
-        });
+        String tid = ctx.safeTenantId();
+        Path cached = initializedTenants.get(tid);
+        if (cached != null) {
+            return cached;
+        }
+        // Two-phase init: create the on-disk structure OUTSIDE the map lock so that
+        // concurrent tenant initializations never serialize on disk I/O inside the
+        // ConcurrentHashMap bin lock. createDirectories is idempotent, so duplicate
+        // concurrent initialization is safe.
+        Path tenantRoot = resolveTenantRoot(ctx);
+        try {
+            Files.createDirectories(tenantRoot);
+            Files.createDirectories(tenantRoot.resolve("skills"));
+            Files.createDirectories(tenantRoot.resolve("tmp"));
+            Files.createDirectories(tenantRoot.resolve("checkpoints"));
+            Files.createDirectories(tenantRoot.resolve("team_memory"));
+            Files.createDirectories(tenantRoot.resolve("todo"));
+            Files.createDirectories(tenantRoot.resolve(".overlay"));
+        } catch (IOException e) {
+            throw new FrameworkError(StatusCode.ERROR,
+                "Failed to initialize tenant space: " + tid, null, e, null);
+        }
+        Path previous = initializedTenants.putIfAbsent(tid, tenantRoot);
+        return previous != null ? previous : tenantRoot;
     }
 
     /**
