@@ -315,9 +315,19 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         if (cached != null) {
             return cached;
         }
+        // Re-check under the lock (fast path only): another caller may have just resolved it.
+        synchronized (this) {
+            if (dimension != null) {
+                return dimension;
+            }
+        }
+        // Resolve via a remote probe OUTSIDE the lock. A slow or overloaded embedding
+        // provider must never hold the lock while concurrent callers block on network I/O.
+        // Concurrent first calls may probe redundantly, but they never serialize.
+        int resolved = embedQuery("test").size();
         synchronized (this) {
             if (dimension == null) {
-                dimension = embedQuery("test").size();
+                dimension = resolved;
             }
             return dimension;
         }

@@ -134,9 +134,19 @@ public class DashscopeEmbedding extends APIEmbedding {
         if (cached != null) {
             return cached;
         }
+        // Re-check under the lock (fast path only): another caller may have just resolved it.
+        synchronized (this) {
+            if (resolvedDimension != null) {
+                return resolvedDimension;
+            }
+        }
+        // Resolve via a remote probe OUTSIDE the lock. A slow or overloaded embedding
+        // provider must never hold the lock while concurrent callers block on network I/O.
+        // Concurrent first calls may probe redundantly, but they never serialize.
+        int resolved = embedQuery("test").size();
         synchronized (this) {
             if (resolvedDimension == null) {
-                resolvedDimension = embedQuery("test").size();
+                resolvedDimension = resolved;
             }
             return resolvedDimension;
         }

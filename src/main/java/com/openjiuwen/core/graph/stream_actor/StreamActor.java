@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 /**
@@ -29,31 +30,53 @@ import java.util.function.Consumer;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamActor}.
  * Uses Virtual Threads and CompletableFuture instead of asyncio tasks.
- * 
+ *
  * @since 0.1.7
  */
 public class StreamActor {
     private static final LoggerProtocol logger = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000;
+
+    /**
+     * Bounded wait for the stream task to actually start. The shared stream executor
+     * may be busy under load; producers must never block forever on the start latch.
+     *
+     * @since 0.1.7
+     */
+    private static final long STREAM_START_TIMEOUT_MS = 30_000;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBoundedModulePool("stream-actor", false);
 
     /**
      * HashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
-    private Future<?> task;
-    private CompletableFuture<Void> taskCompletion;
-    private CompletableFuture<Void> taskError;
     private final StreamConsumer vertex;
     private final String nodeId;
+
+    /**
+     * Guards the stream lifecycle state below ({@code task}, {@code taskCompletion},
+     * {@code taskError}, {@code runningTasks}, {@code streamStartPending}).
+     * <p>
+     * The critical section is intentionally kept tiny: only state checks and task
+     * submission. Waiting for the stream task to start and dispatching payloads to
+     * processors happen OUTSIDE the lock so that one slow producer never serializes
+     * the others.
+     *
+     * @since 0.1.7
+     */
+    private final ReentrantLock stateLock = new ReentrantLock();
+    private volatile Future<?> task;
+    private volatile CompletableFuture<Void> taskCompletion;
+    private volatile CompletableFuture<Void> taskError;
+    private volatile boolean streamStartPending;
     private boolean hasSeededCompletedSources;
 
     /**
      * ArrayList<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final List<RunningTask> runningTasks = new ArrayList<>();
@@ -79,14 +102,14 @@ public class StreamActor {
 
     /**
      * Send a stream message to this actor.
-     * 
+     *
      * @param message the stream message (Map with single producer→content entry)
      * @param sourceAbility the ability that produced this message (STREAM/TRANSFORM)
      * @param firstFrame whether this is the first frame of a new stream
      * @param producerId the ID of the producer node
      * @since 0.1.7
      */
-    public synchronized void send(Object message, ComponentAbility sourceAbility, boolean firstFrame,
+    public void send(Object message, ComponentAbility sourceAbility, boolean firstFrame,
             String producerId) {
         if (!vertex.shouldHandleMessage()) {
             logger.warning("Discard chunk send from [{}], {}[{}] unable to handle", producerId, nodeId,
@@ -94,44 +117,88 @@ public class StreamActor {
             return;
         }
 
-        // Check if we need to start a new stream task
-        if (task == null || task.isDone()) {
-            if (task != null && task.isDone() && taskFailure(task) != null) {
-                logger.warning("Exception occurred while sending chunk of node [{}]", nodeId, taskFailure(task));
-            }
-            if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] occur exception", producerId, nodeId,
-                        sourceAbility.name());
-                return;
-            }
-            if (!firstFrame || !vertex.isDone()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] vertex is done", producerId, nodeId,
-                        sourceAbility.name());
-                return;
-            }
-
-            // Start stream call on the vertex
-            CountDownLatch latch = new CountDownLatch(1);
-            taskError = new CompletableFuture<>();
-            taskCompletion = new CompletableFuture<>();
-            task = STREAM_EXECUTOR.submit(() -> {
-                try {
-                    vertex.streamCall(latch, this::errorCallback);
-                } finally {
-                    taskCompletion.complete(null);
+        // Fast, lock-held section: only inspect lifecycle state and submit the stream task.
+        CountDownLatch startLatch = null;
+        boolean startProcessors = false;
+        stateLock.lock();
+        try {
+            if (task == null || (task.isDone() && !streamStartPending)) {
+                if (task != null && task.isDone() && taskFailure(task) != null) {
+                    logger.warning("Exception occurred while sending chunk of node [{}]", nodeId, taskFailure(task));
                 }
-            });
+                if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
+                    logger.warning("Discard chunk send from [{}], {}[{}] occur exception", producerId, nodeId,
+                            sourceAbility.name());
+                    return;
+                }
+                if (!firstFrame || !vertex.isDone()) {
+                    logger.warning("Discard chunk send from [{}], {}[{}] vertex is done", producerId, nodeId,
+                            sourceAbility.name());
+                    return;
+                }
 
+                // Start stream call on the vertex
+                CountDownLatch latch = new CountDownLatch(1);
+                taskError = new CompletableFuture<>();
+                taskCompletion = new CompletableFuture<>();
+                streamStartPending = true;
+                task = STREAM_EXECUTOR.submit(() -> {
+                    try {
+                        vertex.streamCall(latch, this::errorCallback);
+                    } finally {
+                        taskCompletion.complete(null);
+                    }
+                });
+                startLatch = latch;
+                startProcessors = true;
+            }
+        } finally {
+            stateLock.unlock();
+        }
+
+        // Wait for the stream task to start OUTSIDE the lock: the shared stream executor
+        // may be busy, and holding the lock here would serialize every producer. A timeout
+        // bounds the wait instead of blocking forever.
+        if (startLatch != null) {
             try {
-                latch.await();
+                if (!startLatch.await(STREAM_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                    logger.warning("Timed out waiting for stream task of node [{}] to start within {}ms", nodeId,
+                            STREAM_START_TIMEOUT_MS);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                logger.warning("Interrupted while waiting for stream task of node [{}] to start", nodeId);
+            }
+        }
+
+        // Start processors exactly once. Chunks buffered in processor queues meanwhile
+        // (receive is a thread-safe offer) are consumed once the processors run.
+        if (startProcessors) {
+            startProcessors();
+        }
+
+        logger.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, sourceAbility.name());
+
+        // Dispatch to all processors. StreamProcessor.receive is a thread-safe queue
+        // offer, so this needs no lock.
+        StreamPayload payload = new StreamPayload(message, sourceAbility);
+        for (StreamProcessor processor : processors.values()) {
+            processor.receive(payload);
+        }
+    }
+
+    /**
+     * Start the processor tasks for the current stream, exactly once.
+     *
+     * @since 0.1.7
+     */
+    private void startProcessors() {
+        stateLock.lock();
+        try {
+            if (!streamStartPending) {
                 return;
             }
-
-            logger.debug("Stream actor task node [{}] started", nodeId);
-
-            // Start processors
+            streamStartPending = false;
             for (Map.Entry<ComponentAbility, StreamProcessor> entry : processors.entrySet()) {
                 ComponentAbility ability = entry.getKey();
                 StreamProcessor processor = entry.getValue();
@@ -145,14 +212,8 @@ public class StreamActor {
                 });
                 runningTasks.add(new RunningTask(ability, processorTask, completion));
             }
-        }
-
-        logger.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, sourceAbility.name());
-
-        // Dispatch to all processors
-        StreamPayload payload = new StreamPayload(message, sourceAbility);
-        for (StreamProcessor processor : processors.values()) {
-            processor.receive(payload);
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -162,19 +223,27 @@ public class StreamActor {
      * @param completedSources completed producer-ability keys
      * @since 0.1.7
      */
-    public synchronized void seedCompletedSources(Set<String> completedSources) {
-        if (hasSeededCompletedSources || completedSources == null || completedSources.isEmpty()) {
+    public void seedCompletedSources(Set<String> completedSources) {
+        if (completedSources == null || completedSources.isEmpty()) {
             return;
         }
-        for (StreamProcessor processor : processors.values()) {
-            processor.seedCompletedSources(completedSources);
+        stateLock.lock();
+        try {
+            if (hasSeededCompletedSources) {
+                return;
+            }
+            for (StreamProcessor processor : processors.values()) {
+                processor.seedCompletedSources(completedSources);
+            }
+            hasSeededCompletedSources = true;
+        } finally {
+            stateLock.unlock();
         }
-        hasSeededCompletedSources = true;
     }
 
     /**
      * generator.
-     * 
+     *
      * @param ability ability
      * @param schema schema
      * @param streamCallback streamCallback
@@ -193,56 +262,85 @@ public class StreamActor {
 
     /**
      * Wait until the stream call and all processor tasks complete.
-     * 
+     *
      * @since 0.1.7
      */
-    public synchronized void awaitCompletion() {
-        if (taskCompletion != null) {
-            awaitCompletion(taskCompletion, "stream actor task");
+    public void awaitCompletion() {
+        CompletableFuture<Void> taskComp;
+        List<RunningTask> tasks;
+        stateLock.lock();
+        try {
+            taskComp = taskCompletion;
+            tasks = new ArrayList<>(runningTasks);
+        } finally {
+            stateLock.unlock();
         }
-        for (RunningTask runningTask : runningTasks) {
+
+        // Wait outside the lock so concurrent sends are never blocked during teardown.
+        if (taskComp != null) {
+            awaitCompletion(taskComp, "stream actor task");
+        }
+        for (RunningTask runningTask : tasks) {
             awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
         }
     }
 
     /**
      * Shutdown the stream actor, cancelling all running tasks.
-     * 
+     *
      * @since 0.1.7
      */
-    public synchronized void shutdown() {
+    public void shutdown() {
         logger.debug("Begin to shutdown stream actor task for {}", nodeId);
         try {
-            if (task != null && !task.isDone() && !task.isCancelled()) {
-                task.cancel(true);
-            }
-            if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
-                taskError.cancel(true);
-            }
-            for (RunningTask runningTask : runningTasks) {
-                Future<?> future = runningTask.future();
-                if (!future.isDone() && !future.isCancelled()) {
-                    future.cancel(true);
+            Future<?> currentTask;
+            CompletableFuture<Void> currentTaskCompletion;
+            List<RunningTask> tasks;
+            stateLock.lock();
+            try {
+                currentTask = task;
+                currentTaskCompletion = taskCompletion;
+                tasks = new ArrayList<>(runningTasks);
+                if (currentTask != null && !currentTask.isDone() && !currentTask.isCancelled()) {
+                    currentTask.cancel(true);
                 }
+                if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
+                    taskError.cancel(true);
+                }
+                for (RunningTask runningTask : tasks) {
+                    Future<?> future = runningTask.future();
+                    if (!future.isDone() && !future.isCancelled()) {
+                        future.cancel(true);
+                    }
+                }
+            } finally {
+                stateLock.unlock();
             }
 
-            if (taskCompletion != null) {
-                awaitCompletion(taskCompletion, "stream actor task");
+            if (currentTaskCompletion != null) {
+                awaitCompletion(currentTaskCompletion, "stream actor task");
             }
-            for (RunningTask runningTask : runningTasks) {
+            for (RunningTask runningTask : tasks) {
                 awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
             }
             logger.debug("Succeed to shutdown stream actor task for {}", nodeId);
         } finally {
-            task = null;
-            taskCompletion = null;
-            runningTasks.clear();
+            stateLock.lock();
+            try {
+                task = null;
+                taskCompletion = null;
+                taskError = null;
+                streamStartPending = false;
+                runningTasks.clear();
+            } finally {
+                stateLock.unlock();
+            }
         }
     }
 
     /**
      * errorCallback.
-     * 
+     *
      * @param error error
      * @since 0.1.7
      */
@@ -254,7 +352,7 @@ public class StreamActor {
 
     /**
      * taskFailure.
-     * 
+     *
      * @param future future
      * @return the result
      * @since 0.1.7
@@ -275,7 +373,7 @@ public class StreamActor {
 
     /**
      * awaitCompletion.
-     * 
+     *
      * @param completion completion
      * @param taskName taskName
      * @since 0.1.7
@@ -296,7 +394,7 @@ public class StreamActor {
 
     /**
      * RunningTask.
-     * 
+     *
      * @param ability ability
      * @param future future
      * @param completion completion
