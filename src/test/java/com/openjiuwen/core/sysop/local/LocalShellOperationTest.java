@@ -420,4 +420,56 @@ class LocalShellOperationTest {
         assertNotNull(exitChunk);
         assertEquals(0, exitChunk.getData().getExitCode());
     }
+
+    @Test
+    @DisplayName("Stream: hasNext is idempotent before next (lazy iterator)")
+    void testStreamHasNextIsIdempotentBeforeNext() {
+        // 修复后 executeCmdStream 返回真正惰性的迭代器：重复调用 hasNext() 不应消费事件，
+        // 也不应阻塞。EXIT 事件产出后 hasNext() 必须立即返回 false，避免下游死循环。
+        String cmd = OsTestSupport.isWindows() ? "echo hello" : "echo hello";
+        Iterator<ExecuteCmdStreamResult> it =
+                shell().executeCmdStream(cmd, null, 10, null, null);
+
+        // 多次 hasNext() 不消费
+        assertTrue(it.hasNext());
+        assertTrue(it.hasNext());
+        assertTrue(it.hasNext());
+        ExecuteCmdStreamResult first = it.next();
+        assertNotNull(first);
+
+        // 消费完剩余事件
+        List<ExecuteCmdStreamResult> rest = new ArrayList<>();
+        while (it.hasNext()) {
+            rest.add(it.next());
+        }
+
+        // 终止后再次 hasNext() 必须返回 false（不抛异常、不阻塞）
+        assertFalse(it.hasNext(), "hasNext must return false after iterator exhausted");
+        assertFalse(it.hasNext(), "repeated hasNext on exhausted iterator stays false");
+
+        // 至少产出一个 EXIT 事件
+        List<ExecuteCmdStreamResult> all = new ArrayList<>();
+        all.add(first);
+        all.addAll(rest);
+        assertTrue(all.stream().anyMatch(r -> r.getData() != null && r.getData().getExitCode() != null),
+                "should contain an EXIT event");
+    }
+
+    @Test
+    @DisplayName("Stream: empty command iterator terminates after single ERROR chunk")
+    void testStreamEmptyCommandIteratorTerminatesAfterError() {
+        // 参数校验失败时返回单元素迭代器：取完一个 ERROR chunk 后 hasNext() 必须返回 false，
+        // 防止下游 while(it.hasNext()) 死循环（对应 advanceIfNeeded catch 块的 hasNext=false 修复）
+        Iterator<ExecuteCmdStreamResult> it =
+                shell().executeCmdStream("", null, 300, null, null);
+
+        assertTrue(it.hasNext());
+        ExecuteCmdStreamResult err = it.next();
+        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), err.getCode());
+        assertTrue(err.getMessage().contains("command can not be empty"));
+
+        // 取完 ERROR 后必须终止
+        assertFalse(it.hasNext(), "iterator must terminate after the single ERROR chunk");
+        assertFalse(it.hasNext());
+    }
 }
