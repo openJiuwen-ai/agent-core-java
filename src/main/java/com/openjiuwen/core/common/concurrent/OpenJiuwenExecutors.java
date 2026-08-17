@@ -508,13 +508,14 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * DeepAgent stream 会话池默认上限：I/O 型 workload，按 {@code max(16, CPU 核数 × 4)} 估算并发 session 槽位。
+     * DeepAgent stream 会话池默认上限：I/O 型 workload，按 {@code max(32, CPU 核数 × 8)} 估算并发 session 槽位，
+     * 与 runtime 侧 QuerySsePumpExecutor 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
      *
      * @return 默认最大线程数
      * @since 0.1.14
      */
     static int defaultDeepAgentStreamMaxSize() {
-        return Math.max(16, Runtime.getRuntime().availableProcessors() * 4);
+        return Math.max(32, Runtime.getRuntime().availableProcessors() * 8);
     }
 
     /**
@@ -600,7 +601,7 @@ public final class OpenJiuwenExecutors {
         CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
         MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
         TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
-        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, true),
+        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, false),
         GENERIC("", 16, 256, false);
 
         private final String prefix;
@@ -631,9 +632,6 @@ public final class OpenJiuwenExecutors {
         }
 
         RejectedExecutionHandler rejectionHandler() {
-            if (this == DEEP_AGENT_STREAM) {
-                return new ThreadPoolExecutor.CallerRunsPolicy();
-            }
             return new ThreadPoolExecutor.AbortPolicy();
         }
 
