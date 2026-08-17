@@ -15,26 +15,26 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 class OpenJiuwenExecutorsTest {
     @Test
-    @DisplayName("DeepAgent stream 模块池默认 max(16, CPU×4) 且可配置")
+    @DisplayName("DeepAgent stream 模块池默认 max(32, CPU×8)、有界队列排队、AbortPolicy 且可配置")
     void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
         int expectedDefault = OpenJiuwenExecutors.defaultDeepAgentStreamMaxSize();
-        assertThat(expectedDefault).isEqualTo(Math.max(16, Runtime.getRuntime().availableProcessors() * 4));
+        assertThat(expectedDefault).isEqualTo(Math.max(32, Runtime.getRuntime().availableProcessors() * 8));
 
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
             ThreadPoolExecutor streamExecutor = (ThreadPoolExecutor) executor;
             assertThat(streamExecutor.getMaximumPoolSize()).isEqualTo(expectedDefault);
-            assertThat(streamExecutor.getCorePoolSize()).isZero();
-            assertThat(streamExecutor.getQueue()).isInstanceOf(SynchronousQueue.class);
+            assertThat(streamExecutor.getCorePoolSize()).isEqualTo(expectedDefault);
+            assertThat(streamExecutor.getQueue()).isInstanceOf(ArrayBlockingQueue.class);
+            assertThat(streamExecutor.getQueue().remainingCapacity()).isEqualTo(128);
             assertThat(streamExecutor.getRejectedExecutionHandler())
-                    .isInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class);
+                    .isInstanceOf(ThreadPoolExecutor.AbortPolicy.class);
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("deep-agent-stream-");
         } finally {

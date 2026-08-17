@@ -85,6 +85,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -1044,22 +1045,28 @@ public class DeepAgent implements AutoCloseable {
 
     private java.util.Iterator<Object> streamTaskLoop(Map<String, Object> normalized,
             AgentSessionApi effectiveSession, AgentSessionApi session) {
-        STREAM_EXECUTOR.execute(() -> {
-            try {
-                runTaskLoop(normalized, effectiveSession);
-            } catch (IllegalArgumentException | IllegalStateException ex) {
-                writeStreamError(effectiveSession, 0, ex);
-            } finally {
+        try {
+            STREAM_EXECUTOR.execute(() -> {
                 try {
-                    // 关闭流前先传播状态，避免 Runner 收到 EOF 后保存到旧的外层状态。
-                    if (session != null) {
-                        copySessionState(effectiveSession, session);
-                    }
+                    runTaskLoop(normalized, effectiveSession);
+                } catch (IllegalArgumentException | IllegalStateException ex) {
+                    writeStreamError(effectiveSession, 0, ex);
                 } finally {
-                    effectiveSession.postRun();
+                    try {
+                        // 关闭流前先传播状态，避免 Runner 收到 EOF 后保存到旧的外层状态。
+                        if (session != null) {
+                            copySessionState(effectiveSession, session);
+                        }
+                    } finally {
+                        effectiveSession.postRun();
+                    }
                 }
-            }
-        });
+            });
+        } catch (RejectedExecutionException ex) {
+            // 池满（线程 + 队列全占用）：写入流错误事件而不是挂死客户端，
+            // 与 AbortPolicy 语义一致——单请求失败，池子保持健康。
+            writeStreamError(effectiveSession, 0, ex);
+        }
         return effectiveSession.streamIterator();
     }
 
