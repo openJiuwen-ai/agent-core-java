@@ -23,6 +23,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,8 +76,10 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
                 .addQueryParameter("labels", required.label())
                 .addQueryParameter("sort", "updated")
                 .addQueryParameter("direction", "asc")
-                .addQueryParameter("updated_after", required.window().start().minusMillis(1).toString())
-                .addQueryParameter("updated_before", required.window().end().plusMillis(1).toString())
+                .addQueryParameter("updated_after",
+                        issueQueryTime(required.window().start().minusMillis(1)))
+                .addQueryParameter("updated_before",
+                        issueQueryTime(required.window().end().plusMillis(1)))
                 .addQueryParameter("page", Integer.toString(required.page()))
                 .addQueryParameter("per_page", Integer.toString(required.perPage()))
                 .build();
@@ -143,6 +146,17 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
     }
 
     @Override
+    public Optional<FeaturePullRequest> findOpenPullRequest(String headBranch) {
+        String branch = requireText(headBranch, "headBranch");
+        HttpUrl headUrl = path(targetPath("pulls")).newBuilder()
+                .addQueryParameter("state", "open")
+                .addQueryParameter("head", requestHead(branch))
+                .addQueryParameter("per_page", "100")
+                .build();
+        return matchingPullRequest(get(headUrl), branch);
+    }
+
+    @Override
     public FeaturePullRequest createPullRequest(CreateFeaturePullRequest request) {
         CreateFeaturePullRequest required = Objects.requireNonNull(request, "request must not be null");
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -150,14 +164,18 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
         payload.put("head", requestHead(required.headBranch()));
         payload.put("base", coordinates.baseBranch());
         payload.put("body", required.content().body());
-        payload.put("issue", Long.toString(required.issueIid()));
-        payload.put("assignees", String.join(",", required.assignees()));
+        if (required.issueIid() != null) {
+            payload.put("issue", Long.toString(required.issueIid()));
+        }
+        if (!required.assignees().isEmpty()) {
+            payload.put("assignees", String.join(",", required.assignees()));
+        }
         payload.put("draft", required.draft());
         payload.put("prune_source_branch", false);
         if (!coordinates.sameRepository()) {
             payload.put("fork_path", coordinates.publishRepository());
         }
-        return pullRequest(write(path(targetPath("pulls")), payload, WriteMethod.POST));
+        return writtenPullRequest(write(path(targetPath("pulls")), payload, WriteMethod.POST));
     }
 
     @Override
@@ -167,8 +185,8 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
         payload.put("title", required.content().title());
         payload.put("body", required.content().body());
         payload.put("draft", required.draft());
-        return pullRequest(write(path(targetPath("pulls/" + required.number())),
-                payload, WriteMethod.PATCH));
+        write(path(targetPath("pulls/" + required.number())), payload, WriteMethod.PATCH);
+        return getPullRequest(required.number());
     }
 
     @Override
@@ -314,17 +332,45 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
                 new GitCodeApiException("Malformed GitCode pull-request response", 0, false));
     }
 
+    private FeaturePullRequest writtenPullRequest(JsonNode node) {
+        Optional<FeaturePullRequest> parsed = safePullRequest(node, false);
+        if (parsed.isPresent()) {
+            return parsed.orElseThrow();
+        }
+        try {
+            return getPullRequest(number(node));
+        } catch (IllegalArgumentException ex) {
+            throw new GitCodeApiException("Malformed GitCode pull-request response", 0, false);
+        }
+    }
+
     private static Optional<FeaturePullRequest> safePullRequest(JsonNode node) {
+        return safePullRequest(node, true);
+    }
+
+    private static Optional<FeaturePullRequest> safePullRequest(JsonNode node,
+                                                               boolean warnWhenMalformed) {
         try {
             long number = number(node);
             JsonNode head = node.path("head");
+            String headRef = text(head, "ref", "label");
+            if (headRef.isBlank()) {
+                headRef = text(node, "source_branch");
+            }
+            String headSha = text(head, "sha");
+            if (headSha.isBlank()) {
+                headSha = text(node, "head_sha");
+            }
             FeaturePullRequest.Head identity = new FeaturePullRequest.Head(
-                    text(head, "ref", "label"), text(head, "sha"));
+                    requireText(headRef, "pull request head ref"),
+                    requireText(headSha, "pull request head SHA"));
             return Optional.of(new FeaturePullRequest(number, text(node, "html_url", "web_url"),
                     text(node, "state"), node.path("draft").asBoolean(
                     node.path("work_in_progress").asBoolean(false)), identity));
         } catch (IllegalArgumentException ex) {
-            LOGGER.warn("Skipped a malformed GitCode pull request");
+            if (warnWhenMalformed) {
+                LOGGER.warn("Skipped a malformed GitCode pull request");
+            }
             return Optional.empty();
         }
     }
@@ -374,9 +420,24 @@ public final class HttpFeatureGitCodeClient implements FeatureGitCodeClient {
         return "";
     }
 
-    private static GitCodeApiException error(Response response, boolean uncertain) {
-        return new GitCodeApiException("GitCode API returned HTTP " + response.code(),
-                response.code(), uncertain);
+    private static String issueQueryTime(Instant value) {
+        return value.truncatedTo(ChronoUnit.MILLIS).toString();
+    }
+
+    private GitCodeApiException error(Response response, boolean uncertain) {
+        String message = "GitCode API returned HTTP " + response.code();
+        try {
+            String body = response.peekBody(4096).string();
+            JsonNode parsed = mapper.readTree(body);
+            String detail = text(parsed, "error_message", "message");
+            if (!detail.isBlank()) {
+                detail = detail.replaceAll("\\p{Cntrl}", " ").strip();
+                message += ": " + detail.substring(0, Math.min(detail.length(), 500));
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // The HTTP status remains authoritative when GitCode returns a malformed error body.
+        }
+        return new GitCodeApiException(message, response.code(), uncertain);
     }
 
     private static HttpUrl requireBase(URI value) {

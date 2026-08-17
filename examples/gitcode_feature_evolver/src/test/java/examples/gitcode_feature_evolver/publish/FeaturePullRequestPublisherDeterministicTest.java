@@ -31,28 +31,37 @@ public final class FeaturePullRequestPublisherDeterministicTest {
 
     /** Run canonical PR creation, update, and Issue-comment checks. */
     public static void main(String[] args) {
-        FeatureEvolvingConfig config = FeatureEvolvingConfig.builder()
+        FeatureEvolvingConfig config = config();
+        testDraftCreationAndReadyUpdate(config);
+        testDraftVisibility(config);
+        testHeadVisibility(config);
+        System.out.println("FeaturePullRequestPublisherDeterministicTest: PASS");
+    }
+
+    private static FeatureEvolvingConfig config() {
+        return FeatureEvolvingConfig.builder()
                 .targetRepository("openJiuwen/agent-core-java")
                 .publishRepository("tester/agent-core-java")
                 .baseBranch("730")
                 .assignees(List.of("reviewer"))
                 .build();
+    }
+
+    private static void testDraftCreationAndReadyUpdate(FeatureEvolvingConfig config) {
         FakeGitCodeClient gitCode = new FakeGitCodeClient();
         FeaturePullRequestPublisher publisher = new FeaturePullRequestPublisher(config, gitCode);
-
         FeaturePullRequestPublisher.Result created = publisher.publish(
                 job(FeatureStage.CREATE_DRAFT_PR, FeatureJob.PullRequest.empty()),
-                SHA, FeatureStage.WAIT_R1_APPROVAL, false);
+                SHA, FeatureStage.DESIGN, false);
         require(created.success() && created.created() && created.pullRequest().draft(),
                 "long-lived Draft PR was not created");
         require(gitCode.created.content().body().contains("## Mandatory gates")
-                        && gitCode.created.content().body().contains("## Human boundary"),
+                        && gitCode.created.content().body().contains("## Human boundary")
+                        && gitCode.created.content().body().contains(
+                        "repository-wide full suite is not claimed"),
                 "PR creation did not use the standardized body");
-
-        FeatureJob.PullRequest binding = new FeatureJob.PullRequest(
-                91L, "https://gitcode/pr/91", SHA, true, 0L);
         FeaturePullRequestPublisher.Result ready = publisher.publish(
-                job(FeatureStage.SHIP, binding), SHA, FeatureStage.READY_FOR_REVIEW, true);
+                job(FeatureStage.SHIP, binding()), SHA, FeatureStage.READY_FOR_REVIEW, true);
         require(ready.success() && !ready.pullRequest().draft(),
                 "SHIP did not update the same PR to ready state");
         require(gitCode.updated.number() == 91 && !gitCode.updated.draft(),
@@ -61,7 +70,45 @@ public final class FeaturePullRequestPublisherDeterministicTest {
                 "ready PR body did not report the passed R3 gate");
         require(gitCode.issueComments.size() == 2,
                 "Draft creation and ready transition were not reported to the Issue");
-        System.out.println("FeaturePullRequestPublisherDeterministicTest: PASS");
+    }
+
+    private static void testDraftVisibility(FeatureEvolvingConfig config) {
+        FakeGitCodeClient staleDraft = new FakeGitCodeClient();
+        staleDraft.staleDraftReads = 2;
+        FeaturePullRequestPublisher draftReconciling = new FeaturePullRequestPublisher(
+                config, staleDraft, ignored -> { });
+        FeaturePullRequestPublisher.Result draftReady = draftReconciling.publish(
+                job(FeatureStage.SHIP, binding()), SHA, FeatureStage.READY_FOR_REVIEW, true);
+        require(draftReady.success() && !draftReady.pullRequest().draft()
+                        && staleDraft.refreshReads == 3,
+                "eventually consistent Draft-to-ready state was not re-read");
+
+        FakeGitCodeClient stuckDraft = new FakeGitCodeClient();
+        stuckDraft.staleDraftReads = Integer.MAX_VALUE;
+        FeaturePullRequestPublisher rejecting = new FeaturePullRequestPublisher(
+                config, stuckDraft, ignored -> { });
+        FeaturePullRequestPublisher.Result rejected = rejecting.publish(
+                job(FeatureStage.SHIP, binding()), SHA, FeatureStage.READY_FOR_REVIEW, true);
+        require(!rejected.success() && rejected.retryable()
+                        && rejected.error().contains("Draft state")
+                        && stuckDraft.issueComments.isEmpty(),
+                "an unconfirmed Draft-to-ready transition was accepted");
+    }
+
+    private static void testHeadVisibility(FeatureEvolvingConfig config) {
+        FakeGitCodeClient eventuallyConsistent = new FakeGitCodeClient();
+        eventuallyConsistent.staleUpdate = true;
+        eventuallyConsistent.staleReads = 2;
+        FeaturePullRequestPublisher reconciling = new FeaturePullRequestPublisher(
+                config, eventuallyConsistent, ignored -> { });
+        FeaturePullRequestPublisher.Result reconciled = reconciling.publish(
+                job(FeatureStage.REVIEW_R2, binding()), SHA, FeatureStage.IMPLEMENT_RED, false);
+        require(reconciled.success() && eventuallyConsistent.refreshReads == 3,
+                "eventually consistent PR head was not re-read to the verified commit");
+    }
+
+    private static FeatureJob.PullRequest binding() {
+        return new FeatureJob.PullRequest(91L, "https://gitcode/pr/91", SHA, true, 0L);
     }
 
     private static FeatureJob job(FeatureStage stage, FeatureJob.PullRequest pullRequest) {
@@ -89,6 +136,10 @@ public final class FeaturePullRequestPublisherDeterministicTest {
         private final List<String> issueComments = new ArrayList<>();
         private CreateFeaturePullRequest created;
         private UpdateFeaturePullRequest updated;
+        private boolean staleUpdate;
+        private int staleReads;
+        private int staleDraftReads;
+        private int refreshReads;
 
         @Override
         public FeatureIssuePage listIssues(FeatureIssueScanRequest request) {
@@ -120,11 +171,24 @@ public final class FeaturePullRequestPublisherDeterministicTest {
         @Override
         public FeaturePullRequest updatePullRequest(UpdateFeaturePullRequest request) {
             updated = request;
-            return pullRequest(request.draft());
+            if (!request.draft() && staleDraftReads > 0) {
+                return pullRequest(true);
+            }
+            return staleUpdate ? stalePullRequest(request.draft()) : pullRequest(request.draft());
         }
 
         @Override
         public FeaturePullRequest getPullRequest(long number) {
+            refreshReads++;
+            if (staleReads-- > 0) {
+                return stalePullRequest(true);
+            }
+            if (staleDraftReads-- > 0) {
+                return pullRequest(true);
+            }
+            if (updated != null) {
+                return pullRequest(updated.draft());
+            }
             return pullRequest(true);
         }
 
@@ -137,6 +201,12 @@ public final class FeaturePullRequestPublisherDeterministicTest {
             return new FeaturePullRequest(91L, "https://gitcode/pr/91", "open", draft,
                     new FeaturePullRequest.Head(
                             "feature-evolving/issue-77-add-deterministic-feature", SHA));
+        }
+
+        private FeaturePullRequest stalePullRequest(boolean draft) {
+            return new FeaturePullRequest(91L, "https://gitcode/pr/91", "open", draft,
+                    new FeaturePullRequest.Head(
+                            "feature-evolving/issue-77-add-deterministic-feature", "b".repeat(40)));
         }
     }
 }

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Default Feature Evolver policy: operational events only, with content-bearing framework logs disabled. -->
+<configuration scan="true" scanPeriod="5 seconds">
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{48} - %msg%n" />
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- These categories can contain prompts, model replies, tool arguments, or tool results. -->
+    <logger name="llm" level="OFF" additivity="false" />
+    <logger name="agent" level="OFF" additivity="false" />
+    <logger name="tool" level="OFF" additivity="false" />
+    <logger name="prompt" level="OFF" additivity="false" />
+    <logger name="prompt_builder" level="OFF" additivity="false" />
+    <logger name="com.openjiuwen.core" level="OFF" additivity="false" />
+
+    <logger name="examples.gitcode_feature_evolver" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+    <logger name="examples.gitcode_issue_evolver" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>

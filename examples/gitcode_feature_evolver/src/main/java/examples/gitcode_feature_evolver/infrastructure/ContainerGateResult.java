@@ -40,7 +40,12 @@ public record ContainerGateResult(Outcome outcome, int exitCode, String output,
         PASSED,
         EXPECTED_RED,
         TEST_FAILED,
+        TEST_COMPILATION_FAILED,
+        TEST_DISCOVERY_FAILED,
         DEPENDENCY_MISSING,
+        BUILD_CONTRACT_FAILED,
+        SOURCE_BUILD_FAILED,
+        UNOBSERVABLE_FAILURE,
         INFRASTRUCTURE_FAILED,
         TIMED_OUT
     }

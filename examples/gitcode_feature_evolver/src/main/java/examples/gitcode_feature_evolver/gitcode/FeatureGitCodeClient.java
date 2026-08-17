@@ -25,6 +25,11 @@ public interface FeatureGitCodeClient {
     /** Find the canonical open PR by Issue association or exact head branch. */
     Optional<FeaturePullRequest> findOpenPullRequest(long issueIid, String headBranch);
 
+    /** Find an open PR by exact head branch when no local Issue association exists. */
+    default Optional<FeaturePullRequest> findOpenPullRequest(String headBranch) {
+        throw new UnsupportedOperationException("Head-only pull-request lookup is unavailable");
+    }
+
     /** Create the one long-lived Draft PR. */
     FeaturePullRequest createPullRequest(CreateFeaturePullRequest request);
 

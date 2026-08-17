@@ -18,6 +18,7 @@ public record FeaturePollingStatusSnapshot(Result result, long lastAttemptAt,
     /** Last polling result class. */
     public enum Result {
         NEVER_RUN,
+        RUNNING,
         SUCCESS,
         FAILED
     }

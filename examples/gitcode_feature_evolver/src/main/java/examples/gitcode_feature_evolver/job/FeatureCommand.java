@@ -43,12 +43,6 @@ public record FeatureCommand(Identity identity, String actor, Action action, Str
 
     /** Supported authenticated controller actions. */
     public enum Action {
-        APPROVE_R1,
-        APPROVE_R2,
-        APPROVE_R3,
-        REJECT_R1,
-        REJECT_R2,
-        REJECT_R3,
         PAUSE,
         RESUME,
         CANCEL,
@@ -82,12 +76,6 @@ public record FeatureCommand(Identity identity, String actor, Action action, Str
     }
 
     private enum CommandPrefix {
-        APPROVE_R1("/feature approve r1", Action.APPROVE_R1),
-        APPROVE_R2("/feature approve r2", Action.APPROVE_R2),
-        APPROVE_R3("/feature approve r3", Action.APPROVE_R3),
-        REJECT_R1("/feature reject r1", Action.REJECT_R1),
-        REJECT_R2("/feature reject r2", Action.REJECT_R2),
-        REJECT_R3("/feature reject r3", Action.REJECT_R3),
         PAUSE("/feature pause", Action.PAUSE),
         RESUME("/feature resume", Action.RESUME),
         CANCEL("/feature cancel", Action.CANCEL),

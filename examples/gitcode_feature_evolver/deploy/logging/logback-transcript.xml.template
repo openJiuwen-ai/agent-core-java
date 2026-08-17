@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Opt-in demonstration policy. The root helper replaces the fixed transcript placeholder. -->
+<configuration scan="true" scanPeriod="5 seconds">
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener" />
+
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{48} - %msg%n" />
+    <property name="TRANSCRIPT_PATTERN"
+              value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} [%thread] %-5level %logger - %msg%n" />
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="TRANSCRIPT" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>@@TRANSCRIPT_FILE@@</file>
+        <append>true</append>
+        <immediateFlush>true</immediateFlush>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>@@TRANSCRIPT_FILE@@.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${TRANSCRIPT_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Full content is isolated from CONSOLE/journald and written only to TRANSCRIPT. -->
+    <logger name="llm" level="INFO" additivity="false">
+        <appender-ref ref="TRANSCRIPT" />
+    </logger>
+    <logger name="agent" level="INFO" additivity="false">
+        <appender-ref ref="TRANSCRIPT" />
+    </logger>
+    <logger name="tool" level="INFO" additivity="false">
+        <appender-ref ref="TRANSCRIPT" />
+    </logger>
+    <logger name="prompt" level="INFO" additivity="false">
+        <appender-ref ref="TRANSCRIPT" />
+    </logger>
+    <logger name="prompt_builder" level="INFO" additivity="false">
+        <appender-ref ref="TRANSCRIPT" />
+    </logger>
+    <logger name="com.openjiuwen.core" level="OFF" additivity="false" />
+
+    <logger name="examples.gitcode_feature_evolver" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+    <logger name="examples.gitcode_issue_evolver" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>

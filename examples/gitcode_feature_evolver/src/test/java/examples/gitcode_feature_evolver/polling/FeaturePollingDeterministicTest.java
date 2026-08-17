@@ -18,6 +18,7 @@ import examples.gitcode_feature_evolver.gitcode.UpdateFeaturePullRequest;
 import examples.gitcode_feature_evolver.job.AdmissionResult;
 import examples.gitcode_feature_evolver.job.FeatureJob;
 import examples.gitcode_feature_evolver.job.FeatureJobRequest;
+import examples.gitcode_feature_evolver.job.FeatureJobMutation;
 import examples.gitcode_feature_evolver.job.FeatureScanCheckpoint;
 import examples.gitcode_feature_evolver.job.FeatureStage;
 import examples.gitcode_feature_evolver.job.SqliteFeatureJobStore;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Deterministic updated-at polling, pagination, commands, and PR reconciliation checks. */
 public final class FeaturePollingDeterministicTest {
@@ -50,6 +52,8 @@ public final class FeaturePollingDeterministicTest {
         testCheckpointAndFailure();
         testAuthenticatedCommands();
         testPullRequestReconciliation();
+        testReadyBindingReconciliation();
+        testPostMergeSystemTestReconciliation();
         System.out.println("FeaturePollingDeterministicTest: PASS");
     }
 
@@ -159,6 +163,62 @@ public final class FeaturePollingDeterministicTest {
         }
     }
 
+    private static void testPostMergeSystemTestReconciliation() throws Exception {
+        FakeGitCodeClient featureClient = new FakeGitCodeClient();
+        FakeGitCodeClient testClient = new FakeGitCodeClient();
+        featureClient.page(1, new FeatureIssuePage(List.of(), 0));
+        try (SqliteFeatureJobStore store = new SqliteFeatureJobStore(database("system-test-pr"))) {
+            FeatureJob feature = bind(store, 50, 500);
+            feature = store.transition(feature.identity().id(), feature.record().version(),
+                    FeatureJobMutation.transition(feature, FeatureStage.READY_FOR_REVIEW,
+                            "feature ready"));
+            featureClient.pullRequests.put(500L, pullRequest(500, "merged"));
+            FeatureEvolvingConfig config = systemTestConfig(10);
+            AtomicInteger terminalCaches = new AtomicInteger();
+            FeaturePollingCoordinator coordinator = new FeaturePollingCoordinator(
+                    config, store, featureClient, testClient,
+                    Clock.fixed(NOW, ZoneOffset.UTC), job -> terminalCaches.incrementAndGet());
+            coordinator.runOnce();
+            FeatureJob postMerge = store.findById(feature.identity().id()).orElseThrow();
+            require(postMerge.progress().stage() == FeatureStage.SYSTEM_TEST,
+                    "feature PR merge did not start post-merge system tests");
+
+            FeatureJob.PullRequest testBinding = new FeatureJob.PullRequest(
+                    900L, "https://gitcode/test-pr/900", "b".repeat(40), false, 0L);
+            FeatureJob bound = store.recordSystemTestPullRequest(postMerge.identity().id(),
+                    postMerge.record().version(), testBinding);
+            bound = store.transition(bound.identity().id(), bound.record().version(),
+                    FeatureJobMutation.transition(bound,
+                            FeatureStage.SYSTEM_TEST_READY_FOR_REVIEW, "test PR ready"));
+            require(store.findBySystemTestPullRequest(900L).isPresent(),
+                    "system-test PR binding was not queryable");
+            testClient.pullRequests.put(900L, pullRequest(900, "merged"));
+            coordinator.runOnce();
+            require(store.findById(bound.identity().id()).orElseThrow().progress().stage()
+                            == FeatureStage.MERGED,
+                    "merged system-test PR did not complete the workflow");
+            require(terminalCaches.get() > 0,
+                    "PR reconciliation did not mark the terminal dependency cache");
+        }
+    }
+
+    private static void testReadyBindingReconciliation() throws Exception {
+        FakeGitCodeClient client = new FakeGitCodeClient();
+        client.page(1, new FeatureIssuePage(List.of(), 0));
+        try (SqliteFeatureJobStore store = new SqliteFeatureJobStore(database("ready-pr"))) {
+            FeatureJob feature = bind(store, 42, 420);
+            feature = store.transition(feature.identity().id(), feature.record().version(),
+                    FeatureJobMutation.transition(feature, FeatureStage.READY_FOR_REVIEW,
+                            "feature ready"));
+            client.pullRequests.put(420L, pullRequest(420, "open"));
+            coordinator(config(10), store, client).runOnce();
+            FeatureJob reconciled = store.findById(feature.identity().id()).orElseThrow();
+            require(reconciled.progress().stage() == FeatureStage.READY_FOR_REVIEW
+                            && !reconciled.pullRequest().draft(),
+                    "remote ready state was not reconciled into the durable PR binding");
+        }
+    }
+
     private static FeatureJob bind(SqliteFeatureJobStore store, long iid, long number) {
         FeatureJob job = store.admit(request("pr-" + iid, iid)).job().orElseThrow();
         FeatureJob.PullRequest binding = new FeatureJob.PullRequest(number,
@@ -183,6 +243,26 @@ public final class FeaturePollingDeterministicTest {
                 .targetRepository(REPOSITORY)
                 .publishRepository("tester/agent-core-java")
                 .baseBranch("730")
+                .triggerMode(TriggerMode.POLLING)
+                .triggerLabel("feature")
+                .issueScanWindowHours(24)
+                .pollIntervalMinutes(15)
+                .maxIssueScanPages(maxPages)
+                .defaultWorkflowMode(FeatureWorkflowMode.ATTENDED)
+                .approverLogins(List.of("approver"))
+                .build();
+    }
+
+    private static FeatureEvolvingConfig systemTestConfig(int maxPages) {
+        return FeatureEvolvingConfig.builder()
+                .targetRepository(REPOSITORY)
+                .publishRepository("tester/agent-core-java")
+                .baseBranch("730")
+                .systemTestEnabled(true)
+                .systemTestRepository("openJiuwen/jiuwen-test")
+                .systemTestPublishRepository("antonjli/jiuwen-test-bot")
+                .systemTestBaseBranch("agent_core_java")
+                .systemTestWriteScopes(List.of("src/test/java/", "src/test/resources/"))
                 .triggerMode(TriggerMode.POLLING)
                 .triggerLabel("feature")
                 .issueScanWindowHours(24)

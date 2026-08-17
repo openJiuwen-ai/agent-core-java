@@ -4,23 +4,33 @@
 
 ```text
 ADMITTED
-  -> SPECIFY -> REVIEW_R1 -> DRAFT_PR -> [WAIT_R1_APPROVAL]
-  -> DESIGN -> REVIEW_R2 -> [WAIT_R2_APPROVAL]
+  -> SPECIFY -> REVIEW_R1 -> DRAFT_PR
+  -> DESIGN -> REVIEW_R2
   -> IMPLEMENT_RED -> IMPLEMENT_GREEN -> IMPLEMENT_REFACTOR
   -> (controller publication checkpoint) -> (next task or REVIEW_R3)
-  -> [WAIT_R3_APPROVAL]
-  -> SHIP -> READY_FOR_REVIEW -> MERGED
+  -> (R3 REWORK only: IMPLEMENT_REWORK -> publication checkpoint -> REVIEW_R3)
+  -> SHIP -> READY_FOR_REVIEW -> FEATURE_PR_MERGED
+  -> SYSTEM_TEST -> REVIEW_SYSTEM_TEST -> PUBLISH_SYSTEM_TEST
+  -> SYSTEM_TEST_READY_FOR_REVIEW -> MERGED
 ```
 
-Bracketed waits apply in attended mode. The service creates or reconciles one Draft PR after R1 author artifacts exist; a gate can still block later progress. `MERGED` is observed from GitCode and is never set by the model.
+The service creates or reconciles one Draft feature PR after R1 author artifacts
+exist. R1/R2/R3 remain independent Agent reviews but advance automatically.
+`READY_FOR_REVIEW` and `SYSTEM_TEST_READY_FOR_REVIEW` are the only normal human
+waits. Both merge events are observed from GitCode and are never set by the model.
 
 ## State invariants
 
 - One repository and Issue IID have one lifetime admission and one active feature job.
-- One job has one branch, one artifact root, and at most one canonical PR.
+- One job has one feature branch/artifact root and, after feature merge, one system-test branch/artifact root.
+- The controller freezes one exact merged target-base source revision before system-test authoring; retries and reviews use that same revision.
+- One job has at most one canonical feature PR and at most one canonical system-test PR; their bindings are persisted separately.
 - Only the controller advances state after validating stage output and optimistic-lock version.
 - A reviewer never shares the author invocation and never edits reviewed material.
 - `plan.md` and the database stage must agree before work resumes.
+- `runApprovedGate` has no model-controlled arguments and the Controller always
+  force-runs it after the final Agent response.
+- Deterministic Gate receipts are reused only for the same real input fingerprint.
 - A retry repeats the same bounded operation; it does not skip a gate or create a second PR.
 
 ## Rework
@@ -29,9 +39,31 @@ A `REWORK` verdict routes back to the author stage that owns the finding:
 
 - R1 -> `SPECIFY`;
 - R2 -> `DESIGN`, or `SPECIFY` only when the specification is proven wrong;
-- R3 -> `IMPLEMENT`, or an upstream stage only when the finding proves an upstream artifact wrong.
+- R3 -> `IMPLEMENT_REWORK`, bound to the most recently completed task's existing
+  writable paths and exact selector contract; an upstream stage is used only
+  when the finding proves an upstream artifact wrong.
+- System-test review -> `SYSTEM_TEST`; a proven SDK gap or non-isolatable
+  environment need -> `BLOCKED_EXTERNAL`.
 
-Record every finding in the review file and `plan.md` rework queue. The author fills the review record's Resolution field using actual controller evidence. Re-review is always independent. Stop automation after three failed rounds at one gate.
+Record every finding in the review file and `plan.md` rework queue. The author
+fills the review record's Resolution field using actual Controller evidence.
+Re-review is always independent. Controller repair budgets end in
+`FAILED_AUTOMATION`; they never create an approval wait.
+
+`IMPLEMENT_REWORK` is not a second TDD cycle. Do not reopen a `done` task,
+invent a replacement task, or require another expected RED after the behavior
+has already passed GREEN. The Controller reuses the completed task's immutable
+REFACTOR selector union, forces a TARGETED Gate, publishes the bounded repair,
+and returns to a new independent R3 review round.
+
+## Failure states
+
+- `RETRY_SCHEDULED`: classified model, GitCode, network, or container transient;
+- `DEPENDENCY_PREFETCH`: isolated automatic dependency-cache refresh;
+- `BLOCKED_EXTERNAL`: product decision, genuine SDK gap, or non-isolatable environment;
+- `FAILED_AUTOMATION`: primary and diagnostic repair budgets exhausted;
+- `FAILED_CONFIGURATION`, `FAILED_POLICY`, `FAILED_INTERNAL`: authoritative
+  terminal classifications that must not be blindly replayed.
 
 ## Pause, resume, and cancellation
 
@@ -49,6 +81,8 @@ Never erase evidence as part of pause or cancellation.
 ## External terminal states
 
 - An open Draft or ready PR remains nonterminal.
-- A merged PR transitions to `MERGED` and completes the job.
-- A closed, unmerged PR transitions to `CLOSED` and requires human action to resume or supersede it.
+- A merged feature PR transitions to `SYSTEM_TEST` when post-merge testing is enabled; otherwise it transitions to `MERGED`.
+- A merged system-test PR transitions to `MERGED` and completes the job.
+- A closed, unmerged feature or system-test PR transitions to terminal `CLOSED`;
+  this service version does not reopen it or process review-return commands.
 - Unknown PR states do not advance the workflow.

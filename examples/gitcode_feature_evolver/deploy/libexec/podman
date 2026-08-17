@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+service_account="gitcode-feature-evolver"
+service_home="/var/lib/gitcode-feature-evolver"
+native_tmpfs_argument="--tmpfs=/native-tmp:rw,exec,nosuid,nodev,size=64m"
+native_options_argument="--env=JAVA_TOOL_OPTIONS=-Duser.home=/tmp"
+native_options_argument+=" -Djansi.tmpdir=/native-tmp"
+native_options_argument+=" -Dorg.sqlite.tmpdir=/native-tmp"
+
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+current_uid="$(/usr/bin/id -u)"
+expected_uid="$(/usr/bin/id -u "$service_account")" ||
+    fail "The dedicated service account is unavailable"
+[[ "$current_uid" == "$expected_uid" && "$current_uid" != "0" ]] ||
+    fail "This Podman launcher is restricted to $service_account"
+
+podman_runtime_dir="/run/user/$current_uid"
+podman_bus="unix:path=$podman_runtime_dir/bus"
+[[ -d "$podman_runtime_dir" && -S "$podman_runtime_dir/bus" ]] ||
+    fail "The rootless systemd user session is unavailable"
+
+podman_arguments=("$@")
+if [[ "${1-}" == "run" ]]; then
+    has_native_tmpfs=false
+    has_native_options=false
+    for argument in "$@"; do
+        case "$argument" in
+            --tmpfs=/native-tmp:*)
+                [[ "$argument" == "$native_tmpfs_argument" ]] ||
+                    fail "The native-library tmpfs must use the fixed security options"
+                has_native_tmpfs=true
+                ;;
+            --env=JAVA_TOOL_OPTIONS=*)
+                [[ "$argument" == "$native_options_argument" ]] ||
+                    fail "JAVA_TOOL_OPTIONS must use the fixed temporary paths"
+                has_native_options=true
+                ;;
+        esac
+    done
+    podman_arguments=("run")
+    [[ "$has_native_tmpfs" == true ]] || podman_arguments+=("$native_tmpfs_argument")
+    [[ "$has_native_options" == true ]] || podman_arguments+=("$native_options_argument")
+    podman_arguments+=("${@:2}")
+fi
+
+transient_unit="gitcode-feature-podman-${current_uid}-$$.service"
+
+stop_transient_unit() {
+    XDG_RUNTIME_DIR="$podman_runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="$podman_bus" \
+        /usr/bin/systemctl --user stop "$transient_unit" >/dev/null 2>&1 || true
+}
+
+handle_signal() {
+    trap - HUP INT TERM
+    stop_transient_unit
+    exit 143
+}
+
+trap handle_signal HUP INT TERM
+set +e
+XDG_RUNTIME_DIR="$podman_runtime_dir" \
+    DBUS_SESSION_BUS_ADDRESS="$podman_bus" \
+    /usr/bin/systemd-run --quiet --wait --collect --pipe --service-type=exec \
+    --user --unit="$transient_unit" --working-directory="$service_home" \
+    /usr/bin/env -i HOME="$service_home" USER="$service_account" \
+    LOGNAME="$service_account" XDG_RUNTIME_DIR="$podman_runtime_dir" \
+    DBUS_SESSION_BUS_ADDRESS="$podman_bus" \
+    PATH=/usr/local/bin:/usr/bin:/bin GIT_TERMINAL_PROMPT=0 \
+    /usr/bin/podman "${podman_arguments[@]}"
+status=$?
+set -e
+trap - HUP INT TERM
+exit "$status"

@@ -45,12 +45,23 @@ public final class FeaturePromptBundle {
             Map.entry(FeatureStage.IMPLEMENT_REFACTOR, List.of(
                     "references/workflow-state-machine.md", "references/tdd-and-quality.md",
                     "references/role-contracts.md", "assets/plan-template.md")),
+            Map.entry(FeatureStage.IMPLEMENT_REWORK, List.of(
+                    "references/workflow-state-machine.md", "references/tdd-and-quality.md",
+                    "references/review-and-ship.md", "references/role-contracts.md",
+                    "assets/plan-template.md")),
             Map.entry(FeatureStage.REVIEW_R3, List.of(
                     "references/workflow-state-machine.md", "references/review-and-ship.md",
                     "references/role-contracts.md", "assets/review-template.md")),
             Map.entry(FeatureStage.SHIP, List.of(
                     "references/workflow-state-machine.md", "references/review-and-ship.md",
-                    "references/role-contracts.md", "assets/closeout-template.md")));
+                    "references/role-contracts.md", "assets/closeout-template.md")),
+            Map.entry(FeatureStage.SYSTEM_TEST, List.of(
+                    "references/workflow-state-machine.md", "references/system-test.md",
+                    "references/role-contracts.md", "assets/system-test-template.md")),
+            Map.entry(FeatureStage.REVIEW_SYSTEM_TEST, List.of(
+                    "references/workflow-state-machine.md", "references/system-test.md",
+                    "references/review-and-ship.md", "references/role-contracts.md",
+                    "assets/review-template.md")));
     private final Path featureRoot;
     private final Path codingStandard;
 
@@ -96,7 +107,9 @@ public final class FeaturePromptBundle {
 
     private static boolean requiresCodingStandard(FeatureStage stage) {
         return stage == FeatureStage.IMPLEMENT_RED || stage == FeatureStage.IMPLEMENT_GREEN
-                || stage == FeatureStage.IMPLEMENT_REFACTOR || stage == FeatureStage.REVIEW_R3;
+                || stage == FeatureStage.IMPLEMENT_REFACTOR
+                || stage == FeatureStage.IMPLEMENT_REWORK || stage == FeatureStage.REVIEW_R3
+                || stage == FeatureStage.SYSTEM_TEST || stage == FeatureStage.REVIEW_SYSTEM_TEST;
     }
 
     private void append(StringBuilder prompt, Path file) {

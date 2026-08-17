@@ -7,6 +7,7 @@ repository_root="$(CDPATH= cd -P -- "$script_root/../../.." && pwd)"
 cd -- "$repository_root"
 
 bash "$script_root/build-demo.sh"
+bash "$script_root/test-logging-policy.sh"
 
 feature_runtime="$repository_root/examples/gitcode_feature_evolver/.runtime"
 issue_runtime="$repository_root/examples/gitcode_issue_evolver/.runtime"
@@ -37,15 +38,24 @@ rm -rf -- "$test_classes"
 mv -- "$temporary_classes" "$test_classes"
 
 run_classpath="$test_classes:$compile_classpath"
+java -cp "$run_classpath" examples.gitcode_feature_evolver.agent.FeatureStageAgentDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.job.SqliteFeatureJobStoreDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.gitcode.HttpFeatureGitCodeClientDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.polling.FeaturePollingDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.infrastructure.ContainerAndPathPolicyDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.webhook.FeatureWebhookParserDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.workflow.FeatureArtifactInspectorDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_feature_evolver.workflow.ApprovedGateControllerDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_feature_evolver.workflow.SystemTestArtifactInspectorDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.worker.FeatureWorkerDeterministicTest
 java -cp "$run_classpath" \
     examples.gitcode_feature_evolver.publish.FeaturePullRequestPublisherDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_feature_evolver.publish.SystemTestPullRequestPublisherDeterministicTest
 java -cp "$run_classpath" examples.gitcode_feature_evolver.FeatureServiceModeDeterministicTest
+java -cp "$run_classpath" examples.gitcode_feature_evolver.FeatureManualPollingDeterministicTest
+java -cp "$run_classpath" examples.gitcode_feature_evolver.monitor.FeatureMonitorDeterministicTest
 
 printf 'GitCode Feature Evolver deterministic tests passed.\n'

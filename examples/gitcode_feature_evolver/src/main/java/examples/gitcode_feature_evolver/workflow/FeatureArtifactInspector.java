@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -32,6 +33,10 @@ public final class FeatureArtifactInspector {
     private static final Pattern TASK_HEADING = Pattern.compile("(?m)^###\\s+(T-[A-Za-z0-9-]+)\\s+.*$");
     private static final Pattern TASK_STATUS = Pattern.compile(
             "(?im)^-\\s*Status:\\s*`?(pending|red|green|refactor|done|blocked)`?\\s*$");
+    private static final Pattern TASK_FIELD = Pattern.compile("^-\\s*([^:]+):.*$");
+    private static final Pattern TEST_ARGUMENT = Pattern.compile("-Dtest=([^\\s`]+)");
+    private static final Pattern TEST_SELECTOR = Pattern.compile(
+            "[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
     private static final Pattern VERDICT = Pattern.compile("(?im)^\\s*`?(PASS|REWORK)`?\\s*$");
     private final Path worktree;
     private final FeatureJob job;
@@ -131,7 +136,7 @@ public final class FeatureArtifactInspector {
     /**
      * Select dynamic write scopes for one TDD phase.
      *
-     * @param stage RED, GREEN, or REFACTOR
+     * @param stage RED, GREEN, REFACTOR, or R3 REWORK
      * @return artifact plus R2-approved code scopes
      */
     public List<String> tddWriteScopes(FeatureStage stage) {
@@ -147,12 +152,28 @@ public final class FeatureArtifactInspector {
         return FeaturePathPolicy.normalizeScopes(scopes);
     }
 
-    /** @return artifact and long-term component-doc scopes for SHIP */
+    /** @return artifact and R2-approved long-term component-doc scopes for SHIP */
     public List<String> shipWriteScopes() {
         List<String> scopes = new ArrayList<>(artifactWriteScope());
         String prefix = ".".equals(componentRoot) ? "" : componentRoot + "/";
         scopes.add(prefix + "docs/");
+        for (String scope : implementationScopes()) {
+            if (isDocumentationPath(scope)) {
+                scopes.add(scope);
+            }
+        }
         return FeaturePathPolicy.normalizeScopes(scopes);
+    }
+
+    private static boolean isDocumentationPath(String scope) {
+        String normalized = scope.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized.equals("docs") || normalized.startsWith("docs/")
+                || normalized.contains("/docs/") || normalized.endsWith("/docs")
+                || normalized.equals("documents") || normalized.startsWith("documents/")
+                || normalized.contains("/documents/") || normalized.endsWith("/documents");
     }
 
     /**
@@ -166,6 +187,94 @@ public final class FeatureArtifactInspector {
         return incomplete.stream().findFirst()
                 .map(task -> new PlanCursor(task.id(), task.status(), false, tasks.size()))
                 .orElseGet(() -> new PlanCursor("", "done", true, tasks.size()));
+    }
+
+    /**
+     * Validate that source TDD tasks precede deferred delivery tasks and use exact selectors.
+     */
+    public void validateVerificationPlan() {
+        boolean hasTddTask = false;
+        boolean hasDeferredTask = false;
+        for (Task task : planTasks()) {
+            TestSelectorContract contract = task.testSelectors();
+            if (contract.red().isEmpty()) {
+                if (contract.hasAny()) {
+                    throw new IllegalStateException(
+                            "A plan task defines GREEN/REFACTOR selectors without a RED selector");
+                }
+                hasDeferredTask = true;
+                continue;
+            }
+            if (hasDeferredTask) {
+                throw new IllegalStateException(
+                        "Source TDD tasks must precede deferred delivery tasks in plan.md");
+            }
+            hasTddTask = true;
+        }
+        if (!hasTddTask) {
+            throw new IllegalStateException("plan.md has no task with an exact RED test selector");
+        }
+    }
+
+    /**
+     * Return the immutable selector contract for one approved plan task.
+     *
+     * @param taskId stable plan task ID
+     * @return exact RED/GREEN/REFACTOR selectors
+     */
+    public TestSelectorContract verificationContract(String taskId) {
+        return planTasks().stream().filter(task -> task.id().equals(taskId)).findFirst()
+                .map(Task::testSelectors)
+                .orElseThrow(() -> new IllegalStateException("Plan task is unavailable: " + taskId));
+    }
+
+    /**
+     * Resolve exact controller-approved selectors for one task phase.
+     *
+     * @param taskId stable plan task ID
+     * @param phase RED, GREEN, or REFACTOR verification phase
+     * @return deduplicated exact Java test classes
+     */
+    public List<String> testSelectors(String taskId, TestPhase phase) {
+        Objects.requireNonNull(phase, "phase must not be null");
+        return verificationContract(taskId).forPhase(phase);
+    }
+
+    /**
+     * Resolve all approved source selectors for the final targeted gate.
+     *
+     * @return deduplicated exact Java test classes
+     */
+    public List<String> allTestSelectors() {
+        LinkedHashSet<String> selectors = new LinkedHashSet<>();
+        for (Task task : planTasks()) {
+            selectors.addAll(task.testSelectors().forPhase(TestPhase.REFACTOR));
+        }
+        return List.copyOf(selectors);
+    }
+
+    /**
+     * Determine whether another source TDD task remains before deferred delivery work.
+     *
+     * @return true when the first remaining task has an exact RED selector
+     */
+    public boolean hasPendingTddTask() {
+        boolean hasDeferredTask = false;
+        for (Task task : planTasks()) {
+            if ("done".equals(task.status())) {
+                continue;
+            }
+            if (task.testSelectors().red().isEmpty()) {
+                hasDeferredTask = true;
+                continue;
+            }
+            if (hasDeferredTask) {
+                throw new IllegalStateException(
+                        "Source TDD tasks must precede deferred delivery tasks in plan.md");
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -185,20 +294,66 @@ public final class FeatureArtifactInspector {
         return last.isBlank() ? Optional.empty() : Optional.of(last);
     }
 
+    /**
+     * Persist the controller-confirmed phase for one plan task.
+     *
+     * @param taskId exact task ID
+     * @param status controller-confirmed task status
+     */
+    public void recordTaskStatus(String taskId, String status) {
+        String requiredTaskId = Objects.requireNonNull(taskId, "taskId must not be null");
+        String requiredStatus = Objects.requireNonNull(status, "status must not be null");
+        if (!List.of("red", "green", "refactor", "done").contains(requiredStatus)) {
+            throw new IllegalArgumentException("Unsupported controller task status");
+        }
+        Path plan = artifactFile("plan.md");
+        String content = read(plan);
+        List<Heading> headings = taskHeadings(content);
+        List<Integer> matches = new ArrayList<>();
+        for (int index = 0; index < headings.size(); index++) {
+            if (headings.get(index).id().equals(requiredTaskId)) {
+                matches.add(index);
+            }
+        }
+        if (matches.size() != 1) {
+            throw new IllegalStateException("plan.md must contain exactly one requested task");
+        }
+        int taskIndex = matches.get(0);
+        int start = headings.get(taskIndex).start();
+        int end = taskIndex + 1 < headings.size()
+                ? headings.get(taskIndex + 1).start() : content.length();
+        String block = content.substring(start, end);
+        Matcher taskStatus = TASK_STATUS.matcher(block);
+        if (!taskStatus.find()) {
+            throw new IllegalStateException("plan.md task has no exact status");
+        }
+        int statusStart = taskStatus.start();
+        int statusEnd = taskStatus.end();
+        if (taskStatus.find()) {
+            throw new IllegalStateException("plan.md task has multiple status lines");
+        }
+        String replacement = "- Status: `" + requiredStatus + "`";
+        String updatedBlock = block.substring(0, statusStart) + replacement
+                + block.substring(statusEnd);
+        try {
+            Files.writeString(plan, content.substring(0, start) + updatedBlock
+                    + content.substring(end), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to persist controller task status", ex);
+        }
+    }
+
     private List<Task> planTasks() {
         String plan = read(artifactFile("plan.md"));
-        Matcher headings = TASK_HEADING.matcher(plan);
-        List<Heading> found = new ArrayList<>();
-        while (headings.find()) {
-            found.add(new Heading(headings.group(1), headings.start()));
-        }
+        List<Heading> found = taskHeadings(plan);
         List<Task> tasks = new ArrayList<>();
         for (int index = 0; index < found.size(); index++) {
             Heading heading = found.get(index);
             int end = index + 1 < found.size() ? found.get(index + 1).start() : plan.length();
             String block = plan.substring(heading.start(), end);
             Matcher status = TASK_STATUS.matcher(block);
-            tasks.add(new Task(heading.id(), status.find() ? status.group(1) : "missing"));
+            String taskStatus = status.find() ? status.group(1) : "missing";
+            tasks.add(new Task(heading.id(), taskStatus, parseTestSelectors(block)));
         }
         if (tasks.stream().anyMatch(task -> "missing".equals(task.status()))) {
             throw new IllegalStateException("plan.md contains a task without one exact status");
@@ -214,6 +369,52 @@ public final class FeatureArtifactInspector {
             throw new IllegalStateException("plan.md active task is not the single next task");
         }
         return List.copyOf(tasks);
+    }
+
+    private static List<Heading> taskHeadings(String plan) {
+        Matcher headings = TASK_HEADING.matcher(plan);
+        List<Heading> found = new ArrayList<>();
+        while (headings.find()) {
+            found.add(new Heading(headings.group(1), headings.start()));
+        }
+        return List.copyOf(found);
+    }
+
+    private static TestSelectorContract parseTestSelectors(String taskBlock) {
+        LinkedHashSet<String> red = new LinkedHashSet<>();
+        LinkedHashSet<String> green = new LinkedHashSet<>();
+        LinkedHashSet<String> refactor = new LinkedHashSet<>();
+        PlanField currentField = PlanField.NONE;
+        for (String line : taskBlock.split("\\R")) {
+            Matcher field = TASK_FIELD.matcher(line);
+            if (field.matches()) {
+                currentField = PlanField.from(field.group(1));
+            }
+            switch (currentField) {
+                case RED -> addTestSelectors(line, red);
+                case GREEN -> addTestSelectors(line, green);
+                case REFACTOR -> addTestSelectors(line, refactor);
+                case NONE -> {
+                    // The current task field does not define a controller test selector.
+                }
+            }
+        }
+        return new TestSelectorContract(List.copyOf(red), List.copyOf(green),
+                List.copyOf(refactor));
+    }
+
+    private static void addTestSelectors(String line, LinkedHashSet<String> target) {
+        Matcher argument = TEST_ARGUMENT.matcher(line);
+        while (argument.find()) {
+            String value = argument.group(1);
+            for (String selector : value.split(",", -1)) {
+                if (!TEST_SELECTOR.matcher(selector).matches()) {
+                    throw new IllegalStateException(
+                            "plan.md contains a non-exact Maven test selector");
+                }
+                target.add(selector);
+            }
+        }
     }
 
     /**
@@ -363,15 +564,64 @@ public final class FeatureArtifactInspector {
     public record PlanCursor(String taskId, String status, boolean complete, int totalTasks) {
     }
 
+    /** Approved unit-test verification phases. */
+    public enum TestPhase {
+        RED,
+        GREEN,
+        REFACTOR
+    }
+
+    /** Immutable exact-selector contract extracted from one approved plan task. */
+    public record TestSelectorContract(List<String> red, List<String> green,
+                                       List<String> refactor) {
+        /** Freeze every selector list. */
+        public TestSelectorContract {
+            red = List.copyOf(red);
+            green = List.copyOf(green);
+            refactor = List.copyOf(refactor);
+        }
+
+        private List<String> forPhase(TestPhase phase) {
+            LinkedHashSet<String> selectors = new LinkedHashSet<>(red);
+            if (phase == TestPhase.GREEN || phase == TestPhase.REFACTOR) {
+                selectors.addAll(green);
+            }
+            if (phase == TestPhase.REFACTOR) {
+                selectors.addAll(refactor);
+            }
+            return List.copyOf(selectors);
+        }
+
+        private boolean hasAny() {
+            return !red.isEmpty() || !green.isEmpty() || !refactor.isEmpty();
+        }
+    }
+
     /** Supported independent review verdicts. */
     public enum Verdict {
         PASS,
         REWORK
     }
 
-    private record Task(String id, String status) {
+    private record Task(String id, String status, TestSelectorContract testSelectors) {
     }
 
     private record Heading(String id, int start) {
+    }
+
+    private enum PlanField {
+        NONE,
+        RED,
+        GREEN,
+        REFACTOR;
+
+        private static PlanField from(String value) {
+            return switch (value.strip().toUpperCase(Locale.ROOT)) {
+                case "RED" -> RED;
+                case "GREEN" -> GREEN;
+                case "REFACTOR" -> REFACTOR;
+                default -> NONE;
+            };
+        }
     }
 }

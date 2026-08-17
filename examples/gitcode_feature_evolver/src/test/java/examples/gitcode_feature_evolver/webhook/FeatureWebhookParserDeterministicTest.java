@@ -51,7 +51,7 @@ public final class FeatureWebhookParserDeterministicTest {
                   "project":{"path_with_namespace":"openJiuwen/agent-core-java"},
                   "user":{"username":"release-approver"},
                   "issue":{"iid":77},
-                  "object_attributes":{"id":9001,"note":"/feature approve r2 accepted",
+                  "object_attributes":{"id":9001,"note":"/feature pause maintenance",
                     "noteable_type":"Issue"}
                 }
                 """.getBytes(StandardCharsets.UTF_8));
@@ -60,9 +60,9 @@ public final class FeatureWebhookParserDeterministicTest {
         require(note.commentId().equals("9001") && note.author().equals("release-approver"),
                 "Note identity or author was not parsed");
         FeatureCommand.Parsed command = FeatureCommand.Action.parse(note.body());
-        require(command.action() == FeatureCommand.Action.APPROVE_R2,
-                "authenticated R2 command action was not parsed");
-        require(command.reason().equals("accepted"), "command reason was not retained");
+        require(command.action() == FeatureCommand.Action.PAUSE,
+                "authenticated pause command action was not parsed");
+        require(command.reason().equals("maintenance"), "command reason was not retained");
     }
 
     private static void testPullRequestEvent() throws Exception {

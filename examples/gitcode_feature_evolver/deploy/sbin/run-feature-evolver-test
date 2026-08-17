@@ -7,15 +7,19 @@ service_group="gitcode-feature-evolver"
 service_home="/var/lib/gitcode-feature-evolver"
 runtime_dir="/run/gitcode-feature-evolver"
 repository_dir="/opt/gitcode-feature-evolver/repo"
+podman_wrapper="/usr/local/libexec/gitcode-feature-evolver/podman"
+podman_wrapper_digest="21f634bcc6af7cb05343d994cef9fc11512a4f961864f83e83f18813ab9ace62"
 config_file="/etc/gitcode-feature-evolver/feature-config.json"
 secrets_file="/etc/gitcode-feature-evolver/feature-secrets.json"
 model_file="/etc/gitcode-feature-evolver/apiconfig.json"
+logging_file="/etc/gitcode-feature-evolver/logback-active.xml"
 runner="$repository_dir/examples/gitcode_feature_evolver/scripts/run-service.sh"
 test_script="$repository_dir/examples/gitcode_feature_evolver/scripts/test-demo.sh"
 gate_stamp="/etc/gitcode-feature-evolver/deployment-gate"
 validation_worktree=""
 prefetch_worktree=""
-test_worktree=""
+offline_worktree=""
+system_test_mount=""
 
 fail() {
     printf 'Error: %s\n' "$*" >&2
@@ -25,8 +29,8 @@ fail() {
 (($# == 0)) || fail "run-feature-evolver-test does not accept arguments"
 ((EUID == 0)) || fail "This command must run as root"
 
-for required_command in awk bash cp find git id install jq mkdir mktemp podman readlink \
-    rm runuser sha256sum stat systemctl; do
+for required_command in awk bash chmod cp env find git id install jq mkdir mktemp podman readlink \
+    rm runuser sha256sum stat systemctl systemd-run; do
     command -v "$required_command" >/dev/null 2>&1 ||
         fail "Required command is unavailable: $required_command"
 done
@@ -37,6 +41,17 @@ systemctl is-active --quiet gitcode-feature-evolver.service &&
 service_uid="$(id -u "$service_account")"
 service_gid="$(id -g "$service_account")"
 ((service_uid > 0 && service_gid > 0)) || fail "The service account must not be root"
+podman_runtime_dir="/run/user/$service_uid"
+podman_bus="unix:path=$podman_runtime_dir/bus"
+
+[[ -f "$podman_wrapper" && ! -L "$podman_wrapper" ]] ||
+    fail "Install the root-owned Feature Evolver Podman launcher first"
+[[ "$(stat -c '%u:%g:%a' "$podman_wrapper")" == "0:0:755" ]] ||
+    fail "$podman_wrapper must be owned by root:root with mode 0755"
+[[ "$(sha256sum "$podman_wrapper" | awk '{print $1}')" == "$podman_wrapper_digest" ]] ||
+    fail "$podman_wrapper does not match this deployment helper"
+[[ -d "$podman_runtime_dir" && -S "$podman_runtime_dir/bus" ]] ||
+    fail "Run the provision helper to start the rootless systemd user session"
 
 [[ -d "$repository_dir" && ! -L "$repository_dir" ]] ||
     fail "$repository_dir must be a real directory"
@@ -59,13 +74,19 @@ secure_external_file() {
 secure_external_file "$config_file"
 secure_external_file "$secrets_file"
 secure_external_file "$model_file"
+secure_external_file "$logging_file"
 install -d -o "$service_account" -g "$service_group" -m 0700 "$runtime_dir"
 
 run_as_service() {
     runuser --user "$service_account" -- env -i \
         HOME="$service_home" USER="$service_account" LOGNAME="$service_account" \
-        XDG_RUNTIME_DIR="$runtime_dir" PATH=/usr/local/bin:/usr/bin:/bin \
+        XDG_RUNTIME_DIR="$podman_runtime_dir" DBUS_SESSION_BUS_ADDRESS="$podman_bus" \
+        PATH=/usr/local/libexec/gitcode-feature-evolver:/usr/local/bin:/usr/bin:/bin \
         GIT_TERMINAL_PROMPT=0 "$@"
+}
+
+run_podman_as_service() {
+    run_as_service podman "$@"
 }
 
 json_string() {
@@ -105,9 +126,14 @@ cleanup() {
         run_as_service git -C "$repository_dir" worktree remove --force \
             "$prefetch_worktree" || true
     fi
-    if [[ -n "$test_worktree" && -d "$test_worktree" ]]; then
+    if [[ -n "$offline_worktree" && -d "$offline_worktree" ]]; then
         run_as_service git -C "$repository_dir" worktree remove --force \
-            "$test_worktree" || true
+            "$offline_worktree" || true
+    fi
+    if [[ -n "$system_test_mount"
+        && "$system_test_mount" == "$service_home"/.feature-system-test-mount.*
+        && -d "$system_test_mount" ]]; then
+        run_as_service rm -rf -- "$system_test_mount" || true
     fi
 }
 trap cleanup EXIT
@@ -145,17 +171,35 @@ require_clean_worktree "$repository_dir" "Deployment repository"
 validation_worktree="$(new_worktree_path)"
 run_as_service git -C "$repository_dir" worktree add --detach "$validation_worktree" HEAD
 
+native_library_tmp="/native-tmp"
+container_jvm_options="-Duser.home=/tmp -Djansi.tmpdir=$native_library_tmp"
+container_jvm_options+=" -Dorg.sqlite.tmpdir=$native_library_tmp"
 common_container_arguments=(
     run --rm --pull=never --http-proxy=false --read-only=true --cap-drop=ALL
     --security-opt=no-new-privileges --pids-limit="$pids_limit"
     --memory="${memory_mb}m" --cpus="$cpus"
     --userns="keep-id:uid=$service_uid,gid=$service_gid"
     --user="$container_user" --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m
+    --tmpfs="$native_library_tmp:rw,exec,nosuid,nodev,size=64m"
     --mount=type=bind,src=/dev/null,dst=/workspace/.git,ro=true
-    --env=HOME=/tmp --workdir=/workspace
+    --env=HOME=/tmp --env=MAVEN_CONFIG=/tmp/.m2
+    --env="JAVA_TOOL_OPTIONS=$container_jvm_options" --workdir=/workspace
+)
+maven_no_test_arguments=(
+    -B -ntp -Dmaven.repo.local=/m2 -Dmaven.test.skip=true -DskipITs
+    dependency:go-offline test-compile
+)
+maven_cache_probe_test="com.openjiuwen.core.application.schema.ConstrainConfigValidationTest"
+maven_cache_probe_arguments=(
+    -B -ntp -Dmaven.repo.local=/m2 -DskipITs
+    "-Dtest=$maven_cache_probe_test" -DfailIfNoTests=true
+    -Dsurefire.failIfNoSpecifiedTests=true test
+)
+maven_source_install_arguments=(
+    -B -ntp -o -Dmaven.repo.local=/m2 -Dmaven.test.skip=true -DskipITs install
 )
 
-run_as_service podman "${common_container_arguments[@]}" \
+run_podman_as_service "${common_container_arguments[@]}" \
     --network=slirp4netns:allow_host_loopback=false \
     --env="MAVEN_OPTS=-Dmaven.repo.local=$maven_cache" \
     --volume="$maven_cache:$maven_cache:rw,Z" \
@@ -169,24 +213,76 @@ run_as_service git -C "$repository_dir" worktree remove --force "$validation_wor
 validation_worktree=""
 
 run_as_service bash "$runner" --config "$config_file" --secrets "$secrets_file" \
-    --llm-config "$model_file" --check
+    --llm-config "$model_file" --logging-config "$logging_file" --check
 
 prefetch_worktree="$(new_worktree_path)"
 run_as_service git -C "$repository_dir" worktree add --detach "$prefetch_worktree" HEAD
-run_as_service podman "${common_container_arguments[@]}" \
+printf 'Preparing the Maven cache without executing main-project tests.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
     --network=slirp4netns:allow_host_loopback=false \
     --volume="$maven_cache:/m2:rw,Z" \
     --volume="$prefetch_worktree:/workspace:rw,Z" "$container_image" \
-    mvn -B -ntp -Dmaven.repo.local=/m2 verify
+    mvn "${maven_no_test_arguments[@]}"
+printf 'Warming the Maven test runtime with focused probe %s.\n' \
+    "$maven_cache_probe_test"
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=slirp4netns:allow_host_loopback=false \
+    --volume="$maven_cache:/m2:rw,Z" \
+    --volume="$prefetch_worktree:/workspace:rw,Z" "$container_image" \
+    mvn "${maven_cache_probe_arguments[@]}"
 run_as_service git -C "$repository_dir" worktree remove --force "$prefetch_worktree"
 prefetch_worktree=""
 
-test_worktree="$(new_worktree_path)"
-run_as_service git -C "$repository_dir" worktree add --detach "$test_worktree" HEAD
-run_as_service bash "$runner" --config "$config_file" --secrets "$secrets_file" \
-    --llm-config "$model_file" --container-test-worktree "$test_worktree"
-run_as_service git -C "$repository_dir" worktree remove --force "$test_worktree"
-test_worktree=""
+offline_worktree="$(new_worktree_path)"
+run_as_service git -C "$repository_dir" worktree add --detach "$offline_worktree" HEAD
+[[ ! -L "$offline_worktree/target" ]] || fail "Frozen-source target mountpoint is unsafe"
+run_as_service mkdir -p -- "$offline_worktree/target"
+[[ -d "$offline_worktree/target" && ! -L "$offline_worktree/target" ]] ||
+    fail "Frozen-source target mountpoint could not be prepared"
+run_as_service chmod 0777 "$offline_worktree/target"
+printf 'Validating the no-test Maven build with networking disabled.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
+    --volume="$maven_cache:/m2:ro,Z" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
+    mvn -o "${maven_no_test_arguments[@]}"
+printf 'Validating the focused Maven test runtime with networking disabled.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
+    --volume="$maven_cache:/m2:ro,Z" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
+    mvn -o "${maven_cache_probe_arguments[@]}"
+printf 'Validating frozen-source installation with a read-only source tree.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m \
+    --volume="$maven_cache:/m2:O" \
+    --volume="$offline_worktree:/workspace:ro,Z" "$container_image" \
+    mvn "${maven_source_install_arguments[@]}"
+system_test_mount="$(run_as_service mktemp \
+    -d "$service_home/.feature-system-test-mount.XXXXXX")"
+run_as_service mkdir -p -- "$system_test_mount/target"
+run_as_service chmod 0777 "$system_test_mount/target"
+install -o "$service_account" -g "$service_group" -m 0600 \
+    /dev/null "$system_test_mount/.git"
+printf 'Validating fresh dual-worktree target mounts with networking disabled.\n'
+run_podman_as_service "${common_container_arguments[@]}" \
+    --network=none \
+    --tmpfs=/workspace/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --tmpfs=/source/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --tmpfs=/tests/target:rw,noexec,nosuid,nodev,size=2048m,mode=1777 \
+    --mount=type=bind,src=/dev/null,dst=/source/.git,ro=true \
+    --mount=type=bind,src=/dev/null,dst=/tests/.git,ro=true \
+    --volume="$offline_worktree:/workspace:ro,Z" \
+    --volume="$offline_worktree:/source:ro,Z" \
+    --volume="$system_test_mount:/tests:ro,Z" "$container_image" \
+    sh -eu -c 'test -w /workspace/target; test -w /source/target; test -w /tests/target'
+run_as_service rm -rf -- "$system_test_mount"
+system_test_mount=""
+run_as_service git -C "$repository_dir" worktree remove --force "$offline_worktree"
+offline_worktree=""
 
 require_clean_worktree "$repository_dir" "Deployment repository"
 

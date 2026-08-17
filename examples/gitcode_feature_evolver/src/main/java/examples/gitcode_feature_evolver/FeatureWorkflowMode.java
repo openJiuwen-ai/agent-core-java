@@ -7,7 +7,7 @@ package examples.gitcode_feature_evolver;
 import java.util.Locale;
 
 /**
- * Human participation mode for one feature delivery.
+ * Compatibility workflow mode for one feature delivery.
  *
  * @since 0.1.12
  */
@@ -19,24 +19,23 @@ public enum FeatureWorkflowMode {
      * Parse the configured workflow mode.
      *
      * @param value configured value
-     * @return parsed mode, defaulting to attended
+     * @return unattended; legacy attended is accepted for migration
      */
     public static FeatureWorkflowMode parse(String value) {
         String normalized = value == null || value.isBlank()
-                ? ATTENDED.name() : value.strip().toUpperCase(Locale.ROOT);
-        try {
-            return FeatureWorkflowMode.valueOf(normalized);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("defaultWorkflowMode must be attended or unattended", ex);
+                ? UNATTENDED.name() : value.strip().toUpperCase(Locale.ROOT);
+        if (!normalized.equals(ATTENDED.name()) && !normalized.equals(UNATTENDED.name())) {
+            throw new IllegalArgumentException("defaultWorkflowMode must be attended or unattended");
         }
+        return UNATTENDED;
     }
 
     /**
      * Report whether passing gates require an explicit human decision.
      *
-     * @return {@code true} in attended mode
+     * @return always {@code false}; only PR merge waits are human boundaries
      */
     public boolean requiresApproval() {
-        return this == ATTENDED;
+        return false;
     }
 }

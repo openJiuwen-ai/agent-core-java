@@ -56,11 +56,23 @@ public final class GitCodeFeatureEvolverExample {
         System.out.println("Target repository: " + config.coordinates().targetRepository());
         System.out.println("Publish repository: " + config.coordinates().publishRepository());
         System.out.println("Base branch: " + config.coordinates().baseBranch());
+        System.out.println("System-test delivery: "
+                + (config.systemTestEnabled() ? "enabled" : "disabled"));
+        if (config.systemTestEnabled()) {
+            System.out.println("System-test repository: "
+                    + config.systemTestCoordinates().targetRepository());
+            System.out.println("System-test publish repository: "
+                    + config.systemTestCoordinates().publishRepository());
+            System.out.println("System-test base branch: "
+                    + config.systemTestCoordinates().baseBranch());
+        }
         System.out.println("Trigger mode: " + config.triggerMode().name().toLowerCase(Locale.ROOT));
         System.out.println("Trigger label: " + config.triggerLabel());
         System.out.println("Issue scan field/window: updated_at / "
                 + config.issueScanWindowHours() + " hours");
         System.out.println("Poll interval: " + config.pollIntervalMinutes() + " minutes");
+        System.out.println("Manual polling endpoint: "
+                + (config.manualPollingEnabled() ? "enabled at /admin/poll" : "disabled"));
         System.out.println("Default workflow mode: "
                 + config.defaultWorkflowMode().name().toLowerCase(Locale.ROOT));
         System.out.println("Container executor: rootless Podman / network=none / pinned digest");
@@ -70,14 +82,14 @@ public final class GitCodeFeatureEvolverExample {
         RootlessContainerGateRunner container = new RootlessContainerGateRunner(config);
         requireReady(config, container);
         ContainerGateResult result = container.run(
-                RootlessContainerGateRunner.Profile.FULL, worktree);
-        System.out.println("Container test outcome: " + result.outcome());
-        System.out.println("Container test exit code: " + result.exitCode());
+                RootlessContainerGateRunner.Profile.BASELINE, worktree);
+        System.out.println("Container baseline outcome: " + result.outcome());
+        System.out.println("Container baseline exit code: " + result.exitCode());
         if (!result.output().isBlank()) {
             System.out.println(result.output());
         }
         if (result.outcome() != ContainerGateResult.Outcome.PASSED) {
-            throw new IllegalStateException("Credential-free container verification did not pass");
+            throw new IllegalStateException("Credential-free container baseline did not pass");
         }
     }
 
@@ -99,7 +111,7 @@ public final class GitCodeFeatureEvolverExample {
         System.out.println("  --llm-config <path>  Shared examples/apiconfig.json");
         System.out.println("  --check              Validate all mandatory readiness gates");
         System.out.println("  --container-test-worktree <path>");
-        System.out.println("                       Run the fixed full gate against a trusted Worktree");
+        System.out.println("                       Run the fixed baseline probe against a trusted Worktree");
         System.out.println("  --help               Show this help");
     }
 

@@ -5,6 +5,7 @@ set -Eeuo pipefail
 config_file="examples/gitcode_feature_evolver/config/feature-config.local.json"
 secrets_file="examples/gitcode_feature_evolver/config/feature-secrets.local.json"
 model_config="examples/apiconfig.json"
+logging_config=""
 check_only=false
 container_test_worktree=""
 
@@ -22,9 +23,11 @@ usage() {
         '  --config <path>      Non-secret feature runtime JSON' \
         '  --secrets <path>     Feature bot and Webhook secrets JSON' \
         '  --llm-config <path>  Model configuration JSON' \
+        '  --logging-config <path>' \
+        '                       Feature-specific Logback policy' \
         '  --check              Validate all mandatory readiness gates' \
         '  --container-test-worktree <path>' \
-        '                       Run the fixed full container gate' \
+        '                       Run the fixed container baseline probe' \
         '  -h, --help           Show this help'
 }
 
@@ -49,6 +52,11 @@ while (($# > 0)); do
         --llm-config)
             require_value "$1" "${2-}"
             model_config="$2"
+            shift 2
+            ;;
+        --logging-config)
+            require_value "$1" "${2-}"
+            logging_config="$2"
             shift 2
             ;;
         --check)
@@ -99,6 +107,10 @@ command -v tr >/dev/null 2>&1 || fail "Required command is unavailable: tr"
 config_path="$(resolve_file "$config_file" 'Runtime config')"
 secrets_path="$(resolve_file "$secrets_file" 'Secrets file')"
 model_path="$(resolve_file "$model_config" 'Model config')"
+logging_path=""
+if [[ -n "$logging_config" ]]; then
+    logging_path="$(resolve_file "$logging_config" 'Logging config')"
+fi
 
 feature_runtime="$repository_root/examples/gitcode_feature_evolver/.runtime"
 issue_runtime="$repository_root/examples/gitcode_issue_evolver/.runtime"
@@ -115,6 +127,9 @@ arguments=(
     --secrets "$secrets_path"
     --llm-config "$model_path"
 )
+if [[ -n "$logging_path" ]]; then
+    arguments=(-Dlogback.configurationFile="$logging_path" "${arguments[@]}")
+fi
 if [[ "$check_only" == true ]]; then
     arguments+=(--check)
 fi

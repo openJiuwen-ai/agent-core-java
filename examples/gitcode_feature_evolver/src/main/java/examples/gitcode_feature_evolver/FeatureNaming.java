@@ -24,10 +24,20 @@ public final class FeatureNaming {
         return "feature-evolving/issue-" + issueIid + "-" + slug(title);
     }
 
+    /** Build the stable post-merge branch in the configured system-test repository. */
+    public static String systemTestBranch(long issueIid, String title) {
+        return "feature-evolving/system-test-issue-" + issueIid + "-" + slug(title);
+    }
+
     /** Build the DevFlow artifact root below the configured component. */
     public static String artifactRoot(String componentRoot, long issueIid, String title) {
         String prefix = ".".equals(componentRoot) ? "" : componentRoot + "/";
         return prefix + "features/" + issueIid + "-" + slug(title);
+    }
+
+    /** Build the post-merge evidence root in the system-test repository. */
+    public static String systemTestArtifactRoot(long issueIid, String title) {
+        return "features/" + issueIid + "-" + slug(title);
     }
 
     /** Compute a lowercase SHA-256 digest for delivery auditing. */

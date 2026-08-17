@@ -13,22 +13,55 @@ import java.util.Objects;
  *
  * @param identity stable Issue and branch identity
  * @param progress workflow state and counters
- * @param pullRequest canonical pull-request binding
+ * @param pullRequests canonical feature and system-test pull-request bindings
+ * @param recovery bounded repair and retry accounting
  * @param lease current worker lease
  * @param record optimistic-lock and audit metadata
  * @since 0.1.12
  */
-public record FeatureJob(Identity identity, Progress progress, PullRequest pullRequest,
-                         Lease lease, RecordMetadata record) {
+public record FeatureJob(Identity identity, Progress progress, PullRequests pullRequests,
+                         Recovery recovery, Lease lease, RecordMetadata record) {
     /**
      * Validate and freeze one job snapshot.
      */
     public FeatureJob {
         identity = Objects.requireNonNull(identity, "identity must not be null");
         progress = Objects.requireNonNull(progress, "progress must not be null");
-        pullRequest = Objects.requireNonNull(pullRequest, "pullRequest must not be null");
+        pullRequests = Objects.requireNonNull(pullRequests, "pullRequests must not be null");
+        recovery = Objects.requireNonNull(recovery, "recovery must not be null");
         lease = Objects.requireNonNull(lease, "lease must not be null");
         record = Objects.requireNonNull(record, "record must not be null");
+    }
+
+    /**
+     * Backward-compatible construction for a job with no system-test PR binding.
+     *
+     * @param identity stable identity
+     * @param progress workflow progress
+     * @param pullRequest feature PR binding
+     * @param lease worker lease
+     * @param record record metadata
+     */
+    public FeatureJob(Identity identity, Progress progress, PullRequest pullRequest,
+                      Lease lease, RecordMetadata record) {
+        this(identity, progress, new PullRequests(pullRequest, PullRequest.empty()),
+                Recovery.empty(), lease, record);
+    }
+
+    /** Backward-compatible construction with no recovery state. */
+    public FeatureJob(Identity identity, Progress progress, PullRequests pullRequests,
+                      Lease lease, RecordMetadata record) {
+        this(identity, progress, pullRequests, Recovery.empty(), lease, record);
+    }
+
+    /** @return canonical feature PR binding */
+    public PullRequest pullRequest() {
+        return pullRequests.feature();
+    }
+
+    /** @return canonical post-merge system-test PR binding */
+    public PullRequest systemTestPullRequest() {
+        return pullRequests.systemTest();
     }
 
     /**
@@ -115,6 +148,71 @@ public record FeatureJob(Identity identity, Progress progress, PullRequest pullR
         /** @return an empty pre-publication binding */
         public static PullRequest empty() {
             return new PullRequest(null, "", "", true, 0L);
+        }
+    }
+
+    /**
+     * Separate remote bindings for the two sequential delivery repositories.
+     *
+     * @param feature canonical feature PR
+     * @param systemTest canonical post-merge system-test PR
+     */
+    public record PullRequests(PullRequest feature, PullRequest systemTest) {
+        /** Validate both bindings. */
+        public PullRequests {
+            feature = Objects.requireNonNull(feature, "feature pull request must not be null");
+            systemTest = Objects.requireNonNull(systemTest,
+                    "system-test pull request must not be null");
+        }
+    }
+
+    /**
+     * Durable automatic recovery counters and latest classified failure.
+     *
+     * @param repairs primary and diagnostic repair counters
+     * @param retries transient and dependency-prefetch counters
+     * @param nextRetryAt scheduled retry epoch milliseconds, or zero
+     * @param retryStage exact durable stage retried after backoff, or {@code null}
+     * @param lastFailureCode latest stable failure code
+     * @param lastFailureCategory latest category, or {@code null}
+     */
+    public record Recovery(RepairCounters repairs, RetryCounters retries, long nextRetryAt,
+                           FeatureStage retryStage, String lastFailureCode,
+                           FeatureFailureCategory lastFailureCategory) {
+        /** Validate recovery counters. */
+        public Recovery {
+            repairs = Objects.requireNonNull(repairs, "repair counters must not be null");
+            retries = Objects.requireNonNull(retries, "retry counters must not be null");
+            lastFailureCode = value(lastFailureCode);
+            if (nextRetryAt < 0) {
+                throw new IllegalArgumentException("nextRetryAt must not be negative");
+            }
+        }
+
+        /** @return empty recovery state */
+        public static Recovery empty() {
+            return new Recovery(new RepairCounters(0, 0), new RetryCounters(0, 0), 0L,
+                    null, "", null);
+        }
+    }
+
+    /** Primary-session and diagnostic-session repair counts. */
+    public record RepairCounters(int primary, int diagnostic) {
+        /** Validate counters. */
+        public RepairCounters {
+            if (primary < 0 || diagnostic < 0) {
+                throw new IllegalArgumentException("repair counters must not be negative");
+            }
+        }
+    }
+
+    /** Transient replay and dependency-prefetch counts. */
+    public record RetryCounters(int transientRetries, int dependencyPrefetchRounds) {
+        /** Validate counters. */
+        public RetryCounters {
+            if (transientRetries < 0 || dependencyPrefetchRounds < 0) {
+                throw new IllegalArgumentException("retry counters must not be negative");
+            }
         }
     }
 

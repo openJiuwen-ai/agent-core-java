@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  */
 public final class FeatureGitPublisher {
     private static final Pattern BRANCH_PATTERN = Pattern.compile(
-            "feature-evolving/issue-[1-9][0-9]*-[a-z0-9-]+");
+            "feature-evolving/(?:issue|system-test-issue)-[1-9][0-9]*-[a-z0-9-]+");
     private static final Pattern SHA_PATTERN = Pattern.compile("[0-9a-fA-F]{40}");
     private final FeatureEvolvingConfig config;
     private final RepositoryCoordinates coordinates;
@@ -54,14 +54,38 @@ public final class FeatureGitPublisher {
     public Result commitAndPush(FeatureJob job, Path worktree, List<String> allowedScopes,
                                 String commitMessage) {
         FeatureJob required = Objects.requireNonNull(job, "job must not be null");
+        return commitAndPushBranch(required.identity().branch(), worktree, allowedScopes,
+                commitMessage, coordinates, config.gitCodeUsername(), config.gitCodeToken(),
+                "Feature");
+    }
+
+    /**
+     * Commit and push exact post-merge test-repository changes.
+     *
+     * @param branch owned system-test branch
+     * @param worktree owned system-test Worktree
+     * @param allowedScopes fixed test/evidence scopes
+     * @param commitMessage trusted one-line message
+     * @return typed publication outcome
+     */
+    public Result commitAndPushSystemTests(String branch, Path worktree,
+                                           List<String> allowedScopes, String commitMessage) {
+        return commitAndPushBranch(branch, worktree, allowedScopes, commitMessage,
+                config.systemTestCoordinates(), config.systemTestGitCodeUsername(),
+                config.systemTestGitCodeToken(), "System-test");
+    }
+
+    private Result commitAndPushBranch(String branch, Path worktree, List<String> allowedScopes,
+                                       String commitMessage, RepositoryCoordinates remote,
+                                       String gitCodeUsername, String gitCodeToken, String label) {
         Path root = Objects.requireNonNull(worktree, "worktree must not be null")
                 .toAbsolutePath().normalize();
-        if (!Files.isDirectory(root) || !validBranch(required.identity().branch())) {
-            return Result.failure("Invalid owned feature Worktree or branch", false);
+        if (!Files.isDirectory(root) || !validBranch(branch)) {
+            return Result.failure("Invalid owned " + label + " Worktree or branch", false);
         }
-        GitOperations git = operations(root);
-        if (!required.identity().branch().equals(git.currentBranch())) {
-            return Result.failure("Current branch does not match the feature job", false);
+        GitOperations git = operations(root, remote, gitCodeUsername, gitCodeToken);
+        if (!branch.equals(git.currentBranch())) {
+            return Result.failure("Current branch does not match the " + label + " job", false);
         }
         List<String> dirty;
         try {
@@ -89,12 +113,12 @@ public final class FeatureGitPublisher {
         if (!SHA_PATTERN.matcher(commit.sha()).matches()) {
             return Result.failure("Feature commit SHA is invalid", false);
         }
-        Map<String, Object> pushed = git.push(required.identity().branch());
+        Map<String, Object> pushed = git.push(branch);
         if (!Boolean.TRUE.equals(pushed.get("success"))) {
-            return Result.failure("Feature branch push failed: " + safe(pushed.get("output")), true);
+            return Result.failure(label + " branch push failed: " + safe(pushed.get("output")), true);
         }
         if (!commit.sha().equalsIgnoreCase(git.currentHead())) {
-            return Result.failure("Feature HEAD changed during publication", false);
+            return Result.failure(label + " HEAD changed during publication", false);
         }
         return new Result(true, false, commit.sha(), commit.files(), "");
     }
@@ -111,7 +135,154 @@ public final class FeatureGitPublisher {
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Feature Worktree is unavailable");
         }
-        return List.copyOf(operations(root).listDirtyFiles());
+        return List.copyOf(operations(root, coordinates,
+                config.gitCodeUsername(), config.gitCodeToken()).listDirtyFiles());
+    }
+
+    /** @return current feature Worktree HEAD without exposing Git to an Agent */
+    public String currentHead(Path worktree) {
+        return operations(normalizedWorktree(worktree), coordinates,
+                config.gitCodeUsername(), config.gitCodeToken()).currentHead();
+    }
+
+    /** @return current system-test Worktree HEAD without exposing Git to an Agent */
+    public String currentSystemTestHead(Path worktree) {
+        return operations(normalizedWorktree(worktree), config.systemTestCoordinates(),
+                config.systemTestGitCodeUsername(), config.systemTestGitCodeToken()).currentHead();
+    }
+
+    /** Return a bounded, credential-free diff summary for an independent diagnostic Agent. */
+    public String boundedDiff(Path worktree, boolean systemTest) {
+        Path root = normalizedWorktree(worktree);
+        GitOperations git = systemTest
+                ? operations(root, config.systemTestCoordinates(),
+                config.systemTestGitCodeUsername(), config.systemTestGitCodeToken())
+                : operations(root, coordinates, config.gitCodeUsername(), config.gitCodeToken());
+        List<String> dirty = git.listDirtyFiles().stream()
+                .map(FeaturePathPolicy::normalize).sorted().toList();
+        GitOperations.GitCommandResult diff = git.git(
+                "diff", "--no-ext-diff", "--unified=2", "HEAD", "--");
+        String output = diff.code() == 0 ? diff.output() : "tracked diff unavailable";
+        String summary = "changedPaths=" + dirty + System.lineSeparator() + output;
+        int maximum = 8_000;
+        return summary.substring(0, Math.min(summary.length(), maximum));
+    }
+
+    /**
+     * Restore an unsuccessful Agent attempt to the current committed stage snapshot.
+     *
+     * <p>The caller must provide the exact controller-approved scopes for the stage. The
+     * restoration is refused without changing the Worktree when any dirty path falls outside
+     * those scopes. This method is intended only for an owned persistent feature Worktree at a
+     * bounded retry boundary.</p>
+     *
+     * @param worktree owned persistent feature Worktree
+     * @param allowedScopes exact controller-approved scopes for the retried stage
+     * @return typed restoration result without command output or credentials
+     */
+    public RestoreResult restoreRetrySnapshot(Path worktree, List<String> allowedScopes) {
+        Path root = Objects.requireNonNull(worktree, "worktree must not be null")
+                .toAbsolutePath().normalize();
+        if (!Files.isDirectory(root)) {
+            return RestoreResult.failure("Feature retry Worktree is unavailable", false);
+        }
+        GitOperations git = operations(root, coordinates,
+                config.gitCodeUsername(), config.gitCodeToken());
+        List<String> dirty;
+        try {
+            dirty = git.listDirtyFiles().stream()
+                    .map(FeaturePathPolicy::normalize).sorted().toList();
+        } catch (IllegalArgumentException ex) {
+            return RestoreResult.failure("Git reported an invalid retry path", false);
+        }
+        if (dirty.isEmpty()) {
+            return RestoreResult.success(List.of());
+        }
+        List<String> scopes;
+        try {
+            scopes = FeaturePathPolicy.normalizeScopes(allowedScopes);
+        } catch (IllegalArgumentException ex) {
+            return RestoreResult.failure("Controller retry scopes are invalid", false);
+        }
+        List<String> violations = FeaturePathPolicy.violations(dirty, scopes);
+        if (!violations.isEmpty()) {
+            return RestoreResult.failure("Retry snapshot contains paths outside the stage scope: "
+                    + String.join(", ", violations), false);
+        }
+        GitOperations.GitCommandResult reset = git.git("reset", "--hard", "HEAD");
+        if (reset.code() != 0) {
+            return RestoreResult.failure("Unable to restore tracked retry changes", true);
+        }
+        List<String> cleanArguments = new ArrayList<>(List.of("clean", "-fd", "--"));
+        cleanArguments.addAll(dirty);
+        GitOperations.GitCommandResult clean = git.git(cleanArguments.toArray(String[]::new));
+        if (clean.code() != 0) {
+            return RestoreResult.failure("Unable to remove untracked retry changes", true);
+        }
+        List<String> remaining;
+        try {
+            remaining = git.listDirtyFiles().stream()
+                    .map(FeaturePathPolicy::normalize).sorted().toList();
+        } catch (IllegalArgumentException ex) {
+            return RestoreResult.failure("Git reported an invalid path after retry restoration", false);
+        }
+        if (!remaining.isEmpty()) {
+            return RestoreResult.failure("Retry Worktree is not clean after restoration", true);
+        }
+        return RestoreResult.success(dirty);
+    }
+
+    /** Restore every uncommitted change after an Agent violates immutable path policy. */
+    public RestoreResult restorePolicySnapshot(Path worktree, boolean systemTest) {
+        Path root = normalizedWorktree(worktree);
+        GitOperations git = systemTest
+                ? operations(root, config.systemTestCoordinates(),
+                config.systemTestGitCodeUsername(), config.systemTestGitCodeToken())
+                : operations(root, coordinates, config.gitCodeUsername(), config.gitCodeToken());
+        GitOperations.GitCommandResult reset = git.git("reset", "--hard", "HEAD");
+        if (reset.code() != 0) {
+            return RestoreResult.failure("Unable to restore tracked policy-violating changes", true);
+        }
+        GitOperations.GitCommandResult clean = git.git("clean", "-fd");
+        if (clean.code() != 0 || !git.listDirtyFiles().isEmpty()) {
+            return RestoreResult.failure("Unable to remove policy-violating changes", true);
+        }
+        return RestoreResult.success(List.of());
+    }
+
+    /**
+     * Read every committed or uncommitted path changed from the frozen system-test base.
+     *
+     * @param worktree owned system-test Worktree
+     * @return normalized changed paths
+     */
+    public List<String> systemTestChangedFiles(Path worktree) {
+        Path root = Objects.requireNonNull(worktree, "worktree must not be null")
+                .toAbsolutePath().normalize();
+        if (!Files.isDirectory(root)) {
+            throw new IllegalArgumentException("System-test Worktree is unavailable");
+        }
+        GitOperations git = operations(root, config.systemTestCoordinates(),
+                config.systemTestGitCodeUsername(), config.systemTestGitCodeToken());
+        String base = "refs/remotes/feature-system-test/"
+                + config.systemTestCoordinates().baseBranch();
+        GitOperations.GitCommandResult diff = git.git(
+                "diff", "--name-only", "--diff-filter=ACDMRTUXB", base + "...HEAD", "--");
+        if (diff.code() != 0) {
+            throw new IllegalStateException("Unable to inspect system-test branch changes");
+        }
+        Set<String> paths = new LinkedHashSet<>(outputPaths(diff.output()));
+        paths.addAll(git.listDirtyFiles().stream().map(FeaturePathPolicy::normalize).toList());
+        return paths.stream().sorted().toList();
+    }
+
+    private static Path normalizedWorktree(Path worktree) {
+        Path root = Objects.requireNonNull(worktree, "worktree must not be null")
+                .toAbsolutePath().normalize();
+        if (!Files.isDirectory(root)) {
+            throw new IllegalArgumentException("Feature Worktree is unavailable");
+        }
+        return root;
     }
 
     private CommitOutcome commit(GitOperations git, List<String> dirty, String message) {
@@ -153,10 +324,11 @@ public final class FeatureGitPublisher {
         return new CommitOutcome(true, false, git.currentHead(), files, "");
     }
 
-    private GitOperations operations(Path worktree) {
-        return new GitOperations(worktree.toString(), coordinates.publishCloneUri().toString(),
-                coordinates.baseBranch(), coordinates.publishOwner(), coordinates.targetOwner(),
-                coordinates.targetName(), coordinates.publishOwner(), config.gitCodeToken(),
+    private GitOperations operations(Path worktree, RepositoryCoordinates remote,
+                                     String gitCodeUsername, String gitCodeToken) {
+        return new GitOperations(worktree.toString(), remote.publishCloneUri().toString(),
+                remote.baseBranch(), remote.publishOwner(), remote.targetOwner(),
+                remote.targetName(), gitCodeUsername, gitCodeToken,
                 config.gitUserName(), config.gitUserEmail());
     }
 
@@ -217,6 +389,24 @@ public final class FeatureGitPublisher {
 
         private static Result failure(String error, boolean retryable) {
             return new Result(false, retryable, "", List.of(), error);
+        }
+    }
+
+    /** Result of restoring one bounded stage retry snapshot. */
+    public record RestoreResult(boolean success, boolean retryable,
+                                List<String> restoredFiles, String error) {
+        /** Normalize and freeze result values. */
+        public RestoreResult {
+            restoredFiles = restoredFiles == null ? List.of() : List.copyOf(restoredFiles);
+            error = error == null ? "" : error;
+        }
+
+        private static RestoreResult success(List<String> restoredFiles) {
+            return new RestoreResult(true, false, restoredFiles, "");
+        }
+
+        private static RestoreResult failure(String error, boolean retryable) {
+            return new RestoreResult(false, retryable, List.of(), error);
         }
     }
 

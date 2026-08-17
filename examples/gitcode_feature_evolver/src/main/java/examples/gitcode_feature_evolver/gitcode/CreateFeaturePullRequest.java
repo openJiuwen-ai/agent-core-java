@@ -10,18 +10,18 @@ import java.util.Objects;
 /**
  * Controlled creation of the one long-lived feature pull request.
  *
- * @param issueIid associated Issue IID
+ * @param issueIid associated Issue IID, or {@code null} for a cross-repository test PR
  * @param headBranch validated publication branch
  * @param content standardized title and body
  * @param assignees required human assignees
  * @param draft whether the PR starts as Draft
  * @since 0.1.12
  */
-public record CreateFeaturePullRequest(long issueIid, String headBranch, Content content,
+public record CreateFeaturePullRequest(Long issueIid, String headBranch, Content content,
                                        List<String> assignees, boolean draft) {
     /** Validate and freeze the request. */
     public CreateFeaturePullRequest {
-        if (issueIid <= 0) {
+        if (issueIid != null && issueIid <= 0) {
             throw new IllegalArgumentException("issueIid must be positive");
         }
         if (headBranch == null || headBranch.isBlank()) {

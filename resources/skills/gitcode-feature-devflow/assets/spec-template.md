@@ -6,7 +6,7 @@
 | --- | --- |
 | Issue | `<canonical URL>` |
 | Work item | `<IID-slug>` |
-| Mode | `attended | unattended` |
+| Mode | `automatic independent reviews` |
 | Component root | `<path>` |
 | Revision | `<revision>` |
 

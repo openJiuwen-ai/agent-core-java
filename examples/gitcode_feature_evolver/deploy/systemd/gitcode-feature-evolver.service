@@ -11,23 +11,27 @@ Group=gitcode-feature-evolver
 WorkingDirectory=/opt/gitcode-feature-evolver/repo
 
 Environment=HOME=/var/lib/gitcode-feature-evolver
-Environment=XDG_RUNTIME_DIR=/run/gitcode-feature-evolver
-Environment=LOG_HOME=/var/log/gitcode-feature-evolver
 Environment=GIT_TERMINAL_PROMPT=0
+Environment=PATH=/usr/local/libexec/gitcode-feature-evolver:/usr/local/bin:/usr/bin:/bin
 
+ExecStartPre=/usr/bin/mkdir -p /run/gitcode-feature-evolver/containers
+ExecStartPre=+/usr/local/sbin/manage-feature-evolver-transcript apply-config
 ExecStartPre=/usr/bin/bash \
   /opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/scripts/run-service.sh \
   --config /etc/gitcode-feature-evolver/feature-config.json \
   --secrets /etc/gitcode-feature-evolver/feature-secrets.json \
   --llm-config /etc/gitcode-feature-evolver/apiconfig.json \
+  --logging-config /etc/gitcode-feature-evolver/logback-active.xml \
   --check
 ExecStart=/usr/bin/bash \
   /opt/gitcode-feature-evolver/repo/examples/gitcode_feature_evolver/scripts/run-service.sh \
   --config /etc/gitcode-feature-evolver/feature-config.json \
   --secrets /etc/gitcode-feature-evolver/feature-secrets.json \
-  --llm-config /etc/gitcode-feature-evolver/apiconfig.json
+  --llm-config /etc/gitcode-feature-evolver/apiconfig.json \
+  --logging-config /etc/gitcode-feature-evolver/logback-active.xml
 
 Restart=on-failure
+SuccessExitStatus=143
 RestartSec=5s
 KillSignal=SIGTERM
 KillMode=control-group
@@ -47,16 +51,19 @@ ConfigurationDirectoryMode=0750
 
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectHome=true
+ProtectHome=read-only
 ProtectSystem=strict
 ReadWritePaths=/opt/gitcode-feature-evolver/repo
 ReadWritePaths=/var/lib/gitcode-feature-evolver
 ReadWritePaths=/var/log/gitcode-feature-evolver
 ReadWritePaths=/run/gitcode-feature-evolver
+ReadWritePaths=/etc/gitcode-feature-evolver
 LimitNOFILE=65535
 
 StandardOutput=journal
 StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
 
 [Install]
 WantedBy=multi-user.target

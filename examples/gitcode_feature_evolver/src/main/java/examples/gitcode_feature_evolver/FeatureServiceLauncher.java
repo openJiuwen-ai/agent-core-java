@@ -10,12 +10,15 @@ import examples.gitcode_feature_evolver.agent.FeatureStageAgent;
 import examples.gitcode_feature_evolver.gitcode.FeatureGitCodeClient;
 import examples.gitcode_feature_evolver.gitcode.HttpFeatureGitCodeClient;
 import examples.gitcode_feature_evolver.infrastructure.FeatureGitPublisher;
+import examples.gitcode_feature_evolver.infrastructure.DependencyPrefetcher;
 import examples.gitcode_feature_evolver.infrastructure.FeatureWorktreeManager;
 import examples.gitcode_feature_evolver.infrastructure.RootlessContainerGateRunner;
+import examples.gitcode_feature_evolver.infrastructure.SystemTestWorktreeManager;
 import examples.gitcode_feature_evolver.job.FeatureJobStore;
 import examples.gitcode_feature_evolver.job.SqliteFeatureJobStore;
 import examples.gitcode_feature_evolver.polling.FeaturePollingCoordinator;
 import examples.gitcode_feature_evolver.publish.FeaturePullRequestPublisher;
+import examples.gitcode_feature_evolver.publish.SystemTestPullRequestPublisher;
 import examples.gitcode_feature_evolver.worker.FeatureWorker;
 import examples.gitcode_feature_evolver.workflow.FeatureStageExecutor;
 import examples.gitcode_issue_evolver.AutoEvolvingThreadFactory;
@@ -52,7 +55,8 @@ public final class FeatureServiceLauncher {
         }
         Path skillsRoot = FeatureSkillStager.stage(required.trustedSkillsDir(),
                 required.featureSkill(), required.codingStandardSkill());
-        try (FeatureJobStore store = new SqliteFeatureJobStore(required.databasePath())) {
+        try (FeatureJobStore store = new SqliteFeatureJobStore(
+                required.databasePath(), required.coordinates().targetRepository())) {
             runAssembled(required, store, container, skillsRoot, readiness);
         } finally {
             Runner.stop();
@@ -64,13 +68,24 @@ public final class FeatureServiceLauncher {
                                      List<String> readiness) throws IOException, InterruptedException {
         FeatureGitCodeClient gitCode = new HttpFeatureGitCodeClient(
                 config.apiBaseUrl(), config.gitCodeToken(), config.coordinates());
+        FeatureGitCodeClient systemTestGitCode = new HttpFeatureGitCodeClient(
+                config.apiBaseUrl(), config.systemTestGitCodeToken(),
+                config.systemTestCoordinates());
         FeatureStageAgent agent = new FeatureStageAgent(config.modelSettings(), skillsRoot);
         FeatureStageExecutor.Infrastructure infrastructure = new FeatureStageExecutor.Infrastructure(
                 new FeatureWorktreeManager(config), container, new FeatureGitPublisher(config),
-                new FeaturePullRequestPublisher(config, gitCode));
-        FeatureStageExecutor executor = new FeatureStageExecutor(config, agent, infrastructure);
-        FeatureWorker worker = new FeatureWorker(store, gitCode, executor);
-        FeaturePollingCoordinator polling = new FeaturePollingCoordinator(config, store, gitCode);
+                new FeaturePullRequestPublisher(config, gitCode),
+                new FeatureStageExecutor.SystemTestInfrastructure(
+                        new SystemTestWorktreeManager(config),
+                        new SystemTestPullRequestPublisher(config, systemTestGitCode, gitCode)));
+        FeatureStageExecutor executor = new FeatureStageExecutor(config, store, agent, infrastructure);
+        DependencyPrefetcher prefetcher = new DependencyPrefetcher(config);
+        FeatureWorker.CacheLifecycle cacheLifecycle = new FeatureWorker.CacheLifecycle(
+                prefetcher::cleanupExpired, prefetcher::markTerminal);
+        FeatureWorker worker = new FeatureWorker(store, gitCode, executor,
+                config.maxTransientStageRetries(), cacheLifecycle);
+        FeaturePollingCoordinator polling = new FeaturePollingCoordinator(
+                config, store, gitCode, systemTestGitCode, prefetcher::markTerminal);
         FeatureEvolvingService.Components components = new FeatureEvolvingService.Components(
                 worker, polling, gitCode);
         try (FeatureEvolvingService service = new FeatureEvolvingService(

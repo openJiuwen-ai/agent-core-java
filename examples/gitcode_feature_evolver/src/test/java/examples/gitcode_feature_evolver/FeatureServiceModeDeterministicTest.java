@@ -33,6 +33,10 @@ public final class FeatureServiceModeDeterministicTest {
         testMode(TriggerMode.POLLING, false, true);
         testMode(TriggerMode.WEBHOOK, true, false);
         testMode(TriggerMode.BOTH, true, true);
+        testManualPollingConfig();
+        testSystemTestCredentials();
+        testSystemTestSmokeConfig();
+        testSystemTestAssigneeIsolation();
         testTransientPollingFailure();
         System.out.println("FeatureServiceModeDeterministicTest: PASS");
     }
@@ -68,6 +72,104 @@ public final class FeatureServiceModeDeterministicTest {
             require(FeatureEvolvingService.readinessStatus(List.of("container unavailable")) == 503,
                     "mandatory startup failure did not block readiness");
         }
+    }
+
+    private static void testManualPollingConfig() {
+        FeatureEvolvingConfig defaults = FeatureEvolvingConfig.builder().build();
+        require(!defaults.manualPollingEnabled(),
+                "manual polling did not retain its upgrade-compatible disabled default");
+        FeatureEvolvingConfig enabled = FeatureEvolvingConfig.builder()
+                .triggerMode(TriggerMode.POLLING)
+                .manualPollingEnabled(true)
+                .build();
+        require(enabled.manualPollingEnabled(), "manual polling setting was not retained");
+        FeatureEvolvingConfig wrongHost = FeatureEvolvingConfig.builder()
+                .bindHost("localhost")
+                .triggerMode(TriggerMode.POLLING)
+                .manualPollingEnabled(true)
+                .build();
+        require(wrongHost.readinessErrors().contains(
+                        "manualPollingEnabled requires bindHost 127.0.0.1"),
+                "manual polling accepted a listener that was not pinned to IPv4 loopback");
+        FeatureEvolvingConfig wrongMode = FeatureEvolvingConfig.builder()
+                .triggerMode(TriggerMode.WEBHOOK)
+                .manualPollingEnabled(true)
+                .build();
+        require(wrongMode.readinessErrors().contains(
+                        "manualPollingEnabled requires polling or both triggerMode"),
+                "manual polling accepted webhook-only mode");
+    }
+
+    private static void testSystemTestCredentials() {
+        FeatureEvolvingConfig fallback = FeatureEvolvingConfig.builder()
+                .gitCodeToken("feature-token")
+                .gitCodeUsername("feature-bot")
+                .build();
+        require(fallback.systemTestGitCodeToken().equals("feature-token")
+                        && fallback.systemTestGitCodeUsername().equals("feature-bot"),
+                "system-test credentials did not retain the compatible fallback");
+        FeatureEvolvingConfig ownerDefault = FeatureEvolvingConfig.builder()
+                .gitCodeToken("feature-token")
+                .systemTestGitCodeToken("isolated-test-token")
+                .build();
+        require(ownerDefault.systemTestGitCodeUsername().equals("antonjli"),
+                "isolated system-test PAT did not default to the publication owner");
+        FeatureEvolvingConfig configured = FeatureEvolvingConfig.builder()
+                .gitCodeToken("feature-token")
+                .systemTestGitCodeUsername("test-bot")
+                .systemTestGitCodeToken("isolated-test-token")
+                .build();
+        require(configured.systemTestGitCodeUsername().equals("test-bot")
+                        && configured.systemTestGitCodeToken().equals("isolated-test-token"),
+                "isolated system-test credentials were not selected");
+    }
+
+    private static void testSystemTestSmokeConfig() {
+        String smoke = "com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test";
+        FeatureEvolvingConfig configured = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of(smoke))
+                .build();
+        require(configured.systemTestSmokeSelectors().equals(List.of(smoke)),
+                "configured system-test smoke selector was not retained");
+        FeatureEvolvingConfig missing = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .build();
+        require(missing.readinessErrors().contains(
+                        "systemTestSmokeSelectors must contain between 1 and 3 exact Java test class names"),
+                "system-test delivery accepted an empty smoke selector set");
+        FeatureEvolvingConfig invalid = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of("smoke/*"))
+                .build();
+        require(invalid.readinessErrors().contains(
+                        "systemTestSmokeSelectors must contain between 1 and 3 exact Java test class names"),
+                "system-test delivery accepted a model-expandable smoke selector");
+    }
+
+    private static void testSystemTestAssigneeIsolation() {
+        FeatureEvolvingConfig defaults = FeatureEvolvingConfig.builder()
+                .assignees(List.of("feature-reviewer"))
+                .build();
+        require(defaults.systemTestAssignees().isEmpty(),
+                "system-test PR inherited feature-repository assignees");
+        FeatureEvolvingConfig configured = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of(
+                        "com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"))
+                .systemTestAssignees(List.of("test-committer"))
+                .build();
+        require(configured.systemTestAssignees().equals(List.of("test-committer")),
+                "independent system-test assignees were not retained");
+        FeatureEvolvingConfig invalid = FeatureEvolvingConfig.builder()
+                .systemTestEnabled(true)
+                .systemTestSmokeSelectors(List.of(
+                        "com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"))
+                .systemTestAssignees(List.of("bad account"))
+                .build();
+        require(invalid.readinessErrors().contains(
+                        "systemTestAssignees contains an invalid GitCode username"),
+                "invalid system-test assignee was accepted");
     }
 
     private static void require(boolean condition, String message) {
