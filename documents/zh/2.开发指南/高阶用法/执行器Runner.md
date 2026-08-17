@@ -66,7 +66,7 @@ Runner.start();
 
 ## 运行时线程池配置
 
-OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理，但保留各模块默认的队列形态与拒绝策略。
+OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理，统一使用 `core=max + ArrayBlockingQueue` 排队语义与 `AbortPolicy` 拒绝策略。
 
 AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
 
@@ -115,27 +115,28 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 
 ### 模块有界线程池
 
-由 `OpenJiuwenExecutors.newBoundedModulePool(模块前缀, isDaemon)` 创建的池均纳入统一注册与 JVM 退出回收。未在表中列出的前缀会使用 **GENERIC** 默认（max=`16`，queue=`256`）。
+由 `OpenJiuwenExecutors.newBoundedModulePool(模块前缀, isDaemon)` 创建的池均纳入统一注册与 JVM 退出回收。未在表中列出的前缀会使用 **GENERIC** 默认（max=`32`，queue=`256`）。
 
 下表为**未配置覆盖时**的默认上限；均可通过上一节的属性 / 环境变量覆盖 `max-size` 与 `queue-size`。
 
-| 模块前缀 | 用途（概要） | 默认 max | 默认 queue | 队列形态 |
+| 模块前缀 | 用途（概要） | 默认 max | 默认 queue | 核心线程超时回收 |
 | --- | --- | --- | --- | --- |
-| `pregel-task` | Pregel 图节点并行 | `32` | `512` | 同步移交（`SynchronousQueue`，利于并行） |
-| `workflow-stream` | Workflow 流式执行 | `16` | `256` | 有界队列 |
-| `vertex-stream` | Vertex 流能力 | `8` | `256` | 同步移交 |
-| `stream-actor` | StreamActor 流处理 | `8` | `256` | 同步移交 |
-| `end-template-render` | End 模板渲染 | `8` | `128` | 有界队列 |
-| `callback-parallel` | 回调并行触发（短生命周期） | `16` | `256` | 同步移交 |
-| `mq-server-adapter` | MQ 服务端适配器 | `8` | `128` | 有界队列 |
-| `task-manager-worker` | TaskManager 任务 worker | `16` | `512` | 同步移交（避免 parent/child 死锁） |
-| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(16, CPU 核数 * 4)`** | — | 同步移交（`SynchronousQueue` + `CallerRunsPolicy`） |
+| `pregel-task` | Pregel 图节点并行 | `32` | `256` | 是 |
+| `workflow-stream` | Workflow 流式执行 | `32` | `256` | 是 |
+| `vertex-stream` | Vertex 流能力 | **`max(32, CPU 核数 * 8)`** | `256` | 是 |
+| `stream-actor` | StreamActor 流处理 | **`max(32, CPU 核数 * 8)`** | `256` | 是 |
+| `end-template-render` | End 模板渲染 | `8` | `128` | 是 |
+| `callback-parallel` | 回调并行触发（短生命周期） | `32` | `128` | 是 |
+| `mq-server-adapter` | MQ 服务端适配器 | `16` | `128` | 是 |
+| `task-manager-worker` | TaskManager 任务 worker | `16` | `128` | 是 |
+| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(32, CPU 核数 * 8)`** | `128` | 否 |
 
 模块池共性：
 
-- **同步移交**（`SynchronousQueue`）：`corePoolSize=0`，按需扩到 max；饱和时 `deep-agent-stream` 用 **`CallerRunsPolicy`**，其余多为 **`AbortPolicy`**。
-- **有界队列**（`ArrayBlockingQueue`）：`corePoolSize=maxSize`，避免 `core=0` 时在队列未满时只起 1 个 worker 的串行陷阱；超出 max 的任务入队等待。
-- `keepAlive=60s`；同步移交池空闲线程可回收，有界队列池 core 线程常驻。
+- **统一排队语义**：所有模块池使用 `ArrayBlockingQueue` + `corePoolSize=maxSize`，确保线程全热、队列只做溢出缓冲。自 0.1.15 起不再使用 `SynchronousQueue`——PR #229 加界后 `SynchronousQueue` + 有界 max 变成「满即拒绝」扳机，且各 submit 点普遍缺乏 `RejectedExecutionException` 兜底，排队语义把突发转为缓冲、失败模式更可控。
+- **拒绝策略统一为 `AbortPolicy`**：不再使用 `CallerRunsPolicy`（`deep-agent-stream` 旧版曾用，在 SSE pump 阻塞模型下会导致调用线程被长任务钉死）。
+- **核心线程超时回收**：仅 `deep-agent-stream` 设为 `allowCoreThreadTimeOut=false`（用户直接感知的 SSE 会话，30 并发突发已实证，热线程可消除首 token 的线程创建延迟）；其余池均为 `true`（任务均为 LLM 级，线程创建 1-5ms 相对任务耗时可忽略，空闲后归零以节省内存）。
+- `keepAlive=60s`；`allowCoreThreadTimeOut=true` 的池空闲线程（含核心线程）超时后回收，`false` 的池核心线程常驻。
 
 **DeepAgent stream 调优**：`deep-agent-stream` 限制同时进行中的 stream 会话数（I/O 型）。默认可随 CPU 缩放；高并发或长连接场景可显式调大，并配合 LLM 侧 HTTP / 配额限流，见 [DeepAgent 使用指南](DeepAgent/DeepAgent使用指南.md#stream-并发与线程池)。
 

@@ -22,7 +22,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("DeepAgent stream 模块池默认 max(32, CPU×8)、有界队列排队、AbortPolicy 且可配置")
     void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
-        int expectedDefault = OpenJiuwenExecutors.defaultDeepAgentStreamMaxSize();
+        int expectedDefault = OpenJiuwenExecutors.defaultIoBoundMaxSize();
         assertThat(expectedDefault).isEqualTo(Math.max(32, Runtime.getRuntime().availableProcessors() * 8));
 
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
@@ -95,6 +95,33 @@ class OpenJiuwenExecutorsTest {
         } finally {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("维度 I-C：所有模块池统一使用 ABQ + core=max + AbortPolicy，不再有 SynchronousQueue")
+    void allModulePoolsUseArrayBlockingQueueWithCoreEqualsMax() {
+        String[] modulePrefixes = {
+                "pregel-task", "workflow-stream", "vertex-stream", "stream-actor",
+                "end-template-render", "callback-parallel", "mq-server-adapter",
+                "task-manager-worker", "deep-agent-stream"
+        };
+        for (String prefix : modulePrefixes) {
+            ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(prefix, true);
+            try {
+                ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+                assertThat(pool.getQueue())
+                        .as("%s queue must be ArrayBlockingQueue, not SynchronousQueue", prefix)
+                        .isInstanceOf(ArrayBlockingQueue.class);
+                assertThat(pool.getCorePoolSize())
+                        .as("%s core must equal max (no core=0 serialization trap)", prefix)
+                        .isEqualTo(pool.getMaximumPoolSize());
+                assertThat(pool.getRejectedExecutionHandler())
+                        .as("%s must use AbortPolicy", prefix)
+                        .isInstanceOf(ThreadPoolExecutor.AbortPolicy.class);
+            } finally {
+                executor.shutdownNow();
+            }
         }
     }
 

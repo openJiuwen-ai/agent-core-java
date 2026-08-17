@@ -164,21 +164,15 @@ public final class OpenJiuwenExecutors {
         int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        boolean directHandoff = defaults.isDirectHandoff();
-        BlockingQueue<Runnable> workQueue = directHandoff
-                ? new SynchronousQueue<>()
-                : new ArrayBlockingQueue<>(queueCapacity);
-        // core=0 + ArrayBlockingQueue: JDK pools queue first and may create only one worker until the
-        // queue is full (serial long tasks when burst < queue capacity). Direct-handoff pools use core=0;
-        // bounded-queue pools use core=max so max workers stay hot and the queue is overflow only.
-        int corePoolSize = directHandoff ? 0 : maxSize;
-        return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
-                .poolSize(corePoolSize, maxSize)
-                .keepAlive(DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS)
-                .workQueue(workQueue)
-                .isDaemon(isDaemon)
-                .rejectionHandler(defaults.rejectionHandler())
-                .build());
+        // 统一排队语义：core=max 使所有线程常热，ArrayBlockingQueue 只做溢出缓冲。
+        // JDK 陷阱：core < max + 有界队列时，超过 core 的线程仅在队列满后才创建，
+        // 导致 max 永远达不到（长任务被串行化），因此 core 必须等于 max。
+        BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(queueCapacity);
+        ThreadPoolExecutor executor = new ManagedThreadPoolExecutor(maxSize, maxSize,
+                DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, workQueue,
+                namedThreadFactory(threadNamePrefix, isDaemon), defaults.rejectionHandler());
+        executor.allowCoreThreadTimeOut(defaults.allowsCoreTimeout());
+        return register(executor);
     }
 
     /**
@@ -508,13 +502,16 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * DeepAgent stream 会话池默认上限：I/O 型 workload，按 {@code max(32, CPU 核数 × 8)} 估算并发 session 槽位，
-     * 与 runtime 侧 QuerySsePumpExecutor 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
+     * I/O 阻塞型流式池默认上限：线程 99% 时间在等 LLM/网络，CPU 占用近零，按
+     * {@code max(32, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
+     * 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
+     *
+     * <p>适用于 deep-agent-stream / vertex-stream / stream-actor 等长驻流式会话池。</p>
      *
      * @return 默认最大线程数
      * @since 0.1.14
      */
-    static int defaultDeepAgentStreamMaxSize() {
+    static int defaultIoBoundMaxSize() {
         return Math.max(32, Runtime.getRuntime().availableProcessors() * 8);
     }
 
@@ -590,45 +587,60 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 各模块线程池默认上限（维度 I-B：无界池整改）。
+     * 各模块线程池默认上限（维度 I-B：无界池整改 → 维度 I-C：SynchronousQueue 清零）。
+     *
+     * <p>自 0.1.15 起所有模块池统一使用 {@code core=max + ArrayBlockingQueue} 排队语义，
+     * 不再使用 SynchronousQueue（direct-handoff）。原因：PR #229 加界后 SynchronousQueue
+     * 变成「满即拒绝」的扳机，而各 submit 点普遍缺乏 REE 兜底；排队语义把突发转为缓冲，
+     * 失败模式更可控。详见 issue #70 分析。</p>
      */
     private enum ModulePoolDefaults {
-        PREGEL_TASK("pregel-task", 32, 512, true),
-        WORKFLOW_STREAM("workflow-stream", 16, 256, false),
-        VERTEX_STREAM("vertex-stream", 8, 256, true),
-        STREAM_ACTOR("stream-actor", 8, 256, true),
-        END_TEMPLATE_RENDER("end-template-render", 8, 128, false),
-        CALLBACK_PARALLEL("callback-parallel", 16, 256, true),
-        MQ_SERVER_ADAPTER("mq-server-adapter", 8, 128, false),
-        TASK_MANAGER_WORKER("task-manager-worker", 16, 512, true),
-        DEEP_AGENT_STREAM("deep-agent-stream", 16, 128, false),
-        GENERIC("", 16, 256, false);
+        PREGEL_TASK("pregel-task", 32, 256),
+        WORKFLOW_STREAM("workflow-stream", 32, 256),
+        VERTEX_STREAM("vertex-stream", 32, 256),
+        STREAM_ACTOR("stream-actor", 32, 256),
+        END_TEMPLATE_RENDER("end-template-render", 8, 128),
+        CALLBACK_PARALLEL("callback-parallel", 32, 128),
+        MQ_SERVER_ADAPTER("mq-server-adapter", 16, 128),
+        TASK_MANAGER_WORKER("task-manager-worker", 16, 128),
+        DEEP_AGENT_STREAM("deep-agent-stream", 32, 128),
+        GENERIC("", 32, 256);
 
         private final String prefix;
         private final int maxSize;
         private final int queueCapacity;
-        private final boolean isDirectHandoff;
 
-        ModulePoolDefaults(String prefix, int maxSize, int queueCapacity, boolean isDirectHandoff) {
+        ModulePoolDefaults(String prefix, int maxSize, int queueCapacity) {
             this.prefix = prefix;
             this.maxSize = maxSize;
             this.queueCapacity = queueCapacity;
-            this.isDirectHandoff = isDirectHandoff;
         }
 
+        /**
+         * 解析该模块池的最大线程数。
+         *
+         * @return 流式会话池（deep-agent-stream / vertex-stream / stream-actor）返回 CPU 公式值，
+         *         其余池返回枚举声明的固定值
+         */
         int resolveMaxSize() {
-            if (this == DEEP_AGENT_STREAM) {
-                return defaultDeepAgentStreamMaxSize();
-            }
-            return maxSize;
+            return switch (this) {
+                case DEEP_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR -> defaultIoBoundMaxSize();
+                default -> maxSize;
+            };
         }
 
         int queueCapacity() {
             return queueCapacity;
         }
 
-        boolean isDirectHandoff() {
-            return isDirectHandoff;
+        /**
+         * 判断该模块池是否允许核心线程超时回收。
+         *
+         * @return {@code false} 仅当 DEEP_AGENT_STREAM（用户直接感知的 SSE 会话，30 并发突发已实证）；
+         *         其余池返回 {@code true}（任务均为 LLM 级，线程创建延迟可忽略）
+         */
+        boolean allowsCoreTimeout() {
+            return this != DEEP_AGENT_STREAM;
         }
 
         RejectedExecutionHandler rejectionHandler() {
