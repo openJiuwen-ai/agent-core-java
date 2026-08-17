@@ -13,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -220,36 +221,47 @@ public class InferenceAffinityModelClient extends BaseModelClient {
     }
 
     /**
-     * release.
-     * 
-     * @param sessionId sessionId
-     * @param messages messages
-     * @param messagesReleasedIndex messagesReleasedIndex
-     * @param tools tools
-     * @param toolsReleasedIndex toolsReleasedIndex
-     * @param model model
-     * @return the result
-     * @throws Exception Exception
+     * Release stale KV cache on the vLLM inference server.
+     * <p>
+     * POSTs to {@code /release_kv_cache} with body containing {@code cache_salt}
+     * (sessionId), {@code messages_released_index}, and optionally
+     * {@code tools_released_index}.
+     *
+     * @param request bundle of sessionId, previous-window messages/tools, their
+     *                first modified indices, and an optional model name override
+     * @return {@code true} if the release request succeeded (HTTP 2xx)
+     * @throws Exception on release failure
      * @since 0.1.7
      */
-    public boolean release(String sessionId, Object messages, int messagesReleasedIndex, Object tools,
-            Integer toolsReleasedIndex, String model) throws Exception {
+    @Override
+    public boolean release(KvCacheReleaseRequest request) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", resolveModelName(model, null));
-        body.put("cache_salt", sessionId);
+        body.put("model", resolveModelName(request.model(), null));
+        body.put("cache_salt", request.sessionId());
         body.put("cache_sharing", true);
-        body.put("messages", convertMessagesToDict(messages));
-        body.put("messages_released_index", messagesReleasedIndex);
-        if (tools != null) {
-            body.put("tools", convertToolsToDict(tools));
+        body.put("messages", convertMessagesToDict(request.messages()));
+        body.put("messages_released_index", request.messagesReleasedIndex());
+        if (request.tools() != null) {
+            body.put("tools", convertToolsToDict(request.tools()));
         }
-        if (toolsReleasedIndex != null) {
-            body.put("tools_released_index", toolsReleasedIndex);
+        if (request.toolsReleasedIndex() != null) {
+            body.put("tools_released_index", request.toolsReleasedIndex());
         }
-
         HttpResponse<String> response = httpClient.send(buildJsonRequest("/release_kv_cache", body, null),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        LOG.info("release_kv_cache response: status={}, body={}", response.statusCode(), response.body());
         return response.statusCode() >= 200 && response.statusCode() < 300;
+    }
+
+    /**
+     * InferenceAffinity client supports KV cache release on the vLLM server.
+     *
+     * @return {@code true}
+     * @since 0.1.7
+     */
+    @Override
+    public boolean supportsKvCacheRelease() {
+        return true;
     }
 
     /**
@@ -285,6 +297,9 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             params.put("cache_sharing", true);
             params.put("cache_salt", String.valueOf(sessionId));
         }
+        LOG.info("InferenceAffinity final request params: cache_sharing={}, cache_salt={}, "
+                + "session_id_kwarg={}, enable_cache_sharing_kwarg={}, param_keys={}", params.get("cache_sharing"),
+                params.get("cache_salt"), sessionId, enableCacheSharing, params.keySet());
         recordRequestTrace(params);
         return params;
     }

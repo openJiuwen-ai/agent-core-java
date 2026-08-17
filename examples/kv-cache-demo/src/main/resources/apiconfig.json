@@ -1,0 +1,8 @@
+{
+  "API_BASE":"http://113.46.219.251:8080",
+  "API_KEY":"sk-CAOPFDl1UR-KNZjd7aJIsQ",
+  "MODEL_PROVIDER":"InferenceAffinity",
+  "MODEL_NAME":"GLM-5.2",
+  "LLM_SSL_VERIFY":"False",
+  "MODEL_NAME_EMBEDDING":"your-embedding-model-name"
+}

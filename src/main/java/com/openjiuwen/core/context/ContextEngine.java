@@ -17,6 +17,8 @@ import com.openjiuwen.core.context.processor.compressor.FullCompactProcessor;
 import com.openjiuwen.core.context.processor.compressor.FullCompactProcessorConfig;
 import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessor;
 import com.openjiuwen.core.context.processor.compressor.MicroCompactProcessorConfig;
+import com.openjiuwen.core.context.processor.compressor.PromptTruncationProcessor;
+import com.openjiuwen.core.context.processor.compressor.PromptTruncationProcessorConfig;
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
 import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
 import com.openjiuwen.core.context.processor.offloader.MessageOffloader;
@@ -70,21 +72,27 @@ public class ContextEngine {
      */
     static {
         registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class, cfg -> new CurrentRoundCompressor(
-                (cfg instanceof CurrentRoundCompressorConfig __cast73 ? __cast73 : null)));
+                (cfg instanceof CurrentRoundCompressorConfig currentRoundConfig ? currentRoundConfig : null)));
         registerProcessor("DialogueCompressor", DialogueCompressor.class,
-                cfg -> new DialogueCompressor((cfg instanceof DialogueCompressorConfig __cast75 ? __cast75 : null)));
+                cfg -> new DialogueCompressor(
+                        (cfg instanceof DialogueCompressorConfig dialogueConfig ? dialogueConfig : null)));
         registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class, cfg -> new RoundLevelCompressor(
-                (cfg instanceof RoundLevelCompressorConfig __cast77 ? __cast77 : null)));
+                (cfg instanceof RoundLevelCompressorConfig roundLevelConfig ? roundLevelConfig : null)));
         registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class, cfg -> new MicroCompactProcessor(
-                (cfg instanceof MicroCompactProcessorConfig __cast79 ? __cast79 : null)));
+                (cfg instanceof MicroCompactProcessorConfig microCompactConfig ? microCompactConfig : null)));
         registerProcessor("FullCompactProcessor", FullCompactProcessor.class, cfg -> new FullCompactProcessor(
-                (cfg instanceof FullCompactProcessorConfig __cast81 ? __cast81 : null)));
+                (cfg instanceof FullCompactProcessorConfig fullCompactConfig ? fullCompactConfig : null)));
         registerProcessor("MessageOffloader", MessageOffloader.class,
-                cfg -> new MessageOffloader((cfg instanceof MessageOffloaderConfig __cast83 ? __cast83 : null)));
+                cfg -> new MessageOffloader(
+                        (cfg instanceof MessageOffloaderConfig offloaderConfig ? offloaderConfig : null)));
         registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class, cfg -> new MessageSummaryOffloader(
-                (cfg instanceof MessageSummaryOffloaderConfig __cast85 ? __cast85 : null)));
+                (cfg instanceof MessageSummaryOffloaderConfig summaryConfig ? summaryConfig : null)));
         registerProcessor("ToolResultBudgetProcessor", ToolResultBudgetProcessor.class,
-                cfg -> new ToolResultBudgetProcessor((ToolResultBudgetProcessorConfig) cfg));
+                cfg -> new ToolResultBudgetProcessor(
+                        (cfg instanceof ToolResultBudgetProcessorConfig budgetConfig ? budgetConfig : null)));
+        registerProcessor("PromptTruncationProcessor", PromptTruncationProcessor.class,
+                cfg -> new PromptTruncationProcessor(
+                        (cfg instanceof PromptTruncationProcessorConfig truncationConfig ? truncationConfig : null)));
     }
 
     private final ContextEngineConfig config;

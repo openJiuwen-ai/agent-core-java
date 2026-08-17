@@ -16,6 +16,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -498,4 +499,35 @@ public abstract class BaseModelClient {
     public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
             String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
             String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception;
+
+    /**
+     * Whether this client supports KV cache release on the inference server.
+     * <p>
+     * Default returns {@code false}. Override in clients that implement release
+     * (e.g. {@link InferenceAffinityModelClient}).
+     * <p>
+     * Mirrors Python's duck-typed {@code callable(getattr(self._client, "release", None))}.
+     *
+     * @return true if release is supported
+     * @since 0.1.7
+     */
+    public boolean supportsKvCacheRelease() {
+        return false;
+    }
+
+    /**
+     * Release stale KV cache on the inference server.
+     * <p>
+     * Default no-op returns {@code false}. Override in
+     * {@link InferenceAffinityModelClient} to POST {@code /release_kv_cache}.
+     *
+     * @param request bundle of sessionId, previous-window messages/tools, their
+     *                first modified indices, and an optional model name override
+     * @return {@code true} if the release request succeeded
+     * @throws Exception on release failure
+     * @since 0.1.7
+     */
+    public boolean release(KvCacheReleaseRequest request) throws Exception {
+        return false;
+    }
 }

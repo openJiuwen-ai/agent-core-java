@@ -7,7 +7,9 @@ package com.openjiuwen.core.context.context;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.foundation.llm.InferenceAffinityModel;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.KvCacheReleaseRequest;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
 import java.util.List;
@@ -20,8 +22,10 @@ import java.util.List;
  * <p>
  * Mirrors Python's {@code KVCacheManager} from {@code context_engine/context/kv_cache_manager.py}.
  * <p>
- * Note: The actual release call depends on the InferenceAffinityModel interface,
- * which may not yet be implemented in Java. The comparison logic is fully ported.
+ * Supports two release paths matching Python's duck-typing:
+ * (1) standalone {@link InferenceAffinityModel} (direct caller);
+ * (2) {@link Model} wrapping an {@code InferenceAffinityModelClient} via factory
+ * (the common path from {@code ReActAgent}).
  * 
  * @since 0.1.7
  */
@@ -42,10 +46,10 @@ public class KVCacheManager {
     /**
      * Check and release stale KV cache if the context window has changed.
      * <p>
-     * In the Python version, this calls {@code model.release()} on an
-     * InferenceAffinityModel. In Java, the actual release is a no-op
-     * until InferenceAffinityModel is implemented.
-     * 
+     * Convenience overload without a model — comparison runs but no HTTP
+     * release is issued. Use {@link #release(ContextWindow, Object)} to
+     * trigger the actual release.
+     *
      * @param contextWindow the current context window
      * @since 0.1.7
      */
@@ -70,20 +74,45 @@ public class KVCacheManager {
         ReleaseCheckResult result = checkReleaseNeeded(contextWindow);
 
         if (result.shouldRelease && (result.messagesReleasedIndex != null || result.toolsReleasedIndex != null)) {
-            Loggers.CONTEXT_ENGINE.info("KV cache release triggered for session " + sessionId + " (msg_idx="
-                    + result.messagesReleasedIndex + ", tool_idx=" + result.toolsReleasedIndex + ")");
             if (model instanceof InferenceAffinityModel inferenceAffinityModel) {
+                Loggers.CONTEXT_ENGINE.info("KV cache release triggered for session " + sessionId + " (msg_idx="
+                        + result.messagesReleasedIndex + ", tool_idx=" + result.toolsReleasedIndex + ")");
+                KvCacheReleaseRequest request = buildReleaseRequest(lastContextWindow, result);
                 try {
-                    inferenceAffinityModel.release(sessionId, lastContextWindow.getMessages(),
-                            result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,
-                            lastContextWindow.getToolList(), result.toolsReleasedIndex, null);
+                    inferenceAffinityModel.release(request);
                 } catch (Exception e) {
                     Loggers.CONTEXT_ENGINE.warning("Failed to release inference-affinity KV cache: " + e.getMessage());
                 }
+            } else if (model instanceof Model llmModel && llmModel.supportsKvCacheRelease()) {
+                Loggers.CONTEXT_ENGINE.info("KV cache release triggered for session " + sessionId + " (msg_idx="
+                        + result.messagesReleasedIndex + ", tool_idx=" + result.toolsReleasedIndex + ")");
+                KvCacheReleaseRequest request = buildReleaseRequest(lastContextWindow, result);
+                try {
+                    llmModel.release(request);
+                } catch (Exception e) {
+                    Loggers.CONTEXT_ENGINE.warning("Failed to release KV cache via Model: " + e.getMessage());
+                }
+            } else {
+                Loggers.CONTEXT_ENGINE.info("Context diff detected for session " + sessionId
+                        + " but model does not support KV cache release; skipped.");
             }
         }
 
         lastContextWindow = contextWindow;
+    }
+
+    /**
+     * Build the release request from the last context window and check result.
+     *
+     * @param lastWindow the previous context window
+     * @param result the release check result carrying the modified indices
+     * @return the assembled release request
+     * @since 0.1.7
+     */
+    private KvCacheReleaseRequest buildReleaseRequest(ContextWindow lastWindow, ReleaseCheckResult result) {
+        int messagesIndex = result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0;
+        return new KvCacheReleaseRequest(sessionId, lastWindow.getMessages(), messagesIndex,
+                lastWindow.getToolList(), result.toolsReleasedIndex, null);
     }
 
     /**
