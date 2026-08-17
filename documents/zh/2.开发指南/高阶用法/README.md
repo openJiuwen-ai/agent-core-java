@@ -29,6 +29,12 @@
 - 该子目录会继续拆分 `概述`、`中断恢复`、`流式输出`、`状态管理`、`调测能力` 五页。
 - 主要依据：`com.openjiuwen.core.session` 根包及其 `interaction`、`checkpointer`、`stream`、`state`、`tracer`、`callback` 子包。
 
+### 自动化开发交付
+
+| 页面 | 关注点 | 主要依据 | 说明 |
+| --- | --- | --- | --- |
+| [GitCode Feature Evolver](GitCode%20Feature%20Evolver.md) | Feature Issue、Controller、ReAct、测试 Gate、双 PR 和 System Test 交付 | `examples/gitcode_feature_evolver`、`resources/skills/gitcode-feature-devflow` | 说明从 Feature Issue 到 Feature PR、System Test PR 合入的完整持久化流程。 |
+
 ### Skills / 系统操作 / 扩展 / 演化
 
 | 页面 | 关注点 | 主要依据 | 说明 |
