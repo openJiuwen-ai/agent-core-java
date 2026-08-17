@@ -617,8 +617,10 @@ public final class OpenJiuwenExecutors {
         }
 
         /**
-         * 流式会话池（deep-agent-stream / vertex-stream / stream-actor）按 CPU 公式缩放，
-         * 其余池使用枚举声明的固定值。
+         * 解析该模块池的最大线程数。
+         *
+         * @return 流式会话池（deep-agent-stream / vertex-stream / stream-actor）返回 CPU 公式值，
+         *         其余池返回枚举声明的固定值
          */
         int resolveMaxSize() {
             return switch (this) {
@@ -632,9 +634,10 @@ public final class OpenJiuwenExecutors {
         }
 
         /**
-         * 仅 DeepAgent stream 池保持核心线程不回收——该池承担用户直接感知的 SSE 会话，
-         * 30 并发突发场景已实证，热线程可消除首 token 的线程创建延迟。
-         * 其余池任务均为 LLM 级（秒~分钟），线程创建 1-5ms 相对任务耗时可忽略，允许回收以节省空闲内存。
+         * 判断该模块池是否允许核心线程超时回收。
+         *
+         * @return {@code false} 仅当 DEEP_AGENT_STREAM（用户直接感知的 SSE 会话，30 并发突发已实证）；
+         *         其余池返回 {@code true}（任务均为 LLM 级，线程创建延迟可忽略）
          */
         boolean allowsCoreTimeout() {
             return this != DEEP_AGENT_STREAM;

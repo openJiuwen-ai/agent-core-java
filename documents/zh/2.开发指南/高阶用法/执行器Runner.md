@@ -121,10 +121,10 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 
 | 模块前缀 | 用途（概要） | 默认 max | 默认 queue | 核心线程超时回收 |
 | --- | --- | --- | --- | --- |
-| `pregel-task` | Pregel 图节点并行 | `32` | `256` | 否 |
-| `workflow-stream` | Workflow 流式执行 | `32` | `256` | 否 |
-| `vertex-stream` | Vertex 流能力 | **`max(32, CPU 核数 * 8)`** | `256` | 否 |
-| `stream-actor` | StreamActor 流处理 | **`max(32, CPU 核数 * 8)`** | `256` | 否 |
+| `pregel-task` | Pregel 图节点并行 | `32` | `256` | 是 |
+| `workflow-stream` | Workflow 流式执行 | `32` | `256` | 是 |
+| `vertex-stream` | Vertex 流能力 | **`max(32, CPU 核数 * 8)`** | `256` | 是 |
+| `stream-actor` | StreamActor 流处理 | **`max(32, CPU 核数 * 8)`** | `256` | 是 |
 | `end-template-render` | End 模板渲染 | `8` | `128` | 是 |
 | `callback-parallel` | 回调并行触发（短生命周期） | `32` | `128` | 是 |
 | `mq-server-adapter` | MQ 服务端适配器 | `16` | `128` | 是 |
@@ -135,7 +135,7 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 
 - **统一排队语义**：所有模块池使用 `ArrayBlockingQueue` + `corePoolSize=maxSize`，确保线程全热、队列只做溢出缓冲。自 0.1.15 起不再使用 `SynchronousQueue`——PR #229 加界后 `SynchronousQueue` + 有界 max 变成「满即拒绝」扳机，且各 submit 点普遍缺乏 `RejectedExecutionException` 兜底，排队语义把突发转为缓冲、失败模式更可控。
 - **拒绝策略统一为 `AbortPolicy`**：不再使用 `CallerRunsPolicy`（`deep-agent-stream` 旧版曾用，在 SSE pump 阻塞模型下会导致调用线程被长任务钉死）。
-- **核心线程超时回收按池分级**：延迟敏感的流式池（`deep-agent-stream` / `vertex-stream` / `stream-actor` / `workflow-stream` / `pregel-task`）不允许回收（`allowCoreThreadTimeOut=false`），保持热线程应对突发；低频/短任务池（`end-template-render` / `callback-parallel` / `mq-server-adapter` / `task-manager-worker` / GENERIC）允许回收（`allowCoreThreadTimeOut=true`），空闲后归零以节省内存。
+- **核心线程超时回收**：仅 `deep-agent-stream` 设为 `allowCoreThreadTimeOut=false`（用户直接感知的 SSE 会话，30 并发突发已实证，热线程可消除首 token 的线程创建延迟）；其余池均为 `true`（任务均为 LLM 级，线程创建 1-5ms 相对任务耗时可忽略，空闲后归零以节省内存）。
 - `keepAlive=60s`；`allowCoreThreadTimeOut=true` 的池空闲线程（含核心线程）超时后回收，`false` 的池核心线程常驻。
 
 **DeepAgent stream 调优**：`deep-agent-stream` 限制同时进行中的 stream 会话数（I/O 型）。默认可随 CPU 缩放；高并发或长连接场景可显式调大，并配合 LLM 侧 HTTP / 配额限流，见 [DeepAgent 使用指南](DeepAgent/DeepAgent使用指南.md#stream-并发与线程池)。
