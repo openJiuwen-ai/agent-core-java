@@ -36,11 +36,11 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -212,15 +212,18 @@ public class AbilityManager implements ToolRegistry {
      *
      * @param toolName tool name requested by the model
      * @param session current session
-     * @return session-scoped tool instance, or null when no override is registered
+     * @return session-scoped tool instance, or empty when no override is registered
      * @since 0.1.15
      */
-    private Tool resolveSessionTool(String toolName, Session session) {
+    private Optional<Tool> resolveSessionTool(String toolName, Session session) {
         if (session == null) {
-            return null;
+            return Optional.empty();
         }
         Map<String, Tool> overrides = sessionTools.get(session.getSessionId());
-        return overrides != null ? overrides.get(toolName) : null;
+        if (overrides == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(overrides.get(toolName));
     }
 
     /**
@@ -722,10 +725,10 @@ public class AbilityManager implements ToolRegistry {
 
         Object result;
 
-        Tool sessionTool = resolveSessionTool(toolName, session);
-        if (sessionTool != null) {
+        Optional<Tool> sessionTool = resolveSessionTool(toolName, session);
+        if (sessionTool.isPresent()) {
             try {
-                result = invokeTool(sessionTool, toolArgs, session);
+                result = invokeTool(sessionTool.get(), toolArgs, session);
                 logToolResult(result);
             } catch (Exception e) {
                 String errorMsg =

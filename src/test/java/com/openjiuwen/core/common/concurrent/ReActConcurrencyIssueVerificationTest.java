@@ -35,6 +35,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -245,6 +246,7 @@ class ReActConcurrencyIssueVerificationTest {
 
         @Test
         @DisplayName("resolveSessionTool 按当前 session 返回正确的 per-session 工具")
+        @SuppressWarnings("unchecked")
         void resolveSessionToolReturnsCorrectSession() throws Exception {
             Tool toolA = newConstantTool("reload_original_context_messages", "A");
             Tool toolB = newConstantTool("reload_original_context_messages", "B");
@@ -257,9 +259,12 @@ class ReActConcurrencyIssueVerificationTest {
             resolve.setAccessible(true);
 
             String name = "reload_original_context_messages";
-            assertThat((Tool) resolve.invoke(manager, name, mockSession("sessionA"))).isSameAs(toolA);
-            assertThat((Tool) resolve.invoke(manager, name, mockSession("sessionB"))).isSameAs(toolB);
-            assertThat((Tool) resolve.invoke(manager, name, mockSession("sessionC"))).isNull();
+            assertThat((Optional<Tool>) resolve.invoke(manager, name, mockSession("sessionA")))
+                    .contains(toolA);
+            assertThat((Optional<Tool>) resolve.invoke(manager, name, mockSession("sessionB")))
+                    .contains(toolB);
+            assertThat((Optional<Tool>) resolve.invoke(manager, name, mockSession("sessionC")))
+                    .isEmpty();
         }
     }
 }
