@@ -39,7 +39,8 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     private final AgentCard card;
     private final AbilityManager abilityManager;
     private final AgentCallbackManager agentCallbackManager;
-    private SkillUtil skillUtil;
+    private volatile SkillUtil skillUtil;
+    private final Object skillUtilLock = new Object();
 
     /**
      * BaseAgent.
@@ -68,10 +69,18 @@ public abstract class BaseAgent implements AgentCallbackFirer {
         if (sysOperationId == null) {
             return;
         }
-        if (skillUtil == null) {
-            skillUtil = new SkillUtil(sysOperationId);
-        } else {
-            skillUtil.setSysOperationId(sysOperationId);
+        SkillUtil local = skillUtil;
+        if (local != null) {
+            local.setSysOperationId(sysOperationId);
+            return;
+        }
+        synchronized (skillUtilLock) {
+            local = skillUtil;
+            if (local == null) {
+                skillUtil = new SkillUtil(sysOperationId);
+            } else {
+                local.setSysOperationId(sysOperationId);
+            }
         }
     }
 

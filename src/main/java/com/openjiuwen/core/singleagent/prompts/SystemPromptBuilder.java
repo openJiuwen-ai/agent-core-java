@@ -43,6 +43,14 @@ public class SystemPromptBuilder {
     private final Map<String, PromptSection> sections = new LinkedHashMap<String, PromptSection>();
 
     /**
+     * Names of sections that survive {@link #clearTransient()} resets (identity, skills, and other
+     * caller-owned static sections registered via {@link #addPersistentSection}).
+     *
+     * @since 0.1.15
+     */
+    private final Set<String> persistentSections = new HashSet<>();
+
+    /**
      * Create a prompt builder with the default language.
      * 
      * @since 0.1.7
@@ -105,6 +113,47 @@ public class SystemPromptBuilder {
         if (name != null) {
             sections.remove(name);
         }
+        return this;
+    }
+
+    /**
+     * Remove every registered section so the builder can be reset before rebuilding
+     * the static sections for a new request.
+     *
+     * @return this builder
+     * @since 0.1.15
+     */
+    public synchronized SystemPromptBuilder clear() {
+        sections.clear();
+        return this;
+    }
+
+    /**
+     * Add a persistent section that survives {@link #clearTransient()} resets. Identity, skills,
+     * and other caller-owned static sections should be registered here so per-request Rails cannot
+     * evict them.
+     *
+     * @param section prompt section
+     * @return this builder
+     * @since 0.1.15
+     */
+    public synchronized SystemPromptBuilder addPersistentSection(PromptSection section) {
+        if (section != null && section.getName() != null && !section.getName().isBlank()) {
+            sections.put(section.getName(), section);
+            persistentSections.add(section.getName());
+        }
+        return this;
+    }
+
+    /**
+     * Remove every non-persistent section so per-request residue from the previous invoke is
+     * cleared while identity and other static sections are preserved.
+     *
+     * @return this builder
+     * @since 0.1.15
+     */
+    public synchronized SystemPromptBuilder clearTransient() {
+        sections.keySet().removeIf(name -> !persistentSections.contains(name));
         return this;
     }
 
