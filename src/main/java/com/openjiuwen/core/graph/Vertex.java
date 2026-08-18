@@ -5,6 +5,7 @@
 package com.openjiuwen.core.graph;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -327,14 +328,25 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 if (timeout > 0) {
                     result = streamDone.get(timeout, TimeUnit.SECONDS);
                 } else {
-                    result = streamDone.get();
+                    // Issue #70 dim IV — streamDone.get() could block forever when no
+                    // caller-supplied timeout was configured. Fall back to the framework
+                    // default future timeout so a stuck stream-in ability cannot hang the
+                    // vertex indefinitely.
+                    result = streamDone.get(
+                            TimeoutConstants.FUTURE_MS,
+                            TimeUnit.MILLISECONDS);
                 }
                 if (result instanceof Exception) {
                     throw (Exception) result;
                 }
             } catch (TimeoutException e) {
+                Loggers.PERFORMANCE.warning(
+                        "Vertex streamDone.get timeout, timeout={}s / fallback_ms={}, node_id={}",
+                        timeout, TimeoutConstants.FUTURE_MS, nodeId);
                 throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_TIMEOUT, "timeout",
-                        String.valueOf(timeout), "node_id", nodeId);
+                        timeout > 0 ? String.valueOf(timeout) : String.valueOf(
+                                TimeoutConstants.FUTURE_MS),
+                        "node_id", nodeId);
             }
         } else if (hasStreamCall && !isEndNode) {
             throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR, "reason", "no stream data in",
@@ -977,12 +989,36 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     }
                 }, STREAM_EXECUTOR);
                 tasks.add(task);
-                abilityLatch.await();
+                // Issue #70 dim IV — abilityLatch.await() could block forever when
+                // STREAM_EXECUTOR was saturated (no thread available to run the task that
+                // counts the latch down). Bound it with the framework default latch timeout;
+                // on expiry, log to PERFORMANCE and raise a recoverable ExecutionError so the
+                // caller can retry / re-plan rather than the whole vertex hanging silently.
+                long latchMs = TimeoutConstants.LATCH_MS;
+                if (!abilityLatch.await(latchMs, TimeUnit.MILLISECONDS)) {
+                    Loggers.PERFORMANCE.warning(
+                            "Vertex ability latch await timeout after {}ms, node_id={}",
+                            latchMs, nodeId);
+                    throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_ABILITY_LATCH_TIMEOUT,
+                            "timeout", String.valueOf(latchMs), "node_id", nodeId);
+                }
             }
             latch.countDown();
 
-            // Wait for all tasks to complete
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+            // Wait for all tasks to complete — Issue #70 dim IV: bound the future.get() with
+            // the framework default future timeout so a stuck STREAM_EXECUTOR task cannot
+            // hang the vertex indefinitely. Same recoverable ExecutionError semantics.
+            long futureMs = TimeoutConstants.FUTURE_MS;
+            try {
+                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
+                        .get(futureMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                Loggers.PERFORMANCE.warning(
+                        "Vertex allOf future get timeout after {}ms, node_id={}",
+                        futureMs, nodeId);
+                throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_FUTURE_TIMEOUT,
+                        "timeout", String.valueOf(futureMs), "node_id", nodeId);
+            }
 
             LOGGER.info("Succeed to call stream-in node [{}]", nodeId);
         } catch (InterruptedException | ExecutionException e) {

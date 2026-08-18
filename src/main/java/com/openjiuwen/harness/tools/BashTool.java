@@ -5,6 +5,10 @@
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.SysOperationError;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,6 +21,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Public class BashTool used by the Java parity implementation.
@@ -94,7 +100,31 @@ public class BashTool {
                         () -> read(process.getInputStream()), processIoExecutor);
                 CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
                         () -> read(process.getErrorStream()), processIoExecutor);
-                int exitCode = process.onExit().join().exitValue();
+                // Issue #70 dim IV — process.onExit().join() could block forever if the child
+                // process deadlocked (e.g. waiting on a pipe whose reader died, or a REPL
+                // never exiting). Bound it with the framework default process-join timeout;
+                // on expiry, forcibly destroy the child and surface a recoverable
+                // SysOperationError so the agent round can continue rather than hang.
+                long joinMs = TimeoutConstants.processJoinMs();
+                int exitCode;
+                try {
+                    exitCode = process.onExit()
+                            .orTimeout(joinMs, TimeUnit.MILLISECONDS)
+                            .join()
+                            .exitValue();
+                } catch (CompletionException ce) {
+                    if (ce.getCause() instanceof TimeoutException) {
+                        Loggers.PERFORMANCE.warning(
+                                "BashTool process join timeout after {}ms, command='{}'",
+                                joinMs, command);
+                        process.destroyForcibly();
+                        throw new SysOperationError(
+                                StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
+                                null, null, ce, Map.of(
+                                        "timeout", joinMs, "command", command));
+                    }
+                    throw ce;
+                }
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
                 int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;

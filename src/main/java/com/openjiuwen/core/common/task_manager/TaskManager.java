@@ -5,6 +5,10 @@
 package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 
@@ -409,12 +413,22 @@ public class TaskManager {
                     return true;
                 }
                 try {
-                    next = timeoutSeconds != null && timeoutSeconds > 0
-                            ? queue.poll(Math.round(timeoutSeconds * 1000), TimeUnit.MILLISECONDS)
-                            : queue.take();
+                    long pollMs = timeoutSeconds != null && timeoutSeconds > 0
+                            ? Math.round(timeoutSeconds * 1000)
+                            : TimeoutConstants.BLOCKING_QUEUE_MS;
+                    next = queue.poll(pollMs, TimeUnit.MILLISECONDS);
                     if (next == null) {
-                        throw new IllegalStateException(
-                                new TimeoutException("asCompleted() timed out after " + timeoutSeconds + " second(s)"));
+                        // Issue #70 dim IV — asCompleted queue poll timed out. Previously this site
+                        // called queue.take() (unbounded) when the caller did not pass a timeout,
+                        // which could hang an entire agent round if a producer silently died.
+                        // Now we fall back to the framework default and surface a recoverable
+                        // ExecutionError so the caller can retry / re-plan.
+                        Loggers.PERFORMANCE.warning(
+                                "TaskManager.asCompleted queue poll timeout after {}ms (tasks={})",
+                                pollMs, tasks.size());
+                        throw new ExecutionError(
+                                StatusCode.TASK_MANAGER_QUEUE_TIMEOUT,
+                                Map.of("timeout", pollMs));
                     }
                     return true;
                 } catch (InterruptedException e) {
