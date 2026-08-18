@@ -1563,17 +1563,33 @@ public class DeepAgent implements AutoCloseable {
 
     /**
      * startTaskLoopRuntime.
-     * 
+     * <p>
+     * Registers the session as an active task-loop participant. If a task loop
+     * is already running for the same session ID, this method throws
+     * {@link IllegalStateException} to prevent the concurrent-use race that
+     * would otherwise allow one request's cleanup to destroy another's
+     * runtime state.
+     *
      * @param session session
+     * @throws IllegalStateException if a task loop is already active for the session
      * @since 0.1.7
      */
     private void startTaskLoopRuntime(AgentSessionApi session) {
         if (session == null) {
             return;
         }
-        taskScheduler.getSessions().put(session.getSessionId(), session);
-        if (activeTaskLoopSessions.add(session.getSessionId())) {
-            eventQueue.subscribe(card.getId(), session.getSessionId());
+        String sessionId = session.getSessionId();
+        if (!activeTaskLoopSessions.add(sessionId)) {
+            // logger.error("Task loop already active for session: {}", sessionId);
+            throw new IllegalStateException(
+                    "Task loop already active for session: " + sessionId);
+        }
+        try {
+            taskScheduler.getSessions().put(sessionId, session);
+            eventQueue.subscribe(card.getId(), sessionId);
+        } catch (BaseError ex) {
+            activeTaskLoopSessions.remove(sessionId);
+            throw ex;
         }
     }
 
