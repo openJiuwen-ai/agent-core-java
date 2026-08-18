@@ -5,6 +5,10 @@
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.SysOperationError;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -13,6 +17,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Public class PowerShellTool used by the Java parity implementation.
@@ -97,7 +103,29 @@ public class PowerShellTool {
                         () -> read(process.getInputStream()), processIoExecutor);
                 CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
                         () -> read(process.getErrorStream()), processIoExecutor);
-                int exitCode = process.onExit().join().exitValue();
+                // Issue #70 dim IV — bound process.onExit().join() with the framework default
+                // process-join timeout; on expiry, destroyForcibly and raise a recoverable
+                // SysOperationError. Mirrors BashTool / CodeTool treatment.
+                long joinMs = TimeoutConstants.processJoinMs();
+                int exitCode;
+                try {
+                    exitCode = process.onExit()
+                            .orTimeout(joinMs, TimeUnit.MILLISECONDS)
+                            .join()
+                            .exitValue();
+                } catch (CompletionException ce) {
+                    if (ce.getCause() instanceof TimeoutException) {
+                        Loggers.PERFORMANCE.warning(
+                                "PowerShellTool process join timeout after {}ms, command='{}'",
+                                joinMs, command);
+                        process.destroyForcibly();
+                        throw new SysOperationError(
+                                StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
+                                null, null, ce, Map.of(
+                                        "timeout", joinMs, "command", command));
+                    }
+                    throw ce;
+                }
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
                 return new ShellResult(stdout, stderr, exitCode);

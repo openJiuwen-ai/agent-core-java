@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +22,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Coroutine-task data model.
@@ -288,7 +294,13 @@ public class Task {
      */
     public Object waitFor() throws Exception {
         try {
-            return doneFuture.get();
+            // Issue #70 dim IV — doneFuture.get() could block forever if a task got stuck in
+            // the executor without ever completing. Bound it with the framework default
+            // future timeout; on expiry, log to PERFORMANCE and raise a recoverable
+            // ExecutionError so the caller can retry / re-plan.
+            return doneFuture.get(
+                    TimeoutConstants.FUTURE_MS,
+                    TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             throw e;
         } catch (ExecutionException e) {
@@ -297,6 +309,14 @@ public class Task {
                 throw ex;
             }
             throw new IllegalStateException(cause);
+        } catch (TimeoutException e) {
+            Loggers.PERFORMANCE.warning(
+                    "Task.waitFor future get timeout after {}ms, task_id={}",
+                    TimeoutConstants.FUTURE_MS, taskId);
+            throw new ExecutionError(
+                    StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", TimeoutConstants.FUTURE_MS,
+                            "task_id", String.valueOf(taskId)));
         }
     }
 

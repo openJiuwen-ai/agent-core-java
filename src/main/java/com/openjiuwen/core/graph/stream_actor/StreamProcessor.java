@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.DictUtils;
@@ -132,7 +133,20 @@ public class StreamProcessor {
             while (true) {
                 StreamPayload payload;
                 try {
-                    payload = queue.take();
+                    // Issue #70 dim IV — previously queue.take() could block forever if an
+                    // upstream producer crashed without emitting the END frame, hanging the
+                    // stream-in worker thread indefinitely. Fall back to the framework default
+                    // blocking-queue timeout; on expiry, log + break so the caller's loop
+                    // exits rather than the whole thread dying silently.
+                    payload = queue.poll(
+                            TimeoutConstants.BLOCKING_QUEUE_MS,
+                            TimeUnit.MILLISECONDS);
+                    if (payload == null) {
+                        Loggers.PERFORMANCE.warning(
+                                "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
+                                TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
+                        break;
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -367,7 +381,19 @@ public class StreamProcessor {
                     if (timeoutSeconds > 0) {
                         msg = iterQueue.poll(timeoutSeconds, TimeUnit.SECONDS);
                     } else {
-                        msg = iterQueue.take();
+                        // Issue #70 dim IV — previously iterQueue.take() could block forever
+                        // when no explicit caller timeout was supplied, hanging iterator
+                        // consumers even after the upstream finished abnormally. Fall back to
+                        // the framework default blocking-queue timeout.
+                        long pollMs = TimeoutConstants.BLOCKING_QUEUE_MS;
+                        msg = iterQueue.poll(pollMs, TimeUnit.MILLISECONDS);
+                        if (msg == null) {
+                            Loggers.PERFORMANCE.warning(
+                                    "StreamProcessor iterator queue poll timeout after {}ms, node_id={}, kPath={}",
+                                    pollMs, nodeId, kPath);
+                            done = true;
+                            return false;
+                        }
                     }
                     if (msg == null) {
                         // Timeout

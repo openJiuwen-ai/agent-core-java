@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -944,7 +945,13 @@ public class Workflow {
 
             private void waitForExecution() {
                 try {
-                    executionFuture.get();
+                    // Issue #70 dim IV — executionFuture.get() could block forever when no
+                    // workflow-level executeTimeout was configured. Bound it with the
+                    // framework default future timeout so a stuck workflow execution cannot
+                    // hang the stream consumer thread indefinitely.
+                    executionFuture.get(
+                            TimeoutConstants.FUTURE_MS,
+                            TimeUnit.MILLISECONDS);
                 } catch (CancellationException e) {
                     RuntimeException error = executionError.get();
                     if (error != null) {
@@ -964,6 +971,15 @@ public class Workflow {
                         throw error;
                     }
                     throw wrapWorkflowException(new Exception(e.getCause()));
+                } catch (TimeoutException e) {
+                    // Framework-default future timeout kicked in. Log to PERFORMANCE and raise
+                    // a recoverable WorkflowError so the caller can retry / re-plan.
+                    long timeoutMs = TimeoutConstants.FUTURE_MS;
+                    Loggers.PERFORMANCE.warning(
+                            "Workflow.waitForExecution future get timeout after {}ms", timeoutMs);
+                    throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_TIMEOUT,
+                            "timeout", String.valueOf(timeoutMs / 1000), "workflow",
+                            Workflow.class.getSimpleName());
                 }
                 RuntimeException error = executionError.get();
                 if (error != null) {
