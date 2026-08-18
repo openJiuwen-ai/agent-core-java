@@ -20,8 +20,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
-        <!-- 与 agent-runtime-java 严格对齐：runtime 侧 a2a-sdk 需要 jackson-annotations 2.21+（JsonSerializeAs），整体升到 jackson-bom 2.21.4 -->
-        <jackson.version>2.21.4</jackson.version>
+        <!-- 与 agent-runtime-java 严格对齐：runtime 侧 a2a-sdk 需要 jackson-annotations 2.21+（JsonSerializeAs） -->
+        <jackson.version>2.21.5</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.5.37</logback.version>

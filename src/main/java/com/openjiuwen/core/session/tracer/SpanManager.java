@@ -153,16 +153,16 @@ public class SpanManager {
 
     /**
      * Get the last span in order.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
     public Span getLastSpan() {
-        int size = order.size();
-        if (size == 0) {
+        String[] snapshot = order.toArray(new String[0]);
+        if (snapshot.length == 0) {
             return null;
         }
-        String lastId = order.get(size - 1);
+        String lastId = snapshot[snapshot.length - 1];
         return sessionSpans.get(lastId);
     }
 
