@@ -88,7 +88,8 @@ public class ReActAgent extends BaseAgent {
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
-    private Model llm;
+    private volatile Model llm;
+    private final Object llmLock = new Object();
     private SystemPromptBuilder promptBuilder;
     private SystemPromptBuilder systemPromptBuilder;
     private boolean isKvReleaseWarningLogged;
@@ -233,7 +234,7 @@ public class ReActAgent extends BaseAgent {
         Map<String, String> sectionContent = new HashMap<String, String>();
         sectionContent.put("cn", text);
         sectionContent.put("en", text);
-        promptBuilder.addSection(new PromptSection(name, sectionContent, priority));
+        promptBuilder.addPersistentSection(new PromptSection(name, sectionContent, priority));
     }
 
     /**
@@ -242,6 +243,18 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     private void rebuildPromptBuilderFromConfig() {
+        this.promptBuilder = new SystemPromptBuilder(PromptSection.DEFAULT_LANGUAGE, config.getPromptMode());
+        this.systemPromptBuilder = this.promptBuilder;
+        addPromptBuilderSection(IDENTITY_SECTION, buildIdentityContent(), IDENTITY_SECTION_PRIORITY);
+    }
+
+    /**
+     * Build the identity system prompt content from the configured prompt template.
+     *
+     * @return concatenated identity system content
+     * @since 0.1.15
+     */
+    private String buildIdentityContent() {
         StringBuilder systemContent = new StringBuilder();
         if (config.getPromptTemplate() != null) {
             for (Map<String, String> msg : config.getPromptTemplate()) {
@@ -258,9 +271,17 @@ public class ReActAgent extends BaseAgent {
                 systemContent.append(content);
             }
         }
-        this.promptBuilder = new SystemPromptBuilder(PromptSection.DEFAULT_LANGUAGE, config.getPromptMode());
-        this.systemPromptBuilder = this.promptBuilder;
-        addPromptBuilderSection(IDENTITY_SECTION, systemContent.toString(), IDENTITY_SECTION_PRIORITY);
+        return systemContent.toString();
+    }
+
+    /**
+     * Clear per-request (transient) prompt sections left over from a previous invoke while
+     * preserving persistent static sections such as identity, skills, and external memory.
+     *
+     * @since 0.1.15
+     */
+    private void clearTransientPromptSections() {
+        promptBuilder.clearTransient();
     }
 
     /**
@@ -270,14 +291,22 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     protected Model getLlm() {
-        if (llm == null) {
-            if (config.getModelClientConfig() == null) {
-                throw new IllegalStateException(
-                        "model_client_config is required. Use configureModelClient() to set it.");
-            }
-            llm = new Model(config.getModelClientConfig(), config.getModelConfigObj());
+        Model local = llm;
+        if (local != null) {
+            return local;
         }
-        return llm;
+        synchronized (llmLock) {
+            local = llm;
+            if (local == null) {
+                if (config.getModelClientConfig() == null) {
+                    throw new IllegalStateException(
+                            "model_client_config is required. Use configureModelClient() to set it.");
+                }
+                local = new Model(config.getModelClientConfig(), config.getModelConfigObj());
+                llm = local;
+            }
+            return local;
+        }
     }
 
     /**
@@ -293,7 +322,9 @@ public class ReActAgent extends BaseAgent {
      * @since 0.1.7
      */
     public void setLlm(Model llm) {
-        this.llm = llm;
+        synchronized (llmLock) {
+            this.llm = llm;
+        }
     }
 
     /**
@@ -777,6 +808,8 @@ public class ReActAgent extends BaseAgent {
         Tool contextReloader = context.reloaderTool();
         if (config.getContextEngineConfig().isEnableReload()) {
             getAbilityManager().add(contextReloader.getCard());
+            getAbilityManager().registerSessionTool(
+                    session != null ? session.getSessionId() : null, contextReloader);
             String agentTag = getCard() != null ? getCard().getId() : null;
             Object existing = agentTag != null && !agentTag.isBlank()
                     ? Runner.resourceMgr().getTool(contextReloader.getCard().getId(), agentTag, TagMatchStrategy.ALL)
@@ -804,6 +837,8 @@ public class ReActAgent extends BaseAgent {
         if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
             throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
+
+        clearTransientPromptSections();
 
         Object queryPayload;
         String conversationId = null;
@@ -1368,6 +1403,8 @@ public class ReActAgent extends BaseAgent {
         if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
             throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
+
+        clearTransientPromptSections();
 
         Object queryPayload;
         String conversationId = null;

@@ -413,7 +413,7 @@ public class ExternalMemoryRail extends MemoryRail {
             return;
         }
         String language = owner.getWorkspace().getLanguage();
-        owner.getAgent().getPromptBuilder().addSection(
+        owner.getAgent().getPromptBuilder().addPersistentSection(
                 new PromptSection(sectionName(), Map.of(languageKey(language), prompt), STATIC_SECTION_PRIORITY));
     }
 

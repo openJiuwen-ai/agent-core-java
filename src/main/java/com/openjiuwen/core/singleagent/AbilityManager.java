@@ -70,8 +70,16 @@ public class AbilityManager implements ToolRegistry {
     private final Map<String, ToolCard> tools = new ConcurrentHashMap<>();
 
     /**
+     * Per-session tool overrides keyed by session id then tool name, used for tools such
+     * as the context reloader that share a stable name across concurrent sessions.
+     *
+     * @since 0.1.15
+     */
+    private final Map<String, Map<String, Tool>> sessionTools = new ConcurrentHashMap<>();
+
+    /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final Map<String, WorkflowCard> workflows = new ConcurrentHashMap<>();
@@ -177,6 +185,42 @@ public class AbilityManager implements ToolRegistry {
             result.add(remove(name));
         }
         return result;
+    }
+
+    /**
+     * Register a per-session tool instance that overrides the shared name-keyed card
+     * during execution. Used for tools such as the context reloader that share a stable
+     * name across concurrent sessions but must resolve to the current session instance.
+     *
+     * @param sessionId session id owning the tool
+     * @param tool tool instance to register for the calling session
+     * @since 0.1.15
+     */
+    public void registerSessionTool(String sessionId, Tool tool) {
+        if (sessionId == null || tool == null || tool.getCard() == null) {
+            return;
+        }
+        String toolName = tool.getCard().getName();
+        if (toolName == null || toolName.isBlank()) {
+            return;
+        }
+        sessionTools.computeIfAbsent(sessionId, key -> new ConcurrentHashMap<>()).put(toolName, tool);
+    }
+
+    /**
+     * Resolve a per-session tool override for the given session and tool name.
+     *
+     * @param toolName tool name requested by the model
+     * @param session current session
+     * @return session-scoped tool instance, or null when no override is registered
+     * @since 0.1.15
+     */
+    private Tool resolveSessionTool(String toolName, Session session) {
+        if (session == null) {
+            return null;
+        }
+        Map<String, Tool> overrides = sessionTools.get(session.getSessionId());
+        return overrides != null ? overrides.get(toolName) : null;
     }
 
     /**
@@ -678,7 +722,19 @@ public class AbilityManager implements ToolRegistry {
 
         Object result;
 
-        if (tools.containsKey(toolName)) {
+        Tool sessionTool = resolveSessionTool(toolName, session);
+        if (sessionTool != null) {
+            try {
+                result = invokeTool(sessionTool, toolArgs, session);
+                logToolResult(result);
+            } catch (Exception e) {
+                String errorMsg =
+                    "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                Loggers.AGENT.error(errorMsg);
+                Loggers.TOOL.info("Tool result: None");
+                throw buildExecutionError(toolCall, errorMsg);
+            }
+        } else if (tools.containsKey(toolName)) {
             ToolCard toolCard = tools.get(toolName);
             String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
             Tool tool = getToolFromResourceMgr(toolId, tag);
