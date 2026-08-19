@@ -131,57 +131,80 @@ public class StreamProcessor {
             }
 
             while (true) {
-                StreamPayload payload;
-                try {
-                    // Issue #70 dim IV — previously queue.take() could block forever if an
-                    // upstream producer crashed without emitting the END frame, hanging the
-                    // stream-in worker thread indefinitely. Fall back to the framework default
-                    // blocking-queue timeout; on expiry, log + break so the caller's loop
-                    // exits rather than the whole thread dying silently.
-                    payload = queue.poll(
-                            TimeoutConstants.BLOCKING_QUEUE_MS,
-                            TimeUnit.MILLISECONDS);
-                    if (payload == null) {
-                        Loggers.PERFORMANCE.warning(
-                                "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
-                                TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
-                        break;
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                StreamPayload payload = pollPayload();
+                if (payload == null) {
                     break;
                 }
-
-                Object message = payload.getMessage();
-                ComponentAbility sourceAbility = payload.getSourceAbility();
-                String sourceKey = getUniqueSourceKey(payload);
-
-                if (isEndMessage(message)) {
-                    String sourceId = getProducerId(message);
-                    handleMap.add(sourceKey);
-                    closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
-                } else {
-                    closeInactiveGroupSources(sourceKey);
-                    for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-                        String path = SessionUtils.extractOriginKey(entry.getKey());
-                        Object value = (message instanceof Map<?, ?> messageMap)
-                                ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
-                                : null;
-                        if (value != null) {
-                            sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
-                            for (BlockingQueue<Object> q : entry.getValue()) {
-                                q.offer(value);
-                            }
-                        }
-                    }
-                }
-
+                processPayload(payload, handleMap, sourcePathMap);
                 if (allSourceGroupsFinished(handleMap)) {
                     break;
                 }
             }
         } finally {
             closeAllQueues();
+        }
+    }
+
+    /**
+     * Poll the next payload from the queue with the framework default blocking-queue timeout.
+     *
+     * @return the next payload, or null on timeout / interruption (caller should break)
+     * @since 0.1.7
+     */
+    private StreamPayload pollPayload() {
+        try {
+            // Issue #70 dim IV — previously queue.take() could block forever if an
+            // upstream producer crashed without emitting the END frame, hanging the
+            // stream-in worker thread indefinitely. Fall back to the framework default
+            // blocking-queue timeout; on expiry, log + break so the caller's loop
+            // exits rather than the whole thread dying silently.
+            StreamPayload payload = queue.poll(
+                    TimeoutConstants.BLOCKING_QUEUE_MS,
+                    TimeUnit.MILLISECONDS);
+            if (payload == null) {
+                Loggers.PERFORMANCE.warning(
+                        "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
+                        TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
+            }
+            return payload;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    /**
+     * Process a single payload: route end-frames or data to the right processor queues.
+     *
+     * @param payload the stream payload to process
+     * @param handleMap set of handled source keys (mutated)
+     * @param sourcePathMap producer_id → schema paths produced (mutated)
+     * @since 0.1.7
+     */
+    private void processPayload(StreamPayload payload, Set<String> handleMap,
+            Map<String, Set<String>> sourcePathMap) {
+        Object message = payload.getMessage();
+        ComponentAbility sourceAbility = payload.getSourceAbility();
+        String sourceKey = getUniqueSourceKey(payload);
+
+        if (isEndMessage(message)) {
+            String sourceId = getProducerId(message);
+            handleMap.add(sourceKey);
+            closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+        } else {
+            closeInactiveGroupSources(sourceKey);
+            for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+                String path = SessionUtils.extractOriginKey(entry.getKey());
+                Object value = (message instanceof Map<?, ?> messageMap)
+                        ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
+                        : null;
+                if (value != null) {
+                    sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
+                    for (BlockingQueue<Object> q : entry.getValue()) {
+                        q.offer(value);
+                    }
+                }
+            }
         }
     }
 

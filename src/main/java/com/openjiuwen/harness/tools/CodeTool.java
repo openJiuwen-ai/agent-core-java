@@ -61,43 +61,68 @@ public class CodeTool {
                         () -> read(process.getInputStream()), processIoExecutor);
                 CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
                         () -> read(process.getErrorStream()), processIoExecutor);
-                // Issue #70 dim IV — bound process.onExit().join() with the framework default
-                // process-join timeout; on expiry, destroyForcibly and raise a recoverable
-                // SysOperationError. Mirrors BashTool treatment.
-                long joinMs = TimeoutConstants.processJoinMs();
-                int exitCode;
-                try {
-                    exitCode = process.onExit()
-                            .orTimeout(joinMs, TimeUnit.MILLISECONDS)
-                            .join()
-                            .exitValue();
-                } catch (CompletionException ce) {
-                    if (ce.getCause() instanceof TimeoutException) {
-                        Loggers.PERFORMANCE.warning(
-                                "CodeTool process join timeout after {}ms, command='{}'",
-                                joinMs, String.join(" ", command));
-                        process.destroyForcibly();
-                        throw new SysOperationError(
-                                StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
-                                null, null, ce, Map.of(
-                                        "timeout", joinMs, "command", String.join(" ", command)));
-                    }
-                    throw ce;
-                }
+                int exitCode = awaitProcessExit(process, command);
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
-                boolean isExecutionSuccessful = exitCode == 0;
-                return ToolOutput.builder().success(isExecutionSuccessful)
-                        .data(Map.of("exit_code", exitCode, "stdout", stdout, "stderr", stderr))
-                        .error(isExecutionSuccessful
-                                ? null
-                                : (stderr.isBlank() ? "process exited with code " + exitCode : stderr))
-                        .build();
+                return buildCodeResult(exitCode, stdout, stderr);
             } finally {
                 processIoExecutor.shutdownNow();
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+        }
+    }
+
+    /**
+     * Build the ToolOutput for a finished code execution.
+     *
+     * @param exitCode exitCode
+     * @param stdout stdout
+     * @param stderr stderr
+     * @return the result
+     * @since 0.1.7
+     */
+    private static ToolOutput buildCodeResult(int exitCode, String stdout, String stderr) {
+        boolean isExecutionSuccessful = exitCode == 0;
+        return ToolOutput.builder().success(isExecutionSuccessful)
+                .data(Map.of("exit_code", exitCode, "stdout", stdout, "stderr", stderr))
+                .error(isExecutionSuccessful
+                        ? null
+                        : (stderr.isBlank() ? "process exited with code " + exitCode : stderr))
+                .build();
+    }
+
+    /**
+     * Wait for the process to exit with the framework default process-join timeout.
+     * On expiry, forcibly destroy the child and raise a recoverable SysOperationError.
+     *
+     * @param process the started child process
+     * @param command the command line (for diagnostics)
+     * @return the process exit code
+     * @since 0.1.7
+     */
+    private static int awaitProcessExit(Process process, List<String> command) {
+        // Issue #70 dim IV — bound process.onExit().join() with the framework default
+        // process-join timeout; on expiry, destroyForcibly and raise a recoverable
+        // SysOperationError. Mirrors BashTool treatment.
+        long joinMs = TimeoutConstants.processJoinMs();
+        try {
+            return process.onExit()
+                    .orTimeout(joinMs, TimeUnit.MILLISECONDS)
+                    .join()
+                    .exitValue();
+        } catch (CompletionException ce) {
+            if (ce.getCause() instanceof TimeoutException) {
+                Loggers.PERFORMANCE.warning(
+                        "CodeTool process join timeout after {}ms, command='{}'",
+                        joinMs, String.join(" ", command));
+                process.destroyForcibly();
+                throw new SysOperationError(
+                        StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
+                        null, null, ce, Map.of(
+                                "timeout", joinMs, "command", String.join(" ", command)));
+            }
+            throw ce;
         }
     }
 
