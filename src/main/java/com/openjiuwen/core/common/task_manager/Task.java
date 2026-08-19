@@ -313,6 +313,11 @@ public class Task {
             Loggers.PERFORMANCE.warning(
                     "Task.waitFor future get timeout after {}ms, task_id={}",
                     TimeoutConstants.FUTURE_MS, taskId);
+            // Issue #70 dim IV — cancel the underlying task before raising so the
+            // executor is not left running the Callable in the background (which would
+            // cause double-execution of side effects — tool calls, writes — if the caller
+            // retries per the recoverable semantics of ExecutionError).
+            cancel(false, "wait_for_future_timeout", "task_manager");
             throw new ExecutionError(
                     StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
                     Map.of("timeout", TimeoutConstants.FUTURE_MS,

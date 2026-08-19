@@ -28,6 +28,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -312,6 +314,18 @@ public class TaskManager {
                     firstException = e;
                     break;
                 }
+            } catch (ExecutionError e) {
+                // Issue #70 dim IV — waitFor() raises ExecutionError (a BaseError /
+                // RuntimeException) on future timeout, which bypasses the checked-exception
+                // catch above. Without this branch the error would escape the loop,
+                // skipping the firstException / results contract and leaving remaining
+                // tasks uncancelled (their Callables keep running with side effects).
+                if (isReturnExceptions) {
+                    results.add(e);
+                } else {
+                    firstException = e;
+                    break;
+                }
             }
         }
         if (firstException != null && !isReturnExceptions) {
@@ -355,6 +369,20 @@ public class TaskManager {
             } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
                 log.info("TaskManager waitAll exception: taskId={} name={} errorType={} message={}", task.getTaskId(),
                         task.getName(), e.getClass().getSimpleName(), e.getMessage());
+                if (isReturnExceptions) {
+                    results.add(e);
+                } else {
+                    firstException = e;
+                    results.add(null);
+                }
+            } catch (ExecutionError e) {
+                // Issue #70 dim IV — waitFor() raises ExecutionError (a BaseError /
+                // RuntimeException) on future timeout, which bypasses the checked-exception
+                // catch above. Without this branch the error would escape the loop,
+                // skipping the firstException / results contract and leaving remaining
+                // tasks uncancelled (their Callables keep running with side effects).
+                log.info("TaskManager waitAll execution-error: taskId={} name={} code={} message={}", task.getTaskId(),
+                        task.getName(), e.getCode(), e.getMessage());
                 if (isReturnExceptions) {
                     results.add(e);
                 } else {
@@ -413,9 +441,12 @@ public class TaskManager {
                     return true;
                 }
                 try {
-                    long pollMs = timeoutSeconds != null && timeoutSeconds > 0
-                            ? Math.round(timeoutSeconds * 1000)
-                            : TimeoutConstants.BLOCKING_QUEUE_MS;
+            long pollMs = timeoutSeconds != null && timeoutSeconds > 0
+                    ? BigDecimal.valueOf(timeoutSeconds)
+                            .multiply(BigDecimal.valueOf(1000))
+                            .setScale(0, RoundingMode.HALF_UP)
+                            .longValue()
+                    : TimeoutConstants.BLOCKING_QUEUE_MS;
                     next = queue.poll(pollMs, TimeUnit.MILLISECONDS);
                     if (next == null) {
                         // Issue #70 dim IV — asCompleted queue poll timed out. Previously this site

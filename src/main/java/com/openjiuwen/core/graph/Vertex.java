@@ -292,6 +292,25 @@ public class Vertex extends AtomicNode implements StreamConsumer {
 
         // 2. Execute node 'batch-in' abilities (INVOKE and STREAM)
         boolean isSubgraph = executable.graphInvoker();
+        executeBatchInAbilities(config, isSubgraph);
+
+        // 3. Wait for stream-in abilities to complete
+        awaitStreamInAbilities();
+
+        // 4. Send end tracer frame
+        traceComponentDone();
+        return null;
+    }
+
+    /**
+     * Execute node 'batch-in' abilities (INVOKE and STREAM).
+     *
+     * @param config execution configuration
+     * @param isSubgraph whether the executable is a subgraph
+     * @throws Exception on execution failure
+     * @since 0.1.7
+     */
+    private void executeBatchInAbilities(Object config, boolean isSubgraph) throws Exception {
         ComponentAbility currentAbility = null;
         try {
             List<ComponentAbility> callAbilities = componentAbility.stream()
@@ -319,8 +338,15 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     currentAbility != null ? currentAbility.name() : null);
             throw e;
         }
+    }
 
-        // 3. Wait for stream-in abilities to complete
+    /**
+     * Wait for stream-in abilities to complete, with a bounded timeout.
+     *
+     * @throws Exception on stream-in failure or timeout
+     * @since 0.1.7
+     */
+    private void awaitStreamInAbilities() throws Exception {
         if (streamCalled()) {
             int timeout = streamCalledTimeout > 0 ? streamCalledTimeout : 0;
             try {
@@ -352,10 +378,6 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_ERROR, "reason", "no stream data in",
                     "node_id", nodeId);
         }
-
-        // 4. Send end tracer frame
-        traceComponentDone();
-        return null;
     }
 
     /**
@@ -1025,6 +1047,17 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             LOGGER.error("Failed to call stream-in node [{}]", nodeId, cause);
             error = (cause instanceof Exception) ? (Exception) cause : e;
+            errorCallback.accept(error);
+        } catch (BaseError e) {
+            // Issue #70 dim IV — timeout paths above throw ExecutionError (a BaseError /
+            // RuntimeException), which bypasses the checked-exception catch above. Without
+            // this branch, finally would run with error == null and report the stream as
+            // successful (streamDone.complete(Boolean.TRUE)), silently feeding downstream
+            // consumers incomplete data. Capture the timeout as the stream error and invoke
+            // errorCallback so the caller is aware the stream did not complete normally.
+            LOGGER.error("Stream-in node [{}] failed due to timeout/error, code={}", nodeId,
+                    e instanceof ExecutionError ? ((ExecutionError) e).getStatus() : null);
+            error = e;
             errorCallback.accept(error);
         } finally {
             // Stream-in abilities (COLLECT/TRANSFORM) defer their END_FRAME if a

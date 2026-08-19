@@ -4,7 +4,10 @@
 
 package com.openjiuwen.core.common.constants;
 
-import java.util.concurrent.TimeUnit;
+import com.openjiuwen.core.common.logging.Loggers;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  * Unified blocking-operation timeout configuration for the openJiuwen framework.
@@ -24,112 +27,36 @@ import java.util.concurrent.TimeUnit;
  * @since 0.1.15
  */
 public final class TimeoutConstants {
-    /**
-     * TimeoutConstants.
-     *
-     * @since 0.1.15
-     */
-    private TimeoutConstants() {
-        // Utility class — no instantiation
-    }
 
-    // ======================== System property keys ========================
-
-    /**
-     * Property key for blocking-queue poll timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final String PROP_BLOCKING_QUEUE_MS = "openjiuwen.timeout.blocking-queue-ms";
 
-    /**
-     * Property key for Future.get timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final String PROP_FUTURE_MS = "openjiuwen.timeout.future-ms";
 
-    /**
-     * Property key for latch / await timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final String PROP_LATCH_MS = "openjiuwen.timeout.latch-ms";
 
-    /**
-     * Property key for child process join timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final String PROP_PROCESS_JOIN_MS = "openjiuwen.timeout.process-join-ms";
 
-    // ======================== Built-in defaults ========================
-
-    /**
-     * Default blocking-queue poll timeout: 30 seconds. Used when a caller does not pass an
-     * explicit timeout to {@code queue.poll(...)} / {@code queue.take()} sites such as
-     * {@code TaskManager.asCompleted} and {@code StreamProcessor} main loop.
-     *
-     * @since 0.1.15
-     */
     public static final long DEFAULT_BLOCKING_QUEUE_MS = 30_000L;
 
-    /**
-     * Default Future.get timeout: 5 minutes. Used at {@code Task.waitFor},
-     * {@code Workflow.waitForExecution}, {@code Vertex.streamDone.get()} / allOf().get() sites.
-     *
-     * @since 0.1.15
-     */
     public static final long DEFAULT_FUTURE_MS = 300_000L;
 
-    /**
-     * Default latch await timeout: 30 seconds. Used at {@code Vertex.abilityLatch.await()} and
-     * similar count-down-latch wait sites.
-     *
-     * @since 0.1.15
-     */
     public static final long DEFAULT_LATCH_MS = 30_000L;
 
-    /**
-     * Default child process join timeout: 10 minutes. Used by BashTool / CodeTool /
-     * PowerShellTool when waiting on {@code process.onExit().join()}.
-     *
-     * @since 0.1.15
-     */
     public static final long DEFAULT_PROCESS_JOIN_MS = 600_000L;
 
-    // ======================== Resolved (cached) values ========================
-
-    /**
-     * Effective blocking-queue poll timeout in milliseconds, resolved from system property
-     * {@link #PROP_BLOCKING_QUEUE_MS} or the built-in default.
-     *
-     * @since 0.1.15
-     */
     public static final long BLOCKING_QUEUE_MS = resolveLong(
             PROP_BLOCKING_QUEUE_MS, DEFAULT_BLOCKING_QUEUE_MS);
 
-    /**
-     * Effective Future.get timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final long FUTURE_MS = resolveLong(PROP_FUTURE_MS, DEFAULT_FUTURE_MS);
 
-    /**
-     * Effective latch await timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     public static final long LATCH_MS = resolveLong(PROP_LATCH_MS, DEFAULT_LATCH_MS);
 
-    /**
-     * Effective child process join timeout in milliseconds.
-     *
-     * @since 0.1.15
-     */
     static final long PROCESS_JOIN_MS = resolveLong(
             PROP_PROCESS_JOIN_MS, DEFAULT_PROCESS_JOIN_MS);
+
+    private TimeoutConstants() {
+        // Utility class — no instantiation
+    }
 
     /**
      * Expose process-join timeout for non-{@code constants} package callers (BashTool etc.
@@ -141,8 +68,6 @@ public final class TimeoutConstants {
     public static long processJoinMs() {
         return PROCESS_JOIN_MS;
     }
-
-    // ======================== Helpers ========================
 
     /**
      * Resolve a long system property, falling back to {@code defaultValue} on parse failure or
@@ -182,43 +107,11 @@ public final class TimeoutConstants {
      */
     private static void warn(String key, String raw, String reason) {
         try {
-            com.openjiuwen.core.common.logging.Loggers.PERFORMANCE.warning(
+            Loggers.PERFORMANCE.warning(
                     "Invalid timeout property [{}={}]: {}", key, raw, reason);
-        } catch (Throwable ignored) {
+        } catch (RuntimeException ignored) {
             // Logger init order in early class-load must not break timeout resolution.
         }
-    }
-
-    // ======================== Convenience accessors ========================
-
-    /**
-     * Blocking-queue poll timeout as a {@link java.time.Duration} for callers that prefer it.
-     *
-     * @return the blocking-queue timeout duration
-     * @since 0.1.15
-     */
-    public static java.time.Duration blockingQueueDuration() {
-        return java.time.Duration.ofMillis(BLOCKING_QUEUE_MS);
-    }
-
-    /**
-     * Future.get timeout as a {@link java.time.Duration}.
-     *
-     * @return the future-get timeout duration
-     * @since 0.1.15
-     */
-    public static java.time.Duration futureDuration() {
-        return java.time.Duration.ofMillis(FUTURE_MS);
-    }
-
-    /**
-     * Latch await timeout as a {@link java.time.Duration}.
-     *
-     * @return the latch timeout duration
-     * @since 0.1.15
-     */
-    public static java.time.Duration latchDuration() {
-        return java.time.Duration.ofMillis(LATCH_MS);
     }
 
     /**
@@ -236,7 +129,10 @@ public final class TimeoutConstants {
         if (callerTimeoutSeconds == null || callerTimeoutSeconds <= 0) {
             return defaultMs;
         }
-        return Math.round(callerTimeoutSeconds * 1000.0);
+        return BigDecimal.valueOf(callerTimeoutSeconds)
+                .multiply(BigDecimal.valueOf(1000))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
     }
 
     /**
@@ -265,49 +161,5 @@ public final class TimeoutConstants {
      */
     public static long futureMs(Double callerTimeoutSeconds) {
         return resolveCallerMs(callerTimeoutSeconds, FUTURE_MS);
-    }
-
-    /**
-     * Convenience: blocking-queue poll timeout in the requested time unit.
-     *
-     * @param unit the time unit for the return value
-     * @return the blocking-queue timeout in the requested unit
-     * @since 0.1.15
-     */
-    public static long blockingQueue(TimeUnit unit) {
-        return unit.convert(BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Convenience: Future.get timeout in the requested time unit.
-     *
-     * @param unit the time unit for the return value
-     * @return the future timeout in the requested unit
-     * @since 0.1.15
-     */
-    public static long future(TimeUnit unit) {
-        return unit.convert(FUTURE_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Convenience: latch await timeout in the requested time unit.
-     *
-     * @param unit the time unit for the return value
-     * @return the latch timeout in the requested unit
-     * @since 0.1.15
-     */
-    public static long latch(TimeUnit unit) {
-        return unit.convert(LATCH_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Convenience: child process join timeout in the requested time unit.
-     *
-     * @param unit the time unit for the return value
-     * @return the process-join timeout in the requested unit
-     * @since 0.1.15
-     */
-    public static long processJoin(TimeUnit unit) {
-        return unit.convert(PROCESS_JOIN_MS, TimeUnit.MILLISECONDS);
     }
 }
