@@ -1880,7 +1880,7 @@ public class DeepAgent implements AutoCloseable {
             target.getInner().state().updateGlobal((Map<String, Object>) global);
         }
         Object agentState = sourceState.get(State.AGENT_STATE_KEY);
-        if (agent instanceof Map) {
+        if (agentState instanceof Map) {
             target.getInner().state().update((Map<String, Object>) agentState);
         }
     }
