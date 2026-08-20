@@ -40,6 +40,7 @@ import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -1868,11 +1869,20 @@ public class DeepAgent implements AutoCloseable {
      * @param target target
      * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     private void copySessionState(AgentSessionApi source, AgentSessionApi target) {
         if (source == null || target == null) {
             return;
         }
-        target.getInner().state().setState(source.getInner().state().getState());
+        Map<String, Object> sourceState = source.getInner().state().getState();
+        Object global = sourceState.get(State.GLOBAL_STATE_KEY);
+        if (global instanceof Map) {
+            target.getInner().state().updateGlobal((Map<String, Object>) global);
+        }
+        Object agent = sourceState.get(State.AGENT_STATE_KEY);
+        if (agent instanceof Map) {
+            target.getInner().state().update((Map<String, Object>) agent);
+        }
     }
 
     /**
