@@ -5,6 +5,8 @@
 package com.openjiuwen.core.graph.stream_actor;
 
 import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.GraphError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.DictUtils;
@@ -44,6 +46,19 @@ public class StreamProcessor {
      * @since 0.1.7
      */
     public static final Object END_SENTINEL = new Object();
+
+    /**
+     * TIMEOUT_SENTINEL — issue #70 dim IV. Offered to processor queues when the
+     * main loop queue poll times out, so the consumer's iterator can distinguish a
+     * genuine stream end ({@link #END_SENTINEL}) from an upstream stall / crash
+     * (this sentinel). {@code hasNext()} sees it, logs, and raises a
+     * {@link GraphError}({@link StatusCode#STREAM_PROCESSOR_QUEUE_TIMEOUT})
+     * instead of returning {@code false} (which the caller would interpret as a
+     * normal stream end and silently consume incomplete data).
+     *
+     * @since 0.1.15
+     */
+    public static final Object TIMEOUT_SENTINEL = new Object();
 
     private final String nodeId;
 
@@ -122,6 +137,7 @@ public class StreamProcessor {
         Set<String> handleMap = new HashSet<>(completedSources);
         // source_path_map[producer_id] = set of schema paths this source produced.
         Map<String, Set<String>> sourcePathMap = new HashMap<>();
+        boolean timedOut = false;
         try {
             for (String completedSource : completedSources) {
                 closeQueuesForSource(producerIdFromSourceKey(completedSource));
@@ -133,6 +149,10 @@ public class StreamProcessor {
             while (true) {
                 StreamPayload payload = pollPayload();
                 if (payload == null) {
+                    // pollPayload returns null on timeout OR interruption. On timeout
+                    // we must propagate TIMEOUT_SENTINEL so consumers distinguish a
+                    // genuine stream end (END_SENTINEL) from an upstream stall.
+                    timedOut = true;
                     break;
                 }
                 processPayload(payload, handleMap, sourcePathMap);
@@ -141,7 +161,11 @@ public class StreamProcessor {
                 }
             }
         } finally {
-            closeAllQueues();
+            if (timedOut) {
+                closeAllQueuesWithTimeout();
+            } else {
+                closeAllQueues();
+            }
         }
     }
 
@@ -313,9 +337,31 @@ public class StreamProcessor {
         }
     }
 
+    /**
+     * Offer TIMEOUT_SENTINEL to every processor queue — issue #70 dim IV. Used when
+     * the main loop poll times out so consumers can distinguish an upstream stall /
+     * crash from a genuine stream end. Mirrors {@link #closeAllQueues()} but with a
+     * different sentinel so {@code hasNext()} raises rather than returns {@code false}.
+     *
+     * @since 0.1.15
+     */
+    private void closeAllQueuesWithTimeout() {
+        for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
+            for (BlockingQueue<Object> q : queues) {
+                closeQueueWithTimeout(q);
+            }
+        }
+    }
+
     private void closeQueue(BlockingQueue<Object> processorQueue) {
         if (closedProcessorQueues.add(processorQueue)) {
             processorQueue.offer(END_SENTINEL);
+        }
+    }
+
+    private void closeQueueWithTimeout(BlockingQueue<Object> processorQueue) {
+        if (closedProcessorQueues.add(processorQueue)) {
+            processorQueue.offer(TIMEOUT_SENTINEL);
         }
     }
 
@@ -428,6 +474,17 @@ public class StreamProcessor {
                         logger.debug("Receive EndFrame chunk of [{}.{}]", nodeId, kPath);
                         done = true;
                         return false;
+                    }
+                    if (msg == TIMEOUT_SENTINEL) {
+                        // Issue #70 dim IV — upstream poll timed out; the stream did not
+                        // end normally. Raise so the consumer can retry / report rather than
+                        // silently treating incomplete data as a complete stream.
+                        logger.warning("Receive timeout sentinel of [{}.{}]", nodeId, kPath);
+                        done = true;
+                        throw new GraphError(
+                                StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT,
+                                Map.of("timeout", TimeoutConstants.BLOCKING_QUEUE_MS,
+                                        "node_id", nodeId, "kPath", kPath));
                     }
                     logger.debug("Receive chunk of [{}.{}]", nodeId, kPath);
                     next = msg;
