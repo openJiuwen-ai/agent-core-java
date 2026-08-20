@@ -137,7 +137,7 @@ public class StreamProcessor {
         Set<String> handleMap = new HashSet<>(completedSources);
         // source_path_map[producer_id] = set of schema paths this source produced.
         Map<String, Set<String>> sourcePathMap = new HashMap<>();
-        boolean timedOut = false;
+        boolean isTimedOut = false;
         try {
             for (String completedSource : completedSources) {
                 closeQueuesForSource(producerIdFromSourceKey(completedSource));
@@ -149,10 +149,12 @@ public class StreamProcessor {
             while (true) {
                 StreamPayload payload = pollPayload();
                 if (payload == null) {
-                    // pollPayload returns null on timeout OR interruption. On timeout
-                    // we must propagate TIMEOUT_SENTINEL so consumers distinguish a
+                    // pollPayload returns null only on timeout (upstream stall). On
+                    // timeout we propagate TIMEOUT_SENTINEL so consumers distinguish a
                     // genuine stream end (END_SENTINEL) from an upstream stall.
-                    timedOut = true;
+                    // Interruption is handled separately by the catch block below —
+                    // interrupt is a graceful shutdown signal, not a stall.
+                    isTimedOut = true;
                     break;
                 }
                 processPayload(payload, handleMap, sourcePathMap);
@@ -160,8 +162,12 @@ public class StreamProcessor {
                     break;
                 }
             }
+        } catch (InterruptedException e) {
+            // Graceful shutdown via interrupt — close queues normally (END_SENTINEL)
+            // so consumers see this as a regular stream end, not a timeout.
+            Thread.currentThread().interrupt();
         } finally {
-            if (timedOut) {
+            if (isTimedOut) {
                 closeAllQueuesWithTimeout();
             } else {
                 closeAllQueues();
@@ -172,29 +178,25 @@ public class StreamProcessor {
     /**
      * Poll the next payload from the queue with the framework default blocking-queue timeout.
      *
-     * @return the next payload, or null on timeout / interruption (caller should break)
+     * @return the next payload, or null on timeout (caller should break and flag timeout)
+     * @throws InterruptedException if the current thread was interrupted while polling
      * @since 0.1.7
      */
-    private StreamPayload pollPayload() {
-        try {
-            // Issue #70 dim IV — previously queue.take() could block forever if an
-            // upstream producer crashed without emitting the END frame, hanging the
-            // stream-in worker thread indefinitely. Fall back to the framework default
-            // blocking-queue timeout; on expiry, log + break so the caller's loop
-            // exits rather than the whole thread dying silently.
-            StreamPayload payload = queue.poll(
-                    TimeoutConstants.BLOCKING_QUEUE_MS,
-                    TimeUnit.MILLISECONDS);
-            if (payload == null) {
-                Loggers.PERFORMANCE.warning(
-                        "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
-                        TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
-            }
-            return payload;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
+    private StreamPayload pollPayload() throws InterruptedException {
+        // Issue #70 dim IV — previously queue.take() could block forever if an
+        // upstream producer crashed without emitting the END frame, hanging the
+        // stream-in worker thread indefinitely. Fall back to the framework default
+        // blocking-queue timeout; on expiry, log + return null so the caller's loop
+        // exits rather than the whole thread dying silently.
+        StreamPayload payload = queue.poll(
+                TimeoutConstants.BLOCKING_QUEUE_MS,
+                TimeUnit.MILLISECONDS);
+        if (payload == null) {
+            Loggers.PERFORMANCE.warning(
+                    "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
+                    TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
         }
+        return payload;
     }
 
     /**

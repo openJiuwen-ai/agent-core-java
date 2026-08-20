@@ -27,28 +27,100 @@ import java.math.RoundingMode;
  * @since 0.1.15
  */
 public final class TimeoutConstants {
-
+    /**
+     * System property key for overriding {@link #BLOCKING_QUEUE_MS}.
+     *
+     * @since 0.1.15
+     */
     public static final String PROP_BLOCKING_QUEUE_MS = "openjiuwen.timeout.blocking-queue-ms";
 
+    /**
+     * System property key for overriding {@link #FUTURE_MS}.
+     *
+     * @since 0.1.15
+     */
     public static final String PROP_FUTURE_MS = "openjiuwen.timeout.future-ms";
 
+    /**
+     * System property key for overriding {@link #LATCH_MS}.
+     *
+     * @since 0.1.15
+     */
     public static final String PROP_LATCH_MS = "openjiuwen.timeout.latch-ms";
 
+    /**
+     * System property key for overriding {@link #PROCESS_JOIN_MS}.
+     *
+     * @since 0.1.15
+     */
     public static final String PROP_PROCESS_JOIN_MS = "openjiuwen.timeout.process-join-ms";
 
+    /**
+     * Built-in default for {@link #BLOCKING_QUEUE_MS} (60 seconds), used when the
+     * system property is absent or invalid.
+     *
+     * @since 0.1.15
+     */
     public static final long DEFAULT_BLOCKING_QUEUE_MS = 60_000L;
 
+    /**
+     * Built-in default for {@link #FUTURE_MS} (5 minutes), used when the
+     * system property is absent or invalid.
+     *
+     * @since 0.1.15
+     */
     public static final long DEFAULT_FUTURE_MS = 300_000L;
 
+    /**
+     * Built-in default for {@link #LATCH_MS} (30 seconds), used when the
+     * system property is absent or invalid.
+     *
+     * @since 0.1.15
+     */
     public static final long DEFAULT_LATCH_MS = 30_000L;
 
+    /**
+     * Built-in default for {@link #PROCESS_JOIN_MS} (10 minutes), used when the
+     * system property is absent or invalid.
+     *
+     * @since 0.1.15
+     */
     public static final long DEFAULT_PROCESS_JOIN_MS = 600_000L;
 
+    /**
+     * Effective blocking-queue poll timeout in milliseconds. Measures how long a
+     * queue may stay idle (no new data) before the caller breaks out, rather than
+     * total duration. Used by {@code StreamProcessor} main-loop / iterator poll
+     * and {@code TaskManager} queue poll. Defaults to {@link #DEFAULT_BLOCKING_QUEUE_MS};
+     * override with {@code -Dopenjiuwen.timeout.blocking-queue-ms=...}.
+     *
+     * @since 0.1.15
+     */
     public static final long BLOCKING_QUEUE_MS = resolveLong(
             PROP_BLOCKING_QUEUE_MS, DEFAULT_BLOCKING_QUEUE_MS);
 
+    /**
+     * Effective Future.get / CountDownLatch total-wait timeout in milliseconds.
+     * Caps the overall wait for a stream round or task execution. Used by
+     * {@code Vertex.awaitStreamInAbilities} ({@code streamDone.get()}),
+     * {@code Vertex.runExecutable} ({@code future.get()}), {@code Task.waitFor},
+     * and {@code Workflow} execution-future wait. Defaults to
+     * {@link #DEFAULT_FUTURE_MS}; override with
+     * {@code -Dopenjiuwen.timeout.future-ms=...}.
+     *
+     * @since 0.1.15
+     */
     public static final long FUTURE_MS = resolveLong(PROP_FUTURE_MS, DEFAULT_FUTURE_MS);
 
+    /**
+     * Effective CountDownLatch await timeout in milliseconds, for the stream
+     * startup phase where upstream abilities must register before dispatch.
+     * Used by {@code Vertex} ability-latch await. Defaults to
+     * {@link #DEFAULT_LATCH_MS}; override with
+     * {@code -Dopenjiuwen.timeout.latch-ms=...}.
+     *
+     * @since 0.1.15
+     */
     public static final long LATCH_MS = resolveLong(PROP_LATCH_MS, DEFAULT_LATCH_MS);
 
     static final long PROCESS_JOIN_MS = resolveLong(
