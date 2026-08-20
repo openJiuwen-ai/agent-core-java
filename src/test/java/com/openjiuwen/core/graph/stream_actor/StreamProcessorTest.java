@@ -6,6 +6,8 @@ package com.openjiuwen.core.graph.stream_actor;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.openjiuwen.core.common.exception.GraphError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -143,5 +146,95 @@ class StreamProcessorTest {
         assertEquals("producer", StreamProcessor.getProducerId(endMessage));
         assertTrue(StreamProcessor.isValueFromSource("producer.output", "producer"));
         assertFalse(StreamProcessor.isValueFromSource("another.output", "producer"));
+    }
+
+    // ---- P2-b: TIMEOUT_SENTINEL behavior tests ----
+
+    /**
+     * Access the internal processor queue for a given schema reference path via reflection.
+     * Used by timeout-sentinel tests to directly offer sentinels into the iterator's queue,
+     * simulating what closeAllQueuesWithTimeout() does after a main-loop poll timeout.
+     */
+    @SuppressWarnings("unchecked")
+    private BlockingQueue<Object> getProcessorQueue(StreamProcessor processor, String refPath) throws Exception {
+        var field = StreamProcessor.class.getDeclaredField("processorQueues");
+        field.setAccessible(true);
+        Map<String, List<BlockingQueue<Object>>> queues =
+                (Map<String, List<BlockingQueue<Object>>>) field.get(processor);
+        return queues.get(refPath).get(0);
+    }
+
+    @Test
+    @DisplayName("TIMEOUT_SENTINEL causes hasNext to throw GraphError with STREAM_PROCESSOR_QUEUE_TIMEOUT")
+    void timeoutSentinelRaisesGraphError() throws Exception {
+        StreamProcessor processor = new StreamProcessor("test-timeout",
+                List.of(Set.of("producer-STREAM")), 0);
+        Map<String, Object> generated = processor.generator(
+                Map.of("value", "${producer.value}"), null);
+        @SuppressWarnings("unchecked")
+        Iterator<Object> valueIterator = (Iterator<Object>) generated.get("value");
+
+        // Offer TIMEOUT_SENTINEL directly to the iterator's queue, simulating
+        // what closeAllQueuesWithTimeout() does after a main-loop poll timeout.
+        BlockingQueue<Object> iterQueue = getProcessorQueue(processor, "${producer.value}");
+        iterQueue.offer(StreamProcessor.TIMEOUT_SENTINEL);
+
+        GraphError thrown = assertThrows(GraphError.class, valueIterator::hasNext);
+        assertEquals(StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT, thrown.getStatus());
+        assertEquals(StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT.getCode(), thrown.getCode());
+    }
+
+    @Test
+    @DisplayName("hasNext returns false after TIMEOUT_SENTINEL has been consumed (idempotent)")
+    void hasNextReturnsFalseAfterTimeoutSentinelConsumed() throws Exception {
+        StreamProcessor processor = new StreamProcessor("test-timeout-idempotent",
+                List.of(Set.of("producer-STREAM")), 0);
+        Map<String, Object> generated = processor.generator(
+                Map.of("value", "${producer.value}"), null);
+        @SuppressWarnings("unchecked")
+        Iterator<Object> valueIterator = (Iterator<Object>) generated.get("value");
+
+        BlockingQueue<Object> iterQueue = getProcessorQueue(processor, "${producer.value}");
+        iterQueue.offer(StreamProcessor.TIMEOUT_SENTINEL);
+
+        // First call throws GraphError (done=true is set before throw)
+        assertThrows(GraphError.class, valueIterator::hasNext);
+        // Second call returns false — iterator is done, no double-throw
+        assertFalse(valueIterator.hasNext());
+    }
+
+    @Test
+    @DisplayName("TIMEOUT_SENTINEL and END_SENTINEL are distinct objects")
+    void timeoutAndEndSentinelsAreDistinct() {
+        assertNotSame(StreamProcessor.TIMEOUT_SENTINEL, StreamProcessor.END_SENTINEL);
+        assertNotEquals(StreamProcessor.TIMEOUT_SENTINEL, StreamProcessor.END_SENTINEL);
+    }
+
+    @Test
+    @DisplayName("closeAllQueuesWithTimeout offers TIMEOUT_SENTINEL to all consumer queues")
+    void closeAllQueuesWithTimeoutOffersTimeoutSentinelToAllQueues() throws Exception {
+        StreamProcessor processor = new StreamProcessor("test-timeout-close-all",
+                List.of(Set.of("producer-STREAM")), 0);
+        // Create two iterator queues via generator
+        processor.generator(
+                Map.of("value", "${producer.value}", "other", "${producer.other}"), null);
+
+        // Invoke closeAllQueuesWithTimeout() via reflection
+        var method = StreamProcessor.class.getDeclaredMethod("closeAllQueuesWithTimeout");
+        method.setAccessible(true);
+        method.invoke(processor);
+
+        // Verify all queues received TIMEOUT_SENTINEL (not END_SENTINEL)
+        var field = StreamProcessor.class.getDeclaredField("processorQueues");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, List<BlockingQueue<Object>>> queues =
+                (Map<String, List<BlockingQueue<Object>>>) field.get(processor);
+        for (List<BlockingQueue<Object>> queueList : queues.values()) {
+            for (BlockingQueue<Object> q : queueList) {
+                assertSame(StreamProcessor.TIMEOUT_SENTINEL, q.poll(),
+                        "queue should contain TIMEOUT_SENTINEL, not END_SENTINEL");
+            }
+        }
     }
 }
