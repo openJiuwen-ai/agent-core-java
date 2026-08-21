@@ -89,6 +89,7 @@ public class ReActAgent extends BaseAgent {
 
     // 非流式→流式适配器的分块大小（字符数）
     private static final int STREAM_CHUNK_SIZE = 200;
+    private static final int MINIMUM_VIRTUAL_THREAD_VERSION = 21;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBlockingTaskExecutor("react-agent-stream", true);
 
@@ -1062,6 +1063,9 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
+        if (Runtime.version().feature() < MINIMUM_VIRTUAL_THREAD_VERSION) {
+            return runStreamWithPlatformThread(inputs, session, agentSession);
+        }
         Future<?> streamFuture;
         try {
             streamFuture = STREAM_EXECUTOR.submit(() -> runStreamTask(inputs, session, agentSession));
@@ -1072,6 +1076,25 @@ public class ReActAgent extends BaseAgent {
         }
         // 消费方关闭/取消 iterator 时取消后台任务，使阻塞的 LLM HTTP 调用收到中断请求。
         return OperatorStream.wrap(agentSession.streamIterator(), () -> streamFuture.cancel(true));
+    }
+
+    private Iterator<Object> runStreamWithPlatformThread(Object inputs, Session session,
+            AgentSessionApi agentSession) {
+        Thread streamThread = new Thread(() -> {
+            try {
+                Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
+                writeStreamResult(agentSession, finalResult);
+            } catch (Exception e) {
+                writeStreamError(agentSession, e);
+            } finally {
+                postRunStreamSession(agentSession, session);
+            }
+        }, "react-agent-stream-" + agentSession.getSessionId());
+        streamThread.setDaemon(true);
+        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
+        streamThread.start();
+        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
+        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
     }
 
     private void runStreamTask(Object inputs, Session session, AgentSessionApi agentSession) {
