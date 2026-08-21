@@ -56,6 +56,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -1098,63 +1099,73 @@ public class ReActAgent extends BaseAgent {
     }
 
     private FutureTask<Void> newStreamTask(Object inputs, Session session, AgentSessionApi agentSession) {
-        return new FutureTask<>(() -> {
+        return new StreamFutureTask(() -> {
             Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
             writeStreamResult(agentSession, finalResult);
             return null;
-        }) {
-            private final AtomicBoolean isStreamFinished = new AtomicBoolean(false);
+        }, session, agentSession);
+    }
 
-            @Override
-            public void run() {
-                Thread currentThread = Thread.currentThread();
-                String originalThreadName = currentThread.getName();
-                if (!IS_VIRTUAL_THREAD_RUNTIME) {
-                    currentThread.setName(STREAM_THREAD_NAME_PREFIX + "-" + agentSession.getSessionId());
-                }
-                try {
-                    super.run();
-                } finally {
-                    if (isCancelled()) {
-                        finishStream(null);
-                    }
-                    if (!IS_VIRTUAL_THREAD_RUNTIME) {
-                        currentThread.setName(originalThreadName);
-                    }
-                }
+    private final class StreamFutureTask extends FutureTask<Void> {
+        private final Session session;
+        private final AgentSessionApi agentSession;
+        private final AtomicBoolean isStreamFinished = new AtomicBoolean(false);
+
+        private StreamFutureTask(Callable<Void> callable, Session session, AgentSessionApi agentSession) {
+            super(callable);
+            this.session = session;
+            this.agentSession = agentSession;
+        }
+
+        @Override
+        public void run() {
+            Thread currentThread = Thread.currentThread();
+            String originalThreadName = currentThread.getName();
+            if (!IS_VIRTUAL_THREAD_RUNTIME) {
+                currentThread.setName(STREAM_THREAD_NAME_PREFIX + "-" + agentSession.getSessionId());
             }
-
-            @Override
-            protected void set(Void result) {
-                try {
+            try {
+                super.run();
+            } finally {
+                if (isCancelled()) {
                     finishStream(null);
-                } finally {
-                    super.set(result);
+                }
+                if (!IS_VIRTUAL_THREAD_RUNTIME) {
+                    currentThread.setName(originalThreadName);
                 }
             }
+        }
 
-            @Override
-            protected void setException(Throwable throwable) {
-                try {
-                    finishStream(throwable);
-                } finally {
-                    super.setException(throwable);
-                }
+        @Override
+        protected void set(Void result) {
+            try {
+                finishStream(null);
+            } finally {
+                super.set(result);
             }
+        }
 
-            private void finishStream(Throwable throwable) {
-                if (!isStreamFinished.compareAndSet(false, true)) {
-                    return;
-                }
-                try {
-                    if (throwable != null) {
-                        writeStreamThrowable(agentSession, throwable);
-                    }
-                } finally {
-                    postRunStreamSession(agentSession, session);
-                }
+        @Override
+        protected void setException(Throwable throwable) {
+            try {
+                finishStream(throwable);
+            } finally {
+                super.setException(throwable);
             }
-        };
+        }
+
+        private void finishStream(Throwable throwable) {
+            if (!isStreamFinished.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                if (throwable != null) {
+                    writeStreamThrowable(agentSession, throwable);
+                }
+            } finally {
+                postRunStreamSession(agentSession, session);
+            }
+        }
     }
 
     /**
