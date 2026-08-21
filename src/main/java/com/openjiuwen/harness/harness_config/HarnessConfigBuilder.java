@@ -372,7 +372,7 @@ public final class HarnessConfigBuilder {
         }
         Map<String, Object> permissionsSnapshot = new LinkedHashMap<>(permissions);
         ToolPermissionHost host = ToolPermissionHost.builder().resolveWorkspaceDir(() -> workspaceRoot)
-                .permissionYamlPath(resolved.sourcePath())
+                // .permissionYamlPath(resolved.sourcePath())  // 待后续多租户资源隔离适配，当前已关闭持久化
                 .getPermissionsSnapshot(() -> new LinkedHashMap<>(permissionsSnapshot)).build();
         rails.add(PermissionFactory.buildPermissionInterruptRail(permissionsSnapshot, host, workspaceRoot));
     }
