@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
@@ -55,6 +56,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -85,6 +94,11 @@ public class ReActAgent extends BaseAgent {
 
     // 非流式→流式适配器的分块大小（字符数）
     private static final int STREAM_CHUNK_SIZE = 200;
+    private static final int MINIMUM_VIRTUAL_THREAD_VERSION = 21;
+    private static final String STREAM_THREAD_NAME_PREFIX = "react-agent-stream";
+    private static final boolean IS_VIRTUAL_THREAD_RUNTIME =
+            Runtime.version().feature() >= MINIMUM_VIRTUAL_THREAD_VERSION;
+    private static final ExecutorService STREAM_EXECUTOR = createStreamExecutor();
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -108,6 +122,22 @@ public class ReActAgent extends BaseAgent {
         this.promptBuilder = new SystemPromptBuilder();
         this.systemPromptBuilder = this.promptBuilder;
         initMemoryScope();
+    }
+
+    private static ExecutorService createStreamExecutor() {
+        if (IS_VIRTUAL_THREAD_RUNTIME) {
+            return OpenJiuwenExecutors.newBlockingTaskExecutor(STREAM_THREAD_NAME_PREFIX, true);
+        }
+        // JDK 17 不排队、不限并发且不保留空闲线程，
+        // 保持原有的每流式请求一个平台线程语义。
+        return OpenJiuwenExecutors.newThreadPool(STREAM_THREAD_NAME_PREFIX,
+                OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                        .poolSize(0, Integer.MAX_VALUE)
+                        .keepAlive(0L, TimeUnit.MILLISECONDS)
+                        .workQueue(new SynchronousQueue<>())
+                        .isDaemon(true)
+                        .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                        .build());
     }
 
     /**
@@ -1056,21 +1086,86 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
-        Thread streamThread = new Thread(() -> {
+        FutureTask<Void> streamTask = newStreamTask(inputs, session, agentSession);
+        try {
+            STREAM_EXECUTOR.execute(streamTask);
+        } catch (RejectedExecutionException exception) {
+            writeStreamError(agentSession, exception);
+            postRunStreamSession(agentSession, session);
+            return agentSession.streamIterator();
+        }
+        // 消费方关闭/取消 iterator 时取消后台任务，使阻塞的 LLM HTTP 调用收到中断请求。
+        return OperatorStream.wrap(agentSession.streamIterator(), () -> streamTask.cancel(true));
+    }
+
+    private FutureTask<Void> newStreamTask(Object inputs, Session session, AgentSessionApi agentSession) {
+        return new StreamFutureTask(() -> {
+            Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
+            writeStreamResult(agentSession, finalResult);
+            return null;
+        }, session, agentSession);
+    }
+
+    private final class StreamFutureTask extends FutureTask<Void> {
+        private final Session session;
+        private final AgentSessionApi agentSession;
+        private final AtomicBoolean isStreamFinished = new AtomicBoolean(false);
+
+        private StreamFutureTask(Callable<Void> callable, Session session, AgentSessionApi agentSession) {
+            super(callable);
+            this.session = session;
+            this.agentSession = agentSession;
+        }
+
+        @Override
+        public void run() {
+            Thread currentThread = Thread.currentThread();
+            String originalThreadName = currentThread.getName();
+            if (!IS_VIRTUAL_THREAD_RUNTIME) {
+                currentThread.setName(STREAM_THREAD_NAME_PREFIX + "-" + agentSession.getSessionId());
+            }
             try {
-                Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
-                writeStreamResult(agentSession, finalResult);
-            } catch (Exception e) {
-                writeStreamError(agentSession, e);
+                super.run();
+            } finally {
+                if (isCancelled()) {
+                    finishStream(null);
+                }
+                if (!IS_VIRTUAL_THREAD_RUNTIME) {
+                    currentThread.setName(originalThreadName);
+                }
+            }
+        }
+
+        @Override
+        protected void set(Void result) {
+            try {
+                finishStream(null);
+            } finally {
+                super.set(result);
+            }
+        }
+
+        @Override
+        protected void setException(Throwable throwable) {
+            try {
+                finishStream(throwable);
+            } finally {
+                super.setException(throwable);
+            }
+        }
+
+        private void finishStream(Throwable throwable) {
+            if (!isStreamFinished.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                if (throwable != null) {
+                    writeStreamThrowable(agentSession, throwable);
+                }
             } finally {
                 postRunStreamSession(agentSession, session);
             }
-        }, "react-agent-stream-" + agentSession.getSessionId());
-        streamThread.setDaemon(true);
-        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
-        streamThread.start();
-        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
-        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
+        }
     }
 
     /**

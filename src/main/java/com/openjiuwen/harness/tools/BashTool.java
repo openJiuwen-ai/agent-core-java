@@ -86,8 +86,8 @@ public class BashTool {
             if (workdir != null && !workdir.isBlank()) {
                 builder.directory(new java.io.File(workdir));
             }
-            ExecutorService processIoExecutor = OpenJiuwenExecutors.newFixedThreadPool("harness-bash-process-io", 2,
-                    true);
+            ExecutorService processIoExecutor = OpenJiuwenExecutors.newBlockingTaskExecutor(
+                    "harness-bash-process-io", 2, true);
             try {
                 Process process = builder.start();
                 CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
@@ -112,7 +112,7 @@ public class BashTool {
                                 : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
                         .build();
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdownNowAndDeregister(processIoExecutor);
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
