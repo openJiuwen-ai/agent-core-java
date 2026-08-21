@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
@@ -55,6 +56,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -85,6 +89,13 @@ public class ReActAgent extends BaseAgent {
 
     // 非流式→流式适配器的分块大小（字符数）
     private static final int STREAM_CHUNK_SIZE = 200;
+
+    /**
+     * Stream execution pool. All stream requests share this bounded module pool so that
+     * concurrency is capped and bursts are buffered rather than spawning unbounded threads.
+     */
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -1056,21 +1067,26 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
-        Thread streamThread = new Thread(() -> {
-            try {
-                Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
-                writeStreamResult(agentSession, finalResult);
-            } catch (Exception e) {
-                writeStreamError(agentSession, e);
-            } finally {
-                postRunStreamSession(agentSession, session);
-            }
-        }, "react-agent-stream-" + agentSession.getSessionId());
-        streamThread.setDaemon(true);
-        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
-        streamThread.start();
-        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
-        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
+        Future<?> streamFuture;
+        try {
+            streamFuture = STREAM_EXECUTOR.submit(() -> {
+                try {
+                    Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
+                    writeStreamResult(agentSession, finalResult);
+                } catch (Exception e) {
+                    writeStreamError(agentSession, e);
+                } finally {
+                    postRunStreamSession(agentSession, session);
+                }
+            });
+        } catch (RejectedExecutionException ex) {
+            // 池满（线程 + 队列全占用）：写入流错误事件而不是挂死客户端，
+            // 单请求失败，池子保持健康。
+            writeStreamError(agentSession, ex);
+            return agentSession.streamIterator();
+        }
+        // 消费方关闭/取消 iterator 时中断后台任务，使阻塞的 LLM HTTP 调用提前退出。
+        return OperatorStream.wrap(agentSession.streamIterator(), () -> streamFuture.cancel(true));
     }
 
     /**
