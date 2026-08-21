@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -291,7 +292,8 @@ class PermissionInterruptRailRunnerE2ETest {
                 .description("guardrail e2e tool " + toolName).build();
         return new LocalFunction(card, inputs -> {
             counter.incrementAndGet();
-            return resultPrefix + ":" + String.valueOf(inputs.get(argKey));
+            String result = resultPrefix + ":" + String.valueOf(inputs.get(argKey));
+            return Collections.singletonList(result).iterator();
         });
     }
 
