@@ -36,6 +36,7 @@ import javax.net.ssl.X509TrustManager;
  * @since 0.1.7
  */
 public final class SslUtils {
+    private static final String TLS_CONTEXT_PROTOCOL = "TLSv1.2";
     private static final String[] TLS_12_PLUS_PROTOCOLS = {"TLSv1.3", "TLSv1.2"};
 
     /**
@@ -55,7 +56,7 @@ public final class SslUtils {
      */
     public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
-            SSLContext ctx = SSLContext.getInstance("TLS");
+            SSLContext ctx = SSLContext.getInstance(TLS_CONTEXT_PROTOCOL);
             if (sslCertPath != null) {
                 ctx.init(null, createCustomTrustManagers(sslCertPath), null);
             } else {
@@ -150,7 +151,7 @@ public final class SslUtils {
                     return new X509Certificate[0];
                 }
             }};
-            SSLContext ctx = SSLContext.getInstance("TLS");
+            SSLContext ctx = SSLContext.getInstance(TLS_CONTEXT_PROTOCOL);
             ctx.init(null, trustAllManagers, new SecureRandom());
             return ctx;
         } catch (Exception e) {
@@ -216,7 +217,7 @@ public final class SslUtils {
         if (!shouldVerifySsl) {
             X509TrustManager trustManager = insecureTrustManager();
             try {
-                SSLContext sslContext = SSLContext.getInstance("TLS");
+                SSLContext sslContext = SSLContext.getInstance(TLS_CONTEXT_PROTOCOL);
                 sslContext.init(null, new TrustManager[]{trustManager}, new SecureRandom());
                 builder.sslSocketFactory(sslContext.getSocketFactory(), trustManager);
             } catch (java.security.GeneralSecurityException e) {
@@ -231,7 +232,7 @@ public final class SslUtils {
             try {
                 TrustManager[] trustManagers = createCustomTrustManagers(sslCertPath);
                 X509TrustManager trustManager = requireX509TrustManager(trustManagers);
-                SSLContext sslContext = SSLContext.getInstance("TLS");
+                SSLContext sslContext = SSLContext.getInstance(TLS_CONTEXT_PROTOCOL);
                 sslContext.init(null, trustManagers, null);
                 SSLSocketFactory socketFactory = sslContext.getSocketFactory();
                 builder.sslSocketFactory(socketFactory, trustManager);
