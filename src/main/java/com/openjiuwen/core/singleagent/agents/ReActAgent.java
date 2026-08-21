@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
@@ -55,6 +56,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * ReAct paradigm Agent implementation.
@@ -85,6 +89,8 @@ public class ReActAgent extends BaseAgent {
 
     // 非流式→流式适配器的分块大小（字符数）
     private static final int STREAM_CHUNK_SIZE = 200;
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBlockingTaskExecutor("react-agent-stream", true);
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -1056,21 +1062,30 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
-        Thread streamThread = new Thread(() -> {
-            try {
-                Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
-                writeStreamResult(agentSession, finalResult);
-            } catch (Exception e) {
-                writeStreamError(agentSession, e);
-            } finally {
-                postRunStreamSession(agentSession, session);
-            }
-        }, "react-agent-stream-" + agentSession.getSessionId());
-        streamThread.setDaemon(true);
-        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
-        streamThread.start();
-        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
-        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
+        Future<?> streamFuture;
+        try {
+            streamFuture = STREAM_EXECUTOR.submit(() -> runStreamTask(inputs, session, agentSession));
+        } catch (RejectedExecutionException exception) {
+            writeStreamError(agentSession, exception);
+            postRunStreamSession(agentSession, session);
+            return agentSession.streamIterator();
+        }
+        // 消费方关闭/取消 iterator 时取消后台任务，使阻塞的 LLM HTTP 调用收到中断请求。
+        return OperatorStream.wrap(agentSession.streamIterator(), () -> streamFuture.cancel(true));
+    }
+
+    private void runStreamTask(Object inputs, Session session, AgentSessionApi agentSession) {
+        try {
+            Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
+            writeStreamResult(agentSession, finalResult);
+        } catch (Exception exception) {
+            writeStreamError(agentSession, exception);
+        } catch (Error error) {
+            writeStreamThrowable(agentSession, error);
+            throw error;
+        } finally {
+            postRunStreamSession(agentSession, session);
+        }
     }
 
     /**

@@ -47,8 +47,8 @@ public class CodeTool {
         };
 
         try {
-            ExecutorService processIoExecutor = OpenJiuwenExecutors.newFixedThreadPool("harness-code-process-io", 2,
-                    true);
+            ExecutorService processIoExecutor = OpenJiuwenExecutors.newBlockingTaskExecutor(
+                    "harness-code-process-io", 2, true);
             try {
                 Process process = new ProcessBuilder(command).start();
                 CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
@@ -66,7 +66,7 @@ public class CodeTool {
                                 : (stderr.isBlank() ? "process exited with code " + exitCode : stderr))
                         .build();
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdownNowAndDeregister(processIoExecutor);
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();

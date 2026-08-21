@@ -130,6 +130,15 @@ public class PregelLoop {
     }
 
     /**
+     * Releases the node-task executor owned by this loop.
+     */
+    void shutdown() {
+        if (executor != null) {
+            executor.shutdown();
+        }
+    }
+
+    /**
      * getStep.
      * 
      * @return the result

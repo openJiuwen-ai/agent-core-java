@@ -131,6 +131,46 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 创建适合阻塞任务的运行时自适应执行器，并纳入统一资源回收。
+     *
+     * <p>JDK 21 及以上版本使用每任务一个虚拟线程的执行器；JDK 17 使用现有有界模块
+     * 线程池。虚拟线程固定为守护线程，因此虚拟线程分支会忽略 {@code isDaemon} 参数。</p>
+     *
+     * @param threadNamePrefix 线程名称前缀
+     * @param isDaemon JDK 17 回退线程池是否创建守护线程
+     * @return 适合阻塞任务的执行器
+     * @since 0.1.15
+     */
+    public static ExecutorService newBlockingTaskExecutor(String threadNamePrefix, boolean isDaemon) {
+        Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
+        if (VirtualThreadSupport.isSupported()) {
+            return register(VirtualThreadSupport.newVirtualExecutor(threadNamePrefix));
+        }
+        return newBoundedModulePool(threadNamePrefix, isDaemon);
+    }
+
+    /**
+     * 创建适合阻塞任务的运行时自适应执行器，并在 JDK 17 上保留固定线程数语义。
+     *
+     * <p>适用于外部进程 stdout/stderr 等必须保持固定并发读取数量的场景。</p>
+     *
+     * @param threadNamePrefix 线程名称前缀
+     * @param platformThreadCount JDK 17 回退线程池的固定线程数
+     * @param isDaemon JDK 17 回退线程池是否创建守护线程
+     * @return 适合阻塞任务的执行器
+     * @since 0.1.15
+     */
+    public static ExecutorService newBlockingTaskExecutor(String threadNamePrefix, int platformThreadCount,
+            boolean isDaemon) {
+        Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
+        validatePositive(platformThreadCount, "platformThreadCount");
+        if (VirtualThreadSupport.isSupported()) {
+            return register(VirtualThreadSupport.newVirtualExecutor(threadNamePrefix));
+        }
+        return newFixedThreadPool(threadNamePrefix, platformThreadCount, isDaemon);
+    }
+
+    /**
      * 创建实例专用的有界模块线程池，并纳入统一资源回收。
      *
      * <p>最大线程数与队列容量可通过系统属性 {@code openjiuwen.executor.{模块名}.max-size} /
@@ -418,6 +458,18 @@ public final class OpenJiuwenExecutors {
      */
     public static void shutdownAll() {
         shutdownExecutors(List.copyOf(MANAGED_EXECUTORS), SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 立即关闭调用方独占的短生命周期执行器，并解除统一资源登记。
+     *
+     * @param executor 待关闭的执行器
+     * @since 0.1.15
+     */
+    public static void shutdownNowAndDeregister(ExecutorService executor) {
+        Objects.requireNonNull(executor, "executor");
+        executor.shutdownNow();
+        MANAGED_EXECUTORS.remove(executor);
     }
 
     /**

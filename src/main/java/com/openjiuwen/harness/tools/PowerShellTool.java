@@ -89,7 +89,7 @@ public class PowerShellTool {
      */
     private static ShellExecutor defaultExecutor() {
         return (command, shellType) -> {
-            ExecutorService processIoExecutor = OpenJiuwenExecutors.newFixedThreadPool(
+            ExecutorService processIoExecutor = OpenJiuwenExecutors.newBlockingTaskExecutor(
                     "harness-powershell-process-io", 2, true);
             try {
                 Process process = new ProcessBuilder("bash", "-lc", command).start();
@@ -102,7 +102,7 @@ public class PowerShellTool {
                 String stderr = stderrFuture.join();
                 return new ShellResult(stdout, stderr, exitCode);
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdownNowAndDeregister(processIoExecutor);
             }
         };
     }
