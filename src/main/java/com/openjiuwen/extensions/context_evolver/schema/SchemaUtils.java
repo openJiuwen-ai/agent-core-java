@@ -30,16 +30,16 @@ public final class SchemaUtils {
     }
 
     /**
-     * md5Hex.
+     * sha256Hex.
      * 
      * @param value value
      * @return the result
      * @since 0.1.7
      */
-    public static String md5Hex(String value) {
+    public static String sha256Hex(String value) {
         String input = value != null ? value : "";
         try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
             StringBuilder builder = new StringBuilder(bytes.length * 2);
             for (byte current : bytes) {
@@ -47,7 +47,7 @@ public final class SchemaUtils {
             }
             return builder.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("MD5 digest unavailable", e);
+            throw new IllegalStateException("SHA-256 digest unavailable", e);
         }
     }
 
