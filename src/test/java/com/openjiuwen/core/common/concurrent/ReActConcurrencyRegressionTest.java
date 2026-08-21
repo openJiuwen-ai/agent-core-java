@@ -47,19 +47,18 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Regression tests for the concurrency defects documented in the ReActAgent
- * concurrency analysis (v3) report. After the fixes landed these tests assert
- * the corrected state and behavior: a synchronized {@code clear()} on
- * {@link SystemPromptBuilder}, a {@code volatile} + double-checked locked
- * initialization for {@code llm} and {@code skillUtil}, and a per-session tool
- * override so the context reloader no longer collides across concurrent
- * sessions.
+ * Regression tests asserting ReActAgent's concurrency safety under a single
+ * shared instance used by concurrent sessions. Verifies: a synchronized
+ * {@code clear()} on {@link SystemPromptBuilder}, a {@code volatile} +
+ * double-checked locked initialization for {@code llm} and {@code skillUtil},
+ * and a per-session tool override so the context reloader does not collide
+ * across concurrent sessions.
  *
  * <p>Scope: a single ReActAgent instance shared by concurrent sessions.
  *
  * @since 0.1.15
  */
-class ReActConcurrencyIssueVerificationTest {
+class ReActConcurrencyRegressionTest {
 
     private static final int RACE_THREADS = 8;
     private static final AtomicLong FACTORY_SEQ = new AtomicLong();
@@ -117,7 +116,7 @@ class ReActConcurrencyIssueVerificationTest {
     }
 
     @Nested
-    @DisplayName("P0 promptBuilder 跨会话数据残留已修复")
+    @DisplayName("P0 promptBuilder 跨会话数据无残留")
     class PromptBuilderDataResidue {
 
         @Test
@@ -149,7 +148,7 @@ class ReActConcurrencyIssueVerificationTest {
     }
 
     @Nested
-    @DisplayName("P1 llm 字段 volatile + DCL 已修复")
+    @DisplayName("P1 llm 字段 volatile + DCL 并发安全")
     class LlmLazyInitRace {
 
         @Test
@@ -207,7 +206,7 @@ class ReActConcurrencyIssueVerificationTest {
     }
 
     @Nested
-    @DisplayName("P1 skillUtil 字段 volatile + DCL 已修复")
+    @DisplayName("P1 skillUtil 字段 volatile + DCL 并发安全")
     class SkillUtilLazyInitRace {
 
         @Test
@@ -221,7 +220,7 @@ class ReActConcurrencyIssueVerificationTest {
     }
 
     @Nested
-    @DisplayName("P2 abilityManager reloader per-session 解析已修复")
+    @DisplayName("P2 abilityManager reloader per-session 解析无冲突")
     class AbilityManagerReloaderPerSession {
 
         @Test

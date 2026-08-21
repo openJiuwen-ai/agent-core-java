@@ -123,9 +123,9 @@ public class PowerShellTool {
      * @since 0.1.7
      */
     private static int awaitProcessExit(Process process, String command) {
-        // Issue #70 dim IV — bound process.onExit().join() with the framework default
-        // process-join timeout; on expiry, destroyForcibly and raise a recoverable
-        // SysOperationError. Mirrors BashTool / CodeTool treatment.
+        // process.onExit().join() is bounded by the framework default process-join
+        // timeout; on expiry, destroyForcibly and raise a recoverable SysOperationError.
+        // Mirrors BashTool / CodeTool treatment.
         long joinMs = TimeoutConstants.processJoinMs();
         try {
             return process.onExit()

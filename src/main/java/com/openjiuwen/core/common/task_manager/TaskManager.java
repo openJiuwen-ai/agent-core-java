@@ -315,11 +315,11 @@ public class TaskManager {
                     break;
                 }
             } catch (ExecutionError e) {
-                // Issue #70 dim IV — waitFor() raises ExecutionError (a BaseError /
-                // RuntimeException) on future timeout, which bypasses the checked-exception
-                // catch above. Without this branch the error would escape the loop,
-                // skipping the firstException / results contract and leaving remaining
-                // tasks uncancelled (their Callables keep running with side effects).
+                // waitFor() raises ExecutionError (a BaseError / RuntimeException) on
+                // future timeout, which bypasses the checked-exception catch above.
+                // Without this branch the error would escape the loop, skipping the
+                // firstException / results contract and leaving remaining tasks
+                // uncancelled (their Callables keep running with side effects).
                 if (isReturnExceptions) {
                     results.add(e);
                 } else {
@@ -376,11 +376,11 @@ public class TaskManager {
                     results.add(null);
                 }
             } catch (ExecutionError e) {
-                // Issue #70 dim IV — waitFor() raises ExecutionError (a BaseError /
-                // RuntimeException) on future timeout, which bypasses the checked-exception
-                // catch above. Without this branch the error would escape the loop,
-                // skipping the firstException / results contract and leaving remaining
-                // tasks uncancelled (their Callables keep running with side effects).
+                // waitFor() raises ExecutionError (a BaseError / RuntimeException) on
+                // future timeout, which bypasses the checked-exception catch above.
+                // Without this branch the error would escape the loop, skipping the
+                // firstException / results contract and leaving remaining tasks
+                // uncancelled (their Callables keep running with side effects).
                 log.info("TaskManager waitAll execution-error: taskId={} name={} code={} message={}", task.getTaskId(),
                         task.getName(), e.getCode(), e.getMessage());
                 if (isReturnExceptions) {
@@ -449,11 +449,10 @@ public class TaskManager {
                     : TimeoutConstants.BLOCKING_QUEUE_MS;
                     next = queue.poll(pollMs, TimeUnit.MILLISECONDS);
                     if (next == null) {
-                        // Issue #70 dim IV — asCompleted queue poll timed out. Previously this site
-                        // called queue.take() (unbounded) when the caller did not pass a timeout,
-                        // which could hang an entire agent round if a producer silently died.
-                        // Now we fall back to the framework default and surface a recoverable
-                        // ExecutionError so the caller can retry / re-plan.
+                        // asCompleted queue poll timed out. Falls back to the framework default
+                        // timeout and surfaces a recoverable ExecutionError so the caller can
+                        // retry / re-plan instead of hanging an entire agent round when a
+                        // producer silently dies.
                         Loggers.PERFORMANCE.warning(
                                 "TaskManager.asCompleted queue poll timeout after {}ms (tasks={})",
                                 pollMs, tasks.size());

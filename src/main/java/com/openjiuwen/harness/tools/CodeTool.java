@@ -102,9 +102,9 @@ public class CodeTool {
      * @since 0.1.7
      */
     private static int awaitProcessExit(Process process, List<String> command) {
-        // Issue #70 dim IV — bound process.onExit().join() with the framework default
-        // process-join timeout; on expiry, destroyForcibly and raise a recoverable
-        // SysOperationError. Mirrors BashTool treatment.
+        // process.onExit().join() is bounded by the framework default process-join
+        // timeout; on expiry, destroyForcibly and raise a recoverable SysOperationError.
+        // Mirrors BashTool treatment.
         long joinMs = TimeoutConstants.processJoinMs();
         try {
             return process.onExit()

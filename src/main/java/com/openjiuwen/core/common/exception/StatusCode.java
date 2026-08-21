@@ -317,7 +317,7 @@ public enum StatusCode {
             "stream output next stream chunk timeout, interval_timeout={timeout}s, error='{reason}'"),
 
     /**
-     * Stream actor / stream processor blocking queue poll timed out — issue #70 dim IV.
+     * Stream actor / stream processor blocking queue poll timed out.
      * Covers both the main loop ({@code queue.take()}) and iterator queue
      * ({@code iterQueue.take()}) sites in {@code StreamProcessor}. Usually means the upstream
      * producer crashed without emitting the END frame.
@@ -328,7 +328,7 @@ public enum StatusCode {
             "stream processor queue poll timeout, timeout={timeout}ms, source={source}"),
 
     /**
-     * Task manager asCompleted queue poll timed out — issue #70 dim IV.
+     * Task manager asCompleted queue poll timed out.
      * {@code TaskManager.asCompleted()} main loop blocked on {@code queue.take()} without an
      * explicit caller timeout; the framework default kicked in.
      *
@@ -338,7 +338,7 @@ public enum StatusCode {
             "task manager asCompleted queue poll timeout, timeout={timeout}ms"),
 
     /**
-     * Task.waitFor future get timed out — issue #70 dim IV.
+     * Task.waitFor future get timed out.
      * {@code Task.waitFor()} blocked on {@code doneFuture.get()} without an explicit timeout;
      * the framework default future timeout kicked in.
      *
@@ -372,7 +372,7 @@ public enum StatusCode {
     GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error='{reason}', node_id={node_id}"),
 
     /**
-     * Vertex ability latch await timed out — issue #70 dim IV. The ability latch did not count
+     * Vertex ability latch await timed out. The ability latch did not count
      * down within the framework default latch timeout, usually because the stream-in task
      * queued on {@code STREAM_EXECUTOR} never got a thread.
      *
@@ -382,7 +382,7 @@ public enum StatusCode {
             "vertex ability latch await timeout, timeout={timeout}ms, node_id={node_id}"),
 
     /**
-     * Vertex stream-in future get timed out — issue #70 dim IV. Covers both
+     * Vertex stream-in future get timed out. Covers both
      * {@code streamDone.get()} and {@code CompletableFuture.allOf(...).get()} sites.
      *
      * @since 0.1.15
@@ -710,7 +710,7 @@ public enum StatusCode {
     SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}"),
 
     /**
-     * Child process join timed out — issue #70 dim IV. BashTool / CodeTool / PowerShellTool
+     * Child process join timed out. BashTool / CodeTool / PowerShellTool
      * waited on {@code process.onExit().join()} beyond the framework default
      * {@code openjiuwen.timeout.process-join-ms}; the child is then forcibly destroyed.
      *

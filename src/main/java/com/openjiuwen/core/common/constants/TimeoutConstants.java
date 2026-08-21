@@ -12,10 +12,9 @@ import java.math.RoundingMode;
 /**
  * Unified blocking-operation timeout configuration for the openJiuwen framework.
  * <p>
- * Issue #70 dimension IV — hot-path blocking &amp; async governance. All blocking call sites
- * (take/get/await/join) should default to these values when no explicit timeout is supplied by
- * the caller, so that a stuck producer / worker / child process cannot hang an entire agent
- * round indefinitely.
+ * All blocking call sites (take/get/await/join) should default to these values when no explicit
+ * timeout is supplied by the caller, so that a stuck producer / worker / child process cannot hang
+ * an entire agent round indefinitely.
  * </p>
  * <p>
  * Each default can be overridden via system property (e.g.
@@ -190,7 +189,7 @@ public final class TimeoutConstants {
      * Convert a nullable caller-supplied timeout-in-seconds to milliseconds, falling back to
      * the supplied default constant when the caller did not specify one (null / non-positive).
      * Centralizes the "caller didn't pass timeout → use framework default" pattern used across
-     * issue #70 dimension IV call sites.
+     * all blocking call sites.
      *
      * @param callerTimeoutSeconds caller-supplied timeout in seconds (may be null / non-positive)
      * @param defaultMs the framework default in milliseconds
