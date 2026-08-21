@@ -122,11 +122,11 @@ public class BashTool {
      * @since 0.1.7
      */
     private static int awaitProcessExit(Process process, String command) {
-        // Issue #70 dim IV — process.onExit().join() could block forever if the child
-        // process deadlocked (e.g. waiting on a pipe whose reader died, or a REPL
-        // never exiting). Bound it with the framework default process-join timeout;
-        // on expiry, forcibly destroy the child and surface a recoverable
-        // SysOperationError so the agent round can continue rather than hang.
+        // process.onExit().join() is bounded by the framework default process-join
+        // timeout, so a deadlocked child process (e.g. waiting on a pipe whose reader
+        // died, or a REPL never exiting) cannot block forever. On expiry, forcibly
+        // destroy the child and surface a recoverable SysOperationError so the agent
+        // round can continue rather than hang.
         long joinMs = TimeoutConstants.processJoinMs();
         try {
             return process.onExit()

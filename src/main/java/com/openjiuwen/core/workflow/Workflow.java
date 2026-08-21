@@ -945,10 +945,10 @@ public class Workflow {
 
             private void waitForExecution() {
                 try {
-                    // Issue #70 dim IV — executionFuture.get() could block forever when no
-                    // workflow-level executeTimeout was configured. Bound it with the
-                    // framework default future timeout so a stuck workflow execution cannot
-                    // hang the stream consumer thread indefinitely.
+                    // executionFuture.get() is bounded by the framework default future
+                    // timeout when no workflow-level executeTimeout is configured, so a
+                    // stuck workflow execution cannot hang the stream consumer thread
+                    // indefinitely.
                     executionFuture.get(
                             TimeoutConstants.FUTURE_MS,
                             TimeUnit.MILLISECONDS);

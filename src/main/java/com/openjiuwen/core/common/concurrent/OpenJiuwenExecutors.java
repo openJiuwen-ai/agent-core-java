@@ -587,12 +587,11 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 各模块线程池默认上限（维度 I-B：无界池整改 → 维度 I-C：SynchronousQueue 清零）。
+     * 各模块线程池默认上限。
      *
-     * <p>自 0.1.15 起所有模块池统一使用 {@code core=max + ArrayBlockingQueue} 排队语义，
-     * 不再使用 SynchronousQueue（direct-handoff）。原因：PR #229 加界后 SynchronousQueue
-     * 变成「满即拒绝」的扳机，而各 submit 点普遍缺乏 REE 兜底；排队语义把突发转为缓冲，
-     * 失败模式更可控。详见 issue #70 分析。</p>
+     * <p>所有模块池统一使用 {@code core=max + ArrayBlockingQueue} 排队语义，
+     * 不使用 SynchronousQueue（direct-handoff）。排队语义把突发流量转为缓冲，
+     * 失败模式更可控。</p>
      */
     private enum ModulePoolDefaults {
         PREGEL_TASK("pregel-task", 32, 256),

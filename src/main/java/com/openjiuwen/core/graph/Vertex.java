@@ -354,10 +354,9 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 if (timeout > 0) {
                     result = streamDone.get(timeout, TimeUnit.SECONDS);
                 } else {
-                    // Issue #70 dim IV — streamDone.get() could block forever when no
-                    // caller-supplied timeout was configured. Fall back to the framework
-                    // default future timeout so a stuck stream-in ability cannot hang the
-                    // vertex indefinitely.
+                    // Fall back to the framework default future timeout when no
+                    // caller-supplied timeout is configured, so a stuck stream-in
+                    // ability cannot hang the vertex indefinitely.
                     result = streamDone.get(
                             TimeoutConstants.FUTURE_MS,
                             TimeUnit.MILLISECONDS);
@@ -1011,11 +1010,10 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     }
                 }, STREAM_EXECUTOR);
                 tasks.add(task);
-                // Issue #70 dim IV — abilityLatch.await() could block forever when
-                // STREAM_EXECUTOR was saturated (no thread available to run the task that
-                // counts the latch down). Bound it with the framework default latch timeout;
-                // on expiry, log to PERFORMANCE and raise a recoverable ExecutionError so the
-                // caller can retry / re-plan rather than the whole vertex hanging silently.
+                // abilityLatch.await() is bounded by the framework default latch timeout, so
+                // a saturated STREAM_EXECUTOR (no thread available to run the task that
+                // counts the latch down) cannot block forever. On expiry, log to PERFORMANCE
+                // and raise a recoverable ExecutionError so the caller can retry / re-plan.
                 long latchMs = TimeoutConstants.LATCH_MS;
                 if (!abilityLatch.await(latchMs, TimeUnit.MILLISECONDS)) {
                     Loggers.PERFORMANCE.warning(
@@ -1027,9 +1025,9 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             }
             latch.countDown();
 
-            // Wait for all tasks to complete — Issue #70 dim IV: bound the future.get() with
-            // the framework default future timeout so a stuck STREAM_EXECUTOR task cannot
-            // hang the vertex indefinitely. Same recoverable ExecutionError semantics.
+            // Wait for all tasks to complete. future.get() is bounded by the framework
+            // default future timeout so a stuck STREAM_EXECUTOR task cannot hang the
+            // vertex indefinitely. Same recoverable ExecutionError semantics.
             long futureMs = TimeoutConstants.FUTURE_MS;
             try {
                 CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
@@ -1049,11 +1047,11 @@ public class Vertex extends AtomicNode implements StreamConsumer {
             error = (cause instanceof Exception) ? (Exception) cause : e;
             errorCallback.accept(error);
         } catch (BaseError e) {
-            // Issue #70 dim IV — timeout paths above throw ExecutionError (a BaseError /
-            // RuntimeException), which bypasses the checked-exception catch above. Without
-            // this branch, finally would run with error == null and report the stream as
-            // successful (streamDone.complete(Boolean.TRUE)), silently feeding downstream
-            // consumers incomplete data. Capture the timeout as the stream error and invoke
+            // Timeout paths above throw ExecutionError (a BaseError / RuntimeException),
+            // which bypasses the checked-exception catch above. Without this branch, finally
+            // would run with error == null and report the stream as successful
+            // (streamDone.complete(Boolean.TRUE)), silently feeding downstream consumers
+            // incomplete data. Capture the timeout as the stream error and invoke
             // errorCallback so the caller is aware the stream did not complete normally.
             LOGGER.error("Stream-in node [{}] failed due to timeout/error, code={}", nodeId,
                     e instanceof ExecutionError ? ((ExecutionError) e).getStatus() : null);

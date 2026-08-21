@@ -294,10 +294,9 @@ public class Task {
      */
     public Object waitFor() throws Exception {
         try {
-            // Issue #70 dim IV — doneFuture.get() could block forever if a task got stuck in
-            // the executor without ever completing. Bound it with the framework default
-            // future timeout; on expiry, log to PERFORMANCE and raise a recoverable
-            // ExecutionError so the caller can retry / re-plan.
+            // doneFuture.get() is bounded by the framework default future timeout, so a task
+            // stuck in the executor cannot block forever. On expiry, log to PERFORMANCE and
+            // raise a recoverable ExecutionError so the caller can retry / re-plan.
             return doneFuture.get(
                     TimeoutConstants.FUTURE_MS,
                     TimeUnit.MILLISECONDS);
@@ -313,10 +312,10 @@ public class Task {
             Loggers.PERFORMANCE.warning(
                     "Task.waitFor future get timeout after {}ms, task_id={}",
                     TimeoutConstants.FUTURE_MS, taskId);
-            // Issue #70 dim IV — cancel the underlying task before raising so the
-            // executor is not left running the Callable in the background (which would
-            // cause double-execution of side effects — tool calls, writes — if the caller
-            // retries per the recoverable semantics of ExecutionError).
+            // Cancel the underlying task before raising, so the executor is not left
+            // running the Callable in the background (which would cause double-execution of
+            // side effects — tool calls, writes — if the caller retries per the recoverable
+            // semantics of ExecutionError).
             cancel(false, "wait_for_future_timeout", "task_manager");
             throw new ExecutionError(
                     StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,

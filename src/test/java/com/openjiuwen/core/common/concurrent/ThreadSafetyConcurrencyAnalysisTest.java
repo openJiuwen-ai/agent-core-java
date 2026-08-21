@@ -500,7 +500,7 @@ class ThreadSafetyConcurrencyAnalysisTest {
     }
 
     @Nested
-    @DisplayName("P2-4 SystemPromptBuilder 同步保护（已修复回归）")
+    @DisplayName("P2-4 SystemPromptBuilder 同步保护")
     class SystemPromptBuilderSync {
 
         @Test

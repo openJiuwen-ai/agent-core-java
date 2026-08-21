@@ -48,10 +48,10 @@ public class StreamProcessor {
     public static final Object END_SENTINEL = new Object();
 
     /**
-     * TIMEOUT_SENTINEL — issue #70 dim IV. Offered to processor queues when the
-     * main loop queue poll times out, so the consumer's iterator can distinguish a
-     * genuine stream end ({@link #END_SENTINEL}) from an upstream stall / crash
-     * (this sentinel). {@code hasNext()} sees it, logs, and raises a
+     * TIMEOUT_SENTINEL. Offered to processor queues when the main loop queue poll
+     * times out, so the consumer's iterator can distinguish a genuine stream end
+     * ({@link #END_SENTINEL}) from an upstream stall / crash (this sentinel).
+     * {@code hasNext()} sees it, logs, and raises a
      * {@link GraphError}({@link StatusCode#STREAM_PROCESSOR_QUEUE_TIMEOUT})
      * instead of returning {@code false} (which the caller would interpret as a
      * normal stream end and silently consume incomplete data).
@@ -183,11 +183,10 @@ public class StreamProcessor {
      * @since 0.1.7
      */
     private StreamPayload pollPayload() throws InterruptedException {
-        // Issue #70 dim IV — previously queue.take() could block forever if an
-        // upstream producer crashed without emitting the END frame, hanging the
-        // stream-in worker thread indefinitely. Fall back to the framework default
-        // blocking-queue timeout; on expiry, log + return null so the caller's loop
-        // exits rather than the whole thread dying silently.
+        // queue.poll() is bounded by the framework default blocking-queue timeout, so
+        // an upstream producer that crashes without emitting the END frame cannot hang
+        // the stream-in worker thread indefinitely. On expiry, log + return null so the
+        // caller's loop exits rather than the whole thread dying silently.
         StreamPayload payload = queue.poll(
                 TimeoutConstants.BLOCKING_QUEUE_MS,
                 TimeUnit.MILLISECONDS);
@@ -340,10 +339,10 @@ public class StreamProcessor {
     }
 
     /**
-     * Offer TIMEOUT_SENTINEL to every processor queue — issue #70 dim IV. Used when
-     * the main loop poll times out so consumers can distinguish an upstream stall /
-     * crash from a genuine stream end. Mirrors {@link #closeAllQueues()} but with a
-     * different sentinel so {@code hasNext()} raises rather than returns {@code false}.
+     * Offer TIMEOUT_SENTINEL to every processor queue. Used when the main loop poll
+     * times out so consumers can distinguish an upstream stall / crash from a genuine
+     * stream end. Mirrors {@link #closeAllQueues()} but with a different sentinel so
+     * {@code hasNext()} raises rather than returns {@code false}.
      *
      * @since 0.1.15
      */
@@ -452,10 +451,9 @@ public class StreamProcessor {
                     if (timeoutSeconds > 0) {
                         msg = iterQueue.poll(timeoutSeconds, TimeUnit.SECONDS);
                     } else {
-                        // Issue #70 dim IV — previously iterQueue.take() could block forever
-                        // when no explicit caller timeout was supplied, hanging iterator
-                        // consumers even after the upstream finished abnormally. Fall back to
-                        // the framework default blocking-queue timeout.
+                        // iterQueue.poll() falls back to the framework default blocking-queue
+                        // timeout when no explicit caller timeout is supplied, so iterator
+                        // consumers are not hung even after the upstream finishes abnormally.
                         long pollMs = TimeoutConstants.BLOCKING_QUEUE_MS;
                         msg = iterQueue.poll(pollMs, TimeUnit.MILLISECONDS);
                         if (msg == null) {
@@ -478,9 +476,9 @@ public class StreamProcessor {
                         return false;
                     }
                     if (msg == TIMEOUT_SENTINEL) {
-                        // Issue #70 dim IV — upstream poll timed out; the stream did not
-                        // end normally. Raise so the consumer can retry / report rather than
-                        // silently treating incomplete data as a complete stream.
+                        // Upstream poll timed out; the stream did not end normally. Raise
+                        // so the consumer can retry / report rather than silently treating
+                        // incomplete data as a complete stream.
                         logger.warning("Receive timeout sentinel of [{}.{}]", nodeId, kPath);
                         done = true;
                         throw new GraphError(
