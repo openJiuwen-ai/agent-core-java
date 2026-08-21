@@ -1,8 +1,14 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.core.common.task_manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -137,5 +143,38 @@ class TaskManagerTest {
 
         assertThat(manager.getRegistry().getByGroup("scoped"))
                 .allMatch(task -> task.getStatus() == TaskStatus.COMPLETED);
+    }
+
+    // ---- P2-a: ExecutionError catch in waitAll tests ----
+
+    @Test
+    void shouldCatchExecutionErrorInWaitAllWithReturnExceptions() throws Exception {
+        TaskManager manager = TaskManager.getInstance();
+        manager.createTask(() -> {
+            throw new ExecutionError(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", 300000L, "task_id", "test-exec-error"));
+        }, null, "exec-error-task", null, null, Map.of(), false);
+
+        List<Object> results = manager.waitAll(true);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0)).isInstanceOf(ExecutionError.class);
+        assertThat(((ExecutionError) results.get(0)).getCode())
+                .isEqualTo(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT.getCode());
+        assertThat(((ExecutionError) results.get(0)).getStatus())
+                .isEqualTo(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT);
+    }
+
+    @Test
+    void shouldPropagateExecutionErrorAsFirstExceptionInWaitAll() {
+        TaskManager manager = TaskManager.getInstance();
+        manager.createTask(() -> {
+            throw new ExecutionError(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", 300000L, "task_id", "test-exec-error-2"));
+        }, null, "exec-error-task", null, null, Map.of(), false);
+
+        assertThatThrownBy(() -> manager.waitAll(false))
+                .isInstanceOf(ExecutionError.class)
+                .hasFieldOrPropertyWithValue("code", StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT.getCode());
     }
 }

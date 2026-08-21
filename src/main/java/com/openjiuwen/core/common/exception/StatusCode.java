@@ -316,6 +316,37 @@ public enum StatusCode {
     STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT(111135,
             "stream output next stream chunk timeout, interval_timeout={timeout}s, error='{reason}'"),
 
+    /**
+     * Stream actor / stream processor blocking queue poll timed out.
+     * Covers both the main loop ({@code queue.take()}) and iterator queue
+     * ({@code iterQueue.take()}) sites in {@code StreamProcessor}. Usually means the upstream
+     * producer crashed without emitting the END frame.
+     *
+     * @since 0.1.15
+     */
+    STREAM_PROCESSOR_QUEUE_TIMEOUT(111136,
+            "stream processor queue poll timeout, timeout={timeout}ms, source={source}"),
+
+    /**
+     * Task manager asCompleted queue poll timed out.
+     * {@code TaskManager.asCompleted()} main loop blocked on {@code queue.take()} without an
+     * explicit caller timeout; the framework default kicked in.
+     *
+     * @since 0.1.15
+     */
+    TASK_MANAGER_QUEUE_TIMEOUT(111137,
+            "task manager asCompleted queue poll timeout, timeout={timeout}ms"),
+
+    /**
+     * Task.waitFor future get timed out.
+     * {@code Task.waitFor()} blocked on {@code doneFuture.get()} without an explicit timeout;
+     * the framework default future timeout kicked in.
+     *
+     * @since 0.1.15
+     */
+    TASK_WAIT_FOR_FUTURE_TIMEOUT(111138,
+            "task waitFor future get timeout, timeout={timeout}ms, task_id={task_id}"),
+
     TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error='{reason}'"),
 
     TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error='{reason}'"),
@@ -339,6 +370,25 @@ public enum StatusCode {
     GRAPH_VERTEX_STREAM_CALL_TIMEOUT(112051, "vertex stream timeout, timeout={timeout}, node_id={node_id}"),
 
     GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error='{reason}', node_id={node_id}"),
+
+    /**
+     * Vertex ability latch await timed out. The ability latch did not count
+     * down within the framework default latch timeout, usually because the stream-in task
+     * queued on {@code STREAM_EXECUTOR} never got a thread.
+     *
+     * @since 0.1.15
+     */
+    GRAPH_VERTEX_ABILITY_LATCH_TIMEOUT(112053,
+            "vertex ability latch await timeout, timeout={timeout}ms, node_id={node_id}"),
+
+    /**
+     * Vertex stream-in future get timed out. Covers both
+     * {@code streamDone.get()} and {@code CompletableFuture.allOf(...).get()} sites.
+     *
+     * @since 0.1.15
+     */
+    GRAPH_VERTEX_FUTURE_TIMEOUT(112054,
+            "vertex future get timeout, timeout={timeout}ms, node_id={node_id}"),
 
     PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error='{reason}'"),
 
@@ -657,7 +707,17 @@ public enum StatusCode {
     SYS_OPERATION_CODE_EXECUTION_ERROR(199005,
             "code operation execution error, execution: {execution}, reason: {error_msg}"),
 
-    SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}");
+    SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}"),
+
+    /**
+     * Child process join timed out. BashTool / CodeTool / PowerShellTool
+     * waited on {@code process.onExit().join()} beyond the framework default
+     * {@code openjiuwen.timeout.process-join-ms}; the child is then forcibly destroyed.
+     *
+     * @since 0.1.15
+     */
+    SYS_OPERATION_PROCESS_JOIN_TIMEOUT(199007,
+            "child process join timeout, timeout={timeout}ms, command='{command}'");
 
     private final int code;
     private final String errmsg;

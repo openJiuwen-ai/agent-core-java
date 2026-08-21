@@ -72,15 +72,28 @@ public final class SharedResources {
      */
     public static TeamDatabase getSharedDb(DatabaseConfig config) {
         DatabaseConfig effectiveConfig = config != null ? config : DatabaseConfig.builder().build();
-        synchronized (LOCK) {
-            if (effectiveConfig.getDbType() == DatabaseType.MEMORY) {
+        if (effectiveConfig.getDbType() == DatabaseType.MEMORY) {
+            synchronized (LOCK) {
                 if (memoryDb == null) {
                     memoryDb = databaseFactory.apply(effectiveConfig);
                 }
                 return memoryDb;
             }
-            String key = buildDbKey(effectiveConfig);
-            return DB_INSTANCES.computeIfAbsent(key, ignored -> databaseFactory.apply(effectiveConfig));
+        }
+        String key = buildDbKey(effectiveConfig);
+        synchronized (LOCK) {
+            TeamDatabase existing = DB_INSTANCES.get(key);
+            if (existing != null) {
+                return existing;
+            }
+        }
+        // Construct the database OUTSIDE the global lock: TeamDatabase construction may
+        // perform connection/initialization I/O, and serializing it would slow down every
+        // concurrent team bootstrap. Duplicate concurrent construction is harmless because
+        // only one instance wins the computeIfAbsent below; the loser is discarded.
+        TeamDatabase created = databaseFactory.apply(effectiveConfig);
+        synchronized (LOCK) {
+            return DB_INSTANCES.computeIfAbsent(key, ignored -> created);
         }
     }
 

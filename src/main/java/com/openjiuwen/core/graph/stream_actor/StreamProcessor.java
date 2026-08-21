@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.GraphError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.DictUtils;
@@ -43,6 +46,19 @@ public class StreamProcessor {
      * @since 0.1.7
      */
     public static final Object END_SENTINEL = new Object();
+
+    /**
+     * TIMEOUT_SENTINEL. Offered to processor queues when the main loop queue poll
+     * times out, so the consumer's iterator can distinguish a genuine stream end
+     * ({@link #END_SENTINEL}) from an upstream stall / crash (this sentinel).
+     * {@code hasNext()} sees it, logs, and raises a
+     * {@link GraphError}({@link StatusCode#STREAM_PROCESSOR_QUEUE_TIMEOUT})
+     * instead of returning {@code false} (which the caller would interpret as a
+     * normal stream end and silently consume incomplete data).
+     *
+     * @since 0.1.15
+     */
+    public static final Object TIMEOUT_SENTINEL = new Object();
 
     private final String nodeId;
 
@@ -121,6 +137,7 @@ public class StreamProcessor {
         Set<String> handleMap = new HashSet<>(completedSources);
         // source_path_map[producer_id] = set of schema paths this source produced.
         Map<String, Set<String>> sourcePathMap = new HashMap<>();
+        boolean isTimedOut = false;
         try {
             for (String completedSource : completedSources) {
                 closeQueuesForSource(producerIdFromSourceKey(completedSource));
@@ -130,44 +147,89 @@ public class StreamProcessor {
             }
 
             while (true) {
-                StreamPayload payload;
-                try {
-                    payload = queue.take();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                StreamPayload payload = pollPayload();
+                if (payload == null) {
+                    // pollPayload returns null only on timeout (upstream stall). On
+                    // timeout we propagate TIMEOUT_SENTINEL so consumers distinguish a
+                    // genuine stream end (END_SENTINEL) from an upstream stall.
+                    // Interruption is handled separately by the catch block below —
+                    // interrupt is a graceful shutdown signal, not a stall.
+                    isTimedOut = true;
                     break;
                 }
-
-                Object message = payload.getMessage();
-                ComponentAbility sourceAbility = payload.getSourceAbility();
-                String sourceKey = getUniqueSourceKey(payload);
-
-                if (isEndMessage(message)) {
-                    String sourceId = getProducerId(message);
-                    handleMap.add(sourceKey);
-                    closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
-                } else {
-                    closeInactiveGroupSources(sourceKey);
-                    for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-                        String path = SessionUtils.extractOriginKey(entry.getKey());
-                        Object value = (message instanceof Map<?, ?> messageMap)
-                                ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
-                                : null;
-                        if (value != null) {
-                            sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
-                            for (BlockingQueue<Object> q : entry.getValue()) {
-                                q.offer(value);
-                            }
-                        }
-                    }
-                }
-
+                processPayload(payload, handleMap, sourcePathMap);
                 if (allSourceGroupsFinished(handleMap)) {
                     break;
                 }
             }
+        } catch (InterruptedException e) {
+            // Graceful shutdown via interrupt — close queues normally (END_SENTINEL)
+            // so consumers see this as a regular stream end, not a timeout.
+            Thread.currentThread().interrupt();
         } finally {
-            closeAllQueues();
+            if (isTimedOut) {
+                closeAllQueuesWithTimeout();
+            } else {
+                closeAllQueues();
+            }
+        }
+    }
+
+    /**
+     * Poll the next payload from the queue with the framework default blocking-queue timeout.
+     *
+     * @return the next payload, or null on timeout (caller should break and flag timeout)
+     * @throws InterruptedException if the current thread was interrupted while polling
+     * @since 0.1.7
+     */
+    private StreamPayload pollPayload() throws InterruptedException {
+        // queue.poll() is bounded by the framework default blocking-queue timeout, so
+        // an upstream producer that crashes without emitting the END frame cannot hang
+        // the stream-in worker thread indefinitely. On expiry, log + return null so the
+        // caller's loop exits rather than the whole thread dying silently.
+        StreamPayload payload = queue.poll(
+                TimeoutConstants.BLOCKING_QUEUE_MS,
+                TimeUnit.MILLISECONDS);
+        if (payload == null) {
+            Loggers.PERFORMANCE.warning(
+                    "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
+                    TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
+        }
+        return payload;
+    }
+
+    /**
+     * Process a single payload: route end-frames or data to the right processor queues.
+     *
+     * @param payload the stream payload to process
+     * @param handleMap set of handled source keys (mutated)
+     * @param sourcePathMap producer_id → schema paths produced (mutated)
+     * @since 0.1.7
+     */
+    private void processPayload(StreamPayload payload, Set<String> handleMap,
+            Map<String, Set<String>> sourcePathMap) {
+        Object message = payload.getMessage();
+        ComponentAbility sourceAbility = payload.getSourceAbility();
+        String sourceKey = getUniqueSourceKey(payload);
+
+        if (isEndMessage(message)) {
+            String sourceId = getProducerId(message);
+            handleMap.add(sourceKey);
+            closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+        } else {
+            closeInactiveGroupSources(sourceKey);
+            for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+                String path = SessionUtils.extractOriginKey(entry.getKey());
+                Object value = (message instanceof Map<?, ?> messageMap)
+                        ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
+                        : null;
+                if (value != null) {
+                    sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
+                    for (BlockingQueue<Object> q : entry.getValue()) {
+                        q.offer(value);
+                    }
+                }
+            }
         }
     }
 
@@ -276,9 +338,31 @@ public class StreamProcessor {
         }
     }
 
+    /**
+     * Offer TIMEOUT_SENTINEL to every processor queue. Used when the main loop poll
+     * times out so consumers can distinguish an upstream stall / crash from a genuine
+     * stream end. Mirrors {@link #closeAllQueues()} but with a different sentinel so
+     * {@code hasNext()} raises rather than returns {@code false}.
+     *
+     * @since 0.1.15
+     */
+    private void closeAllQueuesWithTimeout() {
+        for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
+            for (BlockingQueue<Object> q : queues) {
+                closeQueueWithTimeout(q);
+            }
+        }
+    }
+
     private void closeQueue(BlockingQueue<Object> processorQueue) {
         if (closedProcessorQueues.add(processorQueue)) {
             processorQueue.offer(END_SENTINEL);
+        }
+    }
+
+    private void closeQueueWithTimeout(BlockingQueue<Object> processorQueue) {
+        if (closedProcessorQueues.add(processorQueue)) {
+            processorQueue.offer(TIMEOUT_SENTINEL);
         }
     }
 
@@ -367,7 +451,18 @@ public class StreamProcessor {
                     if (timeoutSeconds > 0) {
                         msg = iterQueue.poll(timeoutSeconds, TimeUnit.SECONDS);
                     } else {
-                        msg = iterQueue.take();
+                        // iterQueue.poll() falls back to the framework default blocking-queue
+                        // timeout when no explicit caller timeout is supplied, so iterator
+                        // consumers are not hung even after the upstream finishes abnormally.
+                        long pollMs = TimeoutConstants.BLOCKING_QUEUE_MS;
+                        msg = iterQueue.poll(pollMs, TimeUnit.MILLISECONDS);
+                        if (msg == null) {
+                            Loggers.PERFORMANCE.warning(
+                                    "StreamProcessor iterator queue poll timeout after {}ms, node_id={}, kPath={}",
+                                    pollMs, nodeId, kPath);
+                            done = true;
+                            return false;
+                        }
                     }
                     if (msg == null) {
                         // Timeout
@@ -379,6 +474,17 @@ public class StreamProcessor {
                         logger.debug("Receive EndFrame chunk of [{}.{}]", nodeId, kPath);
                         done = true;
                         return false;
+                    }
+                    if (msg == TIMEOUT_SENTINEL) {
+                        // Upstream poll timed out; the stream did not end normally. Raise
+                        // so the consumer can retry / report rather than silently treating
+                        // incomplete data as a complete stream.
+                        logger.warning("Receive timeout sentinel of [{}.{}]", nodeId, kPath);
+                        done = true;
+                        throw new GraphError(
+                                StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT,
+                                Map.of("timeout", TimeoutConstants.BLOCKING_QUEUE_MS,
+                                        "node_id", nodeId, "kPath", kPath));
                     }
                     logger.debug("Receive chunk of [{}.{}]", nodeId, kPath);
                     next = msg;

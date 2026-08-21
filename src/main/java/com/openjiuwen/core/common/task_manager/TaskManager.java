@@ -5,6 +5,10 @@
 package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 
@@ -24,6 +28,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -308,6 +314,18 @@ public class TaskManager {
                     firstException = e;
                     break;
                 }
+            } catch (ExecutionError e) {
+                // waitFor() raises ExecutionError (a BaseError / RuntimeException) on
+                // future timeout, which bypasses the checked-exception catch above.
+                // Without this branch the error would escape the loop, skipping the
+                // firstException / results contract and leaving remaining tasks
+                // uncancelled (their Callables keep running with side effects).
+                if (isReturnExceptions) {
+                    results.add(e);
+                } else {
+                    firstException = e;
+                    break;
+                }
             }
         }
         if (firstException != null && !isReturnExceptions) {
@@ -351,6 +369,20 @@ public class TaskManager {
             } catch (InterruptedException | ExecutionException | CancellationException | TimeoutException e) {
                 log.info("TaskManager waitAll exception: taskId={} name={} errorType={} message={}", task.getTaskId(),
                         task.getName(), e.getClass().getSimpleName(), e.getMessage());
+                if (isReturnExceptions) {
+                    results.add(e);
+                } else {
+                    firstException = e;
+                    results.add(null);
+                }
+            } catch (ExecutionError e) {
+                // waitFor() raises ExecutionError (a BaseError / RuntimeException) on
+                // future timeout, which bypasses the checked-exception catch above.
+                // Without this branch the error would escape the loop, skipping the
+                // firstException / results contract and leaving remaining tasks
+                // uncancelled (their Callables keep running with side effects).
+                log.info("TaskManager waitAll execution-error: taskId={} name={} code={} message={}", task.getTaskId(),
+                        task.getName(), e.getCode(), e.getMessage());
                 if (isReturnExceptions) {
                     results.add(e);
                 } else {
@@ -409,12 +441,24 @@ public class TaskManager {
                     return true;
                 }
                 try {
-                    next = timeoutSeconds != null && timeoutSeconds > 0
-                            ? queue.poll(Math.round(timeoutSeconds * 1000), TimeUnit.MILLISECONDS)
-                            : queue.take();
+            long pollMs = timeoutSeconds != null && timeoutSeconds > 0
+                    ? BigDecimal.valueOf(timeoutSeconds)
+                            .multiply(BigDecimal.valueOf(1000))
+                            .setScale(0, RoundingMode.HALF_UP)
+                            .longValue()
+                    : TimeoutConstants.BLOCKING_QUEUE_MS;
+                    next = queue.poll(pollMs, TimeUnit.MILLISECONDS);
                     if (next == null) {
-                        throw new IllegalStateException(
-                                new TimeoutException("asCompleted() timed out after " + timeoutSeconds + " second(s)"));
+                        // asCompleted queue poll timed out. Falls back to the framework default
+                        // timeout and surfaces a recoverable ExecutionError so the caller can
+                        // retry / re-plan instead of hanging an entire agent round when a
+                        // producer silently dies.
+                        Loggers.PERFORMANCE.warning(
+                                "TaskManager.asCompleted queue poll timeout after {}ms (tasks={})",
+                                pollMs, tasks.size());
+                        throw new ExecutionError(
+                                StatusCode.TASK_MANAGER_QUEUE_TIMEOUT,
+                                Map.of("timeout", pollMs));
                     }
                     return true;
                 } catch (InterruptedException e) {
