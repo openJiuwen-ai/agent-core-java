@@ -50,11 +50,13 @@ import com.openjiuwen.core.singleagent.rail.SteeringQueue;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -89,7 +91,6 @@ public class ReActAgent extends BaseAgent {
 
     // 非流式→流式适配器的分块大小（字符数）
     private static final int STREAM_CHUNK_SIZE = 200;
-    private static final int MINIMUM_VIRTUAL_THREAD_VERSION = 21;
     private static final ExecutorService STREAM_EXECUTOR =
             OpenJiuwenExecutors.newBlockingTaskExecutor("react-agent-stream", true);
 
@@ -1063,9 +1064,6 @@ public class ReActAgent extends BaseAgent {
             throw new IllegalArgumentException("Session is required for streaming");
         }
         preRunStreamSession(agentSession, inputs);
-        if (Runtime.version().feature() < MINIMUM_VIRTUAL_THREAD_VERSION) {
-            return runStreamWithPlatformThread(inputs, session, agentSession);
-        }
         Future<?> streamFuture;
         try {
             streamFuture = STREAM_EXECUTOR.submit(() -> runStreamTask(inputs, session, agentSession));
@@ -1078,30 +1076,12 @@ public class ReActAgent extends BaseAgent {
         return OperatorStream.wrap(agentSession.streamIterator(), () -> streamFuture.cancel(true));
     }
 
-    private Iterator<Object> runStreamWithPlatformThread(Object inputs, Session session,
-            AgentSessionApi agentSession) {
-        Thread streamThread = new Thread(() -> {
-            try {
-                Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
-                writeStreamResult(agentSession, finalResult);
-            } catch (Exception e) {
-                writeStreamError(agentSession, e);
-            } finally {
-                postRunStreamSession(agentSession, session);
-            }
-        }, "react-agent-stream-" + agentSession.getSessionId());
-        streamThread.setDaemon(true);
-        streamThread.setUncaughtExceptionHandler((thread, error) -> writeStreamThrowable(agentSession, error));
-        streamThread.start();
-        // 消费方关闭/取消 iterator 时中断后台线程，使阻塞的 LLM HTTP 调用提前退出。
-        return OperatorStream.wrap(agentSession.streamIterator(), streamThread::interrupt);
-    }
-
     private void runStreamTask(Object inputs, Session session, AgentSessionApi agentSession) {
         try {
             Map<String, Object> finalResult = invokeForStream(inputs, session, agentSession);
             writeStreamResult(agentSession, finalResult);
-        } catch (Exception exception) {
+        } catch (ConcurrentModificationException | IllegalArgumentException | IllegalStateException
+                | NoSuchElementException exception) {
             writeStreamError(agentSession, exception);
         } catch (Error error) {
             writeStreamThrowable(agentSession, error);
@@ -1648,19 +1628,20 @@ public class ReActAgent extends BaseAgent {
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                     + (attempt + 1) + "/" + (maxRetries + 1) + ")");
-            } catch (Exception e) {
+            } catch (ConcurrentModificationException | IllegalArgumentException | IllegalStateException
+                    | NoSuchElementException exception) {
                 // 异常时已可能有部分 chunk 被发送，不重试避免重复发送
                 Loggers.AGENT.error("ReAct stream error (attempt "
-                    + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: " + e.getMessage());
+                    + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
+                    + exception.getMessage());
                 return null;
             }
 
             if (attempt < maxRetries && retryDelayMs > 0) {
                 try {
                     Thread.sleep(retryDelayMs);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
+                } catch (InterruptedException interruptedException) {
+                    throw new IllegalStateException("ReAct stream retry interrupted", interruptedException);
                 }
             }
         }
