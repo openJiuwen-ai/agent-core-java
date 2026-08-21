@@ -603,6 +603,7 @@ public final class OpenJiuwenExecutors {
         MQ_SERVER_ADAPTER("mq-server-adapter", 16, 128),
         TASK_MANAGER_WORKER("task-manager-worker", 16, 128),
         DEEP_AGENT_STREAM("deep-agent-stream", 32, 128),
+        REACT_AGENT_STREAM("react-agent-stream", 32, 128),
         GENERIC("", 32, 256);
 
         private final String prefix;
@@ -618,12 +619,12 @@ public final class OpenJiuwenExecutors {
         /**
          * 解析该模块池的最大线程数。
          *
-         * @return 流式会话池（deep-agent-stream / vertex-stream / stream-actor）返回 CPU 公式值，
-         *         其余池返回枚举声明的固定值
+         * @return 流式会话池（deep-agent-stream / react-agent-stream / vertex-stream / stream-actor）
+         *         返回 CPU 公式值，其余池返回枚举声明的固定值
          */
         int resolveMaxSize() {
             return switch (this) {
-                case DEEP_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR -> defaultIoBoundMaxSize();
+                case DEEP_AGENT_STREAM, REACT_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR -> defaultIoBoundMaxSize();
                 default -> maxSize;
             };
         }
@@ -635,11 +636,11 @@ public final class OpenJiuwenExecutors {
         /**
          * 判断该模块池是否允许核心线程超时回收。
          *
-         * @return {@code false} 仅当 DEEP_AGENT_STREAM（用户直接感知的 SSE 会话，30 并发突发已实证）；
-         *         其余池返回 {@code true}（任务均为 LLM 级，线程创建延迟可忽略）
+         * @return {@code false} 当 DEEP_AGENT_STREAM 或 REACT_AGENT_STREAM（用户直接感知的 SSE 会话，
+         *         热线程可消除首 token 的线程创建延迟）；其余池返回 {@code true}
          */
         boolean allowsCoreTimeout() {
-            return this != DEEP_AGENT_STREAM;
+            return this != DEEP_AGENT_STREAM && this != REACT_AGENT_STREAM;
         }
 
         RejectedExecutionHandler rejectionHandler() {

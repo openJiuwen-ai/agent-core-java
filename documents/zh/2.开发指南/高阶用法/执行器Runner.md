@@ -131,12 +131,13 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 | `mq-server-adapter` | MQ 服务端适配器 | `16` | `128` | 是 |
 | `task-manager-worker` | TaskManager 任务 worker | `16` | `128` | 是 |
 | `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(32, CPU 核数 * 8)`** | `128` | 否 |
+| `react-agent-stream` | ReActAgent `stream()` 会话 | **`max(32, CPU 核数 * 8)`** | `128` | 否 |
 
 模块池共性：
 
 - **统一排队语义**：所有模块池使用 `ArrayBlockingQueue` + `corePoolSize=maxSize`，确保线程全热、队列只做溢出缓冲。自 0.1.15 起不再使用 `SynchronousQueue`——PR #229 加界后 `SynchronousQueue` + 有界 max 变成「满即拒绝」扳机，且各 submit 点普遍缺乏 `RejectedExecutionException` 兜底，排队语义把突发转为缓冲、失败模式更可控。
 - **拒绝策略统一为 `AbortPolicy`**：不再使用 `CallerRunsPolicy`（`deep-agent-stream` 旧版曾用，在 SSE pump 阻塞模型下会导致调用线程被长任务钉死）。
-- **核心线程超时回收**：仅 `deep-agent-stream` 设为 `allowCoreThreadTimeOut=false`（用户直接感知的 SSE 会话，30 并发突发已实证，热线程可消除首 token 的线程创建延迟）；其余池均为 `true`（任务均为 LLM 级，线程创建 1-5ms 相对任务耗时可忽略，空闲后归零以节省内存）。
+- **核心线程超时回收**：仅 `deep-agent-stream` 与 `react-agent-stream` 设为 `allowCoreThreadTimeOut=false`（用户直接感知的 SSE 会话，热线程可消除首 token 的线程创建延迟）；其余池均为 `true`（任务均为 LLM 级，线程创建 1-5ms 相对任务耗时可忽略，空闲后归零以节省内存）。
 - `keepAlive=60s`；`allowCoreThreadTimeOut=true` 的池空闲线程（含核心线程）超时后回收，`false` 的池核心线程常驻。
 
 **DeepAgent stream 调优**：`deep-agent-stream` 限制同时进行中的 stream 会话数（I/O 型）。默认可随 CPU 缩放；高并发或长连接场景可显式调大，并配合 LLM 侧 HTTP / 配额限流，见 [DeepAgent 使用指南](DeepAgent/DeepAgent使用指南.md#stream-并发与线程池)。
