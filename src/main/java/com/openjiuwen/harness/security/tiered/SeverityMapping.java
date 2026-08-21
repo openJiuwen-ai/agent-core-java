@@ -17,7 +17,6 @@ import java.util.Locale;
  * @since 0.1.15
  */
 public final class SeverityMapping {
-
     private SeverityMapping() {
     }
 
@@ -31,16 +30,16 @@ public final class SeverityMapping {
      */
     public static PermissionLevel severityToDecision(String severity, String mode) {
         String sev = severity == null ? "" : severity.trim().toUpperCase(Locale.ROOT);
-        boolean strict = "strict".equalsIgnoreCase(mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT));
+        boolean isStrict = "strict".equalsIgnoreCase(mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT));
         switch (sev) {
             case "LOW":
                 return PermissionLevel.ALLOW;
             case "MEDIUM":
-                return strict ? PermissionLevel.ASK : PermissionLevel.ALLOW;
+                return isStrict ? PermissionLevel.ASK : PermissionLevel.ALLOW;
             case "HIGH":
                 return PermissionLevel.ASK;
             case "CRITICAL":
-                return strict ? PermissionLevel.DENY : PermissionLevel.ASK;
+                return isStrict ? PermissionLevel.DENY : PermissionLevel.ASK;
             default:
                 return PermissionLevel.ASK;
         }

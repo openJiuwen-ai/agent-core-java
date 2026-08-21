@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.security.fileguard;
 
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * File-access axis for the file-guard pipeline (Pipeline B).
@@ -28,19 +29,19 @@ public enum FileGuardAction {
      * Parse an axis from a config value.
      *
      * @param value raw value, typically {@code "read"}/{@code "write"}/{@code "exec"}
-     * @return the matching axis, or {@code null} when unrecognized
+     * @return the matching axis, or empty when unrecognized
      * @since 0.1.15
      */
-    public static FileGuardAction fromString(Object value) {
+    public static Optional<FileGuardAction> fromString(Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         String v = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
         return switch (v) {
-            case "read" -> READ;
-            case "write" -> WRITE;
-            case "exec" -> EXEC;
-            default -> null;
+            case "read" -> Optional.of(READ);
+            case "write" -> Optional.of(WRITE);
+            case "exec" -> Optional.of(EXEC);
+            default -> Optional.empty();
         };
     }
 }

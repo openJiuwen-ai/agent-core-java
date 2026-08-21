@@ -19,7 +19,6 @@ import java.util.List;
  * @since 0.1.15
  */
 final class ShellLexer {
-
     private ShellLexer() {
     }
 
@@ -49,38 +48,13 @@ final class ShellLexer {
                 continue;
             }
             if (c == '\'') {
-                i++;
+                i = parseSingleQuote(command, i, n, word);
                 hasContent = true;
-                while (i < n && command.charAt(i) != '\'') {
-                    word.append(command.charAt(i));
-                    i++;
-                }
-                if (i >= n) {
-                    throw new IllegalArgumentException("unterminated single quote");
-                }
-                i++;
                 continue;
             }
             if (c == '"') {
-                i++;
+                i = parseDoubleQuote(command, i, n, word);
                 hasContent = true;
-                while (i < n && command.charAt(i) != '"') {
-                    char d = command.charAt(i);
-                    if (d == '\\' && i + 1 < n) {
-                        char next = command.charAt(i + 1);
-                        if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') {
-                            word.append(next);
-                            i += 2;
-                            continue;
-                        }
-                    }
-                    word.append(d);
-                    i++;
-                }
-                if (i >= n) {
-                    throw new IllegalArgumentException("unterminated double quote");
-                }
-                i++;
                 continue;
             }
             if (c == '\\') {
@@ -88,9 +62,9 @@ final class ShellLexer {
                     word.append(command.charAt(i + 1));
                     hasContent = true;
                     i += 2;
-                    continue;
+                } else {
+                    i++;
                 }
-                i++;
                 continue;
             }
             word.append(c);
@@ -101,5 +75,38 @@ final class ShellLexer {
             tokens.add(word.toString());
         }
         return tokens;
+    }
+
+    private static int parseSingleQuote(String command, int i, int n, StringBuilder word) {
+        i++;
+        while (i < n && command.charAt(i) != '\'') {
+            word.append(command.charAt(i));
+            i++;
+        }
+        if (i >= n) {
+            throw new IllegalArgumentException("unterminated single quote");
+        }
+        return i + 1;
+    }
+
+    private static int parseDoubleQuote(String command, int i, int n, StringBuilder word) {
+        i++;
+        while (i < n && command.charAt(i) != '"') {
+            char d = command.charAt(i);
+            if (d == '\\' && i + 1 < n) {
+                char next = command.charAt(i + 1);
+                if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') {
+                    word.append(next);
+                    i += 2;
+                    continue;
+                }
+            }
+            word.append(d);
+            i++;
+        }
+        if (i >= n) {
+            throw new IllegalArgumentException("unterminated double quote");
+        }
+        return i + 1;
     }
 }

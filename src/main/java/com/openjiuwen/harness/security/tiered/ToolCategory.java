@@ -6,6 +6,7 @@ package com.openjiuwen.harness.security.tiered;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -18,7 +19,6 @@ import java.util.Set;
  * @since 0.1.15
  */
 public final class ToolCategory {
-
     /** Shell command tools. */
     public static final Set<String> SHELL_TOOLS =
             Set.of("bash", "mcp_exec_command", "create_terminal");
@@ -47,20 +47,20 @@ public final class ToolCategory {
      * Classify a tool name.
      *
      * @param toolName tool name
-     * @return {@code "shell"}/{@code "path"}/{@code "network"}, or {@code null} when unknown
+     * @return {@code "shell"}/{@code "path"}/{@code "network"}, or empty when unknown
      * @since 0.1.15
      */
-    public static String of(String toolName) {
+    public static Optional<String> of(String toolName) {
         if (SHELL_TOOLS.contains(toolName)) {
-            return "shell";
+            return Optional.of("shell");
         }
         if (PATH_TOOLS.contains(toolName)) {
-            return "path";
+            return Optional.of("path");
         }
         if (NETWORK_TOOLS.contains(toolName)) {
-            return "network";
+            return Optional.of("network");
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
@@ -73,11 +73,11 @@ public final class ToolCategory {
     public static boolean ruleToolsCategoryConsistent(List<String> tools) {
         Set<String> categories = new HashSet<>();
         for (String tool : tools) {
-            String category = of(tool);
-            if (category == null) {
+            Optional<String> category = of(tool);
+            if (category.isEmpty()) {
                 return false;
             }
-            categories.add(category);
+            categories.add(category.get());
             if (categories.size() > 1) {
                 return false;
             }

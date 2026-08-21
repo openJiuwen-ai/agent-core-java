@@ -21,7 +21,6 @@ import java.util.regex.Pattern;
  * @since 0.1.15
  */
 public final class ConservativeShellScanner implements ShellAstBackend {
-
     /**
      * Shared singleton instance.
      *
@@ -95,14 +94,14 @@ public final class ConservativeShellScanner implements ShellAstBackend {
         boolean hasHeredoc = HEREDOC.matcher(command).find();
         List<String> operators = collectOperators(command);
         return ShellStructureFlags.builder()
-                .compoundOperators(hasCompound)
-                .pipeline(hasPipeline)
-                .commandSubstitution(hasCommandSubstitution)
-                .processSubstitution(hasProcessSubstitution)
-                .parameterExpansion(hasParameterExpansion)
-                .heredoc(hasHeredoc)
-                .inputRedirection(hasInputRedirection)
-                .outputRedirection(hasOutputRedirection)
+                .isCompoundOperators(hasCompound)
+                .isPipeline(hasPipeline)
+                .isCommandSubstitution(hasCommandSubstitution)
+                .isProcessSubstitution(hasProcessSubstitution)
+                .isParameterExpansion(hasParameterExpansion)
+                .isHeredoc(hasHeredoc)
+                .isInputRedirection(hasInputRedirection)
+                .isOutputRedirection(hasOutputRedirection)
                 .operators(operators)
                 .build();
     }

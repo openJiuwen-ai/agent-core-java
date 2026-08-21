@@ -9,6 +9,7 @@ import com.openjiuwen.harness.security.shellast.ShellAst;
 import com.openjiuwen.harness.security.shellast.ShellAstParseResult;
 import com.openjiuwen.harness.security.shellast.ShellSubcommand;
 import com.openjiuwen.harness.security.tiered.ToolCategory;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,12 +17,14 @@ import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,7 +45,6 @@ import java.util.regex.Pattern;
  * @since 0.1.15
  */
 public final class PathAccessExtractor {
-
     private static final Logger logger = LoggerFactory.getLogger(PathAccessExtractor.class);
 
     private static final Set<String> SHELL_TOOLS = ToolCategory.SHELL_TOOLS;
@@ -68,6 +70,8 @@ public final class PathAccessExtractor {
     private static final Pattern REDIRECT_RE =
             Pattern.compile("(?:^|[\\s;|&])(\\d*>>?|\\d*<|&>)\\s*([^\\s;|&<>]+)");
 
+    private static final Map<String, List<Spec>> FILE_TOOL_SPECS = buildBuiltinSpecs();
+
     private PathAccessExtractor() {
     }
 
@@ -79,16 +83,16 @@ public final class PathAccessExtractor {
     public static class PathAccess {
         /** Resolved path. */
         private Path path;
+
         /** Inferred file-access axis. */
         private FileGuardAction action;
+
         /** Origin: {@code tool_arg} or {@code shlex}. */
         private String source;
     }
 
     private record Spec(String argName, FileGuardAction action) {
     }
-
-    private static final Map<String, List<Spec>> FILE_TOOL_SPECS = buildBuiltinSpecs();
 
     /**
      * Extract accesses from a tool invocation (native path).
@@ -119,7 +123,7 @@ public final class PathAccessExtractor {
                 if (!(raw instanceof String s) || s.isBlank()) {
                     continue;
                 }
-                Path p = resolvePathStr(s, workspaceRoot);
+                Path p = resolvePathStr(s, workspaceRoot).orElse(null);
                 if (p == null) {
                     continue;
                 }
@@ -135,7 +139,7 @@ public final class PathAccessExtractor {
             FileGuardAction action = WRITE_PATH_TOOLS.contains(toolName)
                     ? FileGuardAction.WRITE : FileGuardAction.READ;
             for (String s : iterPathStrings(args)) {
-                Path p = resolvePathStr(s, workspaceRoot);
+                Path p = resolvePathStr(s, workspaceRoot).orElse(null);
                 if (p == null) {
                     continue;
                 }
@@ -198,41 +202,54 @@ public final class PathAccessExtractor {
         List<ShellSubcommand> subs = parse.getSubcommands();
         if (subs != null && !subs.isEmpty()) {
             for (ShellSubcommand sub : subs) {
-                List<String> argv = sub.getArgv();
-                if (argv == null || argv.isEmpty()) {
-                    continue;
-                }
-                String cmd0 = basenameLower(argv.get(0));
-                out.addAll(extractFromArgv(cmd0, argv, base));
+                appendSubcommandAccesses(sub, base, out);
             }
         } else {
-            List<String> tokens = simpleTokenize(command);
-            if (!tokens.isEmpty()) {
-                String cmd0 = basenameLower(tokens.get(0));
-                if (PATH_AWARE_COMMANDS.contains(cmd0)) {
-                    out.addAll(extractFromArgv(cmd0, tokens, base));
-                }
-            }
+            appendFallbackArgvAccesses(command, base, out);
         }
         out.addAll(extractRedirects(command, base));
-        List<String> tokens = simpleTokenize(command);
-        if (tokens.size() >= 2) {
-            String cmd0 = basenameLower(tokens.get(0));
-            if (INTERPRETER_BASENAMES.contains(cmd0)) {
-                String scriptTok = stripQuotes(tokens.get(1));
-                if (!scriptTok.isEmpty() && !scriptTok.startsWith("-") && looksLikePath(scriptTok)) {
-                    Path p = resolvePathStr(scriptTok, base);
-                    if (p != null) {
-                        out.add(PathAccess.builder()
-                                .path(p)
-                                .action(FileGuardAction.EXEC)
-                                .source("shlex")
-                                .build());
-                    }
-                }
-            }
-        }
+        appendInterpreterScriptAccess(command, base, out);
         return out;
+    }
+
+    private static void appendSubcommandAccesses(ShellSubcommand sub, Path base, List<PathAccess> out) {
+        List<String> argv = sub.getArgv();
+        if (argv == null || argv.isEmpty()) {
+            return;
+        }
+        String cmd0 = basenameLower(argv.get(0));
+        out.addAll(extractFromArgv(cmd0, argv, base));
+    }
+
+    private static void appendFallbackArgvAccesses(String command, Path base, List<PathAccess> out) {
+        List<String> tokens = simpleTokenize(command);
+        if (tokens.isEmpty()) {
+            return;
+        }
+        String cmd0 = basenameLower(tokens.get(0));
+        if (PATH_AWARE_COMMANDS.contains(cmd0)) {
+            out.addAll(extractFromArgv(cmd0, tokens, base));
+        }
+    }
+
+    private static void appendInterpreterScriptAccess(String command, Path base, List<PathAccess> out) {
+        List<String> tokens = simpleTokenize(command);
+        if (tokens.size() < 2) {
+            return;
+        }
+        String cmd0 = basenameLower(tokens.get(0));
+        if (!INTERPRETER_BASENAMES.contains(cmd0)) {
+            return;
+        }
+        String scriptTok = stripQuotes(tokens.get(1));
+        if (scriptTok.isEmpty() || scriptTok.startsWith("-") || !looksLikePath(scriptTok)) {
+            return;
+        }
+        resolvePathStr(scriptTok, base).ifPresent(p -> out.add(PathAccess.builder()
+                .path(p)
+                .action(FileGuardAction.EXEC)
+                .source("shlex")
+                .build()));
     }
 
     private static List<PathAccess> extractFromArgv(String cmd0, List<String> tokens, Path base) {
@@ -243,7 +260,7 @@ public final class PathAccessExtractor {
             if (tok.isEmpty() || isShellFlag(tok) || !looksLikePath(tok)) {
                 continue;
             }
-            Path p = base != null ? resolvePathStr(tok, base) : rawPathOrNull(tok);
+            Path p = (base != null ? resolvePathStr(tok, base) : rawPathOrNull(tok)).orElse(null);
             if (p != null) {
                 pathTokens.add(p);
             }
@@ -290,7 +307,7 @@ public final class PathAccessExtractor {
             if (target.isEmpty() || !looksLikePath(target)) {
                 continue;
             }
-            Path p = base != null ? resolvePathStr(target, base) : rawPathOrNull(target);
+            Path p = (base != null ? resolvePathStr(target, base) : rawPathOrNull(target)).orElse(null);
             if (p == null) {
                 continue;
             }
@@ -303,10 +320,10 @@ public final class PathAccessExtractor {
 
     // ---------- path resolution ----------
 
-    private static Path resolvePathStr(String raw, Path workspace) {
+    private static Optional<Path> resolvePathStr(String raw, Path workspace) {
         String s = stripQuotes(raw).trim();
         if (s.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         s = expandRaw(s);
         try {
@@ -314,18 +331,18 @@ public final class PathAccessExtractor {
             if (!p.isAbsolute() && workspace != null) {
                 p = workspace.resolve(s);
             }
-            return p.normalize();
-        } catch (RuntimeException ex) {
+            return Optional.of(p.normalize());
+        } catch (InvalidPathException ex) {
             logger.warn("[file_guard] path.resolve_failed raw={} reason={}", s, ex.getMessage());
-            return null;
+            return Optional.empty();
         }
     }
 
-    private static Path rawPathOrNull(String tok) {
+    private static Optional<Path> rawPathOrNull(String tok) {
         try {
-            return Paths.get(tok).normalize();
-        } catch (java.nio.file.InvalidPathException ex) {
-            return null;
+            return Optional.of(Paths.get(tok).normalize());
+        } catch (InvalidPathException ex) {
+            return Optional.empty();
         }
     }
 
@@ -356,23 +373,23 @@ public final class PathAccessExtractor {
     private static List<String> simpleTokenize(String command) {
         List<String> tokens = new ArrayList<>();
         StringBuilder word = new StringBuilder();
-        boolean inContent = false;
+        boolean hasContent = false;
         int i = 0;
         int n = command.length();
         while (i < n) {
             char c = command.charAt(i);
             if (Character.isWhitespace(c)) {
-                if (inContent) {
+                if (hasContent) {
                     tokens.add(word.toString());
                     word.setLength(0);
-                    inContent = false;
+                    hasContent = false;
                 }
                 i++;
                 continue;
             }
             if (c == '\'' || c == '"') {
                 i++;
-                inContent = true;
+                hasContent = true;
                 while (i < n && command.charAt(i) != c) {
                     word.append(command.charAt(i));
                     i++;
@@ -383,10 +400,10 @@ public final class PathAccessExtractor {
                 continue;
             }
             word.append(c);
-            inContent = true;
+            hasContent = true;
             i++;
         }
-        if (inContent) {
+        if (hasContent) {
             tokens.add(word.toString());
         }
         return tokens;
@@ -430,7 +447,7 @@ public final class PathAccessExtractor {
         if (t.isEmpty()) {
             return false;
         }
-        if (t.equals(".") || t.equals("..")) {
+        if (".".equals(t) || "..".equals(t)) {
             return true;
         }
         if (t.startsWith("\\\\") || t.startsWith("./") || t.startsWith("../")) {
@@ -461,10 +478,12 @@ public final class PathAccessExtractor {
         String s = raw;
         if (s.startsWith("~")) {
             String home = System.getProperty("user.home", "");
-            if (s.equals("~")) {
+            if ("~".equals(s)) {
                 s = home;
             } else if (s.startsWith("~/")) {
                 s = home + s.substring(1);
+            } else {
+                // not a home reference; keep as-is
             }
         }
         return s;

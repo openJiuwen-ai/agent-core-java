@@ -26,6 +26,7 @@ import com.openjiuwen.harness.security.patterns.PermissionsYamlWriter;
 import com.openjiuwen.harness.security.shellast.ShellAst;
 import com.openjiuwen.harness.security.shellast.ShellAstParseResult;
 import com.openjiuwen.harness.security.shellast.ShellSubcommand;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -165,13 +166,13 @@ public class PermissionInterruptRail extends BaseInterruptRail {
 
     private InterruptDecision handleConfirmResponse(PermissionConfirmResponse response, String toolName,
                                                      Map<String, Object> toolArgs, String autoConfirmKey) {
-        boolean persisted = false;
+        boolean isPersisted = false;
         if (response.isApproved() && response.isAutoConfirm() && response.isPersistAllow()) {
-            persisted = persistAllowAlways(toolName, toolArgs);
+            isPersisted = persistAllowAlways(toolName, toolArgs);
             logger.info("[PermissionEngine] permission.persist.result tool={} persisted={} persist_allow={}",
-                    toolName, persisted, response.isPersistAllow());
+                    toolName, isPersisted, response.isPersistAllow());
         }
-        if (shouldStoreSessionAutoConfirm(response.isApproved(), response.isAutoConfirm(), autoConfirmKey, persisted)) {
+        if (shouldStoreSessionAutoConfirm(response.isApproved(), response.isAutoConfirm(), autoConfirmKey, isPersisted)) {
             sessionAutoConfirm.put(autoConfirmKey, Boolean.TRUE);
             logger.info("[PermissionEngine] permission.auto_confirm.store key={}", autoConfirmKey);
         }
@@ -190,13 +191,13 @@ public class PermissionInterruptRail extends BaseInterruptRail {
             baseCfg = new LinkedHashMap<>(baseCfg);
         }
         Map<String, Object> merged = PermissionsYamlWriter.mergeAllowRule(baseCfg, toolName, toolArgs);
-        boolean ok = host.persistAllowRule(merged);
-        if (ok) {
+        boolean isPersisted = host.persistAllowRule(merged);
+        if (isPersisted) {
             refreshEngineConfig(merged);
         } else {
             logger.warn("[PermissionEngine] permission.persist.host_failed tool={} rollback_memory=true", toolName);
         }
-        return ok;
+        return isPersisted;
     }
 
     private void refreshEngineConfig(Map<String, Object> snapshot) {
@@ -262,9 +263,9 @@ public class PermissionInterruptRail extends BaseInterruptRail {
         return sessionAutoConfirm.getOrDefault(key, Boolean.FALSE);
     }
 
-    private static boolean shouldStoreSessionAutoConfirm(boolean approved, boolean autoConfirm,
-                                                          String autoConfirmKey, boolean persisted) {
-        return approved && autoConfirm && autoConfirmKey != null && !autoConfirmKey.isEmpty() && !persisted;
+    private static boolean shouldStoreSessionAutoConfirm(boolean isApproved, boolean isAutoConfirm,
+                                                          String autoConfirmKey, boolean isPersisted) {
+        return isApproved && isAutoConfirm && autoConfirmKey != null && !autoConfirmKey.isEmpty() && !isPersisted;
     }
 
     private PermissionConfirmResponse parseConfirmPayload(Object userInput) {
@@ -272,24 +273,19 @@ public class PermissionInterruptRail extends BaseInterruptRail {
             return response;
         }
         if (userInput instanceof Map<?, ?> map) {
-            try {
-                return PermissionConfirmResponse.builder()
-                        .approved(toBool(map.get("approved")))
-                        .feedback(toStr(map.get("feedback")))
-                        .autoConfirm(toBool(map.get("auto_confirm")))
-                        .persistAllow(toBool(map.get("persist_allow")))
-                        .build();
-            } catch (RuntimeException ex) {
-                logger.warn("[PermissionEngine] permission.confirm.parse_failed", ex);
-                return null;
-            }
+            return PermissionConfirmResponse.builder()
+                    .approved(toBool(map.get("approved")))
+                    .feedback(toStr(map.get("feedback")))
+                    .autoConfirm(toBool(map.get("auto_confirm")))
+                    .persistAllow(toBool(map.get("persist_allow")))
+                    .build();
         }
         return null;
     }
 
     private static boolean toBool(Object value) {
-        if (value instanceof Boolean b) {
-            return b;
+        if (value instanceof Boolean) {
+            return (Boolean) value;
         }
         return value != null && Boolean.parseBoolean(String.valueOf(value).trim());
     }

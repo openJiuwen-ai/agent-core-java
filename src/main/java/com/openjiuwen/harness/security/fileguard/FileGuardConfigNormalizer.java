@@ -5,16 +5,19 @@
 package com.openjiuwen.harness.security.fileguard;
 
 import com.openjiuwen.harness.security.PermissionLevel;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,7 +39,6 @@ import java.util.regex.Pattern;
  * @since 0.1.15
  */
 public final class FileGuardConfigNormalizer {
-
     private static final Logger logger = LoggerFactory.getLogger(FileGuardConfigNormalizer.class);
 
     private static final Pattern ENV_BRACE = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
@@ -65,22 +67,22 @@ public final class FileGuardConfigNormalizer {
                 || (ext instanceof String s && !s.isBlank());
         boolean hasTrusted = !trusted.isEmpty();
 
-        Boolean explicit = explicitEnabled(fg);
-        boolean enabled;
-        if (explicit != null) {
-            enabled = explicit;
+        Optional<Boolean> explicitOpt = explicitEnabled(fg);
+        boolean isEnabled;
+        if (explicitOpt.isPresent()) {
+            isEnabled = explicitOpt.get();
         } else if (hasExt || hasTrusted) {
-            enabled = true;
+            isEnabled = true;
         } else {
-            enabled = false;
+            isEnabled = false;
         }
-        if (!enabled) {
+        if (!isEnabled) {
             return null;
         }
 
         Path ws = workspaceRoot;
-        boolean nativeMode = hasNativeFileGuard(fg, perms);
-        if (nativeMode) {
+        boolean isNativeMode = hasNativeFileGuard(fg, perms);
+        if (isNativeMode) {
             return normalizeNative(fg, ext, ws, trusted);
         }
         return normalizeLegacy(ext, ws, trusted, getList(fg, "paths"));
@@ -90,13 +92,15 @@ public final class FileGuardConfigNormalizer {
 
     private static EffectiveFileGuardConfig normalizeNative(Map<String, Object> fg, Object ext,
                                                             Path workspaceRoot, List<String> trustedDirs) {
-        Map<String, Object> rawDefaults = fg.get("defaults") instanceof Map<?, ?> ? toStringKeyMap(fg.get("defaults")) : new LinkedHashMap<>();
-        boolean rawHasAxis = hasAxisDict(rawDefaults);
+        Map<String, Object> rawDefaults = fg.get("defaults") instanceof Map<?, ?>
+                ? toStringKeyMap(fg.get("defaults"))
+                : new LinkedHashMap<>();
+        boolean hasRawAxis = hasAxisDict(rawDefaults);
         Map<FileGuardAction, PermissionLevel> defaults = new EnumMap<>(FileGuardAction.class);
-        if (!rawHasAxis && ext instanceof Map<?, ?>) {
+        if (!hasRawAxis && ext instanceof Map<?, ?>) {
             Object star = toStringKeyMap(ext).getOrDefault("*", "ask");
             fillAxisFromStar(defaults, star);
-        } else if (!rawHasAxis && ext instanceof String s && !s.isBlank()) {
+        } else if (!hasRawAxis && ext instanceof String s && !s.isBlank()) {
             fillAxisFromStar(defaults, s);
         } else {
             defaults.put(FileGuardAction.READ, parseLevel(rawDefaults.get("read"), PermissionLevel.ASK));
@@ -105,74 +109,12 @@ public final class FileGuardConfigNormalizer {
         }
 
         List<FileGuardPathRule> rules = new ArrayList<>();
-        Object rawPaths = fg.get("paths");
-        if (rawPaths instanceof List<?> list) {
-            for (Object item : list) {
-                if (!(item instanceof Map<?, ?> im)) {
-                    continue;
-                }
-                Map<String, Object> entry = toStringKeyMap(item);
-                Object pathV = entry.get("path");
-                if (!(pathV instanceof String pvs) || pvs.isBlank()) {
-                    continue;
-                }
-                Object matchV = entry.getOrDefault("match", "prefix");
-                String match = "glob".equals(String.valueOf(matchV)) ? "glob" : "prefix";
-                FileGuardPathRule rule = compilePathEntry(pvs,
-                        entry.get("read"), entry.get("write"), entry.get("exec"),
-                        match, PermissionLevel.ASK);
-                if (rule != null) {
-                    rules.add(rule);
-                }
-            }
-        }
-
-        FileGuardPathRule wsRule = compileWorkspaceAxisRule(fg.get("workspace"), workspaceRoot);
-        if (wsRule != null) {
-            rules.add(wsRule);
-        }
-
+        compileNativePaths(fg, rules);
+        compileWorkspaceAxisRule(fg.get("workspace"), workspaceRoot).ifPresent(rules::add);
         for (String td : trustedDirs) {
-            FileGuardPathRule rule = compilePathEntry(td,
-                    "allow", "allow", "ask", "prefix", PermissionLevel.ASK);
-            if (rule != null) {
-                rules.add(rule);
-            }
+            compilePathEntry(td, "allow", "allow", "ask", "prefix").ifPresent(rules::add);
         }
-
-        if (ext instanceof Map<?, ?> extMap) {
-            java.util.Set<String> existing = new java.util.HashSet<>();
-            for (FileGuardPathRule r : rules) {
-                if ("prefix".equals(r.getMatch())) {
-                    existing.add(r.getPath().replace("\\", "/"));
-                }
-            }
-            for (Map.Entry<String, Object> kv : toStringKeyMap(ext).entrySet()) {
-                String key = kv.getKey();
-                Object actionObj = kv.getValue();
-                if ("*".equals(key) || !(actionObj instanceof String action)) {
-                    continue;
-                }
-                if (!isLevelName(action)) {
-                    continue;
-                }
-                String keyNorm = posixNorm(expandRaw(key));
-                if (existing.contains(keyNorm)) {
-                    continue;
-                }
-                FileGuardPathRule rule;
-                if ("allow".equals(action)) {
-                    rule = compilePathEntry(key, "allow", "allow", "ask", "prefix", PermissionLevel.ASK);
-                } else {
-                    rule = compilePathEntry(key, action, action, action, "prefix", PermissionLevel.ASK);
-                }
-                if (rule != null) {
-                    rules.add(rule);
-                    logger.warn("[file_guard] migrate.external_directory key={} action={} -> file_guard.paths",
-                            key, action);
-                }
-            }
-        }
+        migrateExternalDirectory(ext, rules);
 
         return EffectiveFileGuardConfig.builder()
                 .defaults(defaults)
@@ -180,6 +122,61 @@ public final class FileGuardConfigNormalizer {
                 .workspaceRoot(workspaceRoot)
                 .trustedDirs(new ArrayList<>(trustedDirs))
                 .build();
+    }
+
+    private static void compileNativePaths(Map<String, Object> fg, List<FileGuardPathRule> rules) {
+        Object rawPaths = fg.get("paths");
+        if (!(rawPaths instanceof List<?> list)) {
+            return;
+        }
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> im)) {
+                continue;
+            }
+            Map<String, Object> entry = toStringKeyMap(item);
+            Object pathV = entry.get("path");
+            if (!(pathV instanceof String pvs) || pvs.isBlank()) {
+                continue;
+            }
+            Object matchV = entry.getOrDefault("match", "prefix");
+            String match = "glob".equals(String.valueOf(matchV)) ? "glob" : "prefix";
+            compilePathEntry(pvs, entry.get("read"), entry.get("write"), entry.get("exec"), match)
+                    .ifPresent(rules::add);
+        }
+    }
+
+    private static void migrateExternalDirectory(Object ext, List<FileGuardPathRule> rules) {
+        if (!(ext instanceof Map<?, ?>)) {
+            return;
+        }
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        for (FileGuardPathRule r : rules) {
+            if ("prefix".equals(r.getMatch())) {
+                existing.add(r.getPath().replace("\\", "/"));
+            }
+        }
+        for (Map.Entry<String, Object> kv : toStringKeyMap(ext).entrySet()) {
+            String key = kv.getKey();
+            Object actionObj = kv.getValue();
+            if ("*".equals(key) || !(actionObj instanceof String action)) {
+                continue;
+            }
+            if (!isLevelName(action)) {
+                continue;
+            }
+            String keyNorm = posixNorm(expandRaw(key));
+            if (existing.contains(keyNorm)) {
+                continue;
+            }
+            Optional<FileGuardPathRule> ruleOpt = "allow".equals(action)
+                    ? compilePathEntry(key, "allow", "allow", "ask", "prefix")
+                    : compilePathEntry(key, action, action, action, "prefix");
+            ruleOpt.ifPresent(rule -> {
+                rules.add(rule);
+                logger.warn("[file_guard] migrate.external_directory key={} action={} -> file_guard.paths",
+                        key, action);
+            });
+        }
     }
 
     // ---------- legacy branch ----------
@@ -205,37 +202,40 @@ public final class FileGuardConfigNormalizer {
                 }
                 allowPrefixes.add(Map.entry(key, a));
             }
+        } else {
+            starAction = "ask";
         }
 
         Map<FileGuardAction, PermissionLevel> defaults = new EnumMap<>(FileGuardAction.class);
         fillAxisFromStar(defaults, starAction);
 
+        List<FileGuardPathRule> rules = buildLegacyRules(workspaceRoot, trustedDirs,
+                allowPrefixes, fileGuardPaths);
+
+        return EffectiveFileGuardConfig.builder()
+                .defaults(defaults)
+                .rules(rules)
+                .workspaceRoot(workspaceRoot)
+                .trustedDirs(new ArrayList<>(trustedDirs))
+                .build();
+    }
+
+    private static List<FileGuardPathRule> buildLegacyRules(Path workspaceRoot, List<String> trustedDirs,
+                                                            List<Map.Entry<String, String>> allowPrefixes,
+                                                            List<Map<String, Object>> fileGuardPaths) {
         List<FileGuardPathRule> rules = new ArrayList<>();
         if (workspaceRoot != null) {
-            FileGuardPathRule wsRule = compilePathEntry(workspaceRoot.toString(),
-                    "allow", "allow", "allow", "prefix", PermissionLevel.ASK);
-            if (wsRule != null) {
-                rules.add(wsRule);
-            }
+            compilePathEntry(workspaceRoot.toString(), "allow", "allow", "allow", "prefix")
+                    .ifPresent(rules::add);
         }
         for (String td : trustedDirs) {
-            FileGuardPathRule rule = compilePathEntry(td,
-                    "allow", "allow", "ask", "prefix", PermissionLevel.ASK);
-            if (rule != null) {
-                rules.add(rule);
-            }
+            compilePathEntry(td, "allow", "allow", "ask", "prefix").ifPresent(rules::add);
         }
         for (Map.Entry<String, String> kv : allowPrefixes) {
-            FileGuardPathRule rule;
-            if ("allow".equals(kv.getValue())) {
-                rule = compilePathEntry(kv.getKey(), "allow", "allow", "ask", "prefix", PermissionLevel.ASK);
-            } else {
-                rule = compilePathEntry(kv.getKey(), kv.getValue(), kv.getValue(), kv.getValue(),
-                        "prefix", PermissionLevel.ASK);
-            }
-            if (rule != null) {
-                rules.add(rule);
-            }
+            Optional<FileGuardPathRule> ruleOpt = "allow".equals(kv.getValue())
+                    ? compilePathEntry(kv.getKey(), "allow", "allow", "ask", "prefix")
+                    : compilePathEntry(kv.getKey(), kv.getValue(), kv.getValue(), kv.getValue(), "prefix");
+            ruleOpt.ifPresent(rules::add);
         }
         if (fileGuardPaths != null) {
             for (Map<String, Object> item : fileGuardPaths) {
@@ -246,37 +246,27 @@ public final class FileGuardConfigNormalizer {
                 if (!(pathV instanceof String pvs) || pvs.isBlank()) {
                     continue;
                 }
-                FileGuardPathRule rule = compilePathEntry(pvs,
+                compilePathEntry(pvs,
                         item.getOrDefault("read", "allow"),
                         item.getOrDefault("write", "allow"),
                         item.getOrDefault("exec", "ask"),
-                        "prefix", PermissionLevel.ASK);
-                if (rule != null) {
-                    rules.add(rule);
-                }
+                        "prefix").ifPresent(rules::add);
             }
         }
-
-        return EffectiveFileGuardConfig.builder()
-                .defaults(defaults)
-                .rules(rules)
-                .workspaceRoot(workspaceRoot)
-                .trustedDirs(new ArrayList<>(trustedDirs))
-                .build();
+        return rules;
     }
 
     // ---------- path entry compilation ----------
 
-    private static FileGuardPathRule compilePathEntry(String pathRaw, Object read, Object write,
-                                                     Object exec, String match,
-                                                     PermissionLevel defaultLevel) {
+    private static Optional<FileGuardPathRule> compilePathEntry(String pathRaw, Object read, Object write,
+                                                     Object exec, String match) {
         String pathS = pathRaw.trim();
         if (pathS.isEmpty() || "*".equals(pathS)) {
-            return null;
+            return Optional.empty();
         }
-        PermissionLevel r = read != null ? parseLevel(read, defaultLevel) : defaultLevel;
-        PermissionLevel w = write != null ? parseLevel(write, defaultLevel) : defaultLevel;
-        PermissionLevel e = exec != null ? parseLevel(exec, defaultLevel) : defaultLevel;
+        PermissionLevel r = read != null ? parseLevel(read, PermissionLevel.ASK) : PermissionLevel.ASK;
+        PermissionLevel w = write != null ? parseLevel(write, PermissionLevel.ASK) : PermissionLevel.ASK;
+        PermissionLevel e = exec != null ? parseLevel(exec, PermissionLevel.ASK) : PermissionLevel.ASK;
         PermissionLevel[] impl = applyImplications(r, w, e, pathS);
         r = impl[0];
         w = impl[1];
@@ -284,38 +274,38 @@ public final class FileGuardConfigNormalizer {
         if ("prefix".equals(match)) {
             String norm = pathS.replace("\\", "/");
             if (!norm.contains("/")) {
-                return null;
+                return Optional.empty();
             }
             pathS = posixNorm(expandRaw(pathS));
             if (!pathS.replaceAll("/+$", "").contains("/")) {
-                return null;
+                return Optional.empty();
             }
         }
-        return FileGuardPathRule.builder()
+        return Optional.of(FileGuardPathRule.builder()
                 .path(pathS)
                 .read(r)
                 .write(w)
                 .exec(e)
                 .match(match)
-                .build();
+                .build());
     }
 
-    private static FileGuardPathRule compileWorkspaceAxisRule(Object workspaceCfg, Path workspaceRoot) {
+    private static Optional<FileGuardPathRule> compileWorkspaceAxisRule(Object workspaceCfg, Path workspaceRoot) {
         if (!hasAxisDict(workspaceCfg)) {
-            return null;
+            return Optional.empty();
         }
         if (workspaceRoot == null) {
             logger.warn("[file_guard] workspace.rule_skipped reason=no_workspace_root "
                     + "(file_guard.workspace is set but workspace_root was not resolved)");
-            return null;
+            return Optional.empty();
         }
         if (!(workspaceCfg instanceof Map<?, ?> wsMap)) {
-            return null;
+            return Optional.empty();
         }
         Map<String, Object> ws = toStringKeyMap(wsMap);
         return compilePathEntry(workspaceRoot.toString(),
                 ws.get("read"), ws.get("write"), ws.get("exec"),
-                "prefix", PermissionLevel.ASK);
+                "prefix");
     }
 
     /**
@@ -325,6 +315,13 @@ public final class FileGuardConfigNormalizer {
      * read axis is elevated to ALLOW (writing/executing implies reading). An explicit
      * {@code read=deny} wins and is preserved with a warning, mirroring Python
      * {@code _apply_implications}.
+     *
+     * @param read      the read axis level
+     * @param write     the write axis level
+     * @param exec      the exec axis level
+     * @param pathLabel the path being compiled (for diagnostics)
+     * @return the implied {@code [read, write, exec]} levels
+     * @since 0.1.15
      */
     private static PermissionLevel[] applyImplications(PermissionLevel read, PermissionLevel write,
                                                       PermissionLevel exec, String pathLabel) {
@@ -370,18 +367,18 @@ public final class FileGuardConfigNormalizer {
         return map.containsKey("read") || map.containsKey("write") || map.containsKey("exec");
     }
 
-    private static Boolean explicitEnabled(Map<String, Object> fg) {
+    private static Optional<Boolean> explicitEnabled(Map<String, Object> fg) {
         if (!fg.containsKey("enabled")) {
-            return null;
+            return Optional.empty();
         }
         Object v = fg.get("enabled");
         if (v == null) {
-            return false;
+            return Optional.of(false);
         }
-        if (v instanceof Boolean b) {
-            return b;
+        if (v instanceof Boolean) {
+            return Optional.of((Boolean) v);
         }
-        return Boolean.parseBoolean(String.valueOf(v).trim());
+        return Optional.of(Boolean.parseBoolean(String.valueOf(v).trim()));
     }
 
     private static void fillAxisFromStar(Map<FileGuardAction, PermissionLevel> out, Object action) {
@@ -428,10 +425,12 @@ public final class FileGuardConfigNormalizer {
         String s = raw.trim();
         if (s.startsWith("~")) {
             String home = System.getProperty("user.home", "");
-            if (s.equals("~")) {
+            if ("~".equals(s)) {
                 s = home;
             } else if (s.startsWith("~/")) {
                 s = home + s.substring(1);
+            } else {
+                // not a home reference; keep as-is
             }
         }
         s = expandVars(s);
@@ -442,9 +441,9 @@ public final class FileGuardConfigNormalizer {
         if (s.indexOf('$') < 0) {
             return s;
         }
-        s = replaceEnv(s, ENV_BRACE, 1);
-        s = replaceEnv(s, ENV_PLAIN, 1);
-        return s;
+        String expanded = replaceEnv(s, ENV_BRACE, 1);
+        expanded = replaceEnv(expanded, ENV_PLAIN, 1);
+        return expanded;
     }
 
     private static String replaceEnv(String s, Pattern pattern, int nameGroup) {
@@ -475,7 +474,7 @@ public final class FileGuardConfigNormalizer {
     private static List<Map<String, Object>> getList(Map<String, Object> fg, String key) {
         Object v = fg.get(key);
         if (!(v instanceof List<?> list)) {
-            return null;
+            return Collections.emptyList();
         }
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object item : list) {

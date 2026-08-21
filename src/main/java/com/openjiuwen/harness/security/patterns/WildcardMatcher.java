@@ -20,9 +20,8 @@ import java.util.regex.PatternSyntaxException;
  * @since 0.1.15
  */
 public final class WildcardMatcher {
-
     private static final String WILDCARD_CHAR_CLASS = "[-a-zA-Z0-9 ._/:\"']";
-    private static final boolean WINDOWS =
+    private static final boolean IS_WINDOWS =
             System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     private WildcardMatcher() {
@@ -51,7 +50,7 @@ public final class WildcardMatcher {
             escaped = escaped.replace("*", WILDCARD_CHAR_CLASS + "*");
         }
         try {
-            int flags = WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
+            int flags = IS_WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
             return Pattern.compile(escaped, flags).matcher(val).matches();
         } catch (PatternSyntaxException ex) {
             return false;
@@ -62,13 +61,17 @@ public final class WildcardMatcher {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < pat.length(); i++) {
             char c = pat.charAt(i);
-            if (c == '.' || c == '+' || c == '^' || c == '$' || c == '{' || c == '}'
-                    || c == '(' || c == ')' || c == '|' || c == '[' || c == ']' || c == '\\') {
+            if (isRegexMeta(c)) {
                 sb.append('\\').append(c);
             } else {
                 sb.append(c);
             }
         }
         return sb.toString();
+    }
+
+    private static boolean isRegexMeta(char c) {
+        return c == '.' || c == '+' || c == '^' || c == '$' || c == '{' || c == '}'
+                || c == '(' || c == ')' || c == '|' || c == '[' || c == ']' || c == '\\';
     }
 }

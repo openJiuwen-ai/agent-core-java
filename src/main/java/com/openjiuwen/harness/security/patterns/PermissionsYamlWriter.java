@@ -9,6 +9,7 @@ import com.openjiuwen.harness.security.files.PathAccessExtractor.PathAccess;
 import com.openjiuwen.harness.security.shellast.ShellAst;
 import com.openjiuwen.harness.security.shellast.ShellAstParseResult;
 import com.openjiuwen.harness.security.tiered.ToolCategory;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Persists user-chosen "always allow" decisions into the agent {@code permissions} YAML.
@@ -41,7 +43,6 @@ import java.util.Map;
  * @since 0.1.15
  */
 public final class PermissionsYamlWriter {
-
     private static final Logger logger = LoggerFactory.getLogger(PermissionsYamlWriter.class);
 
     private static final String SHELL_COMMAND_KEY = "command";
@@ -114,7 +115,7 @@ public final class PermissionsYamlWriter {
                 continue;
             }
             String[] axes = axesForFileGuardAction(access.getAction());
-            mergeFileGuardPathRule(perms, pathNorm, axes[0], axes[1], axes[2], MATCH_PREFIX);
+            mergeFileGuardPathRule(perms, pathNorm, axes, MATCH_PREFIX);
         }
         return perms;
     }
@@ -150,7 +151,7 @@ public final class PermissionsYamlWriter {
             stageAndMove(resolved, content);
             logger.info("[PermissionEngine] permission.write_yaml.ok path={}", resolved);
             return true;
-        } catch (Exception ex) {
+        } catch (IOException ex) {
             logger.error("[PermissionEngine] permission.write_yaml.failed path={}", yamlPath, ex);
             return false;
         }
@@ -167,11 +168,11 @@ public final class PermissionsYamlWriter {
                     toolName);
             return;
         }
-        String pattern = shellPattern(parse, command);
-        if (pattern == null || pattern.isEmpty()) {
+        Optional<String> pattern = shellPattern(parse, command);
+        if (pattern.isEmpty()) {
             return;
         }
-        appendApprovalOverride(perms, toolName, MATCH_COMMAND, pattern, ACTION_ALLOW);
+        appendApprovalOverride(perms, toolName, MATCH_COMMAND, pattern.get(), ACTION_ALLOW);
     }
 
     private static void mergeToolAllow(Map<String, Object> perms, String toolName) {
@@ -187,7 +188,7 @@ public final class PermissionsYamlWriter {
         return parse.getFlags() != null && parse.getFlags().hasRiskyStructure();
     }
 
-    private static String shellPattern(ShellAstParseResult parse, String command) {
+    private static Optional<String> shellPattern(ShellAstParseResult parse, String command) {
         String text = command;
         if ("simple".equals(parse.getKind())
                 && parse.getSubcommands() != null
@@ -198,7 +199,7 @@ public final class PermissionsYamlWriter {
             }
         }
         String pattern = text.strip();
-        return pattern.isEmpty() ? null : pattern;
+        return pattern.isEmpty() ? Optional.empty() : Optional.of(pattern);
     }
 
     private static void appendApprovalOverride(Map<String, Object> perms, String toolName,
@@ -255,7 +256,10 @@ public final class PermissionsYamlWriter {
 
     @SuppressWarnings("unchecked")
     private static void mergeFileGuardPathRule(Map<String, Object> perms, String pathNorm,
-                                               String read, String write, String exec, String match) {
+                                               String[] axes, String match) {
+        String read = axes[0];
+        String write = axes[1];
+        String exec = axes[2];
         Map<String, Object> fg = asMutableStringKeyMap(perms.get("file_guard"));
         fg.put("enabled", true);
         List<Object> paths = asMutableList(fg.get("paths"));
@@ -350,7 +354,7 @@ public final class PermissionsYamlWriter {
                         target);
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
             }
-        } catch (Exception ex) {
+        } catch (IOException ex) {
             deleteQuietly(temp);
             throw ex;
         }

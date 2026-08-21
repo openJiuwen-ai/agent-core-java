@@ -6,6 +6,7 @@ package com.openjiuwen.harness.security;
 
 import com.openjiuwen.harness.security.fileguard.FileGuardChecker;
 import com.openjiuwen.harness.security.tiered.TieredPolicy;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -171,8 +172,8 @@ public class PermissionEngine {
      */
     private boolean isEnabled() {
         Object raw = config.get("enabled");
-        if (raw instanceof Boolean b) {
-            return b;
+        if (raw instanceof Boolean) {
+            return (Boolean) raw;
         }
         if (raw instanceof String s) {
             return Boolean.parseBoolean(s.trim());

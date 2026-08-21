@@ -21,8 +21,7 @@ import java.util.regex.PatternSyntaxException;
  * @since 0.1.15
  */
 public final class RuleMatcher {
-
-    private static final boolean WINDOWS =
+    private static final boolean IS_WINDOWS =
             System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     private RuleMatcher() {
@@ -65,7 +64,7 @@ public final class RuleMatcher {
         String p = pattern.trim();
         if (p.toLowerCase(Locale.ROOT).startsWith("re:")) {
             String expr = p.substring(3).trim();
-            int flags = WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
+            int flags = IS_WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
             try {
                 return Pattern.compile(expr, flags).matcher(value.replace("\\", "/")).find();
             } catch (PatternSyntaxException ex) {
@@ -76,7 +75,7 @@ public final class RuleMatcher {
     }
 
     private static boolean regexMatches(String expr, String command) {
-        int flags = WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
+        int flags = IS_WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
         String normalized = command.replace("\\", "/");
         Pattern compiled;
         try {

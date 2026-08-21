@@ -64,7 +64,7 @@ public final class TieredPolicy {
         }
 
         ShellAstParseResult shellParse = null;
-        if ("shell".equals(ToolCategory.of(toolName))) {
+        if (ToolCategory.of(toolName).map("shell"::equals).orElse(false)) {
             shellParse = ShellAst.parse(commandText(args));
         }
         Pair floor = shellAstFloor(shellParse);
@@ -73,7 +73,7 @@ public final class TieredPolicy {
                 approvalOverrides, baseline.level, baseline.rule, defaultsCfg);
 
         Pair decision;
-        if ("shell".equals(ToolCategory.of(toolName))
+        if (ToolCategory.of(toolName).map("shell"::equals).orElse(false)
                 && shellParse != null && "simple".equals(shellParse.getKind())) {
             decision = aggregateSubcommands(shellParse, toolName, args, ctx);
         } else {
@@ -131,7 +131,7 @@ public final class TieredPolicy {
                 continue;
             }
             if (!ruleTools.isEmpty()
-                    && "path".equals(ToolCategory.of(ruleTools.get(0)))) {
+                    && ToolCategory.of(ruleTools.get(0)).map("path"::equals).orElse(false)) {
                 continue;
             }
             Object patternObj = rule.get("pattern");
@@ -175,7 +175,7 @@ public final class TieredPolicy {
                 continue;
             }
             if (!ruleTools.isEmpty()
-                    && "path".equals(ToolCategory.of(ruleTools.get(0)))) {
+                    && ToolCategory.of(ruleTools.get(0)).map("path"::equals).orElse(false)) {
                 continue;
             }
             Object patternObj = rule.get("pattern");
@@ -196,7 +196,7 @@ public final class TieredPolicy {
         if (ruleTools.isEmpty()) {
             return false;
         }
-        String category = ToolCategory.of(ruleTools.get(0));
+        String category = ToolCategory.of(ruleTools.get(0)).orElse(null);
         if ("shell".equals(category)) {
             return RuleMatcher.shellMatches(pattern, commandText(toolArgs));
         }
@@ -230,8 +230,8 @@ public final class TieredPolicy {
         }
         var flags = shellParse.getFlags();
         if ("too_complex".equals(shellParse.getKind())) {
-            return new Pair(PermissionLevel.ASK,
-                    MR + ":shell_ast:too_complex:" + orDefault(shellParse.getReason(), "unsupported_complex_structure"));
+            return new Pair(PermissionLevel.ASK, MR + ":shell_ast:too_complex:"
+                    + orDefault(shellParse.getReason(), "unsupported_complex_structure"));
         }
         if ("parse_unavailable".equals(shellParse.getKind()) && flags.hasRiskyStructure()) {
             return new Pair(PermissionLevel.ASK,
@@ -356,8 +356,7 @@ public final class TieredPolicy {
         if (value == null) {
             return fallback;
         }
-        String s = String.valueOf(value);
-        return s;
+        return String.valueOf(value);
     }
 
     private static Object defaultsCfgStar(Map<String, Object> defaultsCfg) {

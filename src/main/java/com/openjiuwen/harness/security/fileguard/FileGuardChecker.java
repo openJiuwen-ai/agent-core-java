@@ -9,6 +9,7 @@ import com.openjiuwen.harness.security.PermissionResult;
 import com.openjiuwen.harness.security.files.PathAccessExtractor;
 import com.openjiuwen.harness.security.patterns.GlobMatcher;
 import com.openjiuwen.harness.security.patterns.PathMatcher;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +37,6 @@ import java.util.Map;
  * @since 0.1.15
  */
 public final class FileGuardChecker {
-
     private static final Logger logger = LoggerFactory.getLogger(FileGuardChecker.class);
 
     private final EffectiveFileGuardConfig effective;
@@ -117,6 +117,11 @@ public final class FileGuardChecker {
 
     /**
      * Resolve the level for a single access against all rules.
+     *
+     * @param path   the access path
+     * @param action the file-access axis
+     * @return the resolved level and matched rule id
+     * @since 0.1.15
      */
     private Resolve resolveOne(Path path, FileGuardAction action) {
         String pathPosix = posix(path);
@@ -131,16 +136,11 @@ public final class FileGuardChecker {
                 }
                 continue;
             }
-            String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
-            if (pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/")) {
-                if (PathMatcher.containsPath(prefix, path.toString())
-                        || pathPosix.equals(prefix)
-                        || pathPosix.startsWith(prefix + "/")) {
-                    int len = prefix.length();
-                    if (bestPrefix == null || len > bestLen) {
-                        bestPrefix = rule;
-                        bestLen = len;
-                    }
+            if (matchesPrefix(rule, pathPosix, path)) {
+                int len = stripTrailingSlash(rule.getPath().replace("\\", "/")).length();
+                if (bestPrefix == null || len > bestLen) {
+                    bestPrefix = rule;
+                    bestLen = len;
                 }
             }
         }
@@ -162,14 +162,28 @@ public final class FileGuardChecker {
         return new Resolve(def, "file_guard:defaults");
     }
 
+    private boolean matchesPrefix(FileGuardPathRule rule, String pathPosix, Path path) {
+        String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
+        boolean pathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
+        if (!pathMatches) {
+            return false;
+        }
+        return PathMatcher.containsPath(prefix, path.toString())
+                || pathPosix.equals(prefix)
+                || pathPosix.startsWith(prefix + "/");
+    }
+
     /**
      * Resolve-time backward implication: WRITE/EXEC also honors the rule's READ axis.
+     *
+     * @param rule   the matched path rule
+     * @param action the file-access axis
+     * @return the resolved level after applying the Read-implies safety check
+     * @since 0.1.15
      */
     private PermissionLevel resolveLevelWithImplication(FileGuardPathRule rule, FileGuardAction action) {
-        PermissionLevel base = rule.levelFor(action);
-        if (base == null) {
-            base = effective.getDefaults().getOrDefault(action, PermissionLevel.ASK);
-        }
+        PermissionLevel base = rule.levelFor(action)
+                .orElse(effective.getDefaults().getOrDefault(action, PermissionLevel.ASK));
         if (action == FileGuardAction.WRITE || action == FileGuardAction.EXEC) {
             PermissionLevel readLevel = rule.getRead();
             if (readLevel != null) {

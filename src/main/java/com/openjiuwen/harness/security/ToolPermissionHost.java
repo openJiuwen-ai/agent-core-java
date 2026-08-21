@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.security;
 
 import com.openjiuwen.harness.security.patterns.PermissionsYamlWriter;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
@@ -47,6 +48,7 @@ public class ToolPermissionHost {
     private Path permissionYamlPath;
     @Builder.Default
     private Supplier<Map<String, Object>> getPermissionsSnapshot = LinkedHashMap::new;
+
     /**
      * Hosted ASK confirmation callback; unset means the rail uses the built-in interrupt
      * confirmation flow.

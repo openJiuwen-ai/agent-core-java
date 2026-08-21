@@ -30,10 +30,13 @@ import java.util.Map;
 public class PermissionConfirmationRequest {
     /** Normalized tool name (e.g. {@code bash}). */
     private String toolName;
+
     /** Tool arguments as a mutable map. */
     private Map<String, Object> toolArgs;
+
     /** Engine decision that prompted the confirmation request. */
     private PermissionResult result;
+
     /** Session auto-confirm key the rail would otherwise use. */
     private String autoConfirmKey;
 }

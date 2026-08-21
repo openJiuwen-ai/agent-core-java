@@ -28,17 +28,17 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ShellStructureFlags {
-    private boolean compoundOperators;
-    private boolean pipeline;
-    private boolean subshell;
-    private boolean commandGroup;
-    private boolean commandSubstitution;
-    private boolean processSubstitution;
-    private boolean parameterExpansion;
-    private boolean heredoc;
-    private boolean inputRedirection;
-    private boolean outputRedirection;
-    private boolean actualOperatorNodes;
+    private boolean isCompoundOperators;
+    private boolean isPipeline;
+    private boolean isSubshell;
+    private boolean isCommandGroup;
+    private boolean isCommandSubstitution;
+    private boolean isProcessSubstitution;
+    private boolean isParameterExpansion;
+    private boolean isHeredoc;
+    private boolean isInputRedirection;
+    private boolean isOutputRedirection;
+    private boolean isActualOperatorNodes;
     @Builder.Default
     private List<String> operators = new ArrayList<>();
 
@@ -49,15 +49,15 @@ public class ShellStructureFlags {
      * @since 0.1.15
      */
     public boolean hasRiskyStructure() {
-        return pipeline
-                || compoundOperators
-                || subshell
-                || commandGroup
-                || commandSubstitution
-                || processSubstitution
-                || parameterExpansion
-                || heredoc
-                || inputRedirection
-                || outputRedirection;
+        return isPipeline
+                || isCompoundOperators
+                || isSubshell
+                || isCommandGroup
+                || isCommandSubstitution
+                || isProcessSubstitution
+                || isParameterExpansion
+                || isHeredoc
+                || isInputRedirection
+                || isOutputRedirection;
     }
 }

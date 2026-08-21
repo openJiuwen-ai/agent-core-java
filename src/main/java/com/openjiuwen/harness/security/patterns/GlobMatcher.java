@@ -16,7 +16,6 @@ import java.util.regex.PatternSyntaxException;
  * @since 0.1.15
  */
 public final class GlobMatcher {
-
     private GlobMatcher() {
     }
 

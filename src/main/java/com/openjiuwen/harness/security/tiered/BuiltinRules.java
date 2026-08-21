@@ -7,7 +7,9 @@ package com.openjiuwen.harness.security.tiered;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.error.YAMLException;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,7 +26,6 @@ import java.util.Map;
  * @since 0.1.15
  */
 public final class BuiltinRules {
-
     private static final Logger logger = LoggerFactory.getLogger(BuiltinRules.class);
     private static final String RESOURCE = "/harness/security/builtin_rules.yaml";
     private static volatile List<Map<String, Object>> cached;
@@ -38,7 +39,6 @@ public final class BuiltinRules {
      * @return unmodifiable list of rule maps; empty when the resource is missing
      * @since 0.1.15
      */
-    @SuppressWarnings("unchecked")
     public static List<Map<String, Object>> get() {
         List<Map<String, Object>> snapshot = cached;
         if (snapshot != null) {
@@ -51,23 +51,32 @@ public final class BuiltinRules {
             List<Map<String, Object>> rules = new ArrayList<>();
             try (InputStream in = BuiltinRules.class.getResourceAsStream(RESOURCE)) {
                 if (in != null) {
-                    Object data = new Yaml().load(in);
-                    if (data instanceof Map<?, ?> root) {
-                        Object raw = root.get("rules");
-                        if (raw instanceof List<?> list) {
-                            for (Object item : list) {
-                                if (item instanceof Map<?, ?> map) {
-                                    rules.add((Map<String, Object>) map);
-                                }
-                            }
-                        }
-                    }
+                    rules = parseRules(in);
                 }
-            } catch (Exception ex) {
+            } catch (IOException | YAMLException ex) {
                 logger.warn("Failed to load built-in permission rules from {}", RESOURCE, ex);
             }
             cached = Collections.unmodifiableList(rules);
             return cached;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> parseRules(InputStream in) {
+        List<Map<String, Object>> rules = new ArrayList<>();
+        Object data = new Yaml().load(in);
+        if (!(data instanceof Map<?, ?> root)) {
+            return rules;
+        }
+        Object raw = root.get("rules");
+        if (!(raw instanceof List<?> list)) {
+            return rules;
+        }
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                rules.add((Map<String, Object>) map);
+            }
+        }
+        return rules;
     }
 }

@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.security.shellast;
 
 import java.util.Iterator;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
 /**
@@ -38,7 +39,7 @@ public final class ShellAst {
             if (backends.hasNext()) {
                 return backends.next();
             }
-        } catch (Throwable t) {
+        } catch (ServiceConfigurationError t) {
             // Fall through to the conservative scanner.
         }
         return ConservativeShellScanner.INSTANCE;

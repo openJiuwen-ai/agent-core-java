@@ -19,7 +19,6 @@ import java.util.Iterator;
  * @since 0.1.15
  */
 public final class PathMatcher {
-
     private PathMatcher() {
     }
 
@@ -69,8 +68,8 @@ public final class PathMatcher {
             Path p = Paths.get(parent).toAbsolutePath().normalize();
             Path c = Paths.get(child).toAbsolutePath().normalize();
             String rel = p.relativize(c).toString().replace("\\", "/");
-            return !rel.startsWith("..") && !rel.equals("..");
-        } catch (RuntimeException ex) {
+            return !rel.startsWith("..") && !"..".equals(rel);
+        } catch (IllegalArgumentException ex) {
             return false;
         }
     }
