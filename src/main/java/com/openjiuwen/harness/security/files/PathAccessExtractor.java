@@ -253,7 +253,6 @@ public final class PathAccessExtractor {
     }
 
     private static List<PathAccess> extractFromArgv(String cmd0, List<String> tokens, Path base) {
-        List<PathAccess> out = new ArrayList<>();
         List<Path> pathTokens = new ArrayList<>();
         for (int i = 1; i < tokens.size(); i++) {
             String tok = stripQuotes(tokens.get(i));
@@ -265,6 +264,7 @@ public final class PathAccessExtractor {
                 pathTokens.add(p);
             }
         }
+        List<PathAccess> out = new ArrayList<>();
         if (TRANSFER_CMDS.contains(cmd0) && pathTokens.size() >= 2) {
             out.add(access(pathTokens.get(0), FileGuardAction.READ, base));
             for (int i = 1; i < pathTokens.size(); i++) {

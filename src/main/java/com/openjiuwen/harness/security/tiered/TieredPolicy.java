@@ -47,28 +47,26 @@ public final class TieredPolicy {
     public static PermissionResult evaluate(Map<String, Object> config, String toolName,
             Map<String, Object> toolArgs) {
         Map<String, Object> cfg = config != null ? config : Map.of();
-        Map<String, Object> args = toolArgs != null ? toolArgs : Map.of();
         String mode = strOr(cfg.get("permission_mode"), "normal").trim().toLowerCase(Locale.ROOT);
         if (!"strict".equals(mode)) {
             mode = "normal";
         }
 
         Map<String, Object> toolsCfg = asMap(cfg.get("tools"));
-        Map<String, Object> defaultsCfg = asMap(cfg.get("defaults"));
-        List<Map<String, Object>> rules = asListOfMaps(cfg.get("rules"));
-        List<Map<String, Object>> approvalOverrides = asListOfMaps(cfg.get("approval_overrides"));
-
         Pair baseline = baselineLevel(toolsCfg, toolName);
         if (baseline.level == PermissionLevel.DENY) {
             return result(PermissionLevel.DENY, baseline.rule);
         }
 
         ShellAstParseResult shellParse = null;
+        Map<String, Object> args = toolArgs != null ? toolArgs : Map.of();
         if (ToolCategory.of(toolName).map("shell"::equals).orElse(false)) {
             shellParse = ShellAst.parse(commandText(args));
         }
-        Pair floor = shellAstFloor(shellParse);
 
+        Map<String, Object> defaultsCfg = asMap(cfg.get("defaults"));
+        List<Map<String, Object>> rules = asListOfMaps(cfg.get("rules"));
+        List<Map<String, Object>> approvalOverrides = asListOfMaps(cfg.get("approval_overrides"));
         InvocationContext ctx = new InvocationContext(mode, BuiltinRules.get(), rules,
                 approvalOverrides, baseline.level, baseline.rule, defaultsCfg);
 
@@ -79,6 +77,7 @@ public final class TieredPolicy {
         } else {
             decision = evaluateSingleInvocation(toolName, args, ctx);
         }
+        Pair floor = shellAstFloor(shellParse);
         decision = applyFloor(decision, floor);
         return result(decision.level, decision.rule);
     }
