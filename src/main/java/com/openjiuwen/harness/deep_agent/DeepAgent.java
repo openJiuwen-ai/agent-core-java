@@ -884,22 +884,23 @@ public class DeepAgent implements AutoCloseable {
             if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
                 effectiveSession.withTenantContext(effectiveCtx);
             }
-            // 上游 Runner 已对 session 执行过 preRun（恢复 checkpoint），此处 effectiveSession 无需再次读 Redis；
-            // 直接复用 session 已恢复的状态（下方 copySessionState 将其同步到 effectiveSession）。
-            // 仅在直接使用 DeepAgent（未走 Runner，session 为 null 或未 preRun）时才执行 checkpoint 恢复。
-            if (session == null || !session.isPreRunDone()) {
-                effectiveSession.preRun(normalized);
+            // preRun 前：把 Runner 的 runState（PRE_DONE）拷到 effectiveSession，
+            // effectiveSession.preRun 被 CAS 跳过（省 1 次 checkpoint 读）。
+            // copySessionState 保持在 preRun 之后，维持原始时序（Runner 最新状态覆盖 recover 结果）。
+            // postRun 后：把 effectiveSession 的 runState（PRE_DONE | POST_DONE）拷回 Runner session，
+            // Runner.postRun 也被 CAS 跳过（省 1 次 checkpoint 写）。
+            if (session != null) {
+                effectiveSession.copyRunState(session);
             }
+            effectiveSession.preRun(normalized);
             if (session != null) {
                 copySessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-            // 同理，仅在上游未介入 preRun 时才执行 postRun 落盘；Runner 会在 wrapStreamingIterator/close 时统一保存。
-            if (session == null || !session.isPreRunDone()) {
-                effectiveSession.postRun();
-            }
+            effectiveSession.postRun();
             if (session != null) {
                 copySessionState(effectiveSession, session);
+                session.copyRunState(effectiveSession);
             }
             return result;
         }
@@ -1015,11 +1016,13 @@ public class DeepAgent implements AutoCloseable {
         ensureInitialized();
         Map<String, Object> normalized = normalizeStreamInputs(inputs);
         AgentSessionApi effectiveSession = buildEffectiveStreamSession(normalized, session, streamModes);
-        // 与 invoke 路径一致：上游 Runner 已恢复 checkpoint 时跳过 effectiveSession.preRun，
-        // 避免对同一 sessionId 再读一次 Redis；直接复用 session 状态（下方 copySessionState 同步）。
-        if (session == null || !session.isPreRunDone()) {
-            effectiveSession.preRun(normalized);
+        // copyRunState 在 preRun 前拷 PRE_DONE，preRun 被 CAS 跳过（省 1 读）。
+        // copySessionState 保持在 preRun 之后，维持原始时序。
+        // postRun 后（在 streamTaskLoop/streamInvokeOnce 的 finally 里）：拷回 POST_DONE，Runner.postRun 也跳过（省 1 写）。
+        if (session != null) {
+            effectiveSession.copyRunState(session);
         }
+        effectiveSession.preRun(normalized);
         if (session != null) {
             copySessionState(session, effectiveSession);
         }
@@ -1071,10 +1074,11 @@ public class DeepAgent implements AutoCloseable {
                             copySessionState(effectiveSession, session);
                         }
                     } finally {
-                        // 仅在上游未介入 preRun 时执行 postRun 落盘；
-                        // 走 Runner 时由 Runner 的 wrapStreamingIterator/close 统一保存外层 session。
-                        if (session == null || !session.isPreRunDone()) {
-                            effectiveSession.postRun();
+                        // postRun 执行：关 emitter + checkpoint 落盘（POST_DONE 未拷，CAS 不跳过）。
+                        effectiveSession.postRun();
+                        // 拷回 runState（PRE_DONE | POST_DONE），让 Runner 的 postRun 也被 CAS 跳过（省 1 写）。
+                        if (session != null) {
+                            session.copyRunState(effectiveSession);
                         }
                     }
                 }
@@ -1096,12 +1100,12 @@ public class DeepAgent implements AutoCloseable {
         } catch (IllegalStateException ex) {
             writeStreamError(effectiveSession, outputs.size(), ex);
         } finally {
-            // 同 streamTaskLoop：仅在上游未介入 preRun 时执行 postRun 落盘。
-            if (session == null || !session.isPreRunDone()) {
-                effectiveSession.postRun();
-            }
+            // postRun 执行：关 emitter + checkpoint 落盘。
+            effectiveSession.postRun();
             if (session != null) {
                 copySessionState(effectiveSession, session);
+                // 拷回 runState，让 Runner 的 postRun 也被 CAS 跳过（省 1 写）。
+                session.copyRunState(effectiveSession);
             }
         }
         java.util.Iterator<Object> iterator = effectiveSession.streamIterator();

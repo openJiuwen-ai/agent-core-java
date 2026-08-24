@@ -374,6 +374,27 @@ public class AgentSessionApi implements Session {
     }
 
     /**
+     * Copy the full run-state bitmask from the given session.
+     * Used to propagate CAS guards between paired sessions (e.g. a runner
+     * session and a downstream agent's effective session):
+     * <ul>
+     *   <li>Before preRun: copy upstream's PRE_DONE so downstream preRun is
+     *       skipped (avoids redundant checkpoint read).</li>
+     *   <li>After postRun: copy downstream's PRE_DONE | POST_DONE back to
+     *       upstream so upstream postRun is also skipped (checkpoint was
+     *       already saved by the downstream session).</li>
+     * </ul>
+     * 
+     * @param source the session whose run-state to copy
+     * @since 0.1.15
+     */
+    public void copyRunState(AgentSessionApi source) {
+        if (source != null) {
+            runState.set(source.runState.get());
+        }
+    }
+
+    /**
      * Create a workflow session from this agent session.
      * 
      * @return the result
