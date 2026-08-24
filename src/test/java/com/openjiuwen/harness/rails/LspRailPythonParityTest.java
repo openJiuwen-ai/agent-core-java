@@ -311,31 +311,23 @@ class LspRailPythonParityTest {
 
     @Test
     void testBeforeModelCallRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertTrue(callbacks.containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL.getValue()));
+        assertTrue(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL));
     }
 
     @Test
     void testAfterInvokeNotRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.AFTER_INVOKE.getValue()));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.AFTER_INVOKE));
     }
 
     @Test
     void testUnusedHooksNotRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.BEFORE_TOOL_CALL.getValue()));
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.ON_MODEL_EXCEPTION.getValue()));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.BEFORE_TOOL_CALL));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.ON_MODEL_EXCEPTION));
     }
 
     @Test
     void testAfterToolCallRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertTrue(callbacks.containsKey(AgentCallbackEvent.AFTER_TOOL_CALL.getValue()));
+        assertTrue(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.AFTER_TOOL_CALL));
     }
 
     private static TestAgent makeAgent(String workspaceRoot, String language) {

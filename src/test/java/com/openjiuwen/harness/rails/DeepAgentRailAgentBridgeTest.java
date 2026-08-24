@@ -6,6 +6,8 @@ package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -21,7 +23,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DeepAgentRailAgentBridgeTest {
 
     @Test
-    void beforeModelCallForwardsToDeepAgentRail() {
+    void deepAgentRailIsAgentRail() {
+        assertThat(new DeepAgentRail()).isInstanceOf(AgentRail.class);
+    }
+
+    @Test
+    void getCallbacksRegistersInnerLoopOnly() {
+        assertThat(new DeepAgentRail().getCallbacks())
+                .containsKeys(
+                        AgentCallbackEvent.BEFORE_MODEL_CALL,
+                        AgentCallbackEvent.AFTER_MODEL_CALL,
+                        AgentCallbackEvent.ON_MODEL_EXCEPTION,
+                        AgentCallbackEvent.BEFORE_TOOL_CALL,
+                        AgentCallbackEvent.AFTER_TOOL_CALL,
+                        AgentCallbackEvent.ON_TOOL_EXCEPTION)
+                .doesNotContainKeys(
+                        AgentCallbackEvent.BEFORE_INVOKE,
+                        AgentCallbackEvent.AFTER_INVOKE,
+                        AgentCallbackEvent.BEFORE_TASK_ITERATION,
+                        AgentCallbackEvent.AFTER_TASK_ITERATION);
+    }
+
+    @Test
+    void beforeModelCallForwardsToCallbackContextHook() {
         AtomicInteger calls = new AtomicInteger();
         DeepAgentRail rail = new DeepAgentRail() {
             @Override
@@ -29,9 +53,9 @@ class DeepAgentRailAgentBridgeTest {
                 calls.incrementAndGet();
             }
         };
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(new DeepAgent(), rail);
+        rail.init(new DeepAgent());
 
-        bridge.beforeModelCall(new AgentCallbackContext()).toCompletableFuture().join();
+        rail.beforeModelCall(new AgentCallbackContext()).toCompletableFuture().join();
 
         assertThat(calls.get()).isEqualTo(1);
     }
@@ -47,7 +71,7 @@ class DeepAgentRailAgentBridgeTest {
                 toolArgs.set(ctx.get("tool_args"));
             }
         };
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(new DeepAgent(), rail);
+        rail.init(new DeepAgent());
         AgentCallbackContext context = new AgentCallbackContext();
         ToolCallInputs inputs = new ToolCallInputs();
         inputs.setToolCall(ToolCall.builder().id("tc-1").name("bash").arguments("{\"cmd\":\"ls\"}").build());
@@ -55,7 +79,7 @@ class DeepAgentRailAgentBridgeTest {
         inputs.setToolArgs(Map.of("cmd", "ls"));
         context.setInputs(inputs);
 
-        bridge.beforeToolCall(context).toCompletableFuture().join();
+        rail.beforeToolCall(context).toCompletableFuture().join();
 
         assertThat(toolName.get()).isEqualTo("bash");
         assertThat(toolArgs.get()).isEqualTo(Map.of("cmd", "ls"));
@@ -72,14 +96,14 @@ class DeepAgentRailAgentBridgeTest {
                 ctx.put("tool_result", "blocked");
             }
         };
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(new DeepAgent(), rail);
+        rail.init(new DeepAgent());
         AgentCallbackContext context = new AgentCallbackContext();
         ToolCallInputs inputs = new ToolCallInputs();
         inputs.setToolName("bash");
         inputs.setToolArgs(Map.of("cmd", "ls"));
         context.setInputs(inputs);
 
-        bridge.beforeToolCall(context).toCompletableFuture().join();
+        rail.beforeToolCall(context).toCompletableFuture().join();
 
         assertThat(context.getExtra().get("_skip_tool")).isEqualTo(true);
         assertThat(inputs.getToolName()).isEqualTo("read_file");
@@ -95,11 +119,11 @@ class DeepAgentRailAgentBridgeTest {
                 ctx.reject("[PERMISSION_DENIED] blocked");
             }
         };
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(new DeepAgent(), rail);
+        rail.init(new DeepAgent());
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(new ToolCallInputs());
 
-        bridge.beforeToolCall(context).toCompletableFuture().join();
+        rail.beforeToolCall(context).toCompletableFuture().join();
 
         assertThat(context.getExtra().get("_skip_tool")).isEqualTo(Boolean.TRUE);
         assertThat(context.getExtra().get("error")).isEqualTo("[PERMISSION_DENIED] blocked");
@@ -114,13 +138,13 @@ class DeepAgentRailAgentBridgeTest {
                 messages.set(ctx.get("messages"));
             }
         };
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(new DeepAgent(), rail);
+        rail.init(new DeepAgent());
         AgentCallbackContext context = new AgentCallbackContext();
         ModelCallInputs inputs = new ModelCallInputs();
         inputs.setMessages(List.of("hello"));
         context.setInputs(inputs);
 
-        bridge.beforeModelCall(context).toCompletableFuture().join();
+        rail.beforeModelCall(context).toCompletableFuture().join();
 
         assertThat(messages.get()).isEqualTo(List.of("hello"));
     }

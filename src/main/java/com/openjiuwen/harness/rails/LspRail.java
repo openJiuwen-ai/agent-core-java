@@ -7,6 +7,7 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.lsp.HarnessLspPackage;
@@ -20,6 +21,7 @@ import com.openjiuwen.harness.tools.lsp_tool.LspTool;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -180,10 +182,10 @@ public class LspRail extends DeepAgentRail {
     }
 
     @Override
-    public Map<String, String> getCallbacks() {
-        Map<String, String> callbacks = new LinkedHashMap<>();
-        callbacks.put(AgentCallbackEvent.BEFORE_MODEL_CALL.getValue(), "beforeModelCall");
-        callbacks.put(AgentCallbackEvent.AFTER_TOOL_CALL.getValue(), "afterToolCall");
+    public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
+        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(AgentCallbackEvent.class);
+        callbacks.put(AgentCallbackEvent.BEFORE_MODEL_CALL, this::beforeModelCall);
+        callbacks.put(AgentCallbackEvent.AFTER_TOOL_CALL, this::afterToolCall);
         return callbacks;
     }
 

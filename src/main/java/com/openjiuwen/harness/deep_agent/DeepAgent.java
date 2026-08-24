@@ -53,7 +53,6 @@ import com.openjiuwen.auto_harness.infra.RuntimeExtensionLoader;
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
-import com.openjiuwen.harness.rails.DeepAgentRailAgentBridge;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
 import com.openjiuwen.harness.rails.subagent.SessionRail;
 import com.openjiuwen.harness.rails.subagent.SubagentRail;
@@ -137,7 +136,7 @@ public class DeepAgent implements AutoCloseable {
     private volatile boolean autoInvokeScheduled;
     private AgentMode currentMode;
     private final List<Object> registeredRails = new CopyOnWriteArrayList<>();
-    private final Map<DeepAgentRail, DeepAgentRailAgentBridge> railBridges = new ConcurrentHashMap<>();
+    private final Set<DeepAgentRail> railsBoundToAgent = ConcurrentHashMap.newKeySet();
     private final List<Object> registeredTools = new CopyOnWriteArrayList<>();
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
     private SessionToolkit sessionToolkit;
@@ -454,12 +453,11 @@ public class DeepAgent implements AutoCloseable {
         initWorkspace();
         if (config.getRails() != null) {
             for (Object rail : config.getRails()) {
-                if (rail instanceof AgentRail agentRail) {
-                    agent.registerRail(agentRail);
-                }
                 if (rail instanceof DeepAgentRail deepAgentRail) {
                     deepAgentRail.setWorkspace(this.workspace);
                     deepAgentRail.setSysOperation(this.config.getSysOperation());
+                } else if (rail instanceof AgentRail agentRail) {
+                    agent.registerRail(agentRail);
                 }
                 if (rail instanceof SkillUseRail skillUseRail) {
                     skillUseRail.init(this);
@@ -2367,20 +2365,17 @@ public class DeepAgent implements AutoCloseable {
     }
 
     private void bindDeepAgentRailToAgent(DeepAgentRail rail) {
-        if (agent == null || rail == null || railBridges.containsKey(rail)) {
+        if (agent == null || rail == null || !railsBoundToAgent.add(rail)) {
             return;
         }
-        DeepAgentRailAgentBridge bridge = new DeepAgentRailAgentBridge(this, rail);
-        railBridges.put(rail, bridge);
-        agent.registerRail(bridge).toCompletableFuture().join();
+        agent.registerRail(rail).toCompletableFuture().join();
     }
 
     private void unbindDeepAgentRailFromAgent(DeepAgentRail rail) {
-        DeepAgentRailAgentBridge bridge = railBridges.remove(rail);
-        if (bridge == null || agent == null) {
+        if (rail == null || !railsBoundToAgent.remove(rail) || agent == null) {
             return;
         }
-        agent.unregisterRail(bridge).toCompletableFuture().join();
+        agent.unregisterRail(rail).toCompletableFuture().join();
     }
 
     private Path workspaceRootPath() {

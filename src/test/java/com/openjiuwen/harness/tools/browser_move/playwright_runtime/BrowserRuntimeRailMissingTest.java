@@ -9,6 +9,8 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -108,7 +110,8 @@ class BrowserRuntimeRailMissingTest {
     private static void railRegisteredForBeforeInvokeEvent() {
         BrowserRuntimeRail rail = new BrowserRuntimeRail(runtime());
 
-        assertThat(rail.getCallbacks()).containsEntry("before_invoke", "beforeInvoke");
+        assertThat(rail).isInstanceOf(AgentRail.class);
+        assertThat(rail.getCallbacks()).containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL);
     }
 
     private static void beforeInvokePersistsCurrentQueryForContinuation() {
