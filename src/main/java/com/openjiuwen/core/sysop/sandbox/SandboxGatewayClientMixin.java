@@ -6,7 +6,6 @@ package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.common.logging.LoggingUtils;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
 
 import java.util.concurrent.CompletableFuture;

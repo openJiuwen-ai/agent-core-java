@@ -7,7 +7,6 @@ package com.openjiuwen.core.sysop.sandbox;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.result.BaseResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
@@ -16,7 +15,6 @@ import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
