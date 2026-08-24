@@ -61,8 +61,8 @@ public class ReMeMemory {
         nodeMetadata.put("updated_at", updatedAt.toString());
         nodeMetadata.put("workspace_id", workspaceId);
         nodeMetadata.put("metadata", metadata.toMap());
-        return new VectorNode("reme_" + workspaceId + "_" + SchemaUtils.sha256Hex(whenToUse).substring(0, 12), whenToUse,
-                null, nodeMetadata);
+        return new VectorNode("reme_" + workspaceId + "_" + SchemaUtils.sha256Hex(whenToUse).substring(0, 12),
+                whenToUse, null, nodeMetadata);
     }
 
     /**
