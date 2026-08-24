@@ -884,12 +884,20 @@ public class DeepAgent implements AutoCloseable {
             if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
                 effectiveSession.withTenantContext(effectiveCtx);
             }
-            effectiveSession.preRun(normalized);
+            // 上游 Runner 已对 session 执行过 preRun（恢复 checkpoint），此处 effectiveSession 无需再次读 Redis；
+            // 直接复用 session 已恢复的状态（下方 copySessionState 将其同步到 effectiveSession）。
+            // 仅在直接使用 DeepAgent（未走 Runner，session 为 null 或未 preRun）时才执行 checkpoint 恢复。
+            if (session == null || !session.isPreRunDone()) {
+                effectiveSession.preRun(normalized);
+            }
             if (session != null) {
                 copySessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-            effectiveSession.postRun();
+            // 同理，仅在上游未介入 preRun 时才执行 postRun 落盘；Runner 会在 wrapStreamingIterator/close 时统一保存。
+            if (session == null || !session.isPreRunDone()) {
+                effectiveSession.postRun();
+            }
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
@@ -1007,7 +1015,11 @@ public class DeepAgent implements AutoCloseable {
         ensureInitialized();
         Map<String, Object> normalized = normalizeStreamInputs(inputs);
         AgentSessionApi effectiveSession = buildEffectiveStreamSession(normalized, session, streamModes);
-        effectiveSession.preRun(normalized);
+        // 与 invoke 路径一致：上游 Runner 已恢复 checkpoint 时跳过 effectiveSession.preRun，
+        // 避免对同一 sessionId 再读一次 Redis；直接复用 session 状态（下方 copySessionState 同步）。
+        if (session == null || !session.isPreRunDone()) {
+            effectiveSession.preRun(normalized);
+        }
         if (session != null) {
             copySessionState(session, effectiveSession);
         }
@@ -1059,7 +1071,11 @@ public class DeepAgent implements AutoCloseable {
                             copySessionState(effectiveSession, session);
                         }
                     } finally {
-                        effectiveSession.postRun();
+                        // 仅在上游未介入 preRun 时执行 postRun 落盘；
+                        // 走 Runner 时由 Runner 的 wrapStreamingIterator/close 统一保存外层 session。
+                        if (session == null || !session.isPreRunDone()) {
+                            effectiveSession.postRun();
+                        }
                     }
                 }
             });
@@ -1080,7 +1096,10 @@ public class DeepAgent implements AutoCloseable {
         } catch (IllegalStateException ex) {
             writeStreamError(effectiveSession, outputs.size(), ex);
         } finally {
-            effectiveSession.postRun();
+            // 同 streamTaskLoop：仅在上游未介入 preRun 时执行 postRun 落盘。
+            if (session == null || !session.isPreRunDone()) {
+                effectiveSession.postRun();
+            }
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
