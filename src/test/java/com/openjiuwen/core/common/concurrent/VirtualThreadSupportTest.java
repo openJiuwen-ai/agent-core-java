@@ -6,6 +6,7 @@ package com.openjiuwen.core.common.concurrent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -138,6 +139,30 @@ class VirtualThreadSupportTest {
     }
 
     @Test
+    @DisplayName("等待并发许可的虚拟任务被中断时取消 Future 并结束执行")
+    void interruptedVirtualTaskWaitingForPermitIsCancelled() throws InterruptedException {
+        assumeTrue(VirtualThreadSupport.isSupported());
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(
+                "virtual-interruption-test", 1, 1, true);
+        CountDownLatch runningTaskStarted = new CountDownLatch(1);
+        CountDownLatch releaseRunningTask = new CountDownLatch(1);
+        try {
+            executor.submit(() -> awaitShutdown(runningTaskStarted, releaseRunningTask));
+            assertThat(runningTaskStarted.await(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            Future<?> waitingTask = executor.submit(() -> {
+            });
+
+            executor.shutdownNow();
+
+            assertThat(executor.awaitTermination(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(waitingTask).isCancelled();
+        } finally {
+            releaseRunningTask.countDown();
+            shutdown(executor);
+        }
+    }
+
+    @Test
     @DisplayName("非 daemon 每任务配置始终保留平台线程池")
     void nonDaemonPerTaskExecutorRemainsPlatformThread()
             throws ExecutionException, InterruptedException, TimeoutException {
@@ -215,6 +240,15 @@ class VirtualThreadSupportTest {
             Thread.currentThread().interrupt();
         } finally {
             activeTasks.decrementAndGet();
+        }
+    }
+
+    private static void awaitShutdown(CountDownLatch started, CountDownLatch release) {
+        started.countDown();
+        try {
+            release.await();
+        } catch (InterruptedException exception) {
+            throw new IllegalStateException("Task interrupted by executor shutdown", exception);
         }
     }
 

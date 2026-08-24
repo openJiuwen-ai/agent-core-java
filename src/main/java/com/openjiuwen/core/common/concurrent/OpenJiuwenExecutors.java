@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
@@ -811,12 +812,18 @@ public final class OpenJiuwenExecutors {
                 isPermitAcquired = true;
                 command.run();
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                cancelBeforeExecution(command);
             } finally {
                 if (isPermitAcquired) {
                     concurrencyPermits.release();
                 }
                 admissionPermits.release();
+            }
+        }
+
+        private void cancelBeforeExecution(Runnable command) {
+            if (command instanceof Future<?> future) {
+                future.cancel(false);
             }
         }
     }
