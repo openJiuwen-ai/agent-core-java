@@ -224,7 +224,7 @@ public class TodoTool {
      *
      * @param inputs action inputs
      * @return todo item updates
-     * @since 0.1.7
+     * @since 0.1.15
      */
     private static List<Map<String, Object>> resolveUpdates(Map<String, Object> inputs) {
         if (inputs.containsKey("todos")) {
