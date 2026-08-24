@@ -362,18 +362,6 @@ public class AgentSessionApi implements Session {
     }
 
     /**
-     * Whether {@link #preRun(Object)} has already been executed for this session.
-     * Downstream agents can check this to avoid redundant checkpoint I/O when an
-     * upstream runner has already recovered the session state.
-     * 
-     * @return {@code true} if preRun has been invoked at least once since the last reset
-     * @since 0.1.15
-     */
-    public boolean isPreRunDone() {
-        return (runState.get() & PRE_DONE) != 0;
-    }
-
-    /**
      * Copy the full run-state bitmask from the given session.
      * Used to propagate CAS guards between paired sessions (e.g. a runner
      * session and a downstream agent's effective session):
