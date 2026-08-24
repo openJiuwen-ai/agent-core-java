@@ -39,6 +39,15 @@ public final class PermissionExampleSupport {
         config.put("defaults", Map.of("*", "allow"));
         config.put("rules", java.util.List.of());
         config.put("approval_overrides", java.util.List.of());
+        Map<String, Object> fileGuard = new LinkedHashMap<>();
+        fileGuard.put("enabled", true);
+        Map<String, Object> fileGuardDefaults = new LinkedHashMap<>();
+        fileGuardDefaults.put("read", "ask");
+        fileGuardDefaults.put("write", "ask");
+        fileGuardDefaults.put("exec", "ask");
+        fileGuard.put("defaults", fileGuardDefaults);
+        fileGuard.put("paths", new java.util.ArrayList<>());
+        config.put("file_guard", fileGuard);
         return config;
     }
 

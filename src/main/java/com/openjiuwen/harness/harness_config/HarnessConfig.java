@@ -50,6 +50,8 @@ public class HarnessConfig {
     private Integer maxIterations;
     @JsonProperty("completion_timeout")
     private Double completionTimeout;
+    @Builder.Default
+    private Map<String, Object> permissions = new LinkedHashMap<>();
 
     /**
      * toYaml.
@@ -116,6 +118,9 @@ public class HarnessConfig {
         }
         if (completionTimeout != null) {
             data.put("completion_timeout", completionTimeout);
+        }
+        if (permissions != null && !permissions.isEmpty()) {
+            data.put("permissions", permissions);
         }
         return data;
     }

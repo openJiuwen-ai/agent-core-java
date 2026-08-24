@@ -7,6 +7,7 @@ package com.openjiuwen.harness.security;
 import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,7 +35,9 @@ public final class PermissionFactory {
      */
     public static PermissionInterruptRail buildPermissionInterruptRail(Map<String, Object> permissions,
             ToolPermissionHost host, Path workspaceRoot) {
-        PermissionEngine engine = new PermissionEngine(permissions, workspaceRoot);
+        Path effectiveWorkspace = workspaceRoot != null ? workspaceRoot
+                : (host != null ? host.resolveWorkspaceDir() : null);
+        PermissionEngine engine = new PermissionEngine(permissions, effectiveWorkspace, List.of());
         ToolPermissionHost effectiveHost = host != null ? host : ToolPermissionHost.builder().build();
         return new PermissionInterruptRail(engine, effectiveHost);
     }

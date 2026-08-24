@@ -35,6 +35,8 @@ import com.openjiuwen.harness.rails.TeamSkillRail;
 import com.openjiuwen.harness.rails.VerificationContractRail;
 import com.openjiuwen.harness.rails.VerificationRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+import com.openjiuwen.harness.security.PermissionFactory;
+import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.tools.BashTool;
 import com.openjiuwen.harness.tools.CodeTool;
 import com.openjiuwen.harness.tools.FilesystemTool;
@@ -208,6 +210,7 @@ public final class HarnessConfigBuilder {
         Path workspaceRoot = resolveWorkspaceRoot(isResolved);
         List<Object> tools = resolveTools(config.getResources(), workspaceRoot);
         List<Object> rails = resolveRails(config.getResources(), workspaceRoot);
+        appendPermissionInterruptRail(rails, config, isResolved, workspaceRoot);
         List<McpServerConfig> mcps = resolveMcps(config.getResources());
 
         DeepAgentConfig deepConfig =
@@ -344,6 +347,33 @@ public final class HarnessConfigBuilder {
             }
         }
         return rails;
+    }
+
+    /**
+     * Append a {@link com.openjiuwen.harness.rails.security.PermissionInterruptRail} to the
+     * rail chain when the declarative {@code permissions} section is enabled, mirroring the
+     * Python autoharness wiring (rail priority 90, coexisting with {@link SecurityRail}).
+     *
+     * <p>The host is bound to the resolved workspace root and the agent YAML source path so
+     * that "always allow" persistence writes the {@code permissions} segment back to the
+     * agent config. Disabled or absent permissions leave the legacy rail chain untouched.
+     *
+     * @param rails          mutable rail chain to append to
+     * @param config         resolved harness config carrying the {@code permissions} section
+     * @param resolved       resolved config exposing the agent YAML source path
+     * @param workspaceRoot  resolved workspace root projected into the permission engine
+     * @since 0.1.7
+     */
+    private static void appendPermissionInterruptRail(List<Object> rails, HarnessConfig config,
+            ResolvedHarnessConfig resolved, Path workspaceRoot) {
+        Map<String, Object> permissions = config.getPermissions();
+        if (permissions == null || !Boolean.TRUE.equals(permissions.get("enabled"))) {
+            return;
+        }
+        Map<String, Object> permissionsSnapshot = new LinkedHashMap<>(permissions);
+        ToolPermissionHost host = ToolPermissionHost.builder().resolveWorkspaceDir(() -> workspaceRoot)
+                .getPermissionsSnapshot(() -> new LinkedHashMap<>(permissionsSnapshot)).build();
+        rails.add(PermissionFactory.buildPermissionInterruptRail(permissionsSnapshot, host, workspaceRoot));
     }
 
     /**

@@ -1,0 +1,153 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.harness.security.fileguard;
+
+import com.openjiuwen.harness.security.PermissionLevel;
+import com.openjiuwen.harness.security.PermissionResult;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class FileGuardCheckerTest {
+
+    private static Map<String, Object> map(Object... kv) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            m.put((String) kv[i], kv[i + 1]);
+        }
+        return m;
+    }
+
+    private static Map<String, Object> nativeConfig(List<Map<String, Object>> paths,
+                                                    Map<String, Object> defaults) {
+        return map("file_guard", map(
+                "enabled", true,
+                "defaults", defaults != null ? defaults : map("read", "ask", "write", "ask", "exec", "ask"),
+                "paths", paths));
+    }
+
+    @Nested
+    class BuildDisabled {
+        @Test
+        void build_enabledFalse_returnsNull() {
+            Map<String, Object> perms = map("file_guard", map("enabled", false,
+                    "defaults", map("read", "ask", "write", "ask", "exec", "ask")));
+            assertThat(FileGuardChecker.build(perms, Path.of("/work"), List.of())).isNull();
+        }
+
+        @Test
+        void build_missingFileGuard_returnsNull() {
+            assertThat(FileGuardChecker.build(map(), Path.of("/work"), List.of())).isNull();
+        }
+    }
+
+    @Nested
+    class AcceptanceCases {
+        @Test
+        void etcHosts_readAllow_writeDeny() {
+            Map<String, Object> perms = map("file_guard", map(
+                    "enabled", true,
+                    "defaults", map("read", "ask", "write", "ask", "exec", "ask"),
+                    "paths", List.of(map("path", "/etc/hosts",
+                            "read", "allow", "write", "deny", "exec", "deny", "match", "prefix"))));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            PermissionResult writeResult = c.evaluate("write_file", Map.of("file_path", "/etc/hosts"));
+            assertThat(writeResult).isNotNull();
+            assertThat(writeResult.getPermission()).isEqualTo(PermissionLevel.DENY);
+            assertThat(writeResult.getExternalPaths()).contains("/etc/hosts");
+            PermissionResult readResult = c.evaluate("read_file", Map.of("file_path", "/etc/hosts"));
+            assertThat(readResult).isNull();
+        }
+    }
+
+    @Nested
+    class GlobAndDefaults {
+        @Test
+        void globHit_returnsAsk() {
+            Map<String, Object> perms = nativeConfig(
+                    List.of(map("path", "**/.env*", "match", "glob",
+                            "read", "ask", "write", "deny", "exec", "deny")),
+                    map("read", "allow", "write", "allow", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            PermissionResult r = c.evaluate("read_file", Map.of("file_path", "/work/.env.local"));
+            assertThat(r).isNotNull();
+            assertThat(r.getPermission()).isEqualTo(PermissionLevel.ASK);
+        }
+
+        @Test
+        void noMatch_fallsBackToDefaultsAsk() {
+            Map<String, Object> perms = nativeConfig(List.of(),
+                    map("read", "ask", "write", "ask", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            PermissionResult r = c.evaluate("read_file", Map.of("file_path", "/etc/passwd"));
+            assertThat(r).isNotNull();
+            assertThat(r.getPermission()).isEqualTo(PermissionLevel.ASK);
+        }
+
+        @Test
+        void noMatch_defaultsAllow_returnsNull() {
+            Map<String, Object> perms = nativeConfig(List.of(),
+                    map("read", "allow", "write", "allow", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            assertThat(c.evaluate("read_file", Map.of("file_path", "/etc/passwd"))).isNull();
+        }
+    }
+
+    @Nested
+    class Implications {
+        @Test
+        void writeAction_readDeny_impliesWriteDeny() {
+            Map<String, Object> perms = nativeConfig(
+                    List.of(map("path", "/data", "read", "deny", "write", "allow", "exec", "ask")),
+                    map("read", "ask", "write", "ask", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            PermissionResult r = c.evaluate("write_file", Map.of("file_path", "/data/f.txt"));
+            assertThat(r).isNotNull();
+            assertThat(r.getPermission()).isEqualTo(PermissionLevel.DENY);
+        }
+
+        @Test
+        void writeDenied_onReadAllowPath() {
+            Map<String, Object> perms = nativeConfig(
+                    List.of(map("path", "/data", "read", "allow", "write", "deny", "exec", "deny")),
+                    map("read", "ask", "write", "ask", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, Path.of("/work"), List.of());
+            PermissionResult r = c.evaluate("write_file", Map.of("file_path", "/data/f.txt"));
+            assertThat(r.getPermission()).isEqualTo(PermissionLevel.DENY);
+        }
+    }
+
+    @Nested
+    class TrustedDirs {
+        @Test
+        void trustedDirRead_returnsNull(@TempDir Path workspace) {
+            Map<String, Object> perms = nativeConfig(List.of(),
+                    map("read", "ask", "write", "ask", "exec", "ask"));
+            Path trusted = workspace.resolve("trusted");
+            FileGuardChecker c = FileGuardChecker.build(perms, workspace, List.of(trusted.toString()));
+            assertThat(c.evaluate("read_file", Map.of("file_path", trusted.resolve("a.txt").toString()))).isNull();
+        }
+    }
+
+    @Nested
+    class NoWorkspace {
+        @Test
+        void evaluate_withoutWorkspace_returnsNull() {
+            Map<String, Object> perms = nativeConfig(
+                    List.of(map("path", "/etc/hosts", "read", "allow", "write", "deny", "exec", "deny")),
+                    map("read", "ask", "write", "ask", "exec", "ask"));
+            FileGuardChecker c = FileGuardChecker.build(perms, null, List.of());
+            assertThat(c).isNotNull();
+            assertThat(c.evaluate("write_file", Map.of("file_path", "/etc/hosts"))).isNull();
+        }
+    }
+}
