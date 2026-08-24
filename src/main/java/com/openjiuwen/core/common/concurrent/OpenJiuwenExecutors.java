@@ -17,13 +17,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -138,12 +135,10 @@ public final class OpenJiuwenExecutors {
     /**
      * 创建实例专用的有界模块执行器，并纳入统一资源回收。
      *
-     * <p>平台线程最大数与队列容量可通过系统属性 {@code openjiuwen.executor.{模块名}.max-size} /
-     * {@code openjiuwen.executor.{模块名}.queue-size} 或对应环境变量覆盖。JDK 21 及以上的
-     * daemon 配置使用虚拟线程，其最大并发数可通过
-     * {@code openjiuwen.executor.{模块名}.virtual-max-concurrency} 或对应环境变量覆盖；
-     * 默认沿用平台线程最大数，且不会超过原有最大接纳量。
-     * 其余配置使用原有平台线程池。</p>
+     * <p>JDK 17 或非 daemon 配置使用有界平台线程池，最大线程数与队列容量可通过系统属性
+     * {@code openjiuwen.executor.{模块名}.max-size} / {@code openjiuwen.executor.{模块名}.queue-size}
+     * 或对应环境变量覆盖。JDK 21 及以上的 daemon 配置使用不限制并发的
+     * 每任务虚拟线程。</p>
      *
      * @param threadNamePrefix 线程名称前缀（与模块名一致，如 {@code pregel-task}）
      * @param isDaemon 是否创建守护线程
@@ -170,17 +165,12 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(defaultMaxSize, "defaultMaxSize");
         validatePositive(defaultQueueCapacity, "defaultQueueCapacity");
+        if (VirtualThreadSupport.isSupported() && isDaemon) {
+            return register(new ManagedVirtualThreadExecutor(threadNamePrefix));
+        }
         int platformMaxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        if (VirtualThreadSupport.isSupported() && isDaemon) {
-            int maximumOutstandingTasks = maximumOutstandingTasks(platformMaxSize, queueCapacity);
-            int configuredVirtualMaxConcurrency = moduleIntSetting(
-                    threadNamePrefix, "virtual-max-concurrency", platformMaxSize, 1);
-            int virtualMaxConcurrency = Math.min(configuredVirtualMaxConcurrency, maximumOutstandingTasks);
-            return register(new ManagedVirtualThreadExecutor(
-                    threadNamePrefix, virtualMaxConcurrency, maximumOutstandingTasks));
-        }
         // 统一排队语义：core=max 使所有线程常热，ArrayBlockingQueue 只做溢出缓冲。
         // JDK 陷阱：core < max + 有界队列时，超过 core 的线程仅在队列满后才创建，
         // 导致 max 永远达不到（长任务被串行化），因此 core 必须等于 max。
@@ -190,11 +180,6 @@ public final class OpenJiuwenExecutors {
                 namedThreadFactory(threadNamePrefix, isDaemon), defaults.rejectionHandler());
         executor.allowCoreThreadTimeOut(defaults.allowsCoreTimeout());
         return register(executor);
-    }
-
-    private static int maximumOutstandingTasks(int maximumConcurrency, int queueCapacity) {
-        long totalCapacity = (long) maximumConcurrency + queueCapacity;
-        return (int) Math.min(totalCapacity, Integer.MAX_VALUE);
     }
 
     /**
@@ -214,8 +199,8 @@ public final class OpenJiuwenExecutors {
      * 创建实例专用的固定并发执行器，并纳入统一资源回收。
      *
      * <p>JDK 17 或非 daemon 配置使用原固定大小平台线程池；JDK 21 及以上的 daemon 配置使用
-     * 虚拟线程，并将同时运行的任务数限制为 {@code size}。当 {@code size} 为 1 时保留
-     * 平台线程，避免改变单工作线程的顺序语义。</p>
+     * 不限制并发的每任务虚拟线程，此时 {@code size} 仅用于参数合法性校验，
+     * 不限制任务并发。</p>
      *
      * @param threadNamePrefix 线程名称前缀
      * @param size 线程数
@@ -289,13 +274,10 @@ public final class OpenJiuwenExecutors {
     }
 
     private static ExecutorService createExecutor(String threadNamePrefix, ThreadPoolConfig config,
-            boolean isFixedConcurrencyEligible) {
+            boolean isFixedExecutor) {
         if (VirtualThreadSupport.isSupported() && config.isDaemon) {
-            if (isPerTaskConfig(config)) {
-                return new ManagedVirtualThreadExecutor(threadNamePrefix, Integer.MAX_VALUE);
-            }
-            if (isFixedConcurrencyEligible && config.maximumPoolSize > 1) {
-                return new ManagedVirtualThreadExecutor(threadNamePrefix, config.maximumPoolSize);
+            if (isFixedExecutor || isPerTaskConfig(config)) {
+                return new ManagedVirtualThreadExecutor(threadNamePrefix);
             }
         }
         return newPlatformThreadPool(threadNamePrefix, config);
@@ -742,25 +724,14 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 使用虚拟线程承载任务，并通过许可数保留原执行器最大并发语义。
+     * 使用每任务虚拟线程承载任务，并保留统一生命周期管理。
      */
     private static final class ManagedVirtualThreadExecutor extends AbstractExecutorService {
         private final ExecutorService delegate;
-        private final Semaphore concurrencyPermits;
-        private final Semaphore admissionPermits;
-        private final String threadNamePrefix;
 
-        private ManagedVirtualThreadExecutor(String threadNamePrefix, int maximumConcurrency) {
-            this(threadNamePrefix, maximumConcurrency, Integer.MAX_VALUE);
-        }
-
-        private ManagedVirtualThreadExecutor(String threadNamePrefix, int maximumConcurrency,
-                int maximumOutstandingTasks) {
+        private ManagedVirtualThreadExecutor(String threadNamePrefix) {
             this.delegate = VirtualThreadSupport.newVirtualExecutor(threadNamePrefix,
                     virtualThreadExceptionHandler());
-            this.concurrencyPermits = new Semaphore(maximumConcurrency, true);
-            this.admissionPermits = new Semaphore(maximumOutstandingTasks, true);
-            this.threadNamePrefix = threadNamePrefix;
         }
 
         @Override
@@ -793,38 +764,7 @@ public final class OpenJiuwenExecutors {
 
         @Override
         public void execute(Runnable command) {
-            Objects.requireNonNull(command, "command");
-            if (!admissionPermits.tryAcquire()) {
-                throw new RejectedExecutionException("Executor is saturated: " + threadNamePrefix);
-            }
-            try {
-                delegate.execute(() -> executeWithPermit(command));
-            } catch (RejectedExecutionException exception) {
-                admissionPermits.release();
-                throw exception;
-            }
-        }
-
-        private void executeWithPermit(Runnable command) {
-            boolean isPermitAcquired = false;
-            try {
-                concurrencyPermits.acquire();
-                isPermitAcquired = true;
-                command.run();
-            } catch (InterruptedException exception) {
-                cancelBeforeExecution(command);
-            } finally {
-                if (isPermitAcquired) {
-                    concurrencyPermits.release();
-                }
-                admissionPermits.release();
-            }
-        }
-
-        private void cancelBeforeExecution(Runnable command) {
-            if (command instanceof Future<?> future) {
-                future.cancel(false);
-            }
+            delegate.execute(Objects.requireNonNull(command, "command"));
         }
     }
 

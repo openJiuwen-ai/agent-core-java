@@ -5,8 +5,6 @@
 package com.openjiuwen.core.common.concurrent;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +17,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -53,8 +50,8 @@ class VirtualThreadSupportTest {
     }
 
     @Test
-    @DisplayName("固定大小 daemon 执行器在 JDK 21 使用虚拟线程并保留最大并发数")
-    void fixedDaemonExecutorPreservesMaximumConcurrency()
+    @DisplayName("固定大小 daemon 执行器在 JDK 21 使用不限制并发的虚拟线程")
+    void fixedDaemonExecutorUsesUnboundedVirtualConcurrency()
             throws ExecutionException, InterruptedException, TimeoutException {
         ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("fixed-virtual-test", 2, true);
         try {
@@ -64,100 +61,26 @@ class VirtualThreadSupportTest {
             assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
             assertThat(details.isDaemon()).isTrue();
 
-            verifyMaximumConcurrency(executor, 2);
+            int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 2;
+            verifyConcurrency(executor, 4, expectedConcurrency);
         } finally {
             shutdown(executor);
         }
     }
 
     @Test
-    @DisplayName("有界 daemon 执行器在 JDK 21 使用虚拟线程并保留并发、排队和拒绝语义")
-    void boundedDaemonExecutorPreservesConcurrencyAndAdmissionLimits()
+    @DisplayName("有界 daemon 执行器在 JDK 21 不保留平台线程并发和接纳限制")
+    void boundedDaemonExecutorUsesUnboundedVirtualConcurrency()
             throws ExecutionException, InterruptedException, TimeoutException {
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("bounded-virtual-test", 2, 1, true);
-        CountDownLatch firstWaveStarted = new CountDownLatch(2);
-        CountDownLatch releaseTasks = new CountDownLatch(1);
-        AtomicInteger activeTasks = new AtomicInteger();
-        AtomicInteger peakActiveTasks = new AtomicInteger();
-        List<Future<?>> futures = new ArrayList<>();
         try {
             ThreadDetails details = threadDetails(executor);
             assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
 
-            for (int index = 0; index < 2; index++) {
-                futures.add(executor.submit(() -> runLimitedTask(firstWaveStarted, releaseTasks,
-                        activeTasks, peakActiveTasks)));
-            }
-            assertThat(firstWaveStarted.await(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            futures.add(executor.submit(() -> runLimitedTask(firstWaveStarted, releaseTasks,
-                    activeTasks, peakActiveTasks)));
-            assertThatThrownBy(() -> executor.submit(() -> {
-            })).isInstanceOf(RejectedExecutionException.class);
-
-            releaseTasks.countDown();
-            for (Future<?> future : futures) {
-                future.get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            }
-            assertThat(peakActiveTasks.get()).isEqualTo(2);
+            int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 2;
+            int taskCount = VirtualThreadSupport.isSupported() ? 4 : 2;
+            verifyConcurrency(executor, taskCount, expectedConcurrency);
         } finally {
-            releaseTasks.countDown();
-            shutdown(executor);
-        }
-    }
-
-    @Test
-    @DisplayName("虚拟最大并发配置只调整 JDK 21 并发且不扩大最大接纳量")
-    void virtualMaximumConcurrencyOnlyChangesVirtualExecution()
-            throws ExecutionException, InterruptedException, TimeoutException {
-        String propertyName = "openjiuwen.executor.bounded-virtual-config-test.virtual-max-concurrency";
-        System.setProperty(propertyName, "4");
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(
-                "bounded-virtual-config-test", 2, 2, true);
-        int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 2;
-        CountDownLatch started = new CountDownLatch(expectedConcurrency);
-        CountDownLatch releaseTasks = new CountDownLatch(1);
-        AtomicInteger activeTasks = new AtomicInteger();
-        AtomicInteger peakActiveTasks = new AtomicInteger();
-        List<Future<?>> futures = new ArrayList<>();
-        try {
-            submitTasks(executor, futures, expectedConcurrency, started, releaseTasks,
-                    activeTasks, peakActiveTasks);
-            assertThat(started.await(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            submitTasks(executor, futures, 4 - expectedConcurrency, started, releaseTasks,
-                    activeTasks, peakActiveTasks);
-            assertThatThrownBy(() -> executor.submit(() -> {
-            })).isInstanceOf(RejectedExecutionException.class);
-
-            releaseTasks.countDown();
-            awaitTasks(futures);
-            assertThat(peakActiveTasks.get()).isEqualTo(expectedConcurrency);
-        } finally {
-            System.clearProperty(propertyName);
-            releaseTasks.countDown();
-            shutdown(executor);
-        }
-    }
-
-    @Test
-    @DisplayName("等待并发许可的虚拟任务被中断时取消 Future 并结束执行")
-    void interruptedVirtualTaskWaitingForPermitIsCancelled() throws InterruptedException {
-        assumeTrue(VirtualThreadSupport.isSupported());
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(
-                "virtual-interruption-test", 1, 1, true);
-        CountDownLatch runningTaskStarted = new CountDownLatch(1);
-        CountDownLatch releaseRunningTask = new CountDownLatch(1);
-        try {
-            executor.submit(() -> awaitShutdown(runningTaskStarted, releaseRunningTask));
-            assertThat(runningTaskStarted.await(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            Future<?> waitingTask = executor.submit(() -> {
-            });
-
-            executor.shutdownNow();
-
-            assertThat(executor.awaitTermination(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            assertThat(waitingTask).isCancelled();
-        } finally {
-            releaseRunningTask.countDown();
             shutdown(executor);
         }
     }
@@ -192,41 +115,25 @@ class VirtualThreadSupportTest {
         }
     }
 
-    private static void verifyMaximumConcurrency(ExecutorService executor, int maximumConcurrency)
+    private static void verifyConcurrency(ExecutorService executor, int taskCount, int expectedConcurrency)
             throws InterruptedException, ExecutionException, TimeoutException {
-        CountDownLatch firstWaveStarted = new CountDownLatch(maximumConcurrency);
+        CountDownLatch firstWaveStarted = new CountDownLatch(expectedConcurrency);
         CountDownLatch releaseTasks = new CountDownLatch(1);
         AtomicInteger activeTasks = new AtomicInteger();
         AtomicInteger peakActiveTasks = new AtomicInteger();
         List<Future<?>> futures = new ArrayList<>();
-        for (int index = 0; index < maximumConcurrency * 2; index++) {
+        for (int index = 0; index < taskCount; index++) {
             futures.add(executor.submit(() -> runLimitedTask(firstWaveStarted, releaseTasks,
                     activeTasks, peakActiveTasks)));
         }
 
         assertThat(firstWaveStarted.await(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-        assertThat(activeTasks.get()).isEqualTo(maximumConcurrency);
+        assertThat(activeTasks.get()).isEqualTo(expectedConcurrency);
         releaseTasks.countDown();
         for (Future<?> future : futures) {
             future.get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         }
-        assertThat(peakActiveTasks.get()).isEqualTo(maximumConcurrency);
-    }
-
-    private static void submitTasks(ExecutorService executor, List<Future<?>> futures, int taskCount,
-            CountDownLatch started, CountDownLatch releaseTasks, AtomicInteger activeTasks,
-            AtomicInteger peakActiveTasks) {
-        for (int index = 0; index < taskCount; index++) {
-            futures.add(executor.submit(() -> runLimitedTask(started, releaseTasks,
-                    activeTasks, peakActiveTasks)));
-        }
-    }
-
-    private static void awaitTasks(List<Future<?>> futures)
-            throws ExecutionException, InterruptedException, TimeoutException {
-        for (Future<?> future : futures) {
-            future.get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        }
+        assertThat(peakActiveTasks.get()).isEqualTo(expectedConcurrency);
     }
 
     private static void runLimitedTask(CountDownLatch firstWaveStarted, CountDownLatch releaseTasks,
@@ -237,18 +144,9 @@ class VirtualThreadSupportTest {
         try {
             releaseTasks.await();
         } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Task interrupted while waiting for test release", exception);
         } finally {
             activeTasks.decrementAndGet();
-        }
-    }
-
-    private static void awaitShutdown(CountDownLatch started, CountDownLatch release) {
-        started.countDown();
-        try {
-            release.await();
-        } catch (InterruptedException exception) {
-            throw new IllegalStateException("Task interrupted by executor shutdown", exception);
         }
     }
 
