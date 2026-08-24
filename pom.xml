@@ -7,7 +7,7 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.14.post1</version>
+    <version>0.1.14.post2</version>
     <packaging>jar</packaging>
 
     <name>agent-core-java</name>
