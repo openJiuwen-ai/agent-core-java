@@ -49,10 +49,7 @@ public class LocalWorkConfig {
 
     public LocalWorkConfig(List<String> shellAllowlist, List<String> sandboxRoot,
                            boolean restrictToSandbox, List<String> dangerousPatterns) {
-        this.shellAllowlist = shellAllowlist;
-        this.sandboxRoot = sandboxRoot;
-        this.restrictToSandbox = restrictToSandbox;
-        this.dangerousPatterns = dangerousPatterns;
+        this(shellAllowlist, sandboxRoot, restrictToSandbox, dangerousPatterns, null);
     }
 
     /**
@@ -60,11 +57,11 @@ public class LocalWorkConfig {
      * (allowlist, sandboxRoot, restrict, dangerous, workDir).
      */
     public LocalWorkConfig(List<String> shellAllowlist, List<String> sandboxRoot,
-                           boolean restrictToSandbox, List<String> dangerousPatterns,
+                           boolean shouldRestrictToSandbox, List<String> dangerousPatterns,
                            String workDir) {
         this.shellAllowlist = shellAllowlist;
         this.sandboxRoot = sandboxRoot;
-        this.restrictToSandbox = restrictToSandbox;
+        this.restrictToSandbox = shouldRestrictToSandbox;
         this.dangerousPatterns = dangerousPatterns;
         this.workDir = workDir;
     }

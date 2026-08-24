@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.drunner.remote_client;
 
+import com.openjiuwen.core.common.exception.BaseError;
+
 import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -86,7 +88,7 @@ public final class RemoteClientFactory {
             if (RemoteClient.class.isAssignableFrom(implementation)) {
                 CUSTOM_REMOTE_CLIENTS.putIfAbsent(protocol, config -> newOfficialRemoteClient(implementation, config));
             }
-        } catch (Exception ignored) {
+        } catch (ClassNotFoundException | LinkageError ignored) {
             // Python deliberately treats optional plugin bootstrap failures as best-effort.
         }
     }
@@ -129,7 +131,8 @@ public final class RemoteClientFactory {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | NullPointerException
+                | ClassCastException | UnsupportedOperationException ignored) {
             return null;
         }
         return null;
@@ -144,11 +147,13 @@ public final class RemoteClientFactory {
                 }
                 try {
                     return provider.create(config);
-                } catch (Exception ignored) {
+                } catch (BaseError | IllegalArgumentException | IllegalStateException | NullPointerException
+                        | ClassCastException | UnsupportedOperationException ignored) {
                     return null;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | NullPointerException
+                | ClassCastException | UnsupportedOperationException ignored) {
             return null;
         }
         return null;

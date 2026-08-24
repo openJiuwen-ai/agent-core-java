@@ -127,11 +127,11 @@ public class AgentGroupSession implements AgentSessionApi {
         String agentId = currentAgentId.get();
         if (data instanceof Map) {
             Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) data);
-            boolean p2pPayload = map.containsKey("p2p");
+            boolean hasP2pPayload = map.containsKey("p2p");
             if (teamId != null && !map.containsKey("source_team_id")) {
                 map.put("source_team_id", teamId);
             }
-            if (!p2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
+            if (!hasP2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
                 map.put("source_agent_id", agentId);
             }
             return map;
@@ -140,11 +140,11 @@ public class AgentGroupSession implements AgentSessionApi {
             Object payload = schema.getPayload();
             if (payload instanceof Map) {
                 Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) payload);
-                boolean p2pPayload = map.containsKey("p2p");
+                boolean hasP2pPayload = map.containsKey("p2p");
                 if (teamId != null && !map.containsKey("source_team_id")) {
                     map.put("source_team_id", teamId);
                 }
-                if (!p2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
+                if (!hasP2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
                     map.put("source_agent_id", agentId);
                 }
                 schema.setPayload(map);

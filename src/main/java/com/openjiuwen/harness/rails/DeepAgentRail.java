@@ -51,9 +51,9 @@ public class DeepAgentRail extends AgentRail {
         if (agent.getWorkspace() != null) {
             setWorkspace(agent.getWorkspace());
         }
-        Object sysOperation = agent.getSysOperation();
-        if (sysOperation != null) {
-            setSysOperation(sysOperation);
+        Object operation = agent.getSysOperation();
+        if (operation != null) {
+            setSysOperation(operation);
         }
     }
 

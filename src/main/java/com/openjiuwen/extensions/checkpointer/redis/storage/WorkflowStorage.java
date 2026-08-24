@@ -8,7 +8,6 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
-import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;

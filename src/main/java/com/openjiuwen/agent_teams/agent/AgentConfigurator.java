@@ -1944,14 +1944,14 @@ public class AgentConfigurator {
          * {@link #updateMemberStatus}.</p>
          *
          * @param memberName member id
-         * @param shuttingDown true when status becomes {@code SHUTDOWN_REQUESTED}
+         * @param shouldShuttingDown true when status becomes {@code SHUTDOWN_REQUESTED}
          * @since 0.1.14
          */
-        public void markMemberShuttingDown(String memberName, boolean shuttingDown) {
+        public void markMemberShuttingDown(String memberName, boolean shouldShuttingDown) {
             if (!isNonBlank(memberName)) {
                 return;
             }
-            if (shuttingDown) {
+            if (shouldShuttingDown) {
                 shuttingDownMembers.add(memberName);
             } else {
                 shuttingDownMembers.remove(memberName);

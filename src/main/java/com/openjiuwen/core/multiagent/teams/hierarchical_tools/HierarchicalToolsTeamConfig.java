@@ -27,7 +27,7 @@ public class HierarchicalToolsTeamConfig extends TeamConfig {
     private Map<String, String> parentByAgent = new LinkedHashMap<>();
 
     public HierarchicalToolsTeamConfig() {
-        this.parentByAgent = new LinkedHashMap<>();
+        this(null);
     }
 
     /**

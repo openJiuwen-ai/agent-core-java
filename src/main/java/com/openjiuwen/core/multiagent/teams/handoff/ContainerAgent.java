@@ -262,7 +262,8 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
                         null,
                         targetAgent.getCard()
                 );
-                targetStage = targetAgent.invoke(agentInput, (AgentSessionApi) agentSession)
+                AgentSessionApi apiSession = agentSession;
+                targetStage = targetAgent.invoke(agentInput, apiSession)
                         .thenApply(result -> new TargetResult(
                                 targetAgent,
                                 result,
@@ -291,7 +292,8 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
                                                                    AgentTeamSession teamSession) {
         AgentSession agentSession = teamSession.createAgentSession(targetAgent.getCard(), null);
         injectContextHistory(agentSession, teamSession);
-        return targetAgent.invoke(agentInput, (AgentSessionApi) agentSession)
+        AgentSessionApi apiSession = agentSession;
+        return targetAgent.invoke(agentInput, apiSession)
                 .thenApply(result -> {
                     if (result instanceof Map<?, ?>) {
                         teamSession.writeStream(result);

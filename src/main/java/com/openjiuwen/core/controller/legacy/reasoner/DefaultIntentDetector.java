@@ -5,17 +5,18 @@
 package com.openjiuwen.core.controller.legacy.reasoner;
 
 import com.openjiuwen.core.common.constants.TaskType;
-import com.openjiuwen.core.controller.legacy.IntentDetectionController;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.legacy.config.IntentDetectionConfig;
 import com.openjiuwen.core.controller.legacy.config.ReasonerConfig;
 import com.openjiuwen.core.controller.legacy.constants.IntentDetectionConstants;
 import com.openjiuwen.core.controller.legacy.event.Event;
+import com.openjiuwen.core.controller.legacy.IntentDetectionController;
 import com.openjiuwen.core.controller.legacy.task.Task;
 import com.openjiuwen.core.controller.legacy.task.TaskInput;
-import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,9 +25,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.UUID;
 
 /**
  * Default IntentDetector implementation - Intent detection module for message

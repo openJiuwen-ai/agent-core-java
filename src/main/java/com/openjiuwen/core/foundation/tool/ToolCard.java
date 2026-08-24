@@ -24,9 +24,9 @@ public class ToolCard extends BaseCard {
 
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> properties = new LinkedHashMap<>();
-    private boolean parallelSafe = true;
-    private boolean stateless;
-    private boolean idempotent;
+    private boolean isParallelSafe = true;
+    private boolean isStateless;
+    private boolean isIdempotent;
 
     public ToolCard() {
         super();
@@ -86,27 +86,27 @@ public class ToolCard extends BaseCard {
     }
 
     public boolean isParallelSafe() {
-        return parallelSafe;
+        return isParallelSafe;
     }
 
-    public void setParallelSafe(boolean parallelSafe) {
-        this.parallelSafe = parallelSafe;
+    public void setParallelSafe(boolean isParallelSafe) {
+        this.isParallelSafe = isParallelSafe;
     }
 
     public boolean isStateless() {
-        return stateless;
+        return isStateless;
     }
 
-    public void setStateless(boolean stateless) {
-        this.stateless = stateless;
+    public void setStateless(boolean isStateless) {
+        this.isStateless = isStateless;
     }
 
     public boolean isIdempotent() {
-        return idempotent;
+        return isIdempotent;
     }
 
-    public void setIdempotent(boolean idempotent) {
-        this.idempotent = idempotent;
+    public void setIdempotent(boolean isIdempotent) {
+        this.isIdempotent = isIdempotent;
     }
 
     /**
@@ -147,9 +147,9 @@ public class ToolCard extends BaseCard {
         private String description = "";
         private Map<String, Object> inputParams;
         private Map<String, Object> properties;
-        private Boolean parallelSafe;
-        private Boolean stateless;
-        private Boolean idempotent;
+        private Boolean isParallelSafe;
+        private Boolean isStateless;
+        private Boolean isIdempotent;
 
         protected Builder() {
         }
@@ -179,18 +179,18 @@ public class ToolCard extends BaseCard {
             return this;
         }
 
-        public Builder parallelSafe(boolean parallelSafe) {
-            this.parallelSafe = parallelSafe;
+        public Builder parallelSafe(boolean isParallelSafe) {
+            this.isParallelSafe = isParallelSafe;
             return this;
         }
 
-        public Builder stateless(boolean stateless) {
-            this.stateless = stateless;
+        public Builder stateless(boolean isStateless) {
+            this.isStateless = isStateless;
             return this;
         }
 
-        public Builder idempotent(boolean idempotent) {
-            this.idempotent = idempotent;
+        public Builder idempotent(boolean isIdempotent) {
+            this.isIdempotent = isIdempotent;
             return this;
         }
 
@@ -200,14 +200,14 @@ public class ToolCard extends BaseCard {
             card.setDescription(description);
             card.setInputParams(inputParams);
             card.setProperties(properties);
-            if (parallelSafe != null) {
-                card.setParallelSafe(parallelSafe);
+            if (isParallelSafe != null) {
+                card.setParallelSafe(isParallelSafe);
             }
-            if (stateless != null) {
-                card.setStateless(stateless);
+            if (isStateless != null) {
+                card.setStateless(isStateless);
             }
-            if (idempotent != null) {
-                card.setIdempotent(idempotent);
+            if (isIdempotent != null) {
+                card.setIdempotent(isIdempotent);
             }
             return card;
         }

@@ -4,9 +4,10 @@
 
 package com.openjiuwen.harness.tools.shell.bash;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sysop.Cwd;
 
 import java.io.File;
 import java.io.IOException;
@@ -240,6 +241,8 @@ public class BashTool extends AbstractHarnessTool {
                     failure = exception;
                 }
             }, "bash-tool-stream");
+            this.thread.setUncaughtExceptionHandler((worker, error) ->
+                    Loggers.TOOL.error("bash-tool-stream uncaught: {}", error.toString()));
             this.thread.setDaemon(true);
         }
 

@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
@@ -18,6 +19,8 @@ import com.openjiuwen.core.session.state.InMemoryCommitState;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
@@ -39,6 +42,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/core/session/checkpointer/inmemory.py}.</p>
  */
 class InMemoryCheckpointerTest {
+
+    @BeforeEach
+    void clearTenantContext() {
+        TenantContextHolder.clearCurrentTenant();
+    }
+
+    @AfterEach
+    void restoreTenantContext() {
+        TenantContextHolder.clearCurrentTenant();
+    }
 
     @Test
     void agentStateRestoresAndInjectsInteractiveInput() {

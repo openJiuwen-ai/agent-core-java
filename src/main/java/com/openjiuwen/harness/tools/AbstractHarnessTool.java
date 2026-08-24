@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Shared base for harness-local tool implementations.
@@ -42,11 +43,13 @@ public abstract class AbstractHarnessTool extends Tool {
         try {
             resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, resolvedLanguage);
             inputParams = HarnessPromptToolsPackage.getToolInputParams(id, resolvedLanguage);
-        } catch (RuntimeException ignoredById) {
+        } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
+                | NullPointerException ignoredById) {
             try {
                 resolvedDescription = HarnessPromptToolsPackage.getToolDescription(name, resolvedLanguage);
                 inputParams = HarnessPromptToolsPackage.getToolInputParams(name, resolvedLanguage);
-            } catch (RuntimeException ignoredByName) {
+            } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
+                    | NullPointerException ignoredByName) {
                 // Some internal helper tools intentionally have no prompt metadata provider.
             }
         }

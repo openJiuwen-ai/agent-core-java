@@ -131,14 +131,14 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
             return new KVStorePipeline(ops -> {
                 List<Object> results = new ArrayList<>();
                 for (Object[] op : ops) {
-                    String kind = (String) op[0];
+                    String kind = requireString(op[0]);
                     switch (kind) {
                         case "set" -> {
-                            delegate.set((String) op[1], op[2]).join();
+                            delegate.set(requireString(op[1]), op[2]).join();
                             results.add(null);
                         }
-                        case "get" -> results.add(delegate.get((String) op[1]).join());
-                        case "isExists", "exists" -> results.add(delegate.exists((String) op[1]).join());
+                        case "get" -> results.add(delegate.get(requireString(op[1])).join());
+                        case "isExists", "exists" -> results.add(delegate.exists(requireString(op[1])).join());
                         default -> results.add(null);
                     }
                 }
@@ -150,5 +150,12 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
         public void close() {
             delegate.close();
         }
+    }
+
+    private static String requireString(Object value) {
+        if (!(value instanceof String text)) {
+            throw new ClassCastException("pipeline operand is not String");
+        }
+        return text;
     }
 }

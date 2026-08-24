@@ -42,7 +42,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Mirrors Python's {@code SandboxGateway} in
@@ -55,8 +54,6 @@ public class SandboxGateway {
     private static final ObjectMapper HASH_MAPPER = new ObjectMapper()
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
             .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
-
-    private static final AtomicBoolean BUILTIN_PROVIDERS_REGISTERED = new AtomicBoolean(false);
 
     private static SandboxGateway instance;
 
@@ -93,9 +90,6 @@ public class SandboxGateway {
     }
 
     static void registerBuiltinProviders() {
-        if (!BUILTIN_PROVIDERS_REGISTERED.compareAndSet(false, true)) {
-            return;
-        }
         SandboxRegistry.registerProvider("aio", "fs", AioFsProvider.class);
         SandboxRegistry.registerProvider("aio", "shell", AioShellProvider.class);
         SandboxRegistry.registerProvider("aio", "code", AioCodeProvider.class);

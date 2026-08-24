@@ -11,16 +11,15 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioCodeProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioFSProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioShellProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxCodeProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxFSProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxShellProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioCodeProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioFsProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioShellProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxCodeProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxFsProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxShellProvider;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 class SandboxRegistryBootstrapProviderTest {
     private SandboxEndpoint endpoint;
@@ -29,23 +28,21 @@ class SandboxRegistryBootstrapProviderTest {
     @BeforeEach
     void setUp() {
         SandboxRegistryBootstrap.ensureInitialized();
-        endpoint = Mockito.mock(SandboxEndpoint.class);
-        Mockito.when(endpoint.getBaseUrl()).thenReturn("http://localhost:8080");
-        Mockito.when(endpoint.getSandboxId()).thenReturn("sbx-test");
+        endpoint = new SandboxEndpoint("http://localhost:8080", "sbx-test");
         config = SandboxGatewayConfig.builder().launcherConfig(SandboxLauncherConfig.builder()
                 .launcherType("pre_deploy").baseUrl("http://localhost:8080").sandboxType("aio").build()).build();
     }
 
     @Test
     void testJiuwenBoxProvidersRegistered() {
-        assertThat(SandboxRegistry.getProviderClass("jiuwenbox", "fs")).isEqualTo(JiuwenBoxFSProvider.class);
+        assertThat(SandboxRegistry.getProviderClass("jiuwenbox", "fs")).isEqualTo(JiuwenBoxFsProvider.class);
         assertThat(SandboxRegistry.getProviderClass("jiuwenbox", "shell")).isEqualTo(JiuwenBoxShellProvider.class);
         assertThat(SandboxRegistry.getProviderClass("jiuwenbox", "code")).isEqualTo(JiuwenBoxCodeProvider.class);
     }
 
     @Test
     void testAioProvidersRegistered() {
-        assertThat(SandboxRegistry.getProviderClass("aio", "fs")).isEqualTo(AioFSProvider.class);
+        assertThat(SandboxRegistry.getProviderClass("aio", "fs")).isEqualTo(AioFsProvider.class);
         assertThat(SandboxRegistry.getProviderClass("aio", "shell")).isEqualTo(AioShellProvider.class);
         assertThat(SandboxRegistry.getProviderClass("aio", "code")).isEqualTo(AioCodeProvider.class);
     }
@@ -58,13 +55,13 @@ class SandboxRegistryBootstrapProviderTest {
     @Test
     void testCreateJiuwenBoxProvider() {
         Object provider = SandboxRegistry.createProvider("jiuwenbox", "fs", endpoint, config);
-        assertThat(provider).isInstanceOf(JiuwenBoxFSProvider.class);
+        assertThat(provider).isInstanceOf(JiuwenBoxFsProvider.class);
     }
 
     @Test
     void testCreateAioProvider() {
         Object provider = SandboxRegistry.createProvider("aio", "fs", endpoint, config);
-        assertThat(provider).isInstanceOf(AioFSProvider.class);
+        assertThat(provider).isInstanceOf(AioFsProvider.class);
     }
 
     @Test

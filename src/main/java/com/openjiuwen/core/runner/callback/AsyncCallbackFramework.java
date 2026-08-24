@@ -1416,8 +1416,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     }
 
     private static ScheduledExecutorService createDelayedCallbackScheduler() {
-        ScheduledThreadPoolExecutor executor = (ScheduledThreadPoolExecutor)
-                OpenJiuwenExecutors.newScheduledThreadPool(2, new DaemonThreadFactory());
+        ScheduledExecutorService scheduled = OpenJiuwenExecutors.newScheduledThreadPool(2, new DaemonThreadFactory());
+        if (!(scheduled instanceof ScheduledThreadPoolExecutor executor)) {
+            throw new ClassCastException("delayed callback scheduler is not ScheduledThreadPoolExecutor");
+        }
         executor.setRemoveOnCancelPolicy(true);
         executor.prestartAllCoreThreads();
         return executor;

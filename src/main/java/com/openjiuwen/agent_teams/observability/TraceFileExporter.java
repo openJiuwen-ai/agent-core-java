@@ -7,23 +7,25 @@ package com.openjiuwen.agent_teams.observability;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.format.DateTimeFormatter;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -140,7 +142,7 @@ public final class TraceFileExporter {
         }
         try {
             cleanupOldFiles();
-        } catch (RuntimeException exception) {
+        } catch (SecurityException | UncheckedIOException exception) {
             TEAM_LOGGER.warning("file_exporter: cleanup failed - {}", exception);
         }
     }

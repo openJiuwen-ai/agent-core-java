@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -409,7 +408,7 @@ public class Tracer implements Vertex.VertexTraceSink {
         if (invokeId.isBlank()) {
             return;
         }
-        boolean needSend = Boolean.TRUE.equals(kwargs.get("need_send")) || Boolean.TRUE.equals(kwargs.get("needSend"));
+        boolean hasNeedSend = Boolean.TRUE.equals(kwargs.get("need_send")) || Boolean.TRUE.equals(kwargs.get("needSend"));
         Map<String, Object> metadata = castMapValue(kwargs.get("metadata"));
         Map<String, Object> componentMetadata = castMapValue(kwargs.get("component_metadata"));
         Object inputs = kwargs.get("inputs");
@@ -420,11 +419,11 @@ public class Tracer implements Vertex.VertexTraceSink {
             sourceIds = (List<String>) list;
         }
         if ("on_call_start".equals(eventName)) {
-            handler.onCallStart(invokeId, metadata, inputs, needSend, sourceIds);
+            handler.onCallStart(invokeId, metadata, inputs, hasNeedSend, sourceIds);
         } else if ("on_pre_invoke".equals(eventName)) {
-            handler.onPreInvoke(invokeId, inputs, componentMetadata, needSend);
+            handler.onPreInvoke(invokeId, inputs, componentMetadata, hasNeedSend);
         } else if ("on_pre_stream".equals(eventName)) {
-            handler.onPreStream(invokeId, kwargs.get("chunk"), needSend);
+            handler.onPreStream(invokeId, kwargs.get("chunk"), hasNeedSend);
         } else if ("on_post_invoke".equals(eventName)) {
             handler.onPostInvoke(invokeId, outputs, inputs);
         } else if ("on_post_stream".equals(eventName)) {
@@ -439,7 +438,7 @@ public class Tracer implements Vertex.VertexTraceSink {
         } else if ("on_call_done".equals(eventName)) {
             handler.onCallDone(invokeId, outputs);
         } else if ("on_interact".equals(eventName)) {
-            handler.onInteract(invokeId, inputs, componentMetadata, needSend);
+            handler.onInteract(invokeId, inputs, componentMetadata, hasNeedSend);
         }
     }
 
@@ -455,7 +454,7 @@ public class Tracer implements Vertex.VertexTraceSink {
         if (invokeId.isBlank()) {
             return;
         }
-        boolean needSend = Boolean.TRUE.equals(kwargs.get("need_send")) || Boolean.TRUE.equals(kwargs.get("needSend"));
+        boolean hasNeedSend = Boolean.TRUE.equals(kwargs.get("need_send")) || Boolean.TRUE.equals(kwargs.get("needSend"));
         Map<String, Object> metadata = castMapValue(kwargs.get("metadata"));
         Map<String, Object> componentMetadata = castMapValue(kwargs.get("component_metadata"));
         Object inputs = kwargs.get("inputs");
@@ -467,12 +466,12 @@ public class Tracer implements Vertex.VertexTraceSink {
         }
         if ("on_call_start".equals(eventName)) {
             List<String> finalSourceIds = sourceIds;
-            forEachWorkflowExt(h -> h.onCallStart(invokeId, metadata, inputs, needSend, finalSourceIds));
+            forEachWorkflowExt(h -> h.onCallStart(invokeId, metadata, inputs, hasNeedSend, finalSourceIds));
         } else if ("on_pre_invoke".equals(eventName)) {
-            forEachWorkflowExt(h -> h.onPreInvoke(invokeId, inputs, componentMetadata, needSend));
+            forEachWorkflowExt(h -> h.onPreInvoke(invokeId, inputs, componentMetadata, hasNeedSend));
         } else if ("on_pre_stream".equals(eventName)) {
             Object chunk = kwargs.get("chunk");
-            forEachWorkflowExt(h -> h.onPreStream(invokeId, chunk, needSend));
+            forEachWorkflowExt(h -> h.onPreStream(invokeId, chunk, hasNeedSend));
         } else if ("on_post_invoke".equals(eventName)) {
             forEachWorkflowExt(h -> h.onPostInvoke(invokeId, outputs, inputs));
         } else if ("on_post_stream".equals(eventName)) {
@@ -489,7 +488,7 @@ public class Tracer implements Vertex.VertexTraceSink {
         } else if ("on_call_done".equals(eventName)) {
             forEachWorkflowExt(h -> h.onCallDone(invokeId, outputs));
         } else if ("on_interact".equals(eventName)) {
-            forEachWorkflowExt(h -> h.onInteract(invokeId, inputs, componentMetadata, needSend));
+            forEachWorkflowExt(h -> h.onInteract(invokeId, inputs, componentMetadata, hasNeedSend));
         }
     }
 

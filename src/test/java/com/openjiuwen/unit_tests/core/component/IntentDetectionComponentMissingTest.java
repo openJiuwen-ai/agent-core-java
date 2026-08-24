@@ -21,6 +21,7 @@ import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig;
 import com.openjiuwen.core.workflow.component.llm.IntentDetectionExecutable;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +40,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Mirrors Python's {@code tests/unit_tests/core/component/test_intent_detection_comp.py}.</p>
  */
 class IntentDetectionComponentMissingTest {
+
+    @AfterEach
+    void unregisterOpenAiInvoker() {
+        Model.unregisterInvoker("OpenAI");
+    }
 
     @Test
     @SuppressWarnings("unchecked")

@@ -6,13 +6,11 @@ package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -24,12 +22,17 @@ import com.openjiuwen.core.singleagent.skills.SkillToolBinding;
 import com.openjiuwen.core.singleagent.skills.SkillToolRegistry;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -38,8 +41,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Base class for current single-agent implementations.
@@ -267,11 +268,13 @@ public abstract class BaseAgent {
     }
 
     public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-        return CompletableFuture.completedFuture(invoke(inputs, (AgentSession) null));
+        AgentSession typedSession = null;
+        return CompletableFuture.completedFuture(invoke(inputs, typedSession));
     }
 
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-        return stream(inputs, (AgentSession) null, streamModes);
+        AgentSession typedSession = null;
+        return stream(inputs, typedSession, streamModes);
     }
 
     public CompletionStage<Object> invoke(Map<?, ?> inputs, AgentSession session) {

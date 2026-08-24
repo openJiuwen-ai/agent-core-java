@@ -7,11 +7,12 @@ package com.openjiuwen.core.sysop.sandbox;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
 
 /**
  * Runtime configuration passed to sandbox operations.

@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.deep_agent;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.Runner;
@@ -39,6 +40,7 @@ import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -97,9 +99,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -828,7 +832,10 @@ public class DeepAgent implements AutoCloseable {
         }
         try {
             return CompletableFuture.completedFuture(work.get());
-        } catch (RuntimeException ex) {
+        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException | IllegalStateException
+                | UnsupportedOperationException | ClassCastException | NullPointerException
+                | IndexOutOfBoundsException | NoSuchElementException | RejectedExecutionException
+                | UncheckedIOException | SecurityException ex) {
             invokeActive = false;
             return CompletableFuture.failedFuture(ex);
         }
@@ -1122,7 +1129,17 @@ public class DeepAgent implements AutoCloseable {
                                 () -> runTaskLoop(normalized, effectiveSession)
                         );
                         writeTopLevelStreamResult(effectiveSession, 0, result);
-                    } catch (Throwable error) {
+                    } catch (Error error) {
+                        effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
+                                "output", error.getMessage() == null
+                                        ? error.getClass().getSimpleName()
+                                        : error.getMessage(),
+                                "result_type", "error"
+                        )));
+                    } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                            | IllegalStateException | UnsupportedOperationException | ClassCastException
+                            | NullPointerException | IndexOutOfBoundsException | NoSuchElementException
+                            | RejectedExecutionException | UncheckedIOException | SecurityException error) {
                         effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
                                 "output", error.getMessage() == null
                                         ? error.getClass().getSimpleName()
@@ -1154,7 +1171,10 @@ public class DeepAgent implements AutoCloseable {
         try {
             Map<String, Object> result = invokeWithLifecycle(normalized, session);
             writeTopLevelStreamResult(effectiveSession, outputs.size(), result);
-        } catch (RuntimeException ex) {
+        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException | IllegalStateException
+                | UnsupportedOperationException | ClassCastException | NullPointerException
+                | IndexOutOfBoundsException | NoSuchElementException | RejectedExecutionException
+                | UncheckedIOException | SecurityException ex) {
             effectiveSession.writeStream(new OutputSchema("error", outputs.size(), Map.of(
                     "output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
                     "result_type", "error"
@@ -1663,7 +1683,8 @@ public class DeepAgent implements AutoCloseable {
         try {
             taskScheduler.getSessions().put(sessionId, session);
             eventQueue.subscribe(card.getId(), sessionId);
-        } catch (RuntimeException error) {
+        } catch (BaseError | IllegalArgumentException | IllegalStateException | NullPointerException
+                | UnsupportedOperationException error) {
             activeTaskLoopSessions.remove(sessionId);
             throw error;
         }
@@ -2156,7 +2177,7 @@ public class DeepAgent implements AutoCloseable {
     }
 
     public Object reactAgent() {
-        return reactAgentOverride != null ? reactAgentOverride : agent;
+        return reactAgentOverride != null ? reactAgentOverride : (Object) agent;
     }
 
     public void setReactAgent(Object reactAgent, boolean initialized) {
@@ -2529,7 +2550,9 @@ public class DeepAgent implements AutoCloseable {
             try {
                 List<String> loaded = doLoadHarnessConfig(path);
                 LOGGER.log(Level.INFO, "Auto-loaded harness config {0}: {1}", new Object[] {path, loaded});
-            } catch (RuntimeException ex) {
+            } catch (BaseError | IllegalArgumentException | IllegalStateException | NullPointerException
+                    | ClassCastException | UnsupportedOperationException | UncheckedIOException
+                    | SecurityException | IndexOutOfBoundsException ex) {
                 LOGGER.log(Level.WARNING, "Failed to load harness config: " + path, ex);
             }
         }
@@ -2562,7 +2585,7 @@ public class DeepAgent implements AutoCloseable {
         String absolute;
         try {
             absolute = Path.of(configPath).toAbsolutePath().normalize().toString();
-        } catch (RuntimeException ignored) {
+        } catch (IllegalArgumentException | NullPointerException ignored) {
             return;
         }
         pendingHarnessConfigs.removeIf(pending -> {
@@ -2571,7 +2594,7 @@ public class DeepAgent implements AutoCloseable {
             }
             try {
                 return Path.of(pending).toAbsolutePath().normalize().toString().equals(absolute);
-            } catch (RuntimeException ignored) {
+            } catch (IllegalArgumentException | NullPointerException ignored) {
                 return false;
             }
         });

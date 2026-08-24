@@ -71,7 +71,8 @@ public class ControllerAgent extends BaseAgent {
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession).toCompletableFuture().join();
     }
 
     @Override
@@ -95,7 +96,8 @@ public class ControllerAgent extends BaseAgent {
 
     @Override
     public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
-        return stream(inputs, (AgentSessionApi) session, streamModes);
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
     }
 
     public CompletionStage<Void> releaseSession(String sessionId) {

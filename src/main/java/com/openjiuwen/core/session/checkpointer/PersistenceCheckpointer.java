@@ -182,7 +182,8 @@ public class PersistenceCheckpointer extends Checkpointer {
         if (sessionId == null || sessionId.isEmpty()) {
             return false;
         }
-        Map<String, Object> keys = kvStore.getByPrefix(sessionId + ":").join();
+        Map<String, Object> keys = kvStore.getByPrefix(
+                TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join();
         return keys != null && !keys.isEmpty();
     }
 
@@ -199,7 +200,7 @@ public class PersistenceCheckpointer extends Checkpointer {
             agentStorage.clear(agentId, sessionId);
             return;
         }
-        kvStore.deleteByPrefix(sessionId + ":", null).join();
+        kvStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":"), null).join();
     }
 
     @Override

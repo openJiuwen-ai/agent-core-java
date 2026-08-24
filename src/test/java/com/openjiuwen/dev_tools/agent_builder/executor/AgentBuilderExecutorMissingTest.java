@@ -42,6 +42,7 @@ class AgentBuilderExecutorMissingTest {
     @AfterEach
     void tearDown() {
         AgentBuilderFactory.clearRegistry();
+        Model.unregisterInvoker("OpenAI");
     }
 
     @Test

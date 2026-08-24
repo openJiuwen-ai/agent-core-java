@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway;
-import com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient;
 /**
  * Mixin for sandbox operations. Provides invoke() and invokeStream() after init.
  *

@@ -21,7 +21,7 @@ import java.util.UUID;
  * {@code openjiuwen/core/foundation/tool/mcp/client/openapi_client.py}.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class McpServerConfig {
+public final class McpServerConfig {
 
     public static final float NO_TIMEOUT = -1.0F;
 

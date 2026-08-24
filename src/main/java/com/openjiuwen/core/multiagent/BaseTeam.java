@@ -198,11 +198,13 @@ public abstract class BaseTeam {
     public abstract Stream<Object> stream(Object message, AgentSessionApi session);
 
     public CompletionStage<Object> invoke(Object message) {
-        return invoke(message, (AgentSessionApi) null);
+        AgentSessionApi session = null;
+        return invoke(message, session);
     }
 
     public Stream<Object> stream(Object message) {
-        return stream(message, (AgentSessionApi) null);
+        AgentSessionApi session = null;
+        return stream(message, session);
     }
 
     public TeamCard getCard() {

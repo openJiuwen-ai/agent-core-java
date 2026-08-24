@@ -17,7 +17,6 @@ import com.openjiuwen.core.sysop.result.WriteFileResult;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Flow;
 
 /**
@@ -25,17 +24,13 @@ import java.util.concurrent.Flow;
  */
 final class SandboxTestLocalProviders {
 
-    private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
-
     private SandboxTestLocalProviders() {
     }
 
     static void ensureRegistered() {
-        if (INITIALIZED.compareAndSet(false, true)) {
-            SandboxRegistry.registerProvider("local", "fs", TestLocalFsProvider.class);
-            SandboxRegistry.registerProvider("local", "shell", TestLocalShellProvider.class);
-            SandboxRegistry.registerProvider("local", "code", TestLocalCodeProvider.class);
-        }
+        SandboxRegistry.registerProvider("local", "fs", TestLocalFsProvider.class);
+        SandboxRegistry.registerProvider("local", "shell", TestLocalShellProvider.class);
+        SandboxRegistry.registerProvider("local", "code", TestLocalCodeProvider.class);
     }
 
     public static final class TestLocalFsProvider extends LocalFsOperation {

@@ -293,7 +293,12 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             // Create workflow session
-            WorkflowSession workflowSession = ((com.openjiuwen.core.session.AgentSession) session).createWorkflowSession();
+            WorkflowSession workflowSession;
+            if (session instanceof com.openjiuwen.core.session.AgentSession agentSession) {
+                workflowSession = agentSession.createWorkflowSession();
+            } else {
+                throw new ClassCastException("session is not AgentSession");
+            }
 
             // Prepare inputs
             Object inputs = getTaskArguments(task);
@@ -304,8 +309,7 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             // Execute workflow with streaming
-            ModelContext context = appContextEngine.createContext(workflowId,
-                    session instanceof AgentSession agentSession ? agentSession.getInner() : null);
+            ModelContext context = appContextEngine.createContext(workflowId, agentSession.getInner());
             addUserMessageToWorkflowContext(context, getDisplayContent(event));
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
                     workflow, inputs, workflowSession, context, resolveWorkflowStreamModes(session), null)

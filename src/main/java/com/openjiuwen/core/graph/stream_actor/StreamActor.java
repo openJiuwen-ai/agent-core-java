@@ -6,6 +6,7 @@ package com.openjiuwen.core.graph.stream_actor;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.concurrent.StripedKeyLocks;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
@@ -14,8 +15,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -86,7 +89,7 @@ public class StreamActor {
     private void sendOnProducer(
             Object message,
             ComponentAbility sourceAbility,
-            boolean firstFrame,
+            boolean isFirstFrame,
             String producerId) {
         String abilityName = sourceAbility.getAbilityName();
         if (!vertex.shouldHandleMessage()) {
@@ -109,7 +112,7 @@ public class StreamActor {
                     LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
                             producerId, nodeId, abilityName);
                 } else {
-                    if (!firstFrame || !vertex.isDone()) {
+                    if (!isFirstFrame || !vertex.isDone()) {
                         LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
                                 producerId, nodeId, abilityName);
                         return;
@@ -212,15 +215,8 @@ public class StreamActor {
         CountDownLatch latch = new CountDownLatch(1);
         taskError = new CompletableFuture<>();
         taskCompletion = new CompletableFuture<>();
-        task = STREAM_EXECUTOR.submit(() -> {
-            try {
-                vertex.streamCall(latch, this::errorCallback);
-                taskCompletion.complete(null);
-            } catch (Throwable throwable) {
-                taskCompletion.completeExceptionally(throwable);
-                throw throwable;
-            }
-        });
+        task = STREAM_EXECUTOR.submit(() -> runStreamTask(
+                () -> vertex.streamCall(latch, this::errorCallback), taskCompletion));
         return latch;
     }
 
@@ -244,17 +240,25 @@ public class StreamActor {
                 ComponentAbility ability = entry.getKey();
                 StreamProcessor processor = entry.getValue();
                 CompletableFuture<Void> completion = new CompletableFuture<>();
-                Future<?> processorTask = STREAM_EXECUTOR.submit(() -> {
-                    try {
-                        processor.run(ability);
-                        completion.complete(null);
-                    } catch (Throwable throwable) {
-                        completion.completeExceptionally(throwable);
-                        throw throwable;
-                    }
-                });
+                Future<?> processorTask = STREAM_EXECUTOR.submit(() -> runStreamTask(
+                        () -> processor.run(ability), completion));
                 runningTasks.add(new RunningTask(ability, processorTask, completion));
             }
+        }
+    }
+
+    private static void runStreamTask(Runnable work, CompletableFuture<Void> completion) {
+        try {
+            work.run();
+            completion.complete(null);
+        } catch (Error error) {
+            completion.completeExceptionally(error);
+            throw error;
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException
+                | ClassCastException | NullPointerException | IndexOutOfBoundsException
+                | UnsupportedOperationException | NoSuchElementException exception) {
+            completion.completeExceptionally(exception);
+            throw exception;
         }
     }
 

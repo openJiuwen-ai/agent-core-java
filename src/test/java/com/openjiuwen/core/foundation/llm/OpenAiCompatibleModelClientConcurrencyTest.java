@@ -13,6 +13,8 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -33,6 +35,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * requests to the same host (needed for DeepAgent multi-session load).
  */
 class OpenAiCompatibleModelClientConcurrencyTest {
+
+    @BeforeEach
+    void clearOpenAiInvoker() {
+        Model.unregisterInvoker("OpenAI");
+    }
+
+    @AfterEach
+    void restoreOpenAiInvoker() {
+        Model.unregisterInvoker("OpenAI");
+    }
 
     @Test
     void concurrentInvokesCanExceedDefaultOkHttpPerHostLimitOfFive() throws Exception {

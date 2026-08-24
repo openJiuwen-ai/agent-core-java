@@ -212,6 +212,16 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         exposeProviderToClientRegistry(provider);
     }
 
+    /**
+     * Remove a previously registered invoke-only provider so builtin HTTP clients can be used again.
+     */
+    public static void unregisterInvoker(String provider) {
+        if (provider == null || provider.isBlank()) {
+            return;
+        }
+        removeProviderRegistration(INVOKERS, provider);
+    }
+
     public static void registerClientFactory(String provider, ModelClientFactory factory) {
         if (provider == null || provider.isBlank() || factory == null) {
             throw ErrorHelper.buildError(

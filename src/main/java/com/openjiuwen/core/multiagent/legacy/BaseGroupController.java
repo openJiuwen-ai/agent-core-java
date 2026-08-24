@@ -133,9 +133,19 @@ public abstract class BaseGroupController {
 
     @SuppressWarnings("unchecked")
     private Object handleMessageWrapper(Object payload) {
-        Map<String, Object> request = (Map<String, Object>) payload;
-        GroupEvent event = (GroupEvent) request.get("event");
-        AgentGroupSession session = (AgentGroupSession) request.get("session");
+        if (!(payload instanceof Map<?, ?> rawPayload)) {
+            throw new ClassCastException("payload is not a Map");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> request = (Map<String, Object>) rawPayload;
+        Object eventObj = request.get("event");
+        Object sessionObj = request.get("session");
+        if (!(eventObj instanceof GroupEvent event)) {
+            throw new ClassCastException("event is not GroupEvent");
+        }
+        if (!(sessionObj instanceof AgentGroupSession session)) {
+            throw new ClassCastException("session is not AgentGroupSession");
+        }
         try {
             Object result = handleEvent(event, session);
             Loggers.MULTI_AGENT.info(

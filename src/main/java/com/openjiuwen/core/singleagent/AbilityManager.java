@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.context.ContextEngine;
@@ -23,6 +24,7 @@ import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -34,6 +36,7 @@ import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -395,23 +398,23 @@ public class AbilityManager {
         return execute(null, toolCall, null, false, null, null);
     }
 
-    public List<ExecutionResult> execute(Object toolCall, boolean parallelToolCalls) {
-        return execute(null, toolCall, null, parallelToolCalls, null, null);
+    public List<ExecutionResult> execute(Object toolCall, boolean shouldParallelToolCalls) {
+        return execute(null, toolCall, null, shouldParallelToolCalls, null, null);
     }
 
-    public List<ExecutionResult> execute(Object toolCall, boolean parallelToolCalls, ToolResolver resolver) {
-        return execute(null, toolCall, null, parallelToolCalls, null, resolver);
+    public List<ExecutionResult> execute(Object toolCall, boolean shouldParallelToolCalls, ToolResolver resolver) {
+        return execute(null, toolCall, null, shouldParallelToolCalls, null, resolver);
     }
 
-    public List<ExecutionResult> execute(AgentCallbackContext ctx, Object toolCall, boolean parallelToolCalls,
+    public List<ExecutionResult> execute(AgentCallbackContext ctx, Object toolCall, boolean shouldParallelToolCalls,
                                          ToolResolver resolver) {
         Object session = ctx == null ? null : ctx.getSession();
-        return execute(ctx, toolCall, session, parallelToolCalls, null, resolver);
+        return execute(ctx, toolCall, session, shouldParallelToolCalls, null, resolver);
     }
 
     public List<ExecutionResult> execute(AgentCallbackContext ctx, Object toolCall, Object session,
-                                         boolean parallelToolCalls, Object tag) {
-        return execute(ctx, toolCall, session, parallelToolCalls, tag, null);
+                                         boolean shouldParallelToolCalls, Object tag) {
+        return execute(ctx, toolCall, session, shouldParallelToolCalls, tag, null);
     }
 
     /**
@@ -420,7 +423,7 @@ public class AbilityManager {
      * <p>Mirrors Python's {@code AbilityManager.execute(ctx, tool_call, session, ...)}.</p>
      */
     public List<ExecutionResult> execute(AgentCallbackContext ctx, Object toolCall, Object session,
-                                         boolean parallelToolCalls, Object tag, ToolResolver resolver) {
+                                         boolean shouldParallelToolCalls, Object tag, ToolResolver resolver) {
         List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
         if (toolCalls.isEmpty()) {
             return List.of();
@@ -435,14 +438,14 @@ public class AbilityManager {
                 ? session
                 : ctx != null && ctx.getSession() != null ? ctx.getSession() : SessionContextHolder.getCurrentSession();
         if (ctx == null || ctx.getAgent() == null) {
-            return executeUnrailed(toolCalls, parallelToolCalls, resolver, effectiveSession, tag);
+            return executeUnrailed(toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag);
         }
-        return executeRailed(ctx, toolCalls, parallelToolCalls, resolver, effectiveSession, tag);
+        return executeRailed(ctx, toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag);
     }
 
-    private List<ExecutionResult> executeUnrailed(List<ToolCall> toolCalls, boolean parallelToolCalls,
+    private List<ExecutionResult> executeUnrailed(List<ToolCall> toolCalls, boolean shouldParallelToolCalls,
                                                   ToolResolver resolver, Object session, Object tag) {
-        if (!parallelToolCalls || toolCalls.size() == 1) {
+        if (!shouldParallelToolCalls || toolCalls.size() == 1) {
             List<ExecutionResult> results = new ArrayList<>(toolCalls.size());
             for (ToolCall singleToolCall : toolCalls) {
                 results.add(safeExecuteOne(singleToolCall, resolver, session, tag));
@@ -453,14 +456,14 @@ public class AbilityManager {
     }
 
     private List<ExecutionResult> executeRailed(AgentCallbackContext ctx, List<ToolCall> toolCalls,
-                                                boolean parallelToolCalls, ToolResolver resolver,
+                                                boolean shouldParallelToolCalls, ToolResolver resolver,
                                                 Object session, Object tag) {
         List<AgentCallbackContext> toolContexts = new ArrayList<>(toolCalls.size());
         for (ToolCall singleToolCall : toolCalls) {
             toolContexts.add(newToolCallContext(ctx, singleToolCall, session));
         }
         List<ExecutionResult> results;
-        if (!parallelToolCalls || toolCalls.size() == 1) {
+        if (!shouldParallelToolCalls || toolCalls.size() == 1) {
             results = new ArrayList<>(toolCalls.size());
             for (int i = 0; i < toolCalls.size(); i++) {
                 results.add(safeRailedExecuteOne(toolContexts.get(i), toolCalls.get(i), resolver, session, tag));
@@ -539,7 +542,8 @@ public class AbilityManager {
                 return safeRailedExecuteOne(toolCtx, toolCall, resolver, session, tag);
             }
             return safeExecuteOne(toolCall, resolver, session, tag);
-        } catch (RuntimeException exception) {
+        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                | IllegalStateException | NullPointerException | ClassCastException exception) {
             return executionErrorResult(toolCall, exception);
         }
     }
@@ -774,7 +778,8 @@ public class AbilityManager {
         Object workflow;
         try {
             workflow = Runner.resourceMgr().getWorkflow(workflowId, session).toCompletableFuture().join();
-        } catch (RuntimeException exception) {
+        } catch (CompletionException | BaseError | IllegalArgumentException
+                | IllegalStateException exception) {
             throw AbilityExecutionError.of(toolCall,
                     "Workflow instance not found in resource_mgr: " + workflowId, exception);
         }
@@ -801,7 +806,9 @@ public class AbilityManager {
             Object result = workflowOutput instanceof WorkflowOutput output ? output.getResult() : workflowOutput;
             return new ExecutionResult(result, new ToolMessage(String.valueOf(result), toolCall.getId(),
                     toolCall.getName()));
-        } catch (RuntimeException exception) {
+        } catch (BaseError | AgentInterrupt | CompletionException
+                | IllegalArgumentException | IllegalStateException | NullPointerException
+                | ClassCastException | UnsupportedOperationException exception) {
             throw AbilityExecutionError.of(toolCall, "Workflow execution error: " + exception.getMessage(), exception);
         }
     }
@@ -811,7 +818,8 @@ public class AbilityManager {
         Object agent;
         try {
             agent = Runner.resourceMgr().getAgent(agentId).toCompletableFuture().join();
-        } catch (RuntimeException exception) {
+        } catch (CompletionException | BaseError | IllegalArgumentException
+                | IllegalStateException exception) {
             throw AbilityExecutionError.of(toolCall, "Agent instance not found in resource_mgr: " + agentId, exception);
         }
         if (agent == null) {
@@ -829,7 +837,9 @@ public class AbilityManager {
             Object result = Runner.runAgent(agent, inputs, childSession, null);
             return new ExecutionResult(result, new ToolMessage(buildToolMessageContent(result),
                     toolCall.getId(), toolCall.getName()));
-        } catch (RuntimeException exception) {
+        } catch (BaseError | AgentInterrupt | CompletionException
+                | IllegalArgumentException | IllegalStateException | NullPointerException
+                | ClassCastException | UnsupportedOperationException exception) {
             throw AbilityExecutionError.of(toolCall, "Agent execution error: " + exception.getMessage(), exception);
         }
     }
@@ -954,7 +964,7 @@ public class AbilityManager {
                 pathText = pathText.toLowerCase(Locale.ROOT);
             }
             return "file:" + pathText;
-        } catch (RuntimeException ignored) {
+        } catch (InvalidPathException ignored) {
             return null;
         }
     }
@@ -1432,7 +1442,8 @@ public class AbilityManager {
                 return List.of();
             }
             return infos.stream().filter(Objects::nonNull).toList();
-        } catch (RuntimeException exception) {
+        } catch (CompletionException | BaseError | IllegalArgumentException
+                | IllegalStateException | NullPointerException exception) {
             return List.of();
         }
     }

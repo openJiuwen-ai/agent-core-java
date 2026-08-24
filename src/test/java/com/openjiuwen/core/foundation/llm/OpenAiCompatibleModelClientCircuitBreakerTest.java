@@ -24,6 +24,7 @@ class OpenAiCompatibleModelClientCircuitBreakerTest {
 
     @BeforeEach
     void setProps() {
+        Model.unregisterInvoker("OpenAI");
         System.setProperty("openjiuwen.llm.circuit.failure-threshold", "3");
         System.setProperty("openjiuwen.llm.circuit.open-duration-millis", "60000");
         System.setProperty("openjiuwen.llm.http.connect-timeout-seconds", "1");
@@ -31,6 +32,7 @@ class OpenAiCompatibleModelClientCircuitBreakerTest {
 
     @AfterEach
     void clearProps() {
+        Model.unregisterInvoker("OpenAI");
         System.clearProperty("openjiuwen.llm.circuit.failure-threshold");
         System.clearProperty("openjiuwen.llm.circuit.open-duration-millis");
         System.clearProperty("openjiuwen.llm.http.connect-timeout-seconds");

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import com.openjiuwen.core.multitenant.TenantContext;
@@ -14,6 +15,11 @@ class TenantCheckpointerIsolationTest {
 
     @BeforeEach
     void clearContext() {
+        TenantContextHolder.clearCurrentTenant();
+    }
+
+    @AfterEach
+    void restoreContext() {
         TenantContextHolder.clearCurrentTenant();
     }
 

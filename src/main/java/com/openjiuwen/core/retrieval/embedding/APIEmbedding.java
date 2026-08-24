@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -98,8 +99,12 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
         }
         this.limiter = new Semaphore(maxConcurrent);
         // 线程名前缀保持 openjiuwen_embed-，对齐历史实现与 Python 侧命名习惯
-        this.executor = (ThreadPoolExecutor) OpenJiuwenExecutors.newFixedThreadPool(
+        ExecutorService pool = OpenJiuwenExecutors.newFixedThreadPool(
                 "openjiuwen_embed", this.maxConcurrent, true);
+        if (!(pool instanceof ThreadPoolExecutor threadPoolExecutor)) {
+            throw new ClassCastException("embed executor is not ThreadPoolExecutor");
+        }
+        this.executor = threadPoolExecutor;
         this.httpClient = httpClient == null ? createHttpClient() : httpClient;
     }
 

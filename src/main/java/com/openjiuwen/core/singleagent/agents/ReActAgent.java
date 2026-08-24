@@ -5,11 +5,11 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.VirtualThreadSupport;
-
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -27,6 +27,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -68,6 +69,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.logging.Logger;
 
@@ -1931,7 +1933,9 @@ public class ReActAgent extends BaseAgent {
                 }
                 Loggers.AGENT.warning("ReAct stream returned empty (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + ")");
-            } catch (RuntimeException exception) {
+            } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                    | IllegalStateException | NullPointerException | ClassCastException
+                    | UnsupportedOperationException exception) {
                 // Partial chunks may already have been sent; do not retry.
                 Loggers.AGENT.error("ReAct stream error (attempt "
                         + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
@@ -1956,7 +1960,8 @@ public class ReActAgent extends BaseAgent {
         AssistantMessage aiMessage;
         try {
             aiMessage = model.invoke(messages, options).toCompletableFuture().join();
-        } catch (RuntimeException exception) {
+        } catch (BaseError | CompletionException | IllegalArgumentException
+                | IllegalStateException | NullPointerException exception) {
             logModelCallCompleted(ctx, false, callStartTime, null, exception);
             throw exception;
         }

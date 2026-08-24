@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.core.sysop.result.DownloadFileChunkData;
 import com.openjiuwen.core.sysop.result.DownloadFileData;
 import com.openjiuwen.core.sysop.result.DownloadFileResult;

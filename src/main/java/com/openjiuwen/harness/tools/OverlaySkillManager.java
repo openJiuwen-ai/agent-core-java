@@ -16,6 +16,7 @@ import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.local.LocalFsOperation;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -69,7 +70,8 @@ public class OverlaySkillManager {
                 id -> new SkillManager("tenant." + id, fsResolver));
         try {
             manager.refreshIncrementally(List.of(tenantSkillRoot));
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException | NullPointerException
+                | UncheckedIOException | SecurityException e) {
             Loggers.TOOL.warn("Failed to refresh tenant skills for {}: {}", tenantId, e.getMessage());
         }
         return manager;

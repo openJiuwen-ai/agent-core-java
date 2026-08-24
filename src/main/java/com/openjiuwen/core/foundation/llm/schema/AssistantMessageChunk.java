@@ -6,15 +6,15 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.openjiuwen.core.common.logging.Loggers;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.SuperBuilder;
+import lombok.NoArgsConstructor;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 /**
  * Mirrors Python's {@code AssistantMessageChunk} in

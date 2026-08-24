@@ -67,17 +67,26 @@ public class ContextEngineConfig {
                                Map<String, Integer> modelContextWindowTokens,
                                boolean enableOpenrouterModelContextWindowTokens,
                                double openrouterRequestTimeout) {
-        setMaxContextMessageNum(maxContextMessageNum);
-        setDefaultWindowMessageNum(defaultWindowMessageNum);
-        setDefaultWindowRoundNum(defaultWindowRoundNum);
-        setEnableKvCacheRelease(enableKvCacheRelease);
-        setEnableReload(enableReload);
-        setEnableTiktokenCounter(enableTiktokenCounter);
-        setContextWindowTokens(contextWindowTokens);
-        setModelName(modelName);
-        setModelContextWindowTokens(modelContextWindowTokens);
-        setEnableOpenrouterModelContextWindowTokens(enableOpenrouterModelContextWindowTokens);
-        setOpenrouterRequestTimeout(openrouterRequestTimeout);
+        validatePositive(maxContextMessageNum, "max_context_message_num");
+        validatePositive(defaultWindowMessageNum, "default_window_message_num");
+        validatePositive(defaultWindowRoundNum, "default_window_round_num");
+        validatePositive(contextWindowTokens, "context_window_tokens");
+        if (openrouterRequestTimeout <= 0) {
+            throw new IllegalArgumentException("openrouter_request_timeout must be > 0");
+        }
+        this.maxContextMessageNum = maxContextMessageNum;
+        this.defaultWindowMessageNum = defaultWindowMessageNum;
+        this.defaultWindowRoundNum = defaultWindowRoundNum;
+        this.enableKvCacheRelease = enableKvCacheRelease;
+        this.enableReload = enableReload;
+        this.enableTiktokenCounter = enableTiktokenCounter;
+        this.contextWindowTokens = contextWindowTokens;
+        this.modelName = modelName;
+        this.modelContextWindowTokens = modelContextWindowTokens == null
+                ? null
+                : new LinkedHashMap<>(modelContextWindowTokens);
+        this.enableOpenrouterModelContextWindowTokens = enableOpenrouterModelContextWindowTokens;
+        this.openrouterRequestTimeout = openrouterRequestTimeout;
     }
 
     public static Builder builder() {
