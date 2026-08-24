@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
@@ -14,117 +16,127 @@ import java.util.Map;
 
 /**
  * Tool that signals control transfer to a target agent.
- * <p>
- * Mirrors Python's {@code HandoffTool}. Injected automatically by
- * {@link HandoffTeam} into every agent's {@code AbilityManager}. The tool name
- * exposed to the LLM is {@code transfer_to_{target_id}}; invoking it returns a
- * payload carrying {@link HandoffSignal#HANDOFF_TARGET_KEY} which
- * {@link HandoffSignal#extract} consumes to drive the handoff chain.
- * </p>
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code HandoffTool} in
+ * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_tool.py}.</p>
  */
 public class HandoffTool extends Tool {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final String targetId;
 
-    /**
-     * Create a handoff tool targeting {@code targetId}.
-     * 
-     * @param targetId ID of the agent to hand off to.
-     * @param targetDescription Optional description of the target agent appended
-     *            to the tool description shown to the LLM.
-     * @since 0.1.7
-     */
+    public HandoffTool(String targetId) {
+        this(targetId, "");
+    }
+
     public HandoffTool(String targetId, String targetDescription) {
         super(buildCard(targetId, targetDescription));
         this.targetId = targetId;
     }
 
-    /**
-     * HandoffTool.
-     * 
-     * @param targetId targetId
-     * @since 0.1.7
-     */
-    public HandoffTool(String targetId) {
-        this(targetId, "");
-    }
-
-    /**
-     * getTargetId.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public String getTargetId() {
         return targetId;
     }
 
     /**
-     * Return a handoff signal payload dict consumed by
-     * {@link HandoffSignal#extract}.
-     * <p>
-     * Accepts a dict of tool arguments ({@code reason} / {@code message}).
-     * Missing values default to empty strings to match Python parity.
-     * </p>
-     * 
-     * @param inputs inputs
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
+     * Python-compatible invoke entrypoint accepting map, JSON string, plain string, or any object.
+     *
+     * @param inputs raw tool inputs
+     * @return handoff signal payload
      */
-    @Override
-    public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String message = inputs != null && inputs.get("message") != null ? String.valueOf(inputs.get("message")) : "";
-        String reason = inputs != null && inputs.get("reason") != null ? String.valueOf(inputs.get("reason")) : "";
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(HandoffSignal.HANDOFF_TARGET_KEY, targetId);
-        payload.put(HandoffSignal.HANDOFF_MESSAGE_KEY, message);
-        payload.put(HandoffSignal.HANDOFF_REASON_KEY, reason);
-        return payload;
+    public Map<String, Object> invokePayload(Object inputs) {
+        return buildPayload(normalizeInputs(inputs));
     }
 
     /**
-     * Streaming variant — yields the single {@link #invoke} result.
-     * 
-     * @param inputs inputs
-     * @param kwargs kwargs
-     * @return the result
-     * @since 0.1.7
+     * Python-compatible stream entrypoint yielding the single invoke result.
+     *
+     * @param inputs raw tool inputs
+     * @return single-item iterator
      */
-    @Override
-    public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        Object result = invoke(inputs, kwargs);
-        return List.of(result).iterator();
+    public Iterator<Map<String, Object>> streamPayload(Object inputs) {
+        return List.of(invokePayload(inputs)).iterator();
     }
 
-    /**
-     * buildCard.
-     * 
-     * @param targetId targetId
-     * @param targetDescription targetDescription
-     * @return the result
-     * @since 0.1.7
-     */
+    @Override
+    protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        return buildPayload(inputs);
+    }
+
+    @Override
+    protected Iterator<Object> streamInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+        return List.<Object>of(buildPayload(inputs)).iterator();
+    }
+
     private static ToolCard buildCard(String targetId, String targetDescription) {
         String toolName = "transfer_to_" + targetId;
         String description = "Transfer the current task to " + targetId + " for processing.";
         if (targetDescription != null && !targetDescription.isBlank()) {
             description += " " + targetDescription;
         }
-        Map<String, Object> reasonProp = new LinkedHashMap<>();
-        reasonProp.put("type", "string");
-        reasonProp.put("description", "Reason for handoff: briefly explain why the task is being transferred.");
-        Map<String, Object> messageProp = new LinkedHashMap<>();
-        messageProp.put("type", "string");
-        messageProp.put("description", "Context information passed to the next agent (optional).");
+        return new ToolCard(toolName, toolName, description, inputParams());
+    }
+
+    private static Map<String, Object> inputParams() {
+        Map<String, Object> reason = new LinkedHashMap<>();
+        reason.put("type", "string");
+        reason.put("description", "Reason for handoff: briefly explain why the task is being transferred.");
+
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("type", "string");
+        message.put("description", "Context information passed to the next agent (optional).");
+
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("reason", reasonProp);
-        properties.put("message", messageProp);
-        Map<String, Object> inputParams = new LinkedHashMap<>();
-        inputParams.put("type", "object");
-        inputParams.put("properties", properties);
-        inputParams.put("required", List.of("reason"));
-        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
+        properties.put("reason", reason);
+        properties.put("message", message);
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("type", "object");
+        params.put("properties", properties);
+        params.put("required", List.of("reason"));
+        return params;
+    }
+
+    private static Map<String, Object> normalizeInputs(Object inputs) {
+        if (inputs instanceof String text) {
+            return parseStringInput(text);
+        }
+        if (inputs instanceof Map<?, ?> rawMap) {
+            return stringObjectMap(rawMap);
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private static Map<String, Object> parseStringInput(String text) {
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(text, Object.class);
+            if (parsed instanceof Map<?, ?> rawMap) {
+                return stringObjectMap(rawMap);
+            }
+            return new LinkedHashMap<>();
+        } catch (JsonProcessingException ignored) {
+            Map<String, Object> fallback = new LinkedHashMap<>();
+            fallback.put("reason", text);
+            return fallback;
+        }
+    }
+
+    private Map<String, Object> buildPayload(Map<String, Object> inputs) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(HandoffSignal.HANDOFF_TARGET_KEY, targetId);
+        payload.put(HandoffSignal.HANDOFF_MESSAGE_KEY, stringValue(inputs.get("message")));
+        payload.put(HandoffSignal.HANDOFF_REASON_KEY, stringValue(inputs.get("reason")));
+        return payload;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static Map<String, Object> stringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 }

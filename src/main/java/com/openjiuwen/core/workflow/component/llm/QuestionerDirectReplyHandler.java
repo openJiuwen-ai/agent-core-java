@@ -8,7 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -305,11 +305,13 @@ public class QuestionerDirectReplyHandler {
     }
 
     private Object localFixtureFieldValue(String fieldName, String input) {
+        // Only extract when the user text actually mentions the field — never invent defaults
+        // (Python questioner_comp has no fixture fallback that fills missing required fields).
         return switch (fieldName) {
-            case "location" -> containsAny(input, "北京") ? "北京" : containsAny(input, "杭州") ? "杭州" : "杭州";
-            case "date" -> containsAny(input, "明天", "明日") ? "明天" : containsAny(input, "今天", "今日") ? "今天" : "今天";
-            case "weather" -> containsAny(input, "雨") ? "雨" : "晴";
-            case "temperature" -> containsAny(input, "三十", "30") ? "三十摄氏度" : "三十摄氏度";
+            case "location" -> containsAny(input, "北京") ? "北京" : containsAny(input, "杭州") ? "杭州" : null;
+            case "date" -> containsAny(input, "明天", "明日") ? "明天" : containsAny(input, "今天", "今日") ? "今天" : null;
+            case "weather" -> containsAny(input, "雨") ? "雨" : containsAny(input, "晴") ? "晴" : null;
+            case "temperature" -> containsAny(input, "三十", "30") ? "三十摄氏度" : null;
             case "bank" -> containsAny(input, "民生") ? "民生银行" : null;
             case "action" -> containsAny(input, "取钱") ? "取钱" : containsAny(input, "存钱") ? "存钱" : null;
             case "amount" -> containsAny(input, "5000", "五千") ? 5000 : null;

@@ -133,13 +133,13 @@ class MemoryVectorStoreTest {
                     .put(node.getId(), node.toDict());
         }
 
-        JSONFileConnector connector = new JSONFileConnector();
+        JSONFileConnector connector = new JSONFileConnector(tempDir);
         MemoryVectorStore restoredStore = new MemoryVectorStore();
         for (Map.Entry<String, Map<String, Object>> workspace : workspaces.entrySet()) {
-            Path filePath = tempDir.resolve(workspace.getKey() + "_memories.json");
-            connector.saveToFile(filePath.toString(), workspace.getValue());
+            String filePath = workspace.getKey() + "_memories.json";
+            connector.saveToFile(filePath, workspace.getValue());
 
-            Map<String, Object> loadedData = connector.loadFromFile(filePath.toString());
+            Map<String, Object> loadedData = connector.loadFromFile(filePath);
             Map<String, Map<String, Object>> typedData = new LinkedHashMap<>();
             loadedData.forEach((key, value) -> typedData.put(key, (Map<String, Object>) value));
             restoredStore.loadFromDict(typedData).join();

@@ -9,6 +9,7 @@ import com.openjiuwen.core.sysop.config.GatewayConfig;
 import com.openjiuwen.core.sysop.config.GatewayInvokeRequest;
 import com.openjiuwen.core.sysop.config.SandboxCreateRequest;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -18,10 +19,12 @@ import java.util.Map;
 
 /**
  * Minimal singleton entry point for acquiring sandbox clients by key/config.
- * 
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sysop.sandbox.gateway.SandboxGateway}.
  * @version 1.0
  * @since 0.1.7
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 public class SandboxGateway {
     private static final SandboxGateway INSTANCE = new SandboxGateway(GatewayConfig.builder().build());
 
@@ -131,6 +134,9 @@ public class SandboxGateway {
                 gatewayConfig != null ? gatewayConfig : SandboxGatewayConfig.builder().build();
             Object target = getOrCreateProvider(effectiveConfig, request.getIsolationKey(), request.getOpType());
             Object result = invokeByName(target, request.getMethod(), request.getParams());
+            if (result instanceof java.util.concurrent.CompletableFuture<?> future) {
+                result = future.join();
+            }
             return GatewayResponse.builder().code(StatusCode.SUCCESS.getCode()).message(StatusCode.SUCCESS.getErrmsg())
                     .data(result).build();
         } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException
@@ -298,15 +304,39 @@ public class SandboxGateway {
      */
     private Object[] buildArguments(Method method, Map<String, Object> params) {
         Parameter[] parameters = method.getParameters();
+        String[] fallbackNames = fallbackParamNames(method.getName(), parameters.length);
         List<Object> args = new ArrayList<>(parameters.length);
-        for (Parameter parameter : parameters) {
+        for (int index = 0; index < parameters.length; index++) {
+            Parameter parameter = parameters[index];
             Object value = params.get(parameter.getName());
+            if (value == null && fallbackNames != null && index < fallbackNames.length) {
+                value = params.get(fallbackNames[index]);
+            }
             if (value == null) {
                 value = defaultValue(parameter.getType());
             }
             args.add(coerceValue(value, parameter.getType()));
         }
         return args.toArray();
+    }
+
+    private static String[] fallbackParamNames(String methodName, int arity) {
+        return switch (methodName) {
+            case "readFile", "readFileStream" -> new String[]{
+                    "path", "mode", "head", "tail", "lineRange", "encoding", "chunkSize", "options"
+            };
+            case "writeFile" -> new String[]{
+                    "path", "content", "mode", "prependNewline", "appendNewline", "append",
+                    "createIfNotExist", "permissions", "encoding", "options"
+            };
+            case "executeCmd", "executeCmdStream" -> new String[]{
+                    "command", "cwd", "timeout", "environment", "options", "shellType"
+            };
+            case "executeCode", "executeCodeStream" -> arity >= 6
+                    ? new String[]{"code", "language", "timeout", "environment", "cwd", "options"}
+                    : new String[]{"code", "language", "timeout", "environment", "options"};
+            default -> null;
+        };
     }
 
     /**
@@ -378,6 +408,35 @@ public class SandboxGateway {
         if (type == String.class) {
             return String.valueOf(value);
         }
+        if (type.isEnum() && value instanceof String text) {
+            Object fromValue = invokeEnumFromValue(type, text);
+            if (fromValue != null) {
+                return fromValue;
+            }
+            try {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                Object enumValue = Enum.valueOf(
+                        (Class<? extends Enum>) type.asSubclass(Enum.class),
+                        text.trim().toUpperCase());
+                return enumValue;
+            } catch (IllegalArgumentException ignored) {
+                return value;
+            }
+        }
+        if (type == com.openjiuwen.core.sysop.protocal.BaseFsProtocal.LineRange.class
+                && value instanceof int[] range
+                && range.length >= 2) {
+            return new com.openjiuwen.core.sysop.protocal.BaseFsProtocal.LineRange(range[0], range[1]);
+        }
         return value;
+    }
+
+    private static Object invokeEnumFromValue(Class<?> enumType, String text) {
+        try {
+            Method fromValue = enumType.getMethod("fromValue", String.class);
+            return fromValue.invoke(null, text);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 }

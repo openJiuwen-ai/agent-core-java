@@ -7,17 +7,13 @@ package com.openjiuwen.core.session.checkpointer;
 import com.openjiuwen.core.session.BaseSession;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
-import java.util.Arrays;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Tests base checkpointer helpers and contracts.
  *
- * <p>Mirrors Python's {@code Checkpointer}, {@code Storage}, and key helpers in
+ * <p>Mirrors Python's {@code Checkpointer} and key helpers in
  * {@code openjiuwen/core/session/checkpointer/base.py}.</p>
  */
 class CheckpointerBaseTest {
@@ -48,17 +44,6 @@ class CheckpointerBaseTest {
         );
     }
 
-    @Test
-    void storageContractIncludesClear() {
-        Method clear = Arrays.stream(Storage.class.getDeclaredMethods())
-                .filter(method -> "clear".equals(method.getName()))
-                .findFirst()
-                .orElse(null);
-
-        assertNotNull(clear);
-        assertEquals(String.class, clear.getParameterTypes()[0]);
-    }
-
     private static final class TestSession extends BaseSession {
         private final String sessionId;
         private final String workflowId;
@@ -73,7 +58,6 @@ class CheckpointerBaseTest {
             return sessionId;
         }
 
-        @Override
         public String workflowId() {
             return workflowId;
         }

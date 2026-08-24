@@ -8,7 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;

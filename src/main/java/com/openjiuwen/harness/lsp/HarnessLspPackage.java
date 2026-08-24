@@ -36,10 +36,6 @@ public final class HarnessLspPackage {
         return CompletableFuture.completedFuture(null);
     }
 
-    public static Object getLspTool() {
-        return null;
-    }
-
     public static LspStatus getLspStatus() {
         return LSPServerManager.getGlobalStatus();
     }

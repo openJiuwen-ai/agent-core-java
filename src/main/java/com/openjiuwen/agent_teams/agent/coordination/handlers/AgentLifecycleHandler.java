@@ -69,7 +69,26 @@ public class AgentLifecycleHandler {
         InnerEventMessage innerEvent = (InnerEventMessage) event;
         Object content = innerEvent.getPayload().getOrDefault("content", "");
         LOGGER.info("user_input -> deliver_input");
+        // USER_INPUT is explicit user intent: clear post-clean_team latch before deliver (#59 §3.5).
+        if (host instanceof TeamAgentResetView resetView && resetView.isTeamCleaned()) {
+            LOGGER.info(
+                    "onUserInput: team cleaned, resetting latch before deliver for member={}",
+                    blueprint.getMemberName());
+            resetView.resetTeamCleaned();
+        }
         return host.deliverInput(content, true);
+    }
+
+    /**
+     * Optional host surface for clearing the post-{@code clean_team} latch.
+     *
+     * <p>Mirrors 730 {@code StreamController.resetTeamTerminated} used by
+     * {@code AgentLifecycleHandler.onUserInput} (issue #59).</p>
+     */
+    public interface TeamAgentResetView {
+        boolean isTeamCleaned();
+
+        void resetTeamCleaned();
     }
 
     public CompletionStage<Void> onStandby(CoordinationEvent event) {

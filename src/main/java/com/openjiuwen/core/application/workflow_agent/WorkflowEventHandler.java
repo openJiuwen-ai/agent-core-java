@@ -10,8 +10,8 @@ import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.common.utils.MessageUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
@@ -376,7 +376,7 @@ public class WorkflowEventHandler extends EventHandler {
             return;
         }
 
-        String componentId = Objects.toString(interruptedInfo.getOrDefault("component_id", QUESTIONER), QUESTIONER);
+        String componentId = firstNonBlankComponentId(interruptedInfo.get("component_id"), QUESTIONER);
         Object lastValue = interruptedInfo.get("last_interaction_value");
         if (lastValue == null) {
             LOGGER.warning("handleReturnInterruption: no last_interaction_value");
@@ -434,7 +434,22 @@ public class WorkflowEventHandler extends EventHandler {
         }
         Map<String, Object> interruptedTasks = mapValue(state.get(INTERRUPTED_TASKS));
         Map<String, Object> info = mapValue(interruptedTasks.get(workflowStateKey(workflowId)));
-        return info.isEmpty() ? QUESTIONER : info.getOrDefault("component_id", QUESTIONER);
+        if (info.isEmpty()) {
+            return QUESTIONER;
+        }
+        Object componentId = info.get("component_id");
+        if (componentId instanceof List<?> list) {
+            List<String> values = new ArrayList<>();
+            for (Object value : list) {
+                String text = Objects.toString(value, "");
+                if (!text.isBlank()) {
+                    values.add(text);
+                }
+            }
+            return values.isEmpty() ? QUESTIONER : values.size() == 1 ? values.get(0) : values;
+        }
+        String text = Objects.toString(componentId, "");
+        return text.isBlank() ? QUESTIONER : text;
     }
 
     private Optional<WorkflowMatch> findInterruptedTaskByNodeId(InteractiveInput interactiveInput, AgentSessionApi session) {
@@ -725,11 +740,29 @@ public class WorkflowEventHandler extends EventHandler {
         if (componentId instanceof List<?> list) {
             List<String> values = new ArrayList<>();
             for (Object value : list) {
-                values.add(String.valueOf(value));
+                String text = Objects.toString(value, "");
+                if (!text.isBlank()) {
+                    values.add(text);
+                }
             }
             return values.isEmpty() ? List.of(QUESTIONER) : values;
         }
-        return List.of(Objects.toString(componentId, QUESTIONER));
+        String text = Objects.toString(componentId, "");
+        return text.isBlank() ? List.of(QUESTIONER) : List.of(text);
+    }
+
+    private static String firstNonBlankComponentId(Object componentId, String fallback) {
+        if (componentId instanceof List<?> list) {
+            for (Object value : list) {
+                String text = Objects.toString(value, "");
+                if (!text.isBlank()) {
+                    return text;
+                }
+            }
+            return fallback;
+        }
+        String text = Objects.toString(componentId, "");
+        return text.isBlank() ? fallback : text;
     }
 
     private static Map<String, Object> stateMap(AgentSessionApi session) {

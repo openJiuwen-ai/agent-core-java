@@ -5,6 +5,7 @@
 package com.openjiuwen.core.common.clients;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -242,7 +243,7 @@ public class HttpClient extends BaseClient {
                                                                Map<String, Object> body,
                                                                Double timeoutSeconds,
                                                                Map<String, Object> requestArgs) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 return request(method, url, headers, body, timeoutSeconds, requestArgs);
             } catch (Exception e) {

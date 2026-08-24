@@ -7,7 +7,7 @@ package com.openjiuwen.core.multiagent.teams.hierarchical_msgbus;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.multiagent.runtime.TeamRuntime;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -82,17 +82,17 @@ public class DelegateTool extends Tool {
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         // Extract session from kwargs (set by AbilityManager.invokeTool)
-        AgentGroupSessionApi session = null;
+        AgentGroupSession session = null;
         String sessionId = null;
         if (kwargs != null) {
             Object sessionObj = kwargs.get("session");
-            if (sessionObj instanceof AgentGroupSessionApi) {
-                session = (AgentGroupSessionApi) sessionObj;
+            if (sessionObj instanceof AgentGroupSession) {
+                session = (AgentGroupSession) sessionObj;
                 sessionId = session.getSessionId();
             }
         }
         if (session == null) {
-            session = new AgentGroupSessionApi();
+            session = new AgentGroupSession();
             session.setTeamId(teamId);
             sessionId = session.getSessionId();
         }

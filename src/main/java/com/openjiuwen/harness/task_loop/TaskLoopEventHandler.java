@@ -15,6 +15,11 @@ import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
 import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.schema.DeepAgentState;
+import com.openjiuwen.harness.schema.task.TaskPlan;
+import com.openjiuwen.harness.schema.task.TodoItem;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -45,7 +50,7 @@ public class TaskLoopEventHandler extends EventHandler {
     /**
      * Create an event handler with a deep agent reference.
      *
-     * <p>Accepts either {@code com.openjiuwen.harness.DeepAgent} or
+     * <p>Accepts either {@code com.openjiuwen.harness.deep_agent.DeepAgent} or
      * {@code com.openjiuwen.harness.deep_agent.DeepAgent}.</p>
      *
      * @param deepAgent the deep agent
@@ -151,6 +156,13 @@ public class TaskLoopEventHandler extends EventHandler {
 
         String taskId = stringValue(metadata.get("task_id"));
         boolean followUp = booleanValue(metadata.get("is_follow_up"));
+        // Resolve task_id from TaskPlan when available (skip for follow_up — use random UUID).
+        if ((taskId == null || taskId.isBlank()) && !followUp && inputs != null && inputs.getSession() != null) {
+            TodoItem nextTask = nextPlanTask(inputs.getSession());
+            if (nextTask != null && nextTask.getId() != null && !nextTask.getId().isBlank()) {
+                taskId = nextTask.getId();
+            }
+        }
         if (taskId == null || taskId.isBlank()) {
             taskId = UUID.randomUUID().toString().replace("-", "");
         }
@@ -163,6 +175,12 @@ public class TaskLoopEventHandler extends EventHandler {
         taskMetadata.put("run_kind", metadata.get("run_kind"));
         taskMetadata.put("run_context", metadata.get("run_context"));
         taskMetadata.put("is_follow_up", followUp);
+        if (metadata.containsKey("collect_inner_stream")) {
+            taskMetadata.put("collect_inner_stream", metadata.get("collect_inner_stream"));
+        }
+        if (metadata.containsKey("loop_queues")) {
+            taskMetadata.put("loop_queues", metadata.get("loop_queues"));
+        }
 
         try {
             Task task = new Task(sessionId, taskId, TaskLoopEventExecutor.DEEP_TASK_TYPE);
@@ -385,9 +403,18 @@ public class TaskLoopEventHandler extends EventHandler {
         return fallback;
     }
 
+    private TodoItem nextPlanTask(AgentSessionApi session) {
+        if (!(deepAgent instanceof DeepAgent agent) || session == null) {
+            return null;
+        }
+        DeepAgentState state = agent.loadState(session);
+        TaskPlan plan = state == null ? null : state.getTaskPlan();
+        return plan == null ? null : plan.getNextTask();
+    }
+
     /**
      * Retrieve the LoopCoordinator from the deepAgent via reflection.
-     * Supports both {@code com.openjiuwen.harness.DeepAgent} (loopCoordinator())
+     * Supports both {@code com.openjiuwen.harness.deep_agent.DeepAgent} (loopCoordinator())
      * and {@code com.openjiuwen.harness.deep_agent.DeepAgent} (getLoopCoordinator()).
      *
      * @return the LoopCoordinator, or null if unavailable

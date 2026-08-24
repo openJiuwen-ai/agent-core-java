@@ -387,12 +387,13 @@ public class TeamWorkspaceManager {
         if (!config.isVersionControl()) {
             return CompletableFuture.completedFuture(List.of());
         }
+        String safeRelativePath = resolveSafeHistoryPath(relativePath);
         if (mode == WorkspaceMode.DISTRIBUTED) {
             pull().join();
         }
 
         Git.GitResult result = runGit(
-                List.of("log", "--max-count=" + limit, "--format=%H|%an|%ai|%s", "--", relativePath),
+                List.of("log", "--max-count=" + limit, "--format=%H|%an|%ai|%s", "--", safeRelativePath),
                 workspacePath,
                 false).join();
         if (!result.ok() || result.stdout().isBlank()) {
@@ -413,6 +414,25 @@ public class TeamWorkspaceManager {
             history.add(item);
         }
         return CompletableFuture.completedFuture(history);
+    }
+
+    String resolveSafeHistoryPath(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return "";
+        }
+        Path workspaceRoot = Path.of(workspacePath).toAbsolutePath().normalize();
+        Path requestedPath = Path.of(relativePath);
+        Path resolvedPath = requestedPath.isAbsolute()
+                ? requestedPath.toAbsolutePath().normalize()
+                : workspaceRoot.resolve(requestedPath).normalize();
+        if (!resolvedPath.startsWith(workspaceRoot)) {
+            throw new SecurityException("History path must remain within the team workspace");
+        }
+        String safeRelativePath = workspaceRoot.relativize(resolvedPath).toString();
+        if (safeRelativePath.startsWith("-")) {
+            throw new SecurityException("History path must not start with '-'");
+        }
+        return safeRelativePath;
     }
 
     public WorkspaceFileLock getLock(String filePath) {

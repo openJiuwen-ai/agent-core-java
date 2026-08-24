@@ -25,8 +25,8 @@ import com.openjiuwen.core.sysop.result.UploadFileResult;
 import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
 import com.openjiuwen.core.sysop.result.WriteFileData;
 import com.openjiuwen.core.sysop.result.WriteFileResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
-import com.openjiuwen.core.sysop.sandbox.providers.BaseFSProvider;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseFSProvider;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -41,12 +41,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * JiuwenBox sandbox file system provider that extends BaseFSProvider
+ * JiuwenBox sandbox file system provider that extends SyncBaseFSProvider
  * and uses JiuwenBoxProviderMixin for sandbox management.
  *
  * @since 2026-01-01
  */
-public class JiuwenBoxFSProvider extends BaseFSProvider {
+public class JiuwenBoxFSProvider extends SyncBaseFSProvider {
     private final JiuwenBoxProviderMixin mixin;
 
     public JiuwenBoxFSProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {

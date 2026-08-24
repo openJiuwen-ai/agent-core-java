@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness;
 
+
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.schema.DeepAgentState;

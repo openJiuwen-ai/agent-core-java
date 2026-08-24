@@ -37,15 +37,16 @@ public class AgentStorage extends BaseRedisStorage {
             BaseSession baseSession = requireSession(session);
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
-            var stateBlob = serializeState(baseSession.state().getState());
-            if (stateBlob == null) {
-                log.warn("Failed to serialize state for agent {}, session {}", agentId, sessionId);
+            Object state = baseSession.state().getState();
+            if (state == null) {
+                // Empty state needs no checkpoint write; distinguish from serialize failure.
                 return CompletableFuture.completedFuture(null);
             }
+            var stateBlob = serializeState(state);
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String dumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(
+            String blobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();
@@ -68,9 +69,9 @@ public class AgentStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String dumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(
+            String blobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();
@@ -106,9 +107,9 @@ public class AgentStorage extends BaseRedisStorage {
      */
     public CompletableFuture<Void> clear(String agentId, String sessionId) {
         try {
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String dumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(
+            String blobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
             redisStore.batchDelete(List.of(dumpTypeKey, blobKey), null).join();
             return CompletableFuture.completedFuture(null);
@@ -126,9 +127,9 @@ public class AgentStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(
+            String dumpTypeKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(
+            String blobKey = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();

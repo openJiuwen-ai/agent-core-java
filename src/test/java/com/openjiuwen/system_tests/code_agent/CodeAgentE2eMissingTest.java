@@ -8,11 +8,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.Result;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.subagents.CodeAgentFactory;
 
@@ -80,9 +80,7 @@ class CodeAgentE2eMissingTest {
         );
         String query = "Plan a small module development task.";
 
-        Object resultObject = agent.invoke(Map.of("query", query))
-                .toCompletableFuture()
-                .join();
+        Object resultObject = agent.invoke(Map.of("query", query));
 
         assertThat(resultObject).isInstanceOf(Map.class);
         Map<?, ?> result = (Map<?, ?>) resultObject;

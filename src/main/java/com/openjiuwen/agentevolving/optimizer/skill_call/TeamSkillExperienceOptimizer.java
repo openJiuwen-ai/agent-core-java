@@ -14,7 +14,6 @@ import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
 import com.openjiuwen.agentevolving.experience.EvolutionContext;
 import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
 import com.openjiuwen.agentevolving.optimizer.LlmResilience;
-import com.openjiuwen.agentevolving.optimizer.TextualParameter;
 import com.openjiuwen.agentevolving.signal.EvolutionSignal;
 import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
@@ -26,9 +25,9 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
-import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.operator.Operator;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,46 +114,36 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
     }
 
     @Override
-    public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
+    public int bind(Map<String, Operator> operators, List<String> targets, Map<String, Object> config) {
         this.onlineContexts = extractOnlineContexts(config);
         return super.bind(operators, targets, config);
     }
 
     @Override
-    protected void doBackward(List<EvaluatedCase> evaluatedCases) {
+    protected CompletionStage<Void> doBackward(List<EvolutionSignal> signals) {
         List<Trajectory> trajectories = getTrajectories();
         Trajectory defaultTrajectory = trajectories.isEmpty()
                 ? defaultTrajectory()
                 : trajectories.get(trajectories.size() - 1);
-        for (Map.Entry<String, Object> entry : operators.entrySet()) {
+        for (Map.Entry<String, Operator> entry : operators.entrySet()) {
             String opId = entry.getKey();
             String skillName = removePrefix(opId, "skill_experience_");
-            EvolutionContext ctx = onlineContexts.get(skillName);
-            if (ctx == null || ctx.getSignals().isEmpty()) {
+            List<EvolutionSignal> skillSignals = selectedSignals.stream()
+                    .filter(signal -> Objects.equals(signal.getSkillName(), skillName) || isBlank(signal.getSkillName()))
+                    .toList();
+            if (skillSignals.isEmpty()) {
                 continue;
             }
+            EvolutionContext ctx = buildEvolutionContext(skillName, entry.getValue(), skillSignals, defaultTrajectory);
             List<EvolutionRecord> generated = generateRecords(ctx);
             if (generated.isEmpty()) {
                 continue;
             }
             List<EvolutionRecord> existing = existingRecords(opId);
             existing.addAll(generated);
-            TextualParameter param = parameters.get(opId);
-            if (param != null) {
-                param.setGradient(Protocols.EXPERIENCES_TARGET, existing.stream()
-                        .map(record -> {
-                            StringBuilder sb = new StringBuilder();
-                            sb.append(record.getId()).append(":");
-                            EvolutionPatch change = record.getChange();
-                            if (change != null) {
-                                sb.append(change.getSection()).append("=").append(change.getContent());
-                            }
-                            return sb.toString();
-                        })
-                        .reduce((a, b) -> a + "\n" + b)
-                        .orElse(""));
-            }
+            parameters.get(opId).setGradient(Protocols.EXPERIENCES_TARGET, existing);
         }
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
@@ -595,7 +584,7 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
 
     private EvolutionContext buildEvolutionContext(
             String skillName,
-            Object operator,
+            Operator operator,
             List<EvolutionSignal> skillSignals,
             Trajectory defaultTrajectory
     ) {

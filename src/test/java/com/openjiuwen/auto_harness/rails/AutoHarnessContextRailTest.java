@@ -6,7 +6,7 @@ package com.openjiuwen.auto_harness.rails;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;

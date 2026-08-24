@@ -6,13 +6,13 @@ package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
 import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sys_operation.result.ExecuteCodeChunkData;
-import com.openjiuwen.core.sys_operation.result.ExecuteCodeData;
-import com.openjiuwen.core.sys_operation.result.ExecuteCodeResult;
-import com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult;
-import com.openjiuwen.core.sys_operation.sandbox.gateway.SandboxEndpoint;
-import com.openjiuwen.core.sys_operation.sandbox.providers.BaseCodeProvider;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
+import com.openjiuwen.core.sysop.result.ExecuteCodeData;
+import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
+import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.providers.BaseCodeProvider;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

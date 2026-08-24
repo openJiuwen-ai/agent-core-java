@@ -6,10 +6,9 @@ package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
@@ -210,23 +209,19 @@ final class LoopRuntime {
             return outputs;
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
-        Object index = null;
         for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
             String key = String.valueOf(entry.getKey());
             if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
                 continue;
             }
+            // Align with Python out-of-loop: set_outputs({INDEX: None}) — omit INDEX from final outputs.
             if (Constant.INDEX.equals(key)) {
-                index = 0;
                 continue;
             }
             if (isInternalLoopState(key, entry.getValue())) {
                 continue;
             }
             normalized.put(key, entry.getValue());
-        }
-        if (index != null || outputMap.containsKey(Constant.INDEX)) {
-            normalized.put(Constant.INDEX, index);
         }
         return normalized;
     }
@@ -248,13 +243,9 @@ final class LoopRuntime {
                 continue;
             }
             if (Constant.INDEX.equals(key)) {
-                normalized.put(Constant.INDEX, 0);
-            } else {
-                normalized.put(key, entry.getValue());
+                continue;
             }
-        }
-        if (outputMap.containsKey(Constant.INDEX) && !normalized.containsKey(Constant.INDEX)) {
-            normalized.put(Constant.INDEX, 0);
+            normalized.put(key, entry.getValue());
         }
         mergeGeneratedOutputLists(normalized, rawOutputs, loopGroup);
         return normalized;
@@ -357,7 +348,7 @@ final class LoopRuntime {
     }
 
     private static BaseSession loopOwnerSession(BaseSession session) {
-        BaseSession current = session instanceof NodeSessionApi nodeSessionApi ? nodeSessionApi.getInner() : session;
+        BaseSession current = session;
         return WorkflowSessionSupport.parentOrSelf(current);
     }
 
@@ -398,7 +389,7 @@ final class LoopRuntime {
         if (sessionId == null || sessionId.isBlank()) {
             sessionId = "session@" + System.identityHashCode(session);
         }
-        return sessionId + '\u0000' + session.workflowId() + '\u0000'
+        return sessionId + '\u0000' + WorkflowSessionSupport.workflowId(session) + '\u0000'
                 + WorkflowSessionSupport.componentId(session);
     }
 

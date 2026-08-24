@@ -7,18 +7,21 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.lsp.HarnessLspPackage;
 import com.openjiuwen.harness.lsp.InitializeOptions;
 import com.openjiuwen.harness.lsp.InitializeResult;
 import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
+import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.lsp_tool.LspTool;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -92,11 +95,12 @@ public class LspRail extends DeepAgentRail {
             // Python logs and continues when LSP initialization fails.
         }
 
+        String workspaceRoot = resolveWorkspaceRoot(getWorkspace());
         LspTool tool = new LspTool(
-                null,
-                deepAgent.deepConfig().getSysOperation(),
+                managerGateway(workspaceRoot),
+                deepAgent.getSysOperation(),
                 deepAgent.deepConfig().getLanguage(),
-                resolveWorkspaceRoot(getWorkspace()),
+                workspaceRoot,
                 deepAgent.getCard() == null ? null : deepAgent.getCard().getId()
         );
         try {
@@ -178,10 +182,10 @@ public class LspRail extends DeepAgentRail {
     }
 
     @Override
-    public Map<String, String> getCallbacks() {
-        Map<String, String> callbacks = new LinkedHashMap<>();
-        callbacks.put(AgentCallbackEvent.BEFORE_MODEL_CALL.getValue(), "beforeModelCall");
-        callbacks.put(AgentCallbackEvent.AFTER_TOOL_CALL.getValue(), "afterToolCall");
+    public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
+        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(AgentCallbackEvent.class);
+        callbacks.put(AgentCallbackEvent.BEFORE_MODEL_CALL, this::beforeModelCall);
+        callbacks.put(AgentCallbackEvent.AFTER_TOOL_CALL, this::afterToolCall);
         return callbacks;
     }
 
@@ -277,6 +281,28 @@ public class LspRail extends DeepAgentRail {
         result.setServersLoaded(0);
         result.setDurationMs(0.0d);
         return result;
+    }
+
+    private static LspTool.LspGateway managerGateway(String workspaceRoot) {
+        return (operation, params, kwargs) -> {
+            LSPServerManager manager = LSPServerManager.getInstance();
+            if (manager == null) {
+                Map<String, Object> failed = new LinkedHashMap<>();
+                failed.put("success", false);
+                failed.put("error", "LSP server manager not initialized and auto-init failed.");
+                return failed;
+            }
+            ToolOutput output = new com.openjiuwen.harness.tools.LspTool(workspaceRoot, manager).invoke(params);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            if (output.getData() instanceof Map<?, ?> data) {
+                data.forEach((key, value) -> payload.put(String.valueOf(key), value));
+            }
+            payload.put("success", output.isSuccess());
+            if (output.getError() != null) {
+                payload.put("error", output.getError());
+            }
+            return payload;
+        };
     }
 
     private static AbilityManager resolveAbilityManager(Object... candidates) {

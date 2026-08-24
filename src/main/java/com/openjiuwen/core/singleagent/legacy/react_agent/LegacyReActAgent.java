@@ -10,8 +10,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.HashUtil;
 import com.openjiuwen.core.common.utils.MessageUtils;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -428,7 +428,7 @@ public class LegacyReActAgent extends BaseAgent {
                 .clientProvider(provider)
                 .apiKey(apiKey)
                 .apiBase(apiBase)
-                .verifySsl(false)
+                .verifySsl(true)
                 .sslCert(null)
                 .customHeaders(modelInfo.getCustomHeaders())
                 .httpVersion(modelInfo.getHttpVersion())

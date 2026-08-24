@@ -1,8 +1,7 @@
 package examples.reactive_agent;
 
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
-import com.openjiuwen.core.runner.RunnerConfig;
-import com.openjiuwen.core.runner.RunnerImpl;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.stream.StreamMode;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -16,39 +15,46 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * PR #630 响应式接口端到端示例 — 场景 1-4（纯 Core，无 Spring 依赖）
+ * 响应式接口端到端示例（纯 Core，无 Spring 依赖）。
  *
- * <p>本仓库不为该示例提供独立 pom；将本类放入已有应用工程后运行 main 方法。
+ * <p>对齐文档 {@code documents/zh/2.开发指南/高阶用法/响应式接口（Reactor）.md}：
+ * {@link ReactiveAdapters}、{@code BaseAgent.invokeAsync/streamAsync}、
+ * {@link Runner#runAgentAsync}/{@link Runner#runAgentStreamingAsync}。
+ *
+ * <p>本仓库不为该示例提供独立 pom；编译运行方式见同目录 README.md。
  */
 public class ReactiveAgentExample {
 
-    private static final String CYAN   = "\u001B[36m";
-    private static final String GREEN  = "\u001B[32m";
+    private static final String CYAN = "\u001B[36m";
+    private static final String GREEN = "\u001B[32m";
     private static final String YELLOW = "\u001B[33m";
-    private static final String BOLD   = "\u001B[1m";
-    private static final String RESET  = "\u001B[0m";
+    private static final String BOLD = "\u001B[1m";
+    private static final String RESET = "\u001B[0m";
 
     public static void main(String[] args) throws Exception {
-        banner("PR #630  响应式接口端到端示例  (场景 1-4)");
+        banner("响应式接口（Reactor）端到端示例");
         scenario1_fromCallable();
-        scenario2_fromAutoCloseableIterator();
-        scenario3_agentInvokeMono();
-        scenario4_agentStreamFlux();
-        banner("✓  所有场景验证完成");
+        scenario2_fromRunnable();
+        scenario3_fromIteratorAndCallableIterator();
+        scenario4_fromAutoCloseableIterator();
+        scenario5_agentInvokeAsync();
+        scenario6_agentStreamAsync();
+        scenario7_runnerRunAgentAsync();
+        scenario8_runnerRunAgentStreamingAsync();
+        banner("所有场景验证完成");
         System.exit(0);
     }
 
     // ─── 场景 1：ReactiveAdapters.fromCallable ──────────────────────────────────
-    // 验证：阻塞调用被包成 Mono 后，subscribe 不阻塞调用线程，执行切换到 boundedElastic
 
     static void scenario1_fromCallable() throws Exception {
         header("场景 1｜ReactiveAdapters.fromCallable — 阻塞调用包成 Mono");
         print("  接口: Mono<T> fromCallable(Callable<T>)");
-        print("  要点: Callable 跑在 boundedElastic 线程，主线程 subscribe 后立刻返回\n");
+        print("  要点: Callable 跑在 boundedElastic，主线程 subscribe 后立刻返回\n");
 
         Mono<String> mono = ReactiveAdapters.fromCallable(() -> {
             print(YELLOW + "    [Callable 线程] " + Thread.currentThread().getName() + RESET);
-            Thread.sleep(100); // 模拟阻塞 IO
+            Thread.sleep(100);
             return "同步结果已包成 Mono";
         });
 
@@ -56,116 +62,258 @@ public class ReactiveAgentExample {
         print(YELLOW + "    [订阅前 / 主线程] " + Thread.currentThread().getName() + RESET);
 
         mono.subscribe(
-                v  -> { print(GREEN + "    ✓ onNext: " + v + RESET); latch.countDown(); },
-                ex -> { print("    ✗ " + ex.getMessage()); latch.countDown(); }
+                v -> {
+                    print(GREEN + "    onNext: " + v + RESET);
+                    latch.countDown();
+                },
+                ex -> {
+                    print("    失败: " + ex.getMessage());
+                    latch.countDown();
+                }
         );
 
         print(YELLOW + "    [subscribe 后主线程立即继续，不阻塞]" + RESET);
-        latch.await(5, TimeUnit.SECONDS);
+        await(latch, 5);
         println();
     }
 
-    // ─── 场景 2：ReactiveAdapters.fromAutoCloseableIterator ─────────────────────
-    // 验证：客户端取消（cancel）后，底层 AutoCloseable 的 close() 被自动调用，不泄漏连接
+    // ─── 场景 2：ReactiveAdapters.fromRunnable ──────────────────────────────────
 
-    static void scenario2_fromAutoCloseableIterator() throws Exception {
-        header("场景 2｜ReactiveAdapters.fromAutoCloseableIterator — SSE Iterator 转 Flux");
-        print("  接口: Flux<T> fromAutoCloseableIterator(Callable<Iterator<T>>)");
-        print("  要点: 取消订阅（客户端断连）时自动调 close()，释放底层 HTTP 连接\n");
+    static void scenario2_fromRunnable() throws Exception {
+        header("场景 2｜ReactiveAdapters.fromRunnable — 无返回值阻塞操作包成 Mono<Void>");
+        print("  接口: Mono<Void> fromRunnable(Runnable)\n");
+
+        AtomicBoolean ran = new AtomicBoolean(false);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        ReactiveAdapters.fromRunnable(() -> {
+            ran.set(true);
+            print(YELLOW + "    [Runnable 线程] " + Thread.currentThread().getName() + RESET);
+        }).subscribe(
+                unused -> {
+                },
+                ex -> {
+                    print("    失败: " + ex.getMessage());
+                    latch.countDown();
+                },
+                () -> {
+                    print(GREEN + "    Mono<Void> 完成, ran=" + ran.get() + RESET);
+                    latch.countDown();
+                }
+        );
+
+        await(latch, 5);
+        println();
+    }
+
+    // ─── 场景 3：fromIterator / fromCallableIterator ────────────────────────────
+
+    static void scenario3_fromIteratorAndCallableIterator() throws Exception {
+        header("场景 3｜fromIterator / fromCallableIterator — Iterator 转 Flux");
+        print("  接口: Flux<T> fromIterator(Iterator, cleanup)");
+        print("  接口: Flux<T> fromCallableIterator(Callable<Iterator>, cleanup)\n");
+
+        AtomicBoolean cleanupCalled = new AtomicBoolean(false);
+        CountDownLatch latch1 = new CountDownLatch(1);
+        ReactiveAdapters.fromIterator(List.of("a", "b", "c").iterator(), () -> cleanupCalled.set(true))
+                .collectList()
+                .doFinally(signal -> latch1.countDown())
+                .subscribe(
+                        list -> print(GREEN + "    fromIterator: " + list + RESET),
+                        ex -> print("    失败: " + ex.getMessage())
+                );
+        await(latch1, 5);
+        print(GREEN + "    fromIterator cleanup=" + cleanupCalled.get() + RESET);
+
+        AtomicInteger prepCalls = new AtomicInteger();
+        CountDownLatch latch2 = new CountDownLatch(1);
+        ReactiveAdapters.fromCallableIterator(() -> {
+                    prepCalls.incrementAndGet();
+                    return List.of("x", "y").iterator();
+                })
+                .collectList()
+                .subscribe(
+                        list -> {
+                            print(GREEN + "    fromCallableIterator: " + list
+                                    + ", prepCalls=" + prepCalls.get() + RESET);
+                            latch2.countDown();
+                        },
+                        ex -> {
+                            print("    失败: " + ex.getMessage());
+                            latch2.countDown();
+                        }
+                );
+        await(latch2, 5);
+        println();
+    }
+
+    // ─── 场景 4：fromAutoCloseableIterator（取消时 close） ───────────────────────
+
+    static void scenario4_fromAutoCloseableIterator() throws Exception {
+        header("场景 4｜ReactiveAdapters.fromAutoCloseableIterator — 取消时自动 close()");
+        print("  接口: Flux<T> fromAutoCloseableIterator(Callable<Iterator>)");
+        print("  要点: take(N) / dispose 后触发 AutoCloseable.close()，避免连接泄漏\n");
 
         AtomicBoolean closeCalled = new AtomicBoolean(false);
 
-        // 模拟 SSE 流迭代器：实现 AutoCloseable = 关闭底层 HTTP 读流
         class SseIterator implements Iterator<String>, AutoCloseable {
             private final String[] tokens = {"token-A ", "token-B ", "token-C ", "token-D ", "token-E"};
             private int i = 0;
 
-            @Override public boolean hasNext() { return i < tokens.length; }
-            @Override public String next() { return tokens[i++]; }
+            @Override
+            public boolean hasNext() {
+                return i < tokens.length;
+            }
+
+            @Override
+            public String next() {
+                return tokens[i++];
+            }
 
             @Override
             public void close() {
                 closeCalled.set(true);
-                print(YELLOW + "    [AutoCloseable.close()] 底层 HTTP 连接已关闭" + RESET);
+                print(YELLOW + "    [AutoCloseable.close()] 底层连接已关闭" + RESET);
             }
         }
 
-        Flux<String> flux = ReactiveAdapters.fromAutoCloseableIterator(SseIterator::new);
-
-        // take(3) 后触发 cancel → 期望 close() 被调用
         CountDownLatch latch = new CountDownLatch(1);
-        flux.take(3).subscribe(
-                chunk -> print(GREEN + "    ✓ chunk: " + chunk + RESET),
-                ex    -> { print("    ✗ " + ex.getMessage()); latch.countDown(); },
-                ()    -> { print(GREEN + "    ✓ Flux 完成（take(3) 取消后续）" + RESET); latch.countDown(); }
-        );
-        latch.await(5, TimeUnit.SECONDS);
-        Thread.sleep(100); // 等 usingWhen asyncCleanup 在 boundedElastic 上跑完
+        ReactiveAdapters.fromAutoCloseableIterator(SseIterator::new)
+                .take(3)
+                .subscribe(
+                        chunk -> print(GREEN + "    chunk: " + chunk + RESET),
+                        ex -> {
+                            print("    失败: " + ex.getMessage());
+                            latch.countDown();
+                        },
+                        () -> {
+                            print(GREEN + "    Flux 完成（take(3) 取消后续）" + RESET);
+                            latch.countDown();
+                        }
+                );
+        await(latch, 5);
+        Thread.sleep(100);
 
         print(closeCalled.get()
-                ? GREEN + "    ✓ AutoCloseable.close() 已被调用，连接无泄漏" + RESET
-                : "    ✗ close() 未调用！");
+                ? GREEN + "    AutoCloseable.close() 已被调用" + RESET
+                : "    close() 未调用！");
         println();
     }
 
-    // ─── 场景 3：RunnerImpl.runAgentAsync ────────────────────────────────────────
-    // 验证：Agent 单次调用走 Mono 路径，执行在 boundedElastic 线程上，不阻塞 Netty event loop
+    // ─── 场景 5：BaseAgent.invokeAsync（文档主示例） ─────────────────────────────
 
-    static void scenario3_agentInvokeMono() throws Exception {
-        header("场景 3｜RunnerImpl.runAgentAsync — Agent 单次调用返回 Mono<Object>");
-        print("  接口: Mono<Object> runAgentAsync(agent, inputs, session, ctx, envs)");
-        print("  要点: WebFlux Controller 直接 return 这个 Mono，不阻塞 Netty event loop\n");
+    static void scenario5_agentInvokeAsync() throws Exception {
+        header("场景 5｜BaseAgent.invokeAsync — Agent 单次调用返回 Mono");
+        print("  接口: Mono<Object> agent.invokeAsync(inputs, session)");
+        print("  要点: 与同步 invoke 并存；订阅前不执行，执行在 boundedElastic\n");
 
-        RunnerImpl runner = new RunnerImpl("demo-runner-3", RunnerConfig.DEFAULT);
         SimpleReactiveAgentExample agent = new SimpleReactiveAgentExample();
+        Mono<Object> result = agent.invokeAsync(Map.of("query", "你好，invokeAsync！"), null);
 
-        Mono<Object> result = runner.runAgentAsync(
-                agent, Map.of("query", "你好，Mono！", "conversation_id", "demo-session-3"),
-                null, null, null
-        );
-
-        print(YELLOW + "    [runAgentAsync 返回，Agent 尚未运行]" + RESET);
-
+        print(YELLOW + "    [invokeAsync 返回，Agent 尚未运行]" + RESET);
         CountDownLatch latch = new CountDownLatch(1);
         result.subscribe(
-                v  -> { print(GREEN + "    ✓ Agent 结果: " + v + RESET); latch.countDown(); },
-                ex -> { print("    ✗ " + ex.getMessage()); latch.countDown(); }
+                v -> {
+                    print(GREEN + "    Agent 结果: " + v + RESET);
+                    latch.countDown();
+                },
+                ex -> {
+                    print("    失败: " + ex.getMessage());
+                    latch.countDown();
+                }
         );
-
-        print(YELLOW + "    [subscribe 后主线程继续，Agent 在 boundedElastic 上执行]" + RESET);
-        latch.await(5, TimeUnit.SECONDS);
+        print(YELLOW + "    [subscribe 后主线程继续]" + RESET);
+        await(latch, 5);
         println();
     }
 
-    // ─── 场景 4：RunnerImpl.runAgentStreamingAsync ────────────────────────────────
-    // 验证：Agent 流式输出走 Flux 路径，token 逐块推送；最后一块带线程名，证明迭代在 boundedElastic 上
+    // ─── 场景 6：BaseAgent.streamAsync ──────────────────────────────────────────
 
-    static void scenario4_agentStreamFlux() throws Exception {
-        header("场景 4｜RunnerImpl.runAgentStreamingAsync — Agent 流式输出返回 Flux<Object>");
-        print("  接口: Flux<Object> runAgentStreamingAsync(agent, inputs, session, ctx, modes, envs)");
-        print("  要点: 天然背压，WebFlux SSE 直接映射；取消时 postRun 清理保证触发\n");
+    static void scenario6_agentStreamAsync() throws Exception {
+        header("场景 6｜BaseAgent.streamAsync — Agent 流式输出返回 Flux");
+        print("  接口: Flux<Object> agent.streamAsync(inputs, session, streamModes)\n");
 
-        RunnerImpl runner = new RunnerImpl("demo-runner-4", RunnerConfig.DEFAULT);
         SimpleReactiveAgentExample agent = new SimpleReactiveAgentExample();
-
-        Flux<Object> flux = runner.runAgentStreamingAsync(
-                agent, Map.of("query", "你好，Flux！", "conversation_id", "demo-session-4"),
-                null, null, List.of(StreamMode.OUTPUT), null
+        Flux<Object> flux = agent.streamAsync(
+                Map.of("query", "你好，streamAsync！"),
+                null,
+                List.of(StreamMode.OUTPUT)
         );
 
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger count = new AtomicInteger();
-
         flux.subscribe(
                 chunk -> {
                     count.incrementAndGet();
-                    print(GREEN + "    ✓ [" + count.get() + "] " + chunk + RESET);
+                    print(GREEN + "    [" + count.get() + "] " + chunk + RESET);
                 },
-                ex -> { print("    ✗ " + ex.getMessage()); latch.countDown(); },
-                ()  -> { print(GREEN + "\n    ✓ 流结束，共 " + count.get() + " 块" + RESET); latch.countDown(); }
+                ex -> {
+                    print("    失败: " + ex.getMessage());
+                    latch.countDown();
+                },
+                () -> {
+                    print(GREEN + "    流结束，共 " + count.get() + " 块" + RESET);
+                    latch.countDown();
+                }
         );
+        await(latch, 15);
+        println();
+    }
 
-        latch.await(10, TimeUnit.SECONDS);
+    // ─── 场景 7：Runner.runAgentAsync（静态入口，文档示例） ───────────────────────
+
+    static void scenario7_runnerRunAgentAsync() throws Exception {
+        header("场景 7｜Runner.runAgentAsync — 静态入口单次调用");
+        print("  接口: Mono<Object> Runner.runAgentAsync(agent, inputs, session, ctx, envs)\n");
+
+        SimpleReactiveAgentExample agent = new SimpleReactiveAgentExample();
+        CountDownLatch latch = new CountDownLatch(1);
+        Runner.runAgentAsync(agent, Map.of("query", "你好，Runner Mono！"), null, null, null)
+                .subscribe(
+                        v -> {
+                            print(GREEN + "    Runner 结果: " + v + RESET);
+                            latch.countDown();
+                        },
+                        ex -> {
+                            print("    失败: " + ex.getMessage());
+                            latch.countDown();
+                        }
+                );
+        await(latch, 10);
+        println();
+    }
+
+    // ─── 场景 8：Runner.runAgentStreamingAsync ──────────────────────────────────
+
+    static void scenario8_runnerRunAgentStreamingAsync() throws Exception {
+        header("场景 8｜Runner.runAgentStreamingAsync — 静态入口流式输出");
+        print("  接口: Flux<Object> Runner.runAgentStreamingAsync(...)\n");
+
+        SimpleReactiveAgentExample agent = new SimpleReactiveAgentExample();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicInteger count = new AtomicInteger();
+        Runner.runAgentStreamingAsync(
+                        agent,
+                        Map.of("query", "你好，Runner Flux！"),
+                        null,
+                        null,
+                        List.of(StreamMode.OUTPUT),
+                        null)
+                .subscribe(
+                        chunk -> {
+                            count.incrementAndGet();
+                            print(GREEN + "    [" + count.get() + "] " + chunk + RESET);
+                        },
+                        ex -> {
+                            print("    失败: " + ex.getMessage());
+                            latch.countDown();
+                        },
+                        () -> {
+                            print(GREEN + "    流结束，共 " + count.get() + " 块" + RESET);
+                            latch.countDown();
+                        }
+                );
+        await(latch, 15);
         println();
     }
 
@@ -180,6 +328,17 @@ public class ReactiveAgentExample {
         System.out.println(BOLD + CYAN + "┌─ " + msg + RESET);
     }
 
-    static void print(String msg)  { System.out.println(msg); }
-    static void println()          { System.out.println(); }
+    static void print(String msg) {
+        System.out.println(msg);
+    }
+
+    static void println() {
+        System.out.println();
+    }
+
+    static void await(CountDownLatch latch, long seconds) throws InterruptedException {
+        if (!latch.await(seconds, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("场景等待超时（" + seconds + "s）");
+        }
+    }
 }

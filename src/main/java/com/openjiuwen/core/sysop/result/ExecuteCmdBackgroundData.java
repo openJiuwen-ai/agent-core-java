@@ -10,21 +10,21 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Data structure for background shell command execution.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code ExecuteCmdBackgroundData} in
+ * {@code openjiuwen/core/sys_operation/result/shell_operation_result.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCmdBackgroundData {
+
     private String command;
 
     @Builder.Default
     private String cwd = ".";
 
-    private Long pid;
+    private Integer pid;
 
     private String shellType;
 }

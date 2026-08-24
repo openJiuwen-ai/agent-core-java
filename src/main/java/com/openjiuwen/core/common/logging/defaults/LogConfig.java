@@ -177,7 +177,12 @@ public class LogConfig {
 
     public Map<String, Map<String, Object>> getAllConfigs(String backend) {
         Map<String, Map<String, Object>> all = new LinkedHashMap<>();
-        for (String logType : BUILTIN_LOG_TYPES) {
+        Set<String> logTypes = new LinkedHashSet<>(List.of(BUILTIN_LOG_TYPES));
+        Map<String, Object> extraLoggers = asMapOrNull(logConfig.get("loggers"));
+        if (extraLoggers != null) {
+            logTypes.addAll(extraLoggers.keySet());
+        }
+        for (String logType : logTypes) {
             all.put(logType, getLoggerConfig(logType, backend));
         }
         return all;

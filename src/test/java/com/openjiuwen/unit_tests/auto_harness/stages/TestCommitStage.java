@@ -19,7 +19,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact;
 import com.openjiuwen.auto_harness.stages.CommitStage;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -245,9 +245,9 @@ class TestCommitStage {
         private String lastQuery = "";
 
         @Override
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs) {
+        public Iterator<Object> stream(Map<String, Object> inputs) {
             lastQuery = String.valueOf(inputs.get("query"));
-            return List.of(Map.of("type", (Object) "commit_chunk")).iterator();
+            return (Iterator<Object>) (Iterator<?>) List.of(Map.of("type", (Object) "commit_chunk")).iterator();
         }
     }
 }

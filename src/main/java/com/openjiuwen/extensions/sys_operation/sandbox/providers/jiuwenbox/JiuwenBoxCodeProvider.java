@@ -10,9 +10,9 @@ import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 import com.openjiuwen.core.sysop.sandbox.SandboxOperationSupport;
-import com.openjiuwen.core.sysop.sandbox.providers.BaseCodeProvider;
+import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseCodeProvider;
 
 import java.nio.file.FileSystems;
 import java.nio.file.PathMatcher;
@@ -31,7 +31,7 @@ import java.util.Optional;
  * @since 2026-01-01
  * @version 1.0
  */
-public class JiuwenBoxCodeProvider extends BaseCodeProvider {
+public class JiuwenBoxCodeProvider extends SyncBaseCodeProvider {
     private final JiuwenBoxProviderMixin mixin;
 
     public JiuwenBoxCodeProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
@@ -232,6 +232,6 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
             Map<String, String> environment, Map<String, Object> options) {
         LocalCodeOperation localOp = new LocalCodeOperation(
                 SandboxOperationSupport.toLocalWorkConfig(config));
-        return localOp.executeCode(code, language, timeout, environment, options);
+        return localOp.executeCode(code, language, timeout, environment, null, options).join();
     }
 }

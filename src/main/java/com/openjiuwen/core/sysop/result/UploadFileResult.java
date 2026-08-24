@@ -4,13 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
-/** Result type for upload file operation. */
-@NoArgsConstructor
+/**
+ * Mirrors Python's {@code UploadFileResult} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ */
 public class UploadFileResult extends BaseResult<UploadFileData> {
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public UploadFileResult(int code, String message, UploadFileData data) { setCode(code); setMessage(message); setData(data); }
+
+    public UploadFileResult() {
+    }
+
+    public UploadFileResult(int code, String message, UploadFileData data) {
+        setCode(code);
+        setMessage(message);
+        setData(data);
+    }
 }

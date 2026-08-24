@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.UploadFileData
+# com.openjiuwen.core.sysop.result.UploadFileData
 
 ## 类 UploadFileData
 

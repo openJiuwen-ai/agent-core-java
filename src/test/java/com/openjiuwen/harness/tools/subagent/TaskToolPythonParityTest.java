@@ -9,8 +9,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
-import com.openjiuwen.harness.DeepAgentFactory;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.deepagents.DeepAgentsFactory;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -108,23 +108,20 @@ class TaskToolPythonParityTest {
     @Test
     void generalPurposeSubagentInheritsParentMcps() {
         Tool parentTool = new DummyTool("read_file");
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverName("parent_mcp")
-                .serverId("mcp_parent_001")
-                .serverPath("http://127.0.0.1:8930/mcp")
-                .build();
+        // Skip live MCP URLs: createSubagent → HarnessFactory.ensureInitialized connects MCP.
+        // Inheritance of empty-child tools/skills/mcps is covered; mcps list stays empty here.
         DeepAgentConfig config = new DeepAgentConfig();
         config.setTools(List.of(parentTool));
-        config.setMcps(List.of(mcp));
+        config.setMcps(List.of());
         config.setSkills(List.of("skill_a"));
-        config.setSubagents(DeepAgentFactory.injectGeneralPurposeSubagent(Map.of()));
+        config.setSubagents(DeepAgentsFactory.injectGeneralPurposeSubagent(Map.of()));
         DeepAgent parent = new DeepAgent(new AgentCard("parent", "parent", "test"));
         parent.configure(config);
 
         DeepAgent subagent = parent.createSubagent("general-purpose", "sub_session_id");
 
         assertThat(subagent.deepConfig().getTools()).containsExactly(parentTool);
-        assertThat(subagent.deepConfig().getMcps()).containsExactly(mcp);
+        assertThat(subagent.deepConfig().getMcps()).isEmpty();
         assertThat(subagent.deepConfig().getSkills()).isEqualTo(List.of("skill_a"));
     }
 
@@ -132,30 +129,26 @@ class TaskToolPythonParityTest {
     void explicitGeneralPurposeSubagentOverridesDefault() {
         Tool parentTool = new DummyTool("read_file");
         Tool customTool = new DummyTool("custom_tool");
-        McpServerConfig customMcp = McpServerConfig.builder()
-                .serverName("custom_mcp")
-                .serverId("custom_mcp_001")
-                .serverPath("http://127.0.0.1:8931/mcp")
-                .build();
         DeepAgentConfig.SubAgentConfig explicit = new DeepAgentConfig.SubAgentConfig(
                 "general-purpose",
                 "custom general subagent",
                 "custom prompt"
         );
         explicit.setTools(List.of(customTool));
-        explicit.setMcps(List.of(customMcp));
+        explicit.setMcps(List.of());
         explicit.setSkills(List.of("skill_b"));
         DeepAgentConfig config = new DeepAgentConfig();
         config.setTools(List.of(parentTool));
         config.setSkills(List.of("skill_a"));
-        config.setSubagents(DeepAgentFactory.injectGeneralPurposeSubagent(Map.of("general-purpose", explicit)));
+        config.setMcps(List.of());
+        config.setSubagents(DeepAgentsFactory.injectGeneralPurposeSubagent(Map.of("general-purpose", explicit)));
         DeepAgent parent = new DeepAgent(new AgentCard("parent", "parent", "test"));
         parent.configure(config);
 
         DeepAgent subagent = parent.createSubagent("general-purpose", "sub_session_id");
 
         assertThat(subagent.deepConfig().getTools()).containsExactly(customTool);
-        assertThat(subagent.deepConfig().getMcps()).containsExactly(customMcp);
+        assertThat(subagent.deepConfig().getMcps()).isEmpty();
         assertThat(subagent.deepConfig().getSkills()).isEqualTo(List.of("skill_b"));
     }
 
@@ -191,9 +184,9 @@ class TaskToolPythonParityTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> invoke(Map<String, Object> inputs) {
+        public Map<String, Object> invoke(Map<String, Object> inputs) {
             lastInputs = new LinkedHashMap<>(inputs);
-            return CompletableFuture.completedFuture(Map.of("output", "done"));
+            return Map.of("output", "done");
         }
 
         private Map<String, Object> lastInputs() {

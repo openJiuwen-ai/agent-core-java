@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.common.task_manager;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
@@ -21,7 +21,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +47,8 @@ public class TaskManager {
     private final Map<String, CopyOnWriteArrayList<Consumer<Task>>> callbacks = new LinkedHashMap<>();
 
     public TaskManager() {
-        this(VirtualThreadSupport.newThreadPerTaskExecutor(), Executors.newSingleThreadScheduledExecutor());
+        this(OpenJiuwenExecutors.newBoundedModulePool("task-manager-worker", true),
+                OpenJiuwenExecutors.newScheduledThreadPool("task-manager-scheduler", 1, true));
     }
 
     TaskManager(ExecutorService executorService, ScheduledExecutorService timeoutScheduler) {

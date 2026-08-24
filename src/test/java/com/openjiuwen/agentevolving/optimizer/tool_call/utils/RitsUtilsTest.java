@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.tool_call.utils;
+package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -43,7 +43,7 @@ class RitsUtilsTest {
         assertEquals("OpenAI", provider.modelClientConfig.getClientProvider());
         assertEquals("https://api.openai.com/v1", provider.modelClientConfig.getApiBase());
         assertEquals("key", provider.modelClientConfig.getApiKey());
-        assertEquals(false, provider.modelClientConfig.isVerifySsl());
+        assertEquals(true, provider.modelClientConfig.isVerifySsl());
         assertEquals("developer", provider.message.getRole());
         assertEquals("hello", provider.message.getContentAsString());
     }

@@ -12,9 +12,9 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdData;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 import com.openjiuwen.core.sysop.sandbox.SandboxOperationSupport;
-import com.openjiuwen.core.sysop.sandbox.providers.BaseShellProvider;
+import com.openjiuwen.core.sysop.sandbox.providers.SyncBaseShellProvider;
 
 import java.nio.file.FileSystems;
 import java.nio.file.PathMatcher;
@@ -30,7 +30,7 @@ import java.util.Map;
  * @version 1.0
  * @since 0.1.7
  */
-public class JiuwenBoxShellProvider extends BaseShellProvider {
+public class JiuwenBoxShellProvider extends SyncBaseShellProvider {
     private final JiuwenBoxProviderMixin mixin;
 
     /**
@@ -246,6 +246,6 @@ public class JiuwenBoxShellProvider extends BaseShellProvider {
     private ExecuteCmdResult executeLocalCmd(String command, String cwd, int timeout, Map<String, String> environment,
             Map<String, Object> options) {
         LocalShellOperation localOp = new LocalShellOperation(SandboxOperationSupport.toLocalWorkConfig(config));
-        return localOp.executeCmd(command, cwd, timeout, environment, options);
+        return localOp.executeCmd(command, cwd, timeout, environment, options, null).join();
     }
 }

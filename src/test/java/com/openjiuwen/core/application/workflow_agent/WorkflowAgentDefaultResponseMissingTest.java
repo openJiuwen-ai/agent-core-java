@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.application.workflow_agent;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.EventQueue;
@@ -200,7 +200,7 @@ public class WorkflowAgentDefaultResponseMissingTest {
 
         @Override
         protected Iterator<?> runWorkflowStreaming(Object workflow, Object inputs, Object workflowSession,
-                                                   com.openjiuwen.core.context_engine.ModelContext context) {
+                                                   com.openjiuwen.core.context.ModelContext context) {
             Map<String, Object> arguments = map(inputs);
             String query = String.valueOf(arguments.getOrDefault("query", ""));
             String prefix = workflow.toString().startsWith("stock") ? "stock:" : "weather:";

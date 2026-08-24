@@ -210,7 +210,7 @@ public class FileTrajectoryStore implements TrajectoryStore {
                 stringValue(first(detailMap, "model")),
                 listOfObjects(first(detailMap, "messages")),
                 stringObjectMap(first(detailMap, "response")),
-                toToolList(first(detailMap, "tools")),
+                listOfStringObjectMaps(first(detailMap, "tools")),
                 stringObjectMap(first(detailMap, "usage")),
                 stringObjectMap(first(detailMap, "meta"))
         );
@@ -263,20 +263,5 @@ public class FileTrajectoryStore implements TrajectoryStore {
             return null;
         }
         return new ArrayList<>(input);
-    }
-
-    private static List<Object> toToolList(Object value) {
-        if (!(value instanceof List<?> input)) {
-            return null;
-        }
-        List<Object> output = new ArrayList<>();
-        for (Object item : input) {
-            if (item instanceof Map<?, ?>) {
-                output.add(stringObjectMap(item));
-            } else {
-                output.add(item);
-            }
-        }
-        return output;
     }
 }

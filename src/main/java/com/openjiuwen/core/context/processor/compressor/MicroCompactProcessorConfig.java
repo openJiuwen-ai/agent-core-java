@@ -4,53 +4,73 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Configuration for the {@link MicroCompactProcessor} ContextProcessor.
- * <p>
- * Mirrors Python's {@code MicroCompactProcessorConfig}.
- * 
- * @since 0.1.7
+ * Configuration for {@link MicroCompactProcessor}.
+ *
+ * <p>Mirrors Python's {@code MicroCompactProcessorConfig} in
+ * {@code openjiuwen/core/context_engine/processor/compressor/micro_compact_processor.py}.</p>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class MicroCompactProcessorConfig {
-    @Builder.Default
+    public static final String DEFAULT_CLEARED_MARKER = "[Old tool result content cleared]";
+
+    @JsonProperty("trigger_threshold")
     private int triggerThreshold = 5;
 
-    @Builder.Default
-    /**
-     * List.of.
-     * 
-     * @since 0.1.7
-     */
+    @JsonProperty("compactable_tool_names")
     private List<String> compactableToolNames = List.of("grep", "glob", "read_file", "web_search", "web_fetch");
 
-    @Builder.Default
+    @JsonProperty("keep_recent_per_tool")
     private int keepRecentPerTool = 15;
 
-    @Builder.Default
-    private String clearedMarker = "[Old tool result content cleared]";
+    @JsonProperty("cleared_marker")
+    private String clearedMarker = DEFAULT_CLEARED_MARKER;
 
-    /**
-     * validate.
-     * 
-     * @since 0.1.7
-     */
-    public void validate() {
+    public int getTriggerThreshold() {
+        return triggerThreshold;
+    }
+
+    public void setTriggerThreshold(int triggerThreshold) {
         if (triggerThreshold <= 0) {
-            throw new IllegalArgumentException("triggerThreshold must be > 0, got " + triggerThreshold);
+            throw new IllegalArgumentException("trigger_threshold must be > 0");
         }
+        this.triggerThreshold = triggerThreshold;
+    }
+
+    public List<String> getCompactableToolNames() {
+        return new ArrayList<>(compactableToolNames);
+    }
+
+    public void setCompactableToolNames(List<String> compactableToolNames) {
+        if (compactableToolNames == null) {
+            throw new IllegalArgumentException("compactable_tool_names must not be null");
+        }
+        this.compactableToolNames = new ArrayList<>(compactableToolNames);
+    }
+
+    public int getKeepRecentPerTool() {
+        return keepRecentPerTool;
+    }
+
+    public void setKeepRecentPerTool(int keepRecentPerTool) {
         if (keepRecentPerTool < 0) {
-            throw new IllegalArgumentException("keepRecentPerTool must be >= 0, got " + keepRecentPerTool);
+            throw new IllegalArgumentException("keep_recent_per_tool must be >= 0");
         }
+        this.keepRecentPerTool = keepRecentPerTool;
+    }
+
+    public String getClearedMarker() {
+        return clearedMarker;
+    }
+
+    public void setClearedMarker(String clearedMarker) {
+        if (clearedMarker == null) {
+            throw new IllegalArgumentException("cleared_marker must not be null");
+        }
+        this.clearedMarker = clearedMarker;
     }
 }

@@ -5,8 +5,8 @@
 package com.openjiuwen.batch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryPackage;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryPackage;
 import com.openjiuwen.agent_teams.memory.TeamMemoryConfig;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;

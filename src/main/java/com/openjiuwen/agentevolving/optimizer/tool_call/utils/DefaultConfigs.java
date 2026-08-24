@@ -4,34 +4,27 @@
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Default configurations for tool optimizer.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.default_configs}.
- * 
- * @since 0.1.7
+ * Default tool-call optimizer configurations.
+ *
+ * <p>Mirrors Python's {@code openjiuwen/agent_evolving/optimizer/tool_call/utils/default_configs.py}.</p>
  */
 public final class DefaultConfigs {
-    /**
-     * DefaultConfigs.
-     * 
-     * @since 0.1.7
-     */
+
     private DefaultConfigs() {
         // Utility class
     }
 
     /**
      * Default configuration for example generation.
-     * 
-     * @return the result
-     * @since 0.1.7
+     *
+     * @return a mutable copy of the Python default configuration
      */
     public static Map<String, Object> defaultConfigEg() {
-        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> config = new LinkedHashMap<>();
         config.put("gen_model_id", "gpt-5-mini");
         config.put("eval_model_id", "gpt-5-mini");
         config.put("verbose", 1);
@@ -49,12 +42,11 @@ public final class DefaultConfigs {
 
     /**
      * Default configuration for description optimization.
-     * 
-     * @return the result
-     * @since 0.1.7
+     *
+     * @return a mutable copy of the Python default configuration
      */
     public static Map<String, Object> defaultConfigDesc() {
-        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> config = new LinkedHashMap<>();
         config.put("gen_model_id", "gpt-5-mini");
         config.put("eval_model_id", "gpt-5-mini");
         config.put("verbose", 1);
@@ -68,35 +60,5 @@ public final class DefaultConfigs {
         config.put("num_workers", 2);
         config.put("top_k", 3);
         return config;
-    }
-
-    /**
-     * Merge user config with defaults for example generation.
-     * 
-     * @param userConfig User-provided configuration
-     * @return Merged configuration
-     * @since 0.1.7
-     */
-    public static Map<String, Object> mergeWithDefaultEg(Map<String, Object> userConfig) {
-        Map<String, Object> result = defaultConfigEg();
-        if (userConfig != null) {
-            result.putAll(userConfig);
-        }
-        return result;
-    }
-
-    /**
-     * Merge user config with defaults for description optimization.
-     * 
-     * @param userConfig User-provided configuration
-     * @return Merged configuration
-     * @since 0.1.7
-     */
-    public static Map<String, Object> mergeWithDefaultDesc(Map<String, Object> userConfig) {
-        Map<String, Object> result = defaultConfigDesc();
-        if (userConfig != null) {
-            result.putAll(userConfig);
-        }
-        return result;
     }
 }

@@ -12,7 +12,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -104,22 +104,27 @@ public class QueryRewriter {
      */
     public String loadTemplate(String promptBase) {
         String cacheKey = promptBase + "_" + promptLang;
-        return templateCache.computeIfAbsent(cacheKey, key -> {
-            String resource = PROMPT_RESOURCE_DIR + key + ".md";
-            try (InputStream input = QueryRewriter.class.getResourceAsStream(resource)) {
-                if (input == null) {
-                    throw queryRewriterError(
-                            StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
-                            "prompt file not found: " + resource);
-                }
-                return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException exception) {
+        String cached = templateCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        String resource = PROMPT_RESOURCE_DIR + cacheKey + ".md";
+        String loaded;
+        try (InputStream input = QueryRewriter.class.getResourceAsStream(resource)) {
+            if (input == null) {
                 throw queryRewriterError(
                         StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
-                        "prompt file read failed: " + resource + ", reason: " + exception,
-                        exception);
+                        "prompt file not found: " + resource);
             }
-        });
+            loaded = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw queryRewriterError(
+                    StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
+                    "prompt file read failed: " + resource + ", reason: " + exception,
+                    exception);
+        }
+        String existing = templateCache.putIfAbsent(cacheKey, loaded);
+        return existing != null ? existing : loaded;
     }
 
     /**

@@ -15,11 +15,10 @@ import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -164,10 +163,9 @@ public class AgentFactory implements Function<RLTask, DeepAgent> {
             if (item instanceof Tool foundationTool && foundationTool.getCard() != null) {
                 ToolCard card = foundationTool.getCard();
                 reactAgent.getAbilityManager().add(card);
-                agent.registerTool(foundationTool);
-                if (Runner.resourceMgr().getTool(card.getId()) == null) {
-                    Runner.resourceMgr().addTool(rebuildLocalFunctionIfNeeded(foundationTool));
-                }
+                // Rebuild LocalFunction so ResourceMgr does not share the caller's instance.
+                Tool toRegister = rebuildLocalFunctionIfNeeded(foundationTool);
+                agent.registerTool(toRegister);
                 continue;
             }
             if (item instanceof ToolCard card) {

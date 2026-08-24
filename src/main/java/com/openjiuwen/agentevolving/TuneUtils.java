@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving;
@@ -7,251 +7,297 @@ package com.openjiuwen.agentevolving;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.exception.ValidationError;
-import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * Collection of static utility methods for self-evolving operations.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.utils.TuneUtils}.
- * 
- * @since 0.1.7
+ * Utility functions for self-evolving operations.
+ *
+ * <p>Mirrors Python's {@code TuneUtils} and module helpers in
+ * {@code openjiuwen/agent_evolving/utils.py}.</p>
  */
 public final class TuneUtils {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern JSON_BLOCK_PATTERN = Pattern.compile("```json(.*?)```", Pattern.DOTALL);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final Pattern LEGACY_SKILL_MD_RE = Pattern.compile("[/\\\\]([^/\\\\]+)[/\\\\]SKILL\\.md",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern SKILLS_PATH_RE = Pattern.compile("[/\\\\]skills[/\\\\]([^/\\\\]+)(?=[/\\\\])",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern INLINE_SKILL_TOOL_RE = Pattern.compile(
+            "\\bskill_tool\\s*\\(\\s*skill_name\\s*=\\s*['\\\"]?([A-Za-z0-9._-]+)['\\\"]?",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern JSON_BLOCK_RE = Pattern.compile("```json(.*?)```", Pattern.DOTALL);
+    private static final Pattern LIST_BLOCK_RE = Pattern.compile("```list(.*?)```", Pattern.DOTALL);
 
-    /**
-     * Pattern.compile.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern LIST_BLOCK_PATTERN = Pattern.compile("```list(.*?)```", Pattern.DOTALL);
-
-    /**
-     * TuneUtils.
-     * 
-     * @since 0.1.7
-     */
     private TuneUtils() {
-        // Utility class
     }
 
-    /**
-     * Validate numeric parameter is within bounds.
-     * 
-     * @param param Value to validate
-     * @param paramName Parameter name for error message
-     * @param lower Minimum allowed value
-     * @param upper Maximum allowed value
-     * @since 0.1.7
-     */
-    public static void validateDigitalParameter(double param, String paramName, double lower, double upper) {
-        if (param < lower || param > upper) {
-            throw new ValidationError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
-                    Map.of("error_msg", paramName + " should be between " + lower + " and " + upper));
+    public static String inferSkillFromTexts(
+            Collection<String> skillNames,
+            Collection<?> skillToolPayloads,
+            Collection<String> texts
+    ) {
+        Set<String> knownSkills = new LinkedHashSet<>(skillNames == null ? List.of() : skillNames);
+        if (knownSkills.isEmpty()) {
+            return null;
         }
-    }
 
-    /**
-     * Extract readable input string from Case.
-     * 
-     * @param caseData Case to extract input from
-     * @return Formatted input string
-     * @since 0.1.7
-     */
-    public static String getInputStringFromCase(Case caseData) {
-        return convertDictToString(caseData.getInputs());
-    }
+        Map<String, SkillReferenceScore> hits = new LinkedHashMap<>();
 
-    /**
-     * Convert BaseMessage to string for logging/comparison.
-     * 
-     * @param message Message to convert
-     * @return Serialized message content; tool_calls included if present
-     * @since 0.1.7
-     */
-    public static String getOutputStringFromMessage(BaseMessage message) {
-        if (message == null) {
-            return "";
+        for (Object payload : skillToolPayloads == null ? List.of() : skillToolPayloads) {
+            String skillName = extractSkillToolName(payload);
+            if (knownSkills.contains(skillName)) {
+                hits.computeIfAbsent(skillName, ignored -> new SkillReferenceScore()).incrementSkillToolHits();
+            }
         }
-        if (message instanceof AssistantMessage assistantMessage && assistantMessage.getToolCalls() != null
-                && !assistantMessage.getToolCalls().isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (var toolCall : assistantMessage.getToolCalls()) {
-                try {
-                    sb.append(OBJECT_MAPPER.writeValueAsString(
-                            Map.of("name", toolCall.getName(), "arguments", toolCall.getArguments())));
-                } catch (JsonProcessingException e) {
-                    sb.append(message.getContentAsString());
+
+        for (String text : texts == null ? List.<String>of() : texts) {
+            for (String skillName : findSkillToolMentions(text)) {
+                if (knownSkills.contains(skillName)) {
+                    hits.computeIfAbsent(skillName, ignored -> new SkillReferenceScore()).incrementSkillToolHits();
                 }
             }
-            return sb.toString();
+            addRegexHits(SKILLS_PATH_RE, text, knownSkills, hits, HitKind.SKILLS_PATH);
+            addRegexHits(LEGACY_SKILL_MD_RE, text, knownSkills, hits, HitKind.LEGACY_SKILL_MD);
         }
-        return message.getContentAsString();
+
+        String bestSkill = null;
+        SkillReferenceScore bestScore = null;
+        for (Map.Entry<String, SkillReferenceScore> entry : hits.entrySet()) {
+            if (bestScore == null || compareRanking(entry.getValue(), bestScore) > 0) {
+                bestSkill = entry.getKey();
+                bestScore = entry.getValue();
+            }
+        }
+        return bestSkill;
     }
 
-    /**
-     * Convert PromptTemplate to multi-line text.
-     * 
-     * @param template PromptTemplate to convert
-     * @return Concatenated message contents separated by newlines
-     * @since 0.1.7
-     */
+    public static Map<String, String> parseTopLevelFrontmatter(String content) {
+        String text = Objects.requireNonNull(content, "content").strip();
+        if (!text.startsWith("---")) {
+            return Map.of();
+        }
+        int end = text.indexOf("---", 3);
+        if (end == -1) {
+            return Map.of();
+        }
+
+        Map<String, String> frontmatter = new LinkedHashMap<>();
+        String body = text.substring(3, end).strip();
+        if (body.isEmpty()) {
+            return frontmatter;
+        }
+        for (String line : body.split("\\R")) {
+            if (line.isEmpty() || Character.isWhitespace(line.charAt(0)) || line.startsWith("-")) {
+                continue;
+            }
+            int colon = line.indexOf(':');
+            if (colon == -1) {
+                continue;
+            }
+            frontmatter.put(line.substring(0, colon).strip(), line.substring(colon + 1).strip());
+        }
+        return frontmatter;
+    }
+
+    public static String extractSkillToolName(Object payload) {
+        if (payload instanceof Map<?, ?> map) {
+            Object value = map.get("skill_name");
+            return value == null || String.valueOf(value).isEmpty() ? "" : String.valueOf(value);
+        }
+        if (payload instanceof String text) {
+            try {
+                Map<String, Object> parsed = OBJECT_MAPPER.readValue(text, new TypeReference<>() {
+                });
+                Object value = parsed.get("skill_name");
+                return value == null || String.valueOf(value).isEmpty() ? "" : String.valueOf(value);
+            } catch (JsonProcessingException | IllegalArgumentException exception) {
+                return "";
+            }
+        }
+        return "";
+    }
+
+    public static List<String> findSkillToolMentions(String text) {
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        Matcher matcher = INLINE_SKILL_TOOL_RE.matcher(text);
+        while (matcher.find()) {
+            result.add(matcher.group(1));
+        }
+        return result;
+    }
+
+    public static void validateDigitalParameter(double param, String paramName, double lower, double upper) {
+        if (param < lower || param > upper) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
+                    "error_msg",
+                    paramName + " should be between " + lower + " and " + upper
+            );
+        }
+    }
+
+    public static String getInputStringFromCase(Case caseValue) {
+        return convertDictToString(Objects.requireNonNull(caseValue, "caseValue").getInputs());
+    }
+
+    public static String getOutputStringFromMessage(BaseMessage message) {
+        BaseMessage resolvedMessage = Objects.requireNonNull(message, "message");
+        if (resolvedMessage instanceof AssistantMessage assistant
+                && assistant.getToolCalls() != null
+                && !assistant.getToolCalls().isEmpty()) {
+            return assistant.getToolCalls().stream()
+                    .map(TuneUtils::serializeToolCallForOutput)
+                    .collect(Collectors.joining());
+        }
+        return resolvedMessage.getContentAsString();
+    }
+
     public static String getContentStringFromTemplate(PromptTemplate template) {
-        if (template == null) {
-            return "";
-        }
-        return template.toMessages().stream().map(BaseMessage::getContentAsString)
-                .reduce((left, right) -> left + "\n" + right).orElse("");
+        return Objects.requireNonNull(template, "template").toMessages().stream()
+                .map(BaseMessage::getContentAsString)
+                .collect(Collectors.joining("\n"));
     }
 
-    /**
-     * Format Case/EvaluatedCase list as few-shot example text.
-     * 
-     * @param cases List of cases to format
-     * @return Formatted examples with question and expected answer
-     * @since 0.1.7
-     */
+    public static Object parseJsonFromLlmResponse(String jsonLikeString) {
+        return parseLlmResponse(jsonLikeString, JSON_BLOCK_RE);
+    }
+
+    public static List<Object> parseListFromLlmResponse(String listLikeString) {
+        Object data = parseLlmResponse(listLikeString, LIST_BLOCK_RE);
+        if (!(data instanceof List<?> list)) {
+            return null;
+        }
+        return new ArrayList<>(list);
+    }
+
     public static String convertCasesToExamples(List<?> cases) {
         if (cases == null || cases.isEmpty()) {
             return "";
         }
-        StringBuilder sb = new StringBuilder();
+        List<String> examples = new ArrayList<>();
         for (int i = 0; i < cases.size(); i++) {
-            Object caseObj = cases.get(i);
-            Case c;
-            if (caseObj instanceof EvaluatedCase evaluatedCase) {
-                c = evaluatedCase.getCase();
-            } else if (caseObj instanceof Case caseData) {
-                c = caseData;
-            } else {
-                continue;
-            }
-            sb.append("example ").append(i + 1).append(":\n");
-            sb.append("[question]: ").append(convertDictToString(c.getInputs())).append("\n");
-            sb.append("[expected answer]: ").append(convertDictToString(c.getLabel()));
-            if (i + 1 < cases.size()) {
-                sb.append("\n");
-            }
+            Object item = cases.get(i);
+            Map<String, Object> inputs = caseInputs(item);
+            Map<String, Object> label = caseLabel(item);
+            examples.add("example " + (i + 1) + ":\n"
+                    + "[question]: " + convertDictToString(inputs) + "\n"
+                    + "[expected answer]: " + convertDictToString(label));
         }
-        return sb.toString();
+        return String.join("\n", examples);
     }
 
-    /**
-     * Extract and parse JSON from ```json ... ``` block.
-     * 
-     * @param jsonLikeString String containing JSON block
-     * @return Parsed JSON value, or null on failure
-     * @since 0.1.7
-     */
-    public static Object parseJsonFromLlmResponse(String jsonLikeString) {
-        return parseLlmResponseRaw(jsonLikeString, JSON_BLOCK_PATTERN);
+    public static String convertDictToString(Map<?, ?> data) {
+        return data.entrySet().stream()
+                .map(entry -> entry.getKey() + ":" + entry.getValue())
+                .collect(Collectors.joining(" | "));
     }
 
-    /**
-     * Extract and parse JSON object from ```json ... ``` block.
-     * 
-     * @param jsonLikeString String containing JSON block
-     * @return Parsed JSON map, or empty map on failure / non-object payload
-     * @since 0.1.7
-     */
-    public static Map<String, Object> parseJsonObjectFromLlmResponse(String jsonLikeString) {
-        Object data = parseJsonFromLlmResponse(jsonLikeString);
-        if (data instanceof Map<?, ?> map) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                result.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            return result;
-        }
-        return Collections.emptyMap();
-    }
-
-    /**
-     * Extract and parse list from ```list ... ``` block.
-     * 
-     * @param listLikeString String containing list block
-     * @return Parsed list, or empty list on failure
-     * @since 0.1.7
-     */
-    public static List<Object> parseListFromLlmResponse(String listLikeString) {
-        Object data = parseLlmResponseRaw(listLikeString, LIST_BLOCK_PATTERN);
-        if (!(data instanceof List)) {
-            Loggers.AGENT.warn("Parsed data is not a list-type");
-            return Collections.emptyList();
-        }
-        @SuppressWarnings("unchecked")
-        List<Object> result = (List<Object>) data;
-        return result;
-    }
-
-    /**
-     * Convert dict to single-line string.
-     * 
-     * @param data Map to convert
-     * @return String in format "k1:v1 | k2:v2"
-     * @since 0.1.7
-     */
-    public static String convertDictToString(Map<String, Object> data) {
-        if (data == null || data.isEmpty()) {
-            return "";
-        }
-        StringJoiner sj = new StringJoiner(" | ");
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
-            sj.add(entry.getKey() + ":" + entry.getValue());
-        }
-        return sj.toString();
-    }
-
-    /**
-     * parseLlmResponseRaw.
-     * 
-     * @param string string
-     * @param pattern pattern
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object parseLlmResponseRaw(String string, Pattern pattern) {
-        if (string == null || string.isEmpty()) {
-            return null;
-        }
-        String matchedString = string;
+    public static Object parseLlmResponse(String value, Pattern pattern) {
+        String matchedString = Objects.requireNonNull(value, "value");
         if (pattern != null) {
-            Matcher matcher = pattern.matcher(string);
+            Matcher matcher = pattern.matcher(matchedString);
             if (!matcher.find()) {
-                Loggers.AGENT.warn("Failed to extract string like `{}` from response", pattern);
                 return null;
             }
-            matchedString = matcher.group(1).trim();
+            matchedString = matcher.group(1).strip();
         }
-
         try {
-            return OBJECT_MAPPER.readValue(matchedString, new TypeReference<Object>() {
-            });
-        } catch (JsonProcessingException e) {
-            Loggers.AGENT.warn("Failed to convert string to object: {}", e.getMessage());
+            return OBJECT_MAPPER.readValue(matchedString, Object.class);
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private static void addRegexHits(
+            Pattern pattern,
+            String text,
+            Set<String> knownSkills,
+            Map<String, SkillReferenceScore> hits,
+            HitKind hitKind
+    ) {
+        if (text == null) {
+            return;
+        }
+        Matcher matcher = pattern.matcher(text);
+        while (matcher.find()) {
+            String skillName = matcher.group(1);
+            if (!knownSkills.contains(skillName)) {
+                continue;
+            }
+            SkillReferenceScore score = hits.computeIfAbsent(skillName, ignored -> new SkillReferenceScore());
+            if (hitKind == HitKind.SKILLS_PATH) {
+                score.incrementSkillsPathHits();
+            } else {
+                score.incrementLegacySkillMdHits();
+            }
+        }
+    }
+
+    private static int compareRanking(SkillReferenceScore left, SkillReferenceScore right) {
+        for (int i = 0; i < left.rankingKey().size(); i++) {
+            int compared = Integer.compare(left.rankingKey().get(i), right.rankingKey().get(i));
+            if (compared != 0) {
+                return compared;
+            }
+        }
+        return 0;
+    }
+
+    private static String serializeToolCallForOutput(ToolCall toolCall) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("name", toolCall.getName());
+        data.put("arguments", toolCall.getArguments());
+        try {
+            return OBJECT_MAPPER.writeValueAsString(data);
+        } catch (JsonProcessingException exception) {
+            return String.valueOf(data);
+        }
+    }
+
+    private static Map<String, Object> caseInputs(Object item) {
+        if (item instanceof Case caseValue) {
+            return caseValue.getInputs();
+        }
+        if (item instanceof EvaluatedCase evaluatedCase) {
+            return evaluatedCase.getInputs();
+        }
+        throw new IllegalArgumentException("case item must be Case or EvaluatedCase");
+    }
+
+    private static Map<String, Object> caseLabel(Object item) {
+        if (item instanceof Case caseValue) {
+            return caseValue.getLabel();
+        }
+        if (item instanceof EvaluatedCase evaluatedCase) {
+            return evaluatedCase.getLabel();
+        }
+        throw new IllegalArgumentException("case item must be Case or EvaluatedCase");
+    }
+
+    private enum HitKind {
+        SKILLS_PATH,
+        LEGACY_SKILL_MD
     }
 }

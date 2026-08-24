@@ -145,7 +145,7 @@ public final class PlanAgentFactory {
                         List.of("write_file", "edit_file", "mkdir", "touch", "rm", "cp", "mv", "git add", "git commit",
                                 "install_dependencies", "shell_redirection")))
                 .rails(SubAgentRailMergeSupport.mergeRails(
-                        List.of(new SysOperationRail(), new com.openjiuwen.harness.rails.SecurityRail(true)), kwargs))
+                        List.of(new SysOperationRail()), kwargs))
                 .restrictToWorkDir(false).factoryKwargs(kwargs).build();
         SubAgentFactoryKwargsSupport.applyCommonOverrides(config, kwargs);
         return config;

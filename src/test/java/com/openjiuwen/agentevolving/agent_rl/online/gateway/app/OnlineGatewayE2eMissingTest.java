@@ -2,20 +2,20 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.online.gateway.app;
+package com.openjiuwen.agentevolving.agent_rl.online.gateway.app;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayConfig;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.GatewayTrajectoryRuntime;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.Forwarder;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
-import com.openjiuwen.agent_evolving.agent_rl.online.rail.OnlineTrajectoryConverter;
-import com.openjiuwen.agent_evolving.agent_rl.online.rail.RailV1Batch;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.GatewayConfig;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.trajectory.GatewayTrajectoryRuntime;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.Forwarder;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.GatewayHttpResponse;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+import com.openjiuwen.agentevolving.agent_rl.online.rail.OnlineTrajectoryConverter;
+import com.openjiuwen.agentevolving.agent_rl.online.rail.RailV1Batch;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

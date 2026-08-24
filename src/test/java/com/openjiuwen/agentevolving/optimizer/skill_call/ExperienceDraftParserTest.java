@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.skill_call;
+package com.openjiuwen.agentevolving.optimizer.skill_call;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 
 import java.util.List;
 import java.util.Map;

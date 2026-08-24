@@ -7,6 +7,7 @@ package com.openjiuwen.extensions.a2a;
 import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.extensions.a2a.A2ATransformer.SendMessageRequest;
 
+import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -36,15 +37,34 @@ public class A2AClient implements AutoCloseable {
     }
 
     public A2AClient(Object card, boolean polling) {
-        this(card, polling, new DefaultClientFactory());
+        this(card, polling, new DefaultClientFactory(), null, Map.of());
     }
 
     A2AClient(Object card, boolean polling, A2AClientFactory factory) {
+        this(card, polling, factory, null, Map.of());
+    }
+
+    /**
+     * Create an A2A client with optional outbound {@link HttpClient} and auth headers.
+     *
+     * <p>Values are placed on {@link ClientConfig} so the configured {@link A2AClientFactory}
+     * (including runtime-injected factories) can apply TLS/auth without changing the card/polling API.</p>
+     *
+     * @param card agent card
+     * @param polling whether to use polling mode
+     * @param factory transport factory
+     * @param httpClient optional injected JDK HTTP client ({@code _ojw_http_client})
+     * @param authHeaders optional outbound auth headers ({@code _ojw_auth_headers})
+     */
+    A2AClient(Object card, boolean polling, A2AClientFactory factory,
+              HttpClient httpClient, Map<String, String> authHeaders) {
         this.card = card;
         this.polling = polling;
         try {
             ClientConfig config = new ClientConfig();
             config.setPolling(polling);
+            config.setHttpClient(httpClient);
+            config.setAuthHeaders(authHeaders == null ? Map.of() : Map.copyOf(authHeaders));
             this.client = Objects.requireNonNull(factory, "factory").create(config, card);
         } catch (Exception exception) {
             throw new RuntimeException("Failed to create A2A client: " + exception.getMessage(), exception);
@@ -213,6 +233,8 @@ public class A2AClient implements AutoCloseable {
      */
     public static final class ClientConfig {
         private boolean polling;
+        private HttpClient httpClient;
+        private Map<String, String> authHeaders = Map.of();
 
         public boolean isPolling() {
             return polling;
@@ -220,6 +242,22 @@ public class A2AClient implements AutoCloseable {
 
         public void setPolling(boolean polling) {
             this.polling = polling;
+        }
+
+        public HttpClient getHttpClient() {
+            return httpClient;
+        }
+
+        public void setHttpClient(HttpClient httpClient) {
+            this.httpClient = httpClient;
+        }
+
+        public Map<String, String> getAuthHeaders() {
+            return authHeaders;
+        }
+
+        public void setAuthHeaders(Map<String, String> authHeaders) {
+            this.authHeaders = authHeaders == null ? Map.of() : Map.copyOf(authHeaders);
         }
     }
 

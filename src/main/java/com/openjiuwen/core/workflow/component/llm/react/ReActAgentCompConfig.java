@@ -6,8 +6,8 @@ package com.openjiuwen.core.workflow.component.llm.react;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 
 import java.util.List;
 import java.util.Map;

@@ -42,6 +42,8 @@ public class InMemoryTeamDatabase {
 
     private final Object lock = new Object();
     private final MemoryDatabaseConfig config;
+    // LinkedHashMap preserves insertion order (Python parity). Thread safety is via {@link #lock}
+    // on mutating/read paths — ConcurrentHashMap would scramble member/task list order.
     private final Map<String, Team> teams = new LinkedHashMap<>();
     private final Map<String, TeamMember> members = new LinkedHashMap<>();
     private final Map<String, TeamTask> tasks = new LinkedHashMap<>();

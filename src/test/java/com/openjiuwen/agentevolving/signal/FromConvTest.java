@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.signal;
+package com.openjiuwen.agentevolving.signal;
 
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.ToolCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.ToolCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

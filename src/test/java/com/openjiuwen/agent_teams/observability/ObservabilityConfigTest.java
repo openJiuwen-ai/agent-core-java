@@ -24,12 +24,15 @@ class ObservabilityConfigTest {
         assertThat(config.isRedactCompletions()).isFalse();
         assertThat(config.getAttributeValueMaxLength()).isEqualTo(8192);
         assertThat(config.getExportTimeoutMs()).isEqualTo(5000);
+        assertThat(config.getTracesDir()).isEqualTo("./traces");
+        assertThat(config.getFileRetentionDays()).isEqualTo(7);
     }
 
     @Test
     void exporterFallsBackToGrpcForUnknownValues() {
         assertThat(ObservabilityExporter.fromValue("otlp_http")).isEqualTo(ObservabilityExporter.OTLP_HTTP);
         assertThat(ObservabilityExporter.fromValue("console")).isEqualTo(ObservabilityExporter.CONSOLE);
+        assertThat(ObservabilityExporter.fromValue("file")).isEqualTo(ObservabilityExporter.FILE);
         assertThat(ObservabilityExporter.fromValue("unknown")).isEqualTo(ObservabilityExporter.OTLP_GRPC);
     }
 

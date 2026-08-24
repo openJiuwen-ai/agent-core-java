@@ -6,7 +6,7 @@ package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.state.CommitStateLike;
@@ -40,7 +40,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     @Override
     @SuppressWarnings("unchecked")
     public Object invoke(Object inputs, BaseSession session, ModelContext context) {
-        BaseSession rootSession = WorkflowSessionSupport.parentOrSelf(unwrapSession(session));
+        BaseSession rootSession = WorkflowSessionSupport.parentOrSelf(session);
         for (Map.Entry<String, Object> entry : variableMapping.entrySet()) {
             String left = entry.getKey();
             Object right = entry.getValue();
@@ -75,7 +75,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     }
 
     public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
+        return invoke(inputs, session.getInner(), context == null ? null : context.unwrap());
     }
 
     public static Object generateValue(BaseSession session, Object value) {
@@ -87,7 +87,7 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     }
 
     public static Object generateValue(NodeSessionApi session, Object value) {
-        return generateValue((BaseSession) session, value);
+        return generateValue(session.getInner(), value);
     }
 
     private static void setTargetOutputs(BaseSession rootSession, String nodeId, Map<String, Object> output) {
@@ -130,13 +130,6 @@ public class LoopSetVariableComponent extends WorkflowComponent {
             return runtimeSession;
         }
         return WorkflowRuntimeSession.nodeSession(rootSession, nodeId);
-    }
-
-    private static BaseSession unwrapSession(BaseSession session) {
-        if (session instanceof NodeSessionApi nodeSessionApi) {
-            return nodeSessionApi.getInner();
-        }
-        return session;
     }
 
     private static void commit(BaseSession session) {

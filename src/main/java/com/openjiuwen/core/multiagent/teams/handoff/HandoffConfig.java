@@ -4,49 +4,70 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Camelcase package compatibility facade for handoff configuration.
+ * Orchestration parameters for a handoff team.
  *
  * <p>Mirrors Python's {@code HandoffConfig} in
  * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_config.py}.</p>
  */
-public class HandoffConfig extends com.openjiuwen.core.multi_agent.teams.handoff.HandoffConfig {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class HandoffConfig {
 
-    public static Builder builder() {
-        return new Builder();
+    @JsonProperty("start_agent")
+    private AgentCard startAgent;
+
+    @JsonProperty("max_handoffs")
+    private int maxHandoffs = 10;
+
+    @JsonProperty("routes")
+    private List<HandoffRoute> routes = new ArrayList<>();
+
+    @JsonIgnore
+    private HandoffTerminationCondition terminationCondition;
+
+    public AgentCard getStartAgent() {
+        return startAgent;
     }
 
-    public static class Builder {
-        private AgentCard startAgent;
-        private int maxHandoffs = 10;
-        private List<HandoffRoute> routes = new ArrayList<>();
+    public void setStartAgent(AgentCard startAgent) {
+        this.startAgent = startAgent;
+    }
 
-        public Builder startAgent(AgentCard startAgent) {
-            this.startAgent = startAgent;
-            return this;
-        }
+    public int getMaxHandoffs() {
+        return maxHandoffs;
+    }
 
-        public Builder maxHandoffs(int maxHandoffs) {
-            this.maxHandoffs = maxHandoffs;
-            return this;
-        }
+    public void setMaxHandoffs(int maxHandoffs) {
+        this.maxHandoffs = maxHandoffs;
+    }
 
-        public Builder routes(List<HandoffRoute> routes) {
-            this.routes = routes == null ? new ArrayList<>() : new ArrayList<>(routes);
-            return this;
-        }
+    public List<HandoffRoute> getRoutes() {
+        return routes;
+    }
 
-        public HandoffConfig build() {
-            HandoffConfig config = new HandoffConfig();
-            config.setStartAgent(startAgent);
-            config.setMaxHandoffs(maxHandoffs);
-            config.setRoutes(routes.stream().map(HandoffRoute::toUnderscore).toList());
-            return config;
-        }
+    public void setRoutes(List<HandoffRoute> routes) {
+        this.routes = routes == null ? new ArrayList<>() : new ArrayList<>(routes);
+    }
+
+    public HandoffConfig addRoute(HandoffRoute route) {
+        routes.add(route);
+        return this;
+    }
+
+    @JsonIgnore
+    public HandoffTerminationCondition getTerminationCondition() {
+        return terminationCondition;
+    }
+
+    public void setTerminationCondition(HandoffTerminationCondition terminationCondition) {
+        this.terminationCondition = terminationCondition;
     }
 }

@@ -6,9 +6,7 @@ package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.callback.CallbackManager;
-import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.StreamWriter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
@@ -16,12 +14,12 @@ import com.openjiuwen.core.session.stream.StreamWriterManager;
 import java.util.Map;
 
 /**
- * Wrapper around another session.
+ * Wrapper around another session. Not itself a {@link BaseSession}.
  *
  * <p>Mirrors Python's {@code WrappedSession} in
  * {@code openjiuwen/core/session/internal/wrapper.py}.</p>
  */
-public abstract class WrappedSession extends BaseSession {
+public abstract class WrappedSession {
 
     protected final BaseSession innerSession;
 
@@ -50,56 +48,46 @@ public abstract class WrappedSession extends BaseSession {
         return innerSession;
     }
 
-    @Override
     public SessionConfigAccess config() {
         return innerSession.config();
     }
 
-    @Override
     public SessionStateAccess state() {
         return innerSession.state();
     }
 
-    @Override
     public Object tracer() {
         return innerSession.tracer();
     }
 
-    @Override
     public StreamWriterManager streamWriterManager() {
         return innerSession.streamWriterManager();
     }
 
-    @Override
     public Object checkpointer() {
         return innerSession.checkpointer();
     }
 
-    @Override
     public Object actorManager() {
         return innerSession.actorManager();
     }
 
-    @Override
     public CallbackManager callbackManager() {
         return innerSession.callbackManager();
     }
 
     public abstract String executableId();
 
-    @Override
     public abstract String sessionId();
 
     public String userId() {
         return "";
     }
 
-    @Override
     public abstract void updateState(Map<String, Object> data);
 
     public abstract Object getState(Object key);
 
-    @Override
     public Object getState(String key) {
         return getState((Object) key);
     }

@@ -4,22 +4,23 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.sys_operation.BaseFsOperation;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
-import com.openjiuwen.core.sys_operation.result.DownloadFileResult;
-import com.openjiuwen.core.sys_operation.result.DownloadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.FileSystemData;
-import com.openjiuwen.core.sys_operation.result.FileSystemItem;
-import com.openjiuwen.core.sys_operation.result.ListDirsResult;
-import com.openjiuwen.core.sys_operation.result.ListFilesResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileData;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.SearchFilesResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.WriteFileResult;
+import com.openjiuwen.core.sysop.BaseFsOperation;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
+import com.openjiuwen.core.sysop.result.DownloadFileResult;
+import com.openjiuwen.core.sysop.result.DownloadFileStreamResult;
+import com.openjiuwen.core.sysop.result.FileSystemData;
+import com.openjiuwen.core.sysop.result.FileSystemItem;
+import com.openjiuwen.core.sysop.result.ListDirsResult;
+import com.openjiuwen.core.sysop.result.ListFilesResult;
+import com.openjiuwen.core.sysop.result.ReadFileData;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
+import com.openjiuwen.core.sysop.result.SearchFilesResult;
+import com.openjiuwen.core.sysop.result.UploadFileResult;
+import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
+import com.openjiuwen.core.sysop.result.WriteFileResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -89,14 +90,22 @@ class SkillUtilTest {
         SkillUtil util = skillUtil();
         util.registerSkills(SINGLE_SKILL_MD, null, null);
 
-        String prompt = util.get_skill_prompt();
+        // Prompt only emits Skill directory when under workspace/cwd/projectRoot (issue #50).
+        CwdContext.setWorkspace("/virtual");
+        CwdContext.setCwd("/virtual");
+        CwdContext.setProjectRoot("/virtual");
+        try {
+            String prompt = util.get_skill_prompt();
 
-        assertThat(prompt)
-                .contains("You are an agent equipped with various skills to solve problems.")
-                .contains("using read_file and follow its workflow.")
-                .contains("0.Skill name: single_skill")
-                .contains("Skill description: SINGLE desc")
-                .contains("Skill directory:");
+            assertThat(prompt)
+                    .contains("You are an agent equipped with various skills to solve problems.")
+                    .contains("using read_file and follow its workflow.")
+                    .contains("0.Skill name: single_skill")
+                    .contains("Skill description: SINGLE desc")
+                    .contains("Skill directory:");
+        } finally {
+            CwdContext.reset();
+        }
     }
 
     @Test

@@ -4,26 +4,28 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.sys_operation.BaseFsOperation;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
-import com.openjiuwen.core.sys_operation.result.DownloadFileResult;
-import com.openjiuwen.core.sys_operation.result.DownloadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.FileSystemData;
-import com.openjiuwen.core.sys_operation.result.FileSystemItem;
-import com.openjiuwen.core.sys_operation.result.ListDirsResult;
-import com.openjiuwen.core.sys_operation.result.ListFilesResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileData;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.SearchFilesResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.WriteFileResult;
+import com.openjiuwen.core.sysop.BaseFsOperation;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.result.DownloadFileResult;
+import com.openjiuwen.core.sysop.result.DownloadFileStreamResult;
+import com.openjiuwen.core.sysop.result.FileSystemData;
+import com.openjiuwen.core.sysop.result.FileSystemItem;
+import com.openjiuwen.core.sysop.result.ListDirsResult;
+import com.openjiuwen.core.sysop.result.ListFilesResult;
+import com.openjiuwen.core.sysop.result.ReadFileData;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
+import com.openjiuwen.core.sysop.result.SearchFilesResult;
+import com.openjiuwen.core.sysop.result.UploadFileResult;
+import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
+import com.openjiuwen.core.sysop.result.WriteFileResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.FileNotFoundException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -182,6 +184,33 @@ class SkillManagerTest {
 
         assertThat(manager.has("single_skill")).isTrue();
         assertThat(manager.count()).isEqualTo(1);
+    }
+
+    @Test
+    void registerWithinTrustedSkillsRoot(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
+        Path skillDir = Files.createDirectories(skillsRoot.resolve("safe-skill"));
+        Files.writeString(skillDir.resolve("SKILL.md"), "---\ndescription: Safe skill\n---");
+
+        assertThat(SkillManager.resolveSafeSkillPath("safe-skill", skillsRoot))
+                .isEqualTo(skillDir.toRealPath());
+        assertThat(SkillManager.resolveSafeSkillPath(skillDir.toString(), skillsRoot))
+                .isEqualTo(skillDir.toRealPath());
+    }
+
+    @Test
+    void rejectRegisterOutsideTrustedSkillsRoot(@TempDir Path tempDir) throws Exception {
+        Path skillsRoot = Files.createDirectories(tempDir.resolve("skills"));
+        Path outsideSkill = Files.createDirectories(tempDir.resolve("outside-skill"));
+        Files.writeString(outsideSkill.resolve("SKILL.md"), "---\ndescription: Outside skill\n---");
+
+        assertThatThrownBy(() -> SkillManager.resolveSafeSkillPath(outsideSkill.toString(), skillsRoot))
+                .isInstanceOf(SecurityException.class);
+
+        Files.createSymbolicLink(skillsRoot.resolve("linked-skill"), outsideSkill);
+        assertThatThrownBy(() -> SkillManager.resolveSafeSkillPath(
+                skillsRoot.resolve("linked-skill").toString(), skillsRoot))
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test

@@ -41,4 +41,15 @@ class ToolOutputTest {
         assertEquals(output.getData(), restored.getData());
         assertEquals(output.getError(), restored.getError());
     }
+
+    @Test
+    void testToStringIncludesPayloadLikePythonStr() {
+        ToolOutput success = ToolOutput.success(Map.of("skills", java.util.List.of("alpha")));
+        assertTrue(success.toString().contains("alpha"));
+        assertTrue(success.toString().contains("success=true"));
+
+        ToolOutput failure = ToolOutput.failure("denied");
+        assertTrue(failure.toString().contains("denied"));
+        assertTrue(failure.toString().contains("success=false"));
+    }
 }

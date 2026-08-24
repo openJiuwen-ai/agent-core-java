@@ -55,8 +55,8 @@ public abstract class BaseEvaluator {
         TuneUtils.validateDigitalParameter(
                 numParallel,
                 "num_parallel",
-                TuneConstant.MIN_PARALLEL_NUM,
-                TuneConstant.MAX_PARALLEL_NUM
+                TuneConstant.minParallelNum,
+                TuneConstant.maxParallelNum
         );
         int numWorkers = Math.min(numParallel, cases.size());
         ExecutorService executor = Executors.newFixedThreadPool(numWorkers);

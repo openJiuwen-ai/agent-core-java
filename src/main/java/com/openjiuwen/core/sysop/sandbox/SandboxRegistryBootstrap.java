@@ -4,12 +4,13 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioFSProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioShellProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioCodeProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxFSProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxShellProvider;
-import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxCodeProvider;
+import com.openjiuwen.core.sysop.sandbox.launchers.PreDeploymentLauncher;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioCodeProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioFsProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioShellProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxCodeProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxFsProvider;
+import com.openjiuwen.extensions.sys_operation.sandbox.providers.JiuwenBoxShellProvider;
 
 /**
  * Registers built-in launchers and operation providers once per JVM.
@@ -17,7 +18,6 @@ import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.Jiuwe
  * @since 0.1.7
  */
 public final class SandboxRegistryBootstrap {
-    private static volatile boolean isInitialized;
 
     /**
      * SandboxRegistryBootstrap.
@@ -33,24 +33,16 @@ public final class SandboxRegistryBootstrap {
      * @since 0.1.7
      */
     public static void ensureInitialized() {
-        if (isInitialized) {
-            return;
-        }
         synchronized (SandboxRegistryBootstrap.class) {
-            if (isInitialized) {
-                return;
-            }
             SandboxRegistry.registerLauncher("pre_deploy", PreDeploymentLauncher.class);
 
-            SandboxRegistry.registerProvider("jiuwenbox", "fs", JiuwenBoxFSProvider.class);
+            SandboxRegistry.registerProvider("jiuwenbox", "fs", JiuwenBoxFsProvider.class);
             SandboxRegistry.registerProvider("jiuwenbox", "shell", JiuwenBoxShellProvider.class);
             SandboxRegistry.registerProvider("jiuwenbox", "code", JiuwenBoxCodeProvider.class);
 
-            SandboxRegistry.registerProvider("aio", "fs", AioFSProvider.class);
+            SandboxRegistry.registerProvider("aio", "fs", AioFsProvider.class);
             SandboxRegistry.registerProvider("aio", "shell", AioShellProvider.class);
             SandboxRegistry.registerProvider("aio", "code", AioCodeProvider.class);
-
-            isInitialized = true;
         }
     }
 }

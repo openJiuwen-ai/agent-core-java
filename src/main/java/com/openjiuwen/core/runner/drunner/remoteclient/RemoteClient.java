@@ -16,7 +16,9 @@ import java.util.Map;
  * Remote-client abstraction.
  * 
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client.RemoteClient}.
  */
+@Deprecated(since = "0.1.14")
 public interface RemoteClient {
     /**
      * start.

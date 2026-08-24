@@ -14,6 +14,9 @@ import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.schema.DeepAgentState;
+import com.openjiuwen.harness.schema.task.TaskPlan;
+import com.openjiuwen.harness.schema.task.TodoItem;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -162,24 +165,64 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
     private List<ControllerOutputChunk> executeOnce(String taskId, AgentSessionApi session) {
         Task task = resolveTask(taskId);
         Map<String, Object> effective = buildEffectiveInputs(taskId, task, session);
+        DeepAgentState state = loadPlanState(session);
+        if (getPlanTask(state, taskId) != null) {
+            state.getTaskPlan().markInProgress(taskId);
+            savePlanState(session, state);
+        }
         try {
             Map<String, Object> result = invokeTask(effective, session);
+            if (!isInterruptResult(result) && getPlanTask(loadPlanState(session), taskId) != null) {
+                DeepAgentState completedState = loadPlanState(session);
+                String summary = String.valueOf(result == null ? "" : result.getOrDefault("output", ""));
+                if (summary.length() > 200) {
+                    summary = summary.substring(0, 200);
+                }
+                completedState.getTaskPlan().markCompleted(taskId, summary);
+                savePlanState(session, completedState);
+            }
             fireAfterTaskIteration(task, session, effective, result, null);
+            // Align with Python: interrupt still completes the round via TASK_COMPLETION so the
+            // outer loop's wait_completion Future resolves (TASK_INTERACTION is for steer only).
             List<ControllerOutputChunk> chunks = new java.util.ArrayList<>(processingChunks(result, taskId));
-            String eventType = isInterruptResult(result)
-                    ? EventType.TASK_INTERACTION.getValue()
-                    : EventType.TASK_COMPLETION.getValue();
-            ControllerOutputPayload payload = new ControllerOutputPayload(eventType,
+            ControllerOutputPayload payload = new ControllerOutputPayload(EventType.TASK_COMPLETION.getValue(),
                     List.of(new DataFrame.JsonDataFrame(result == null ? Map.of() : result)),
                     Map.of("task_id", taskId));
             chunks.add(new ControllerOutputChunk(chunks.size(), payload, true));
             return chunks;
         } catch (RuntimeException ex) {
+            DeepAgentState failedState = loadPlanState(session);
+            if (getPlanTask(failedState, taskId) != null) {
+                failedState.getTaskPlan().markCancelled(taskId, errorMessage(ex));
+                savePlanState(session, failedState);
+            }
             fireAfterTaskIteration(task, session, effective, Map.of("error", errorMessage(ex)), ex);
             ControllerOutputPayload payload = new ControllerOutputPayload(EventType.TASK_FAILED.getValue(),
                     List.of(new DataFrame.TextDataFrame(errorMessage(ex))), Map.of("task_id", taskId));
             return List.of(new ControllerOutputChunk(0, payload, true));
         }
+    }
+
+    private DeepAgentState loadPlanState(AgentSessionApi session) {
+        if (deepAgent == null || session == null) {
+            return null;
+        }
+        return deepAgent.loadState(session);
+    }
+
+    private void savePlanState(AgentSessionApi session, DeepAgentState state) {
+        if (deepAgent == null || session == null || state == null) {
+            return;
+        }
+        deepAgent.saveState(session, state);
+    }
+
+    private static TodoItem getPlanTask(DeepAgentState state, String taskId) {
+        if (state == null || taskId == null || taskId.isBlank()) {
+            return null;
+        }
+        TaskPlan plan = state.getTaskPlan();
+        return plan == null ? null : plan.getTask(taskId);
     }
 
     /**
@@ -238,8 +281,19 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
         copyIfPresent(metadata, effective, "run_kind");
         copyIfPresent(metadata, effective, "run_context");
         copyIfPresent(metadata, effective, "is_follow_up");
+        copyIfPresent(metadata, effective, "_handler_round_id");
         copyIfPresent(metadata, effective, "collect_inner_stream");
         copyIfPresent(metadata, effective, "loop_queues");
+        LoopQueues queues = null;
+        if (metadata.get("loop_queues") instanceof LoopQueues typed) {
+            queues = typed;
+        } else if (deepAgent != null && deepAgent.loopController() != null && session != null) {
+            queues = deepAgent.loopController().getInteractionQueues(session.getSessionId());
+        }
+        if (queues != null) {
+            // Live queue reference so steer during a blocked invoke is visible to the next round.
+            effective.put("_steering_queue", queues.steering());
+        }
         return effective;
     }
 
@@ -287,7 +341,7 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             return taskInvoker.apply(effective, session);
         }
         if (deepAgent != null) {
-              return deepAgent.invoke(effective, session);
+            return deepAgent.invoke(effective, session);
         }
         return Map.of("output", effective.getOrDefault("query", ""));
     }
@@ -300,7 +354,14 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
      * @return the result
      * @since 0.1.7
      */
-    private static List<ControllerOutputChunk> processingChunks(Map<String, Object> result, String taskId) {
+    /**
+     * Convert inner stream chunks into controller output chunks.
+     * <p>
+     * Parallel {@code __interaction__} members are merged into a single
+     * {@code TASK_INTERACTION} chunk ({@code data:[N]}) so TaskScheduler's
+     * first-chunk break still publishes all siblings (issue #66).
+     */
+    static List<ControllerOutputChunk> processingChunks(Map<String, Object> result, String taskId) {
         if (result == null) {
             return List.of();
         }
@@ -309,11 +370,24 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             return List.of();
         }
         List<ControllerOutputChunk> chunks = new java.util.ArrayList<>();
+        List<DataFrame> interactionFrames = new java.util.ArrayList<>();
         for (Object item : iterable) {
+            if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema
+                    && "__interaction__".equals(outputSchema.getType())) {
+                interactionFrames.add(new DataFrame.JsonDataFrame(
+                        Map.of("type", outputSchema.getType(), "payload", outputSchema.getPayload())));
+                continue;
+            }
             ControllerOutputChunk chunk = toProcessingChunk(item, chunks.size(), taskId);
             if (chunk != null) {
                 chunks.add(chunk);
             }
+        }
+        if (!interactionFrames.isEmpty()) {
+            chunks.add(new ControllerOutputChunk(chunks.size(),
+                    new ControllerOutputPayload(EventType.TASK_INTERACTION.getValue(), interactionFrames,
+                            Map.of("task_id", taskId, "stream_kind", "inner_agent")),
+                    false));
         }
         return chunks;
     }
@@ -351,21 +425,22 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             chunk.setLastChunk(false);
             return chunk;
         }
-        if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema
-                && "__interaction__".equals(outputSchema.getType())) {
-            return new ControllerOutputChunk(index,
-                    new ControllerOutputPayload(EventType.TASK_INTERACTION.getValue(),
-                            List.of(new DataFrame.JsonDataFrame(
-                                    Map.of("type", outputSchema.getType(), "payload", outputSchema.getPayload()))),
-                            Map.of("task_id", taskId, "stream_kind", "inner_agent")),
-                    false);
-        }
         Map<String, Object> metadata = Map.of("task_id", taskId, "stream_kind", "inner_agent");
         List<DataFrame> data;
         if (item instanceof DataFrame frame) {
             data = List.of(frame);
         } else if (item instanceof Map<?, ?> map) {
             data = List.of(new DataFrame.JsonDataFrame(castMap(map)));
+        } else if (item instanceof com.openjiuwen.core.session.stream.OutputSchema outputSchema) {
+            // Processing frame (interactions are batched in processingChunks).
+            Object payload = outputSchema.getPayload();
+            if (payload instanceof Map<?, ?> map) {
+                data = List.of(new DataFrame.JsonDataFrame(castMap(map)));
+            } else if (payload != null) {
+                data = List.of(new DataFrame.TextDataFrame(String.valueOf(payload)));
+            } else {
+                data = List.of(new DataFrame.JsonDataFrame(Map.of("type", outputSchema.getType())));
+            }
         } else if (item != null) {
             data = List.of(new DataFrame.TextDataFrame(String.valueOf(item)));
         } else {

@@ -41,11 +41,18 @@ class KVStoreFactorySpiTest {
     }
 
     @Test
+    @DisplayName("ServiceLoader discovers redis provider")
+    void discoversRedisProvider() {
+        assertTrue(KVStoreFactory.hasProvider("redis"));
+    }
+
+    @Test
     @DisplayName("create() with unknown type throws IllegalArgumentException")
     void createUnknownTypeThrows() {
+        // "redis" is a registered SPI provider after issue #34; use a truly unknown type.
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> KVStoreFactory.create("redis", Map.of()));
-        assertTrue(ex.getMessage().contains("redis"));
+                () -> KVStoreFactory.create("hbase", Map.of()));
+        assertTrue(ex.getMessage().contains("hbase"));
     }
 
     // ========== Manual register() ==========

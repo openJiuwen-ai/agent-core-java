@@ -70,7 +70,7 @@ public final class RlSchemas {
         return normalized;
     }
 
-    private static List<Object> normalizeTools(List<Object> rawTools) {
+    private static List<Object> normalizeTools(List<Map<String, Object>> rawTools) {
         if (rawTools == null) {
             return null;
         }

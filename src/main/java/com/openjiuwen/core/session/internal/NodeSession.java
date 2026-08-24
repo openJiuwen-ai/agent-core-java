@@ -123,16 +123,7 @@ public class NodeSession extends BaseSession {
 
     @Override
     public StreamWriterManager streamWriterManager() {
-        if (parentSession == null) {
-            return null;
-        }
-        Object manager = parentSession.streamWriterManager();
-        if (manager instanceof StreamWriterManager typed) {
-            return typed;
-        }
-        // 兼容 WorkflowRuntimeSession：其 streamWriterManager() 返回 Vertex 适配器，
-        // 通过 rawStreamWriterManager() 获取底层原始 StreamWriterManager
-        return parentSession.rawStreamWriterManager();
+        return parentSession == null ? null : parentSession.streamWriterManager();
     }
 
     @Override

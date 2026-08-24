@@ -1,6 +1,7 @@
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.sysop.BaseFsOperation;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import org.junit.jupiter.api.Tag;
@@ -36,13 +37,14 @@ class SandboxOperationSystemTest {
 
     @Test
     void sandboxFallbackOperationsWorkTogether() throws Exception {
+        SandboxTestLocalProviders.ensureRegistered();
         Files.writeString(tempDir.resolve("input.txt"), "sandbox");
 
         SandboxFsOperation fs = new SandboxFsOperation(config());
         SandboxShellOperation shell = new SandboxShellOperation(config());
         SandboxCodeOperation code = new SandboxCodeOperation(config());
 
-        var read = fs.readFile("input.txt", "text", null, null, null, "utf-8", 0, null);
+        var read = fs.readFile("input.txt", BaseFsOperation.FileMode.TEXT, null, null, null, "utf-8", 0, null).join();
         var pwd = shell.executeCmd("pwd", ".", 300, null, null);
         var codeResult = code.executeCode("import os\nprint(os.getcwd())", "python", 300, null, null);
 

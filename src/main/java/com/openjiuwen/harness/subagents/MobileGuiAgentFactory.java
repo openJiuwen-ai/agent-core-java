@@ -7,7 +7,7 @@ package com.openjiuwen.harness.subagents;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.tools.mobile_gui.MobileGuiRuntimeSettings;

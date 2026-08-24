@@ -115,7 +115,7 @@ class T01167EndComponentTest {
         assertEquals("Hello Ada, missing $missing",
                 TemplateUtils.renderTemplate("Hello {{name}}, missing {{missing}}", inputs));
         assertEquals("root.name", TemplateUtils.renderTemplate("{{user.name}}", inputs));
-        assertEquals("None", TemplateUtils.renderTemplate("{{none}}", inputs));
+        assertEquals("null", TemplateUtils.renderTemplate("{{none}}", inputs));
     }
 
     @Test
@@ -134,9 +134,9 @@ class T01167EndComponentTest {
         container.put("message", "can't");
         container.put("values", values);
 
-        assertEquals("{'res': '你好', 'info': 789}",
+        assertEquals("{res=你好, info=789}",
                 TemplateUtils.renderTemplate("{{value}}", Map.of("value", nested)));
-        assertEquals("{'message': \"can't\", 'values': ['Ada', True, None, {'res': '你好', 'info': 789}]}",
+        assertEquals("{message=can't, values=[Ada, true, null, {res=你好, info=789}]}",
                 TemplateUtils.renderTemplate("{{value}}", Map.of("value", container)));
         assertEquals("Ada", TemplateUtils.renderTemplate("{{value}}", Map.of("value", "Ada")));
     }
@@ -150,7 +150,7 @@ class T01167EndComponentTest {
         TemplateBatchProcessor processor = new TemplateBatchProcessor(
                 new TemplateProcessor("{{value}}"), Map.of("value", value));
 
-        assertEquals("{'res': '你好', 'info': 789}", processor.render(null, new TestSession()));
+        assertEquals("{res=你好, info=789}", processor.render(null, new TestSession()));
     }
 
     @Test

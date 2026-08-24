@@ -120,9 +120,6 @@ public class BeamSearch {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<TreeNode> expand(List<TreeNode> beamList, Map<String, Object> tool,
                                  List<Object> examples, int depth) {
         List<TreeNode> newBeamList = new ArrayList<>();
@@ -161,9 +158,6 @@ public class BeamSearch {
         }
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<TreeNode> prune(List<TreeNode> beamList) {
         return beamList.stream()
                 .sorted(Comparator.comparingDouble(TreeNode::getScore).reversed())
@@ -171,9 +165,6 @@ public class BeamSearch {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean checkEarlyStop(List<TreeNode> beamList, double maxScore, int k) {
         if (beamList.size() < k) {
             return false;
@@ -186,9 +177,6 @@ public class BeamSearch {
         return true;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void setTimeoutMs(long timeoutMs) {
         this.timeoutMs = timeoutMs;
     }
@@ -288,22 +276,10 @@ public class BeamSearch {
      * Step result container.
      */
     public static class StepResult {
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public final Object data;
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public final double score;
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public final Object results;
 
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public StepResult(Object data, double score, Object results) {
             this.data = data;
             this.score = score;

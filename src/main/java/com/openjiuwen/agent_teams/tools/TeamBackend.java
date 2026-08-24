@@ -490,7 +490,27 @@ public class TeamBackend {
                 return MemberOpResult.fail("Member " + memberName + " not found in team " + teamName);
             }
             MemberStatus currentStatus = MemberStatus.fromValue(memberData.get().getStatus());
-            if (currentStatus == MemberStatus.SHUTDOWN || currentStatus == MemberStatus.SHUTDOWN_REQUESTED) {
+            if (currentStatus == MemberStatus.SHUTDOWN) {
+                return MemberOpResult.success();
+            }
+            // force=true re-publishes MEMBER_SHUTDOWN when stuck in SHUTDOWN_REQUESTED (issue #59).
+            if (currentStatus == MemberStatus.SHUTDOWN_REQUESTED) {
+                if (!force) {
+                    return MemberOpResult.success();
+                }
+                String messageId = join(messageManager.sendMessage(
+                        "Force shutdown requested by team leader.",
+                        memberName
+                ));
+                if (isBlank(messageId)) {
+                    TEAM_LOGGER.warning("Failed to send force shutdown message to member %s", memberName);
+                }
+                MemberShutdownEvent event = new MemberShutdownEvent();
+                event.setTeamName(teamName);
+                event.setMemberName(memberName);
+                event.setForce(true);
+                publishTeamEvent(event, "member force shutdown event for " + memberName);
+                TEAM_LOGGER.info("Force shutdown re-sent to member %s", memberName);
                 return MemberOpResult.success();
             }
             if (!StatusTransitions.isValidTransition(
@@ -521,6 +541,31 @@ public class TeamBackend {
             TEAM_LOGGER.info("Shutdown request sent to member %s", memberName);
             return MemberOpResult.success();
         });
+    }
+
+    /**
+     * Whether any non-leader member is mid-shutdown ({@link MemberStatus#SHUTDOWN_REQUESTED}).
+     *
+     * <p>Used to suppress Leader empty {@code POLL_MAILBOX} rounds while members drain
+     * (issue #59 / commit 5fe732f4).</p>
+     *
+     * @return true if shutdown transition window is active
+     * @since 0.1.14
+     */
+    public boolean isAnyMemberShuttingDown() {
+        List<TeamMember> members = join(store.getTeamMembers(teamName, null));
+        if (members == null || members.isEmpty()) {
+            return false;
+        }
+        for (TeamMember member : members) {
+            if (member == null || Objects.equals(member.getMemberName(), memberName)) {
+                continue;
+            }
+            if (Objects.equals(member.getStatus(), MemberStatus.SHUTDOWN_REQUESTED.value())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public CompletionStage<Boolean> cancelMember(String memberName) {

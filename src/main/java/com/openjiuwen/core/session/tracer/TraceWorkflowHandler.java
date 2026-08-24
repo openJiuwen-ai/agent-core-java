@@ -9,18 +9,24 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Mirrors Python's {@code TraceWorkflowHandler} in
  * {@code openjiuwen/core/session/tracer/handler.py}.
  */
 public class TraceWorkflowHandler extends TraceBaseHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(TraceWorkflowHandler.class);
 
     public TraceWorkflowHandler(StreamWriterManager streamWriterManager, SpanManager spanManager) {
         super(streamWriterManager, spanManager);
@@ -69,6 +75,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span);
         }
+        dispatchExt(h -> h.onCallStart(invokeId, metadata, inputs, needSend, sourceIds));
     }
 
     public void onPreInvoke(String invokeId, Object inputs, Map<String, Object> componentMetadata, boolean needSend) {
@@ -80,6 +87,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span, Set.of("outputs", "stream_outputs"));
         }
+        dispatchExt(h -> h.onPreInvoke(invokeId, inputs, componentMetadata, needSend));
     }
 
     public void onPreStream(String invokeId, Object chunk, boolean needSend) {
@@ -90,6 +98,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span, Set.of("outputs", "stream_outputs"));
         }
+        dispatchExt(h -> h.onPreStream(invokeId, chunk, needSend));
     }
 
     public void onInvoke(String invokeId, Map<String, Object> onInvokeData, Exception exception) {
@@ -117,11 +126,13 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (exception != null && "LLM".equals(span.getComponentType())) {
             spanManager.updateSpan(span, Map.of());
         }
+        dispatchExt(h -> h.onInvoke(invokeId, onInvokeData, exception));
     }
 
     public void onPostStream(String invokeId, Object chunk) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         span.appendStreamOutput(chunk);
+        dispatchExt(h -> h.onPostStream(invokeId, chunk));
     }
 
     public void onPostInvoke(String invokeId, Object outputs, Object inputs) {
@@ -132,6 +143,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
             updateData.put("inputs", inputs);
         }
         spanManager.updateSpan(span, updateData);
+        dispatchExt(h -> h.onPostInvoke(invokeId, outputs, inputs));
     }
 
     public void onCallDone(String invokeId, Object outputs) {
@@ -150,6 +162,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if ("End".equals(span.getComponentType()) && span.getEndTime() != null) {
             spanManager.updateSpan(span, Map.of());
         }
+        dispatchExt(h -> h.onCallDone(invokeId, outputs));
     }
 
     public void onInteract(String invokeId, Object inputs, Map<String, Object> componentMetadata, boolean needSend) {
@@ -160,6 +173,18 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         spanManager.updateSpan(span, updateData);
         if (needSend) {
             sendData(span, Set.of("outputs", "stream_outputs"));
+        }
+        dispatchExt(h -> h.onInteract(invokeId, inputs, componentMetadata, needSend));
+    }
+
+    private void dispatchExt(Consumer<TraceExtWorkflowHandler> action) {
+        for (TraceExtWorkflowHandler ext : TracerHandlerRegistry.getWorkflowHandlers().values()) {
+            try {
+                action.accept(ext);
+            } catch (NullPointerException | ClassCastException | IllegalArgumentException
+                    | IllegalStateException e) {
+                LOG.warn("Extension workflow handler failed, skipping.", e);
+            }
         }
     }
 

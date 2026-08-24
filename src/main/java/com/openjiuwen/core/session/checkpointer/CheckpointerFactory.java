@@ -4,13 +4,19 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
-import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
-
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for checkpointer providers and default instances.
+ *
+ * <p>Built-in types are discovered via {@link ServiceLoader} from
+ * {@code META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider}.
+ * Each provider is registered under {@link CheckpointerProvider#typeName()} and
+ * {@link CheckpointerProvider#aliases()}. Service adapters can also register
+ * additional types via {@link #register(String, CheckpointerProvider)}
+ * without modifying Core source.</p>
  *
  * <p>Mirrors Python's {@code CheckpointerFactory} in
  * {@code openjiuwen/core/session/checkpointer/checkpointer.py}.</p>
@@ -23,10 +29,29 @@ public final class CheckpointerFactory {
     private static volatile Checkpointer defaultCheckpointer;
 
     static {
-        register("in_memory", conf -> DEFAULT_IN_MEMORY_CHECKPOINTER);
-        register("persistence", PersistenceCheckpointer::createFromConfig);
-        register("redis", new RedisCheckpointer.Provider());
-        register("redis_checkpointer_cluster", new RedisCheckpointer.Provider());
+        for (CheckpointerProvider provider : ServiceLoader.load(CheckpointerProvider.class)) {
+            registerProviderNames(provider);
+        }
+        // Ensure critical builtins exist even if META-INF is incomplete on the classpath.
+        REGISTRY.putIfAbsent("in_memory", new InMemoryCheckpointerProvider());
+        REGISTRY.putIfAbsent("persistence", new PersistenceCheckpointerProvider());
+    }
+
+    private static void registerProviderNames(CheckpointerProvider provider) {
+        putIfAbsentName(provider.typeName(), provider);
+        Iterable<String> aliases = provider.aliases();
+        if (aliases == null) {
+            return;
+        }
+        for (String alias : aliases) {
+            putIfAbsentName(alias, provider);
+        }
+    }
+
+    private static void putIfAbsentName(String name, CheckpointerProvider provider) {
+        if (name != null && !name.isBlank()) {
+            REGISTRY.putIfAbsent(name, provider);
+        }
     }
 
     private CheckpointerFactory() {

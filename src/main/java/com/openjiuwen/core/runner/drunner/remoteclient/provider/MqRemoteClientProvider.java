@@ -19,7 +19,9 @@ import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider;
  * @see RemoteClientProvider
  * @see com.openjiuwen.core.runner.drunner.remoteclient.MqRemoteClient
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client}.
  */
+@Deprecated(since = "0.1.14")
 public final class MqRemoteClientProvider implements RemoteClientProvider {
     /**
      * typeName.

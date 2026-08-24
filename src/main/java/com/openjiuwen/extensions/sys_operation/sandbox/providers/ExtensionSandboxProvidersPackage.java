@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.sys_operation.sandbox.SandboxRegistry;
+import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
 
 /**
  * Extension sandbox provider registrations.
@@ -14,8 +14,6 @@ import com.openjiuwen.core.sys_operation.sandbox.SandboxRegistry;
  */
 public final class ExtensionSandboxProvidersPackage {
 
-    private static volatile boolean registered;
-
     static {
         registerAll();
     }
@@ -24,15 +22,11 @@ public final class ExtensionSandboxProvidersPackage {
     }
 
     public static synchronized void registerAll() {
-        if (registered) {
-            return;
-        }
         SandboxRegistry.registerProvider("aio", "fs", AioFsProvider.class);
         SandboxRegistry.registerProvider("aio", "shell", AioShellProvider.class);
         SandboxRegistry.registerProvider("aio", "code", AioCodeProvider.class);
         SandboxRegistry.registerProvider("jiuwenbox", "fs", JiuwenBoxFsProvider.class);
         SandboxRegistry.registerProvider("jiuwenbox", "shell", JiuwenBoxShellProvider.class);
         SandboxRegistry.registerProvider("jiuwenbox", "code", JiuwenBoxCodeProvider.class);
-        registered = true;
     }
 }

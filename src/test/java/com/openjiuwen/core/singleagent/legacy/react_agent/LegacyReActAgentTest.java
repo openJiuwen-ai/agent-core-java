@@ -110,7 +110,7 @@ class LegacyReActAgentTest {
         assertEquals("abc", result);
         assertEquals(Map.of("value", "abc"), tool.lastInputs);
         assertEquals(1, agent.getContextEngine()
-                .getContext(com.openjiuwen.core.context_engine.ContextEngine.DEFAULT_CONTEXT_ID, "s2")
+                .getContext(com.openjiuwen.core.context.ContextEngine.DEFAULT_CONTEXT_ID, "s2")
                 .getMessages(null, true)
                 .stream()
                 .filter(message -> "tool".equals(message.getRole()))
@@ -130,12 +130,11 @@ class LegacyReActAgentTest {
     }
 
     @Test
-    void reactAliasExtendsLegacyAgentAndNoQueryReturnsPythonErrorPayload() {
-        ReActAgent alias = new ReActAgent(baseConfig("agent-alias"));
+    void invokeWithoutQueryReturnsPythonErrorPayload() {
+        LegacyReActAgent agent = new LegacyReActAgent(baseConfig("agent-no-query"));
 
-        Object result = alias.invoke(Map.of(), new FakeSession("s3")).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of(), new FakeSession("s3")).toCompletableFuture().join();
 
-        assertTrue(alias instanceof LegacyReActAgent);
         assertInstanceOf(Map.class, result);
         assertEquals("No query provided", ((Map<?, ?>) result).get("output"));
         assertEquals("error", ((Map<?, ?>) result).get("result_type"));

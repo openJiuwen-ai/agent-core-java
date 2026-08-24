@@ -14,7 +14,7 @@ import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.AgentProvider;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -57,7 +57,7 @@ public class HierarchicalToolsTeam extends BaseTeam {
     }
 
     @Override
-    public com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime getRuntime() {
+    public com.openjiuwen.core.multiagent.team_runtime.TeamRuntime getRuntime() {
         return super.getRuntime();
     }
 
@@ -126,7 +126,7 @@ public class HierarchicalToolsTeam extends BaseTeam {
      * @return final result from the root agent
      */
     @Override
-    public CompletionStage<Object> invoke(Object message, Session session) {
+    public CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
         HierarchicalToolsTeamConfig config = toolsConfig();
         if (config.getRootAgent() == null || config.getRootAgent().getId() == null) {
             throw ErrorHelper.buildError(
@@ -146,7 +146,7 @@ public class HierarchicalToolsTeam extends BaseTeam {
      * @return stream over streaming chunks
      */
     @Override
-    public Stream<Object> stream(Object message, Session session) {
+    public Stream<Object> stream(Object message, AgentSessionApi session) {
         HierarchicalToolsTeamConfig config = toolsConfig();
         if (config.getRootAgent() == null || config.getRootAgent().getId() == null) {
             throw ErrorHelper.buildError(
@@ -266,7 +266,7 @@ public class HierarchicalToolsTeam extends BaseTeam {
     }
 
     private HierarchicalToolsTeamConfig toolsConfig() {
-        com.openjiuwen.core.multi_agent.TeamConfig cfg = getConfig();
+        com.openjiuwen.core.multiagent.TeamConfig cfg = getConfig();
         if (cfg instanceof HierarchicalToolsTeamConfig toolsConfig) {
             return toolsConfig;
         }

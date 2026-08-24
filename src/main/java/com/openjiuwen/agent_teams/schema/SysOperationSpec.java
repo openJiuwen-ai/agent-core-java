@@ -4,8 +4,8 @@
 
 package com.openjiuwen.agent_teams.schema;
 
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

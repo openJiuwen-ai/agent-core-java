@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.AgentModeSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;

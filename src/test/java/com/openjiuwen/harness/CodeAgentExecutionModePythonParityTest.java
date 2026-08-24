@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness;
 
+
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,7 +58,7 @@ class CodeAgentExecutionModePythonParityTest {
         assertThat(agent.loadState(session).getPlanMode().getMode()).isEqualTo("plan");
         preparePlanFile(agent, session, "# 初始计划\n- step 1");
 
-        Map<String, Object> result = agent.invoke(Map.of("query", "当前是什么模式？", "session", session)).join();
+        Map<String, Object> result = agent.invoke(Map.of("query", "当前是什么模式？", "session", session));
 
         assertThat(result).containsEntry("type", "deep_agent_result")
                 .containsEntry("mode", "plan");
@@ -102,8 +104,7 @@ class CodeAgentExecutionModePythonParityTest {
                         "content", "# 更新后计划\n- 展示北京\n- 增加天气模块"
                 ), Map.of("session", session)));
 
-        Map<String, Object> secondInvoke = agent.invoke(Map.of("query", "继续更新计划并写入", "session", session))
-                .join();
+        Map<String, Object> secondInvoke = agent.invoke(Map.of("query", "继续更新计划并写入", "session", session));
 
         assertThat(write.isSuccess()).isTrue();
         assertThat(secondInvoke).containsEntry("mode", "plan");
@@ -130,7 +131,7 @@ class CodeAgentExecutionModePythonParityTest {
         InterruptResult interrupt = (InterruptResult) askUserRail.resolveInterrupt(null, askCity, null);
         RejectResult answer = resumeAnswer(askUserRail, askCity, interrupt, "上海", "你希望展示哪个城市？");
 
-        Map<String, Object> result = agent.invoke(Map.of("query", "收到你的反馈", "session", session2)).join();
+        Map<String, Object> result = agent.invoke(Map.of("query", "收到你的反馈", "session", session2));
 
         assertThat(answer.toolResult()).asString().contains("上海");
         assertThat(result).containsEntry("mode", "plan");
@@ -159,7 +160,7 @@ class CodeAgentExecutionModePythonParityTest {
         InterruptResult interrupt = (InterruptResult) askUserRail.resolveInterrupt(null, askCity, null);
         RejectResult answer = resumeAnswer(askUserRail, askCity, interrupt, "上海", "你希望展示哪个城市？");
 
-        Map<String, Object> result = agent.invoke(Map.of("query", "继续完善计划", "session", session)).join();
+        Map<String, Object> result = agent.invoke(Map.of("query", "继续完善计划", "session", session));
 
         assertThat(answer.toolResult()).asString().contains("\"你希望展示哪个城市？\"=\"上海\"");
         assertThat(result).containsEntry("mode", "plan");

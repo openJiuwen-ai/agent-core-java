@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner.callback;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,8 +27,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ScheduledFuture;
@@ -65,6 +66,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     private static final long DELAYED_TRIGGER_SCHEDULER_LEEWAY_MILLIS = 90L;
 
     private static final ScheduledExecutorService DELAYED_CALLBACK_SCHEDULER = createDelayedCallbackScheduler();
+
+    /** Shared bounded pool for parallel callbacks (issue #70 / 33ac1aa8), not a per-trigger cached pool. */
+    private static final ExecutorService PARALLEL_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("callback-parallel", false);
 
     private final Map<String, List<CallbackInfo>> callbacks = new ConcurrentHashMap<>();
 
@@ -652,13 +657,12 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             return Collections.emptyList();
         }
 
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, callbackInfos.size()));
         List<Future<Object>> futures = new ArrayList<>();
         for (CallbackInfo callbackInfo : callbackInfos) {
             if (!callbackInfo.isEnabled()) {
                 continue;
             }
-            futures.add(executor.submit(() -> executeParallelCallback(event, callbackInfo, args, kwargs)));
+            futures.add(submitParallelCallback(event, callbackInfo, args, kwargs));
         }
 
         List<Object> results = new ArrayList<>();
@@ -676,7 +680,6 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 }
             }
         }
-        executor.shutdown();
         return results;
     }
 
@@ -737,7 +740,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             Object[] args,
             Map<String, Object> kwargs
     ) {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor =
+                OpenJiuwenExecutors.newSingleThreadExecutor("async-callback-timeout", false);
         Future<List<Object>> future = executor.submit(() -> triggerResults(event, args, kwargs));
         try {
             return future.get(Math.max(0L, Math.round(timeoutSeconds * 1000L)), TimeUnit.MILLISECONDS);
@@ -1011,6 +1015,19 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         return result;
     }
 
+    private Future<Object> submitParallelCallback(
+            String event,
+            CallbackInfo callbackInfo,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        try {
+            return PARALLEL_EXECUTOR.submit(() -> executeParallelCallback(event, callbackInfo, args, kwargs));
+        } catch (RejectedExecutionException rejected) {
+            return CompletableFuture.completedFuture(executeParallelCallback(event, callbackInfo, args, kwargs));
+        }
+    }
+
     private Object executeParallelCallback(
             String event,
             CallbackInfo callbackInfo,
@@ -1091,7 +1108,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         if (timeout == null || timeout <= 0) {
             return invokeCallback(callback, args, kwargs, null);
         }
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor =
+                OpenJiuwenExecutors.newSingleThreadExecutor("async-callback-timeout", false);
         Future<Object> future = executor.submit(() -> invokeCallback(callback, args, kwargs, null));
         try {
             return future.get(Math.round(timeout * 1000L), TimeUnit.MILLISECONDS);
@@ -1398,7 +1416,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     }
 
     private static ScheduledExecutorService createDelayedCallbackScheduler() {
-        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(2, new DaemonThreadFactory());
+        ScheduledExecutorService scheduled = OpenJiuwenExecutors.newScheduledThreadPool(2, new DaemonThreadFactory());
+        if (!(scheduled instanceof ScheduledThreadPoolExecutor executor)) {
+            throw new ClassCastException("delayed callback scheduler is not ScheduledThreadPoolExecutor");
+        }
         executor.setRemoveOnCancelPolicy(true);
         executor.prestartAllCoreThreads();
         return executor;

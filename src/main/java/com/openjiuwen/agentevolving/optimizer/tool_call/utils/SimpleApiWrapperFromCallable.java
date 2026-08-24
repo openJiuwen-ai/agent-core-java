@@ -15,6 +15,6 @@ import java.util.Map;
 public class SimpleApiWrapperFromCallable extends SimpleApiWrapper {
 
     public SimpleApiWrapperFromCallable(Object toolCallable, String name, Map<String, Object> config) {
-        super(name, Map.of(name, toolCallable));
+        super(null, name, Map.of(name, toolCallable), null);
     }
 }

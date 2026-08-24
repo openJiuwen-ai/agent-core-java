@@ -2,12 +2,12 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.online.rail;
+package com.openjiuwen.agentevolving.agent_rl.online.rail;
 
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.RailBatchIngestor;
-import com.openjiuwen.agent_evolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.trajectory.RailBatchIngestor;
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

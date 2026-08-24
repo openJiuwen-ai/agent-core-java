@@ -4,203 +4,227 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import com.openjiuwen.core.context.ContextEngine;
-import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.context.context.SessionMemoryManager;
+import com.openjiuwen.core.context.context.SessionMemorySupport;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.context.token.SimpleTokenCounter;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Focused parity tests for full-compaction behavior.
+ *
+ * <p>Mirrors Python's tests for
+ * {@code openjiuwen/core/context_engine/processor/compressor/full_compact_processor.py}.</p>
+ *
+ * <p>Mirrors Python's supplemental unit tests in
+ * {@code tests/unit_tests/core/context_engine/test_full_compact_processor.py}.</p>
+ */
 class FullCompactProcessorTest {
 
     @TempDir
     Path tempDir;
 
     @Test
-    void triggerAddMessagesTrueWhenCompletedRoundExceedsThreshold() {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder()
-                .triggerTotalTokens(5)
-                .sessionMemoryEnabled(false)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                null,
-                null,
-                List.of(new UserMessage("trigger message ".repeat(30))),
-                new SimpleTokenCounter());
+    void triggerAddMessagesRequiresCompletedRoundAndTokenThreshold() {
+        FullCompactProcessorConfig config = config();
+        config.setTriggerTotalTokens(10);
+        FullCompactProcessor processor = new FullCompactProcessor(config, null);
+        SessionModelContext context = new SessionModelContext(
+                "ctx",
+                "session",
+                new ContextEngineConfig(),
+                List.of(new UserMessage("trigger message ".repeat(10))),
+                List.of(processor),
+                messages -> messages.stream().mapToInt(message -> message.getContentAsString().length()).sum());
 
-        boolean triggered = processor.triggerAddMessages(
-                context,
-                List.of(new AssistantMessage("new assistant " + "payload ".repeat(20))));
+        boolean triggered = processor.triggerAddMessages(context,
+                List.of(new AssistantMessage("new assistant payload")), Map.of()).toCompletableFuture().join();
 
-        assertTrue(triggered);
+        assertThat(triggered).isTrue();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
-    void buildSessionMemoryMessagesUsesCommittedNotesAndPreservesAfterAnchor() throws Exception {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        Path notesPath = tempDir.resolve("memory.md");
-        java.nio.file.Files.writeString(notesPath, "committed notes");
-        AgentGroupSessionApi session = new AgentGroupSessionApi("s1");
-        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY, Map.of(
-                "is_extracting", true,
+    void addMessagesBuildsFullCompactReplacementAndCarriesSummaryAndUsage() {
+        FullCompactProcessorConfig config = config();
+        config.setTriggerTotalTokens(1);
+        config.setCompressionCallMaxTokens(2000);
+        config.setMessagesToKeep(0);
+        config.setSessionMemoryEnabled(false);
+        AssistantMessage response = new AssistantMessage("<analysis>hidden</analysis><summary>Generated compact</summary>");
+        response.setUsageMetadata(UsageMetadata.builder().inputTokens(2).outputTokens(3).totalTokens(5).build());
+        FullCompactProcessor processor = new FullCompactProcessor(config, modelReturning(response));
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(processor), messages -> 100);
+
+        context.addMessages(List.of(new UserMessage("Please compact"), new AssistantMessage("Done")))
+                .toCompletableFuture().join();
+
+        List<BaseMessage> messages = context.getMessages();
+        assertThat(messages).hasSize(2);
+        assertThat(messages.get(0)).isInstanceOf(SystemMessage.class);
+        assertThat(messages.get(0).getContentAsString()).startsWith(FullCompactProcessor.FULL_COMPACT_BOUNDARY_MARKER);
+        assertThat(messages.get(1)).isInstanceOf(UserMessage.class);
+        assertThat(messages.get(1).getContentAsString()).contains("Summary:\nGenerated compact");
+        Map<String, Object> completed = context.compressionHistory().get(context.compressionHistory().size() - 1);
+        assertThat(completed.get("compact_summary")).isEqualTo("Summary:\nGenerated compact");
+        Map<?, ?> usage = (Map<?, ?>) completed.get("compression_usage");
+        assertThat(((Number) usage.get("total_tokens")).longValue()).isEqualTo(5L);
+    }
+
+    @Test
+    void sessionMemoryCandidateUsesCommittedNotesAndPreservesMessagesAfterAnchor() throws Exception {
+        FullCompactProcessorConfig config = config();
+        config.setTriggerTotalTokens(10000);
+        FullCompactProcessor processor = new FullCompactProcessor(config, null);
+        Path notes = tempDir.resolve("memory.md");
+        Files.writeString(notes, "Persisted session memory");
+        FakeSession session = new FakeSession("s1");
+        SessionMemorySupport.updateSessionMemoryRuntime(session, Map.of(
+                "memory_path", notes.toString(),
                 "notes_upto_message_id", "msg-2",
-                "memory_path", notesPath.toString())));
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", session);
+                "is_extracting", true));
+        SessionModelContext context = new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(processor), null);
+        context.setSessionRef(session);
         List<BaseMessage> activeMessages = List.of(
-                UserMessage.builder().content("old-a").metadata(Map.of("context_message_id", "msg-1")).build(),
-                AssistantMessage.builder().content("old-b").metadata(Map.of("context_message_id", "msg-2")).build(),
-                UserMessage.builder().content("keep-1").metadata(Map.of("context_message_id", "msg-3")).build(),
-                AssistantMessage.builder().content("keep-2").metadata(Map.of("context_message_id", "msg-4")).build()
-        );
+                user("old-a", "msg-1"),
+                assistant("old-b", "msg-2"),
+                user("keep", "msg-3"));
 
-        FullCompactProcessor.SessionMemoryBuild build = processor.buildSessionMemoryMessages(
-                context,
-                List.of(),
-                activeMessages,
-                false);
+        FullCompactProcessor.SessionMemoryReplacement result =
+                processor.buildSessionMemoryMessages(context, List.of(), activeMessages, false);
 
-        assertNotNull(build.candidateMessages());
-        assertNotNull(build.sessionMemoryMessage());
-        assertTrue(build.sessionMemoryMessage().getContentAsString().contains("committed notes"));
-        assertEquals(activeMessages.subList(2, 4), build.candidateMessages().subList(2, 4));
+        assertThat(result).isNotNull();
+        assertThat(result.sessionMemoryMessage().getContentAsString()).contains("Persisted session memory");
+        assertThat(result.messages().subList(2, result.messages().size())).containsExactly(activeMessages.get(2));
     }
 
     @Test
-    void selectMessagesAfterSessionMemoryRewindsUnsafeAnchorToCompletedRound() {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        List<BaseMessage> activeMessages = List.of(
-                UserMessage.builder().content("u2").metadata(Map.of("context_message_id", "msg-3")).build(),
-                AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(toolCall("tc-unsafe", "read_file", "{}")))
-                        .metadata(Map.of("context_message_id", "msg-4"))
-                        .build(),
-                ToolMessage.builder()
-                        .content("tool output")
-                        .toolCallId("tc-unsafe")
-                        .metadata(Map.of("context_message_id", "msg-5"))
-                        .build(),
-                AssistantMessage.builder().content("a2").metadata(Map.of("context_message_id", "msg-6")).build()
-        );
-
-        List<BaseMessage> preserved = processor.selectMessagesAfterSessionMemory(
-                activeMessages,
-                Map.of("notes_upto_message_id", "msg-4"),
-                false);
-
-        assertNull(preserved);
-    }
-
-    @Test
-    void groupMessagesByApiRoundSplitsUserAndFollowingAssistantToolMessages() {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
+    void selectMessagesAfterSessionMemoryRejectsUnsafeAssistantToolAnchor() {
+        FullCompactProcessor processor = new FullCompactProcessor(config(), null);
+        AssistantMessage assistantWithTool = AssistantMessage.builder()
+                .role("assistant")
+                .content("")
+                .toolCalls(List.of(ToolCall.builder()
+                        .id("tc-1")
+                        .name("read_file")
+                        .type("function")
+                        .arguments("{}")
+                        .build()))
+                .metadata(Map.of("context_message_id", "msg-2"))
+                .build();
         List<BaseMessage> messages = List.of(
-                new UserMessage("u1"),
+                user("u", "msg-1"),
+                assistantWithTool,
+                new ToolMessage("tool", "tc-1"),
+                new AssistantMessage("answer"));
+
+        List<BaseMessage> preserved = processor.selectMessagesAfterSessionMemory(messages,
+                Map.of("notes_upto_message_id", "msg-2"), false);
+
+        assertThat(preserved).isNull();
+    }
+
+    @Test
+    void reinjectsSkillReadRoundOutsideKeptMessages() {
+        FullCompactProcessorConfig config = config();
+        config.setReinjectRecentSkills(1);
+        FullCompactProcessor processor = new FullCompactProcessor(config, null);
+        List<BaseMessage> source = List.of(
+                new UserMessage("read skill"),
                 AssistantMessage.builder()
+                        .role("assistant")
                         .content("")
-                        .toolCalls(List.of(toolCall("tc-1", "read_file", "{}")))
+                        .toolCalls(List.of(ToolCall.builder()
+                                .id("tc-skill")
+                                .name("read_file")
+                                .type("function")
+                                .arguments("{\"file_path\":\"/skills/demo/SKILL.md\"}")
+                                .build()))
                         .build(),
-                new ToolMessage("tool-1", "tc-1"),
-                new AssistantMessage("a1"),
-                new UserMessage("u2"),
-                new AssistantMessage("a2")
-        );
+                new ToolMessage("{\"content\":\"# Demo\"}", "tc-skill"),
+                new AssistantMessage("loaded"),
+                new UserMessage("keep me"));
 
-        List<List<BaseMessage>> groups = processor.groupMessagesByApiRound(messages);
+        List<BaseMessage> reinjected = processor.buildReinjectedStateMessages(null, source,
+                List.of(source.get(4)), new UserMessage("summary"), new SystemMessage("boundary"), List.of("skills"));
 
-        assertEquals(3, groups.size());
-        assertEquals(List.of("u1", "", "tool-1"), groups.get(0).stream().map(BaseMessage::getContentAsString).toList());
-        assertEquals(List.of("a1"), groups.get(1).stream().map(BaseMessage::getContentAsString).toList());
-        assertEquals(List.of("u2", "a2"), groups.get(2).stream().map(BaseMessage::getContentAsString).toList());
+        assertThat(reinjected).hasSize(1);
+        assertThat(reinjected.get(0).getContentAsString())
+                .startsWith(FullCompactProcessor.FULL_COMPACT_STATE_MARKER)
+                .contains("[SKILLS]")
+                .contains("{\"content\":\"# Demo\"}");
     }
 
     @Test
-    void buildReinjectedStateMessagesPreservesOriginalApiRoundStructure() {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        List<BaseMessage> sourceMessages = List.of(
-                new UserMessage("read the skill"),
-                AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(toolCall("tc-skill", "read_file", "{\"file_path\":\"/skills/demo/SKILL.md\"}")))
-                        .build(),
-                new ToolMessage("{\"content\":\"# Demo Skill\"}", "tc-skill"),
-                new AssistantMessage("skill loaded")
-        );
-
-        List<BaseMessage> reinjected = processor.buildReinjectedStateMessages(
-                new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null),
-                sourceMessages,
-                List.of(),
-                new UserMessage("summary"),
-                new SystemMessage("boundary"),
-                List.of("skills"));
-
-        assertEquals(1, reinjected.size());
-        assertInstanceOf(UserMessage.class, reinjected.get(0));
-        assertTrue(reinjected.get(0).getContentAsString().startsWith("[FULL_COMPACT_STATE]\n[SKILLS]"));
+    void utilityExtractToolResultHintRespectsConfiguredTools() {
+        assertThat(CompressorUtils.extractToolResultHint("grep", "{\"count\":3}", List.of("read_file"))).isEmpty();
+        assertThat(CompressorUtils.extractToolResultHint("read_file",
+                "{\"file_path\":\"/tmp/a.txt\",\"line_count\":7}", List.of("read_file")))
+                .isEqualTo("result_path=/tmp/a.txt lines=7");
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-    @Test
-    void fullCompactInvalidatesSessionMemoryAnchor() {
-        AgentGroupSessionApi session = new AgentGroupSessionApi("s1");
-        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY, Map.of(
-                "last_summarized_message_count", 9,
-                "notes_upto_message_id", "anchor-id")));
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder()
-                .triggerTotalTokens(1)
-                .sessionMemoryEnabled(false)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                session,
-                null,
-                List.of(new UserMessage("old message"), new AssistantMessage("old answer")),
-                new SimpleTokenCounter());
-
-        processor.onAddMessages(context, List.of());
-
-        Object rawState = session.getState(SessionMemoryManager.SESSION_MEMORY_STATE_KEY);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> runtime = rawState instanceof Map<?, ?> map
-                ? new HashMap<>((Map<String, Object>) map)
-                : SessionMemoryManager.buildSessionMemoryRuntime("", "", false, 0, 0, 0, null, false);
-        assertEquals(0, runtime.get("last_summarized_message_count"));
-        assertNull(runtime.get("notes_upto_message_id"));
+    private static FullCompactProcessorConfig config() {
+        FullCompactProcessorConfig config = new FullCompactProcessorConfig();
+        config.setCompressionCallMaxTokens(2000);
+        return config;
     }
 
-    @Test
-    void formatSummaryExtractsSummaryBlockAndRemovesAnalysis() {
-        String formatted = FullCompactProcessor.formatSummary("<analysis>debug</analysis><summary>final notes</summary>");
-
-        assertEquals("Summary:\nfinal notes", formatted);
-        assertFalse(formatted.contains("debug"));
+    private static BaseMessage user(String content, String contextMessageId) {
+        UserMessage message = new UserMessage(content);
+        message.setMetadata(Map.of("context_message_id", contextMessageId));
+        return message;
     }
 
-    private static ToolCall toolCall(String id, String name, String arguments) {
-        return ToolCall.builder().id(id).name(name).type("function").arguments(arguments).build();
+    private static BaseMessage assistant(String content, String contextMessageId) {
+        AssistantMessage message = new AssistantMessage(content);
+        message.setMetadata(Map.of("context_message_id", contextMessageId));
+        return message;
+    }
+
+    private static Model modelReturning(AssistantMessage message) {
+        return new Model((messages, modelConfig, modelClientConfig, options) ->
+                CompletableFuture.completedFuture(message));
+    }
+
+    private static final class FakeSession implements SessionMemorySupport.SessionStatePort {
+        private final String sessionId;
+        private final Map<String, Object> state = new LinkedHashMap<>();
+
+        private FakeSession(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> update) {
+            state.putAll(update);
+        }
+
+        @Override
+        public String getSessionId() {
+            return sessionId;
+        }
     }
 }

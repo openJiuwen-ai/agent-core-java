@@ -20,7 +20,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -365,7 +365,7 @@ public class CommitStage extends TaskStage {
         try {
             String beforeHead = git.currentHead();
             List<Object> events = new ArrayList<>();
-            Iterator<Map<String, Object>> iterator = commitAgent.stream(Map.of(
+            Iterator<?> iterator = commitAgent.stream(Map.of(
                     "query",
                     buildCommitPrompt(task, facts, retryReason, retryStatus, lastCommitStat)
             ));

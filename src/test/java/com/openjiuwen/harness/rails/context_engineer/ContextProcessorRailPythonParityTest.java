@@ -4,14 +4,14 @@
 
 package com.openjiuwen.harness.rails.context_engineer;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ContextStats;
-import com.openjiuwen.core.context_engine.ContextWindow;
-import com.openjiuwen.core.context_engine.ModelContext;
-import com.openjiuwen.core.context_engine.processor.compressor.CurrentRoundCompressorConfig;
-import com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressorConfig;
-import com.openjiuwen.core.context_engine.processor.compressor.RoundLevelCompressorConfig;
-import com.openjiuwen.core.context_engine.processor.offloader.MessageSummaryOffloaderConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ContextStats;
+import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.processor.compressor.CurrentRoundCompressorConfig;
+import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
+import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
+import com.openjiuwen.core.context.processor.offloader.MessageSummaryOffloaderConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
@@ -19,7 +19,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.context_engine.context.SessionMemoryConfig;
+import com.openjiuwen.core.context.context.SessionMemoryConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;

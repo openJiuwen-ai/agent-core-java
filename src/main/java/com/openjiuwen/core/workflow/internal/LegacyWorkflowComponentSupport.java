@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow.internal;
 
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.ComponentComposable;
@@ -131,7 +131,7 @@ public final class LegacyWorkflowComponentSupport {
         private static Object adaptSession(Method method, BaseSession session) {
             Class<?> sessionType = method.getParameterTypes()[1];
             if (NodeSessionApi.class.isAssignableFrom(sessionType)) {
-                return session instanceof NodeSessionApi nodeSessionApi ? nodeSessionApi : new NodeSessionApi(session);
+                return new NodeSessionApi(session);
             }
             return session;
         }

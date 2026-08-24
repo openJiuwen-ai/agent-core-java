@@ -5,7 +5,6 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -40,7 +39,7 @@ class BaseAgentReactiveTest {
         RuntimeException invokeError;
         Iterator<Object> streamItems = List.<Object>of().iterator();
         Object capturedInputs;
-        Session capturedSession;
+        AgentSession capturedSession;
         List<StreamMode> capturedStreamModes;
         final AtomicReference<List<StreamMode>> lastStreamModes = new AtomicReference<>();
 
@@ -52,7 +51,7 @@ class BaseAgentReactiveTest {
         @Override public Object getConfig() { return null; }
 
         @Override
-        public Object invoke(Object inputs, Session session) {
+        public Object invoke(Object inputs, AgentSession session) {
             capturedInputs = inputs;
             capturedSession = session;
             if (invokeError != null) throw invokeError;
@@ -60,7 +59,7 @@ class BaseAgentReactiveTest {
         }
 
         @Override
-        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
             capturedInputs = inputs;
             capturedSession = session;
             capturedStreamModes = streamModes;
@@ -76,7 +75,7 @@ class BaseAgentReactiveTest {
         FakeAgent a = new FakeAgent("a1");
         a.invokeResult = "answer";
 
-        Object result = a.invoke("hi", (Session) null);
+        Object result = a.invoke("hi", (AgentSession) null);
         assertEquals("answer", result);
         assertEquals("hi", a.capturedInputs);
     }
@@ -90,7 +89,7 @@ class BaseAgentReactiveTest {
         a.invokeError = boom;
 
         try {
-            a.invoke("x", (Session) null);
+            a.invoke("x", (AgentSession) null);
             assertTrue(false, "Should have thrown");
         } catch (IllegalStateException e) {
             assertSame(boom, e);
@@ -103,7 +102,7 @@ class BaseAgentReactiveTest {
         FakeAgent a = new FakeAgent("a3");
         a.streamItems = List.<Object>of("x", "y").iterator();
 
-        Iterator<Object> iter = a.stream("inp", (Session) null, null);
+        Iterator<Object> iter = a.stream("inp", (AgentSession) null, null);
         assertEquals("x", iter.next());
         assertEquals("y", iter.next());
         assertEquals(null, a.lastStreamModes.get(), "null streamModes must pass through unchanged");
@@ -113,7 +112,7 @@ class BaseAgentReactiveTest {
         b.streamItems = List.<Object>of().iterator();
         List<StreamMode> modes = List.of(StreamMode.OUTPUT);
 
-        b.stream("inp", (Session) null, modes);
+        b.stream("inp", (AgentSession) null, modes);
         assertSame(modes, b.lastStreamModes.get(), "explicit streamModes list must pass through unchanged");
     }
 
@@ -127,7 +126,7 @@ class BaseAgentReactiveTest {
             @Override public Object next() { return emitted.incrementAndGet(); }
         };
 
-        Iterator<Object> iter = a.stream("inp", (Session) null, List.of(StreamMode.OUTPUT));
+        Iterator<Object> iter = a.stream("inp", (AgentSession) null, List.of(StreamMode.OUTPUT));
         assertTrue(iter.hasNext());
         iter.next();
         assertTrue(iter.hasNext());
@@ -145,7 +144,7 @@ class BaseAgentReactiveTest {
         FakeAgent a = new FakeAgent("a6");
         a.streamItems = new CloseableIterator();
 
-        Iterator<Object> iter = a.stream("inp", (Session) null, List.of(StreamMode.OUTPUT));
+        Iterator<Object> iter = a.stream("inp", (AgentSession) null, List.of(StreamMode.OUTPUT));
         assertTrue(iter.hasNext());
         if (iter instanceof AutoCloseable ac) {
             ac.close();

@@ -73,6 +73,7 @@ class ToolManagerTest {
         assertThrows(IllegalArgumentException.class, () -> manager.addTool("tool-1", tool));
         assertSame(tool, manager.removeTool("tool-1"));
         assertNull(manager.getTool("tool-1"));
+        assertEquals("tool", manager.kind());
     }
 
     @Test
@@ -94,7 +95,9 @@ class ToolManagerTest {
         assertEquals("srv-1.demo.search", manager.getMcpToolId("srv-1", "search"));
         assertInstanceOf(List.class, manager.getMcpToolId("srv-1"));
         assertInstanceOf(McpTool.class, manager.getMcpTool("search", "srv-1", null));
+        assertSame(manager.getMcpTool("search", "srv-1", null), manager.getMcpTool("search", "srv-1"));
         assertEquals(2, manager.getMcpTools("srv-1", null).size());
+        assertEquals(2, manager.getMcpTools("srv-1").size());
     }
 
     @Test

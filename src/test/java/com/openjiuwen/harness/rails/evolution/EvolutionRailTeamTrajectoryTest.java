@@ -4,13 +4,13 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.openjiuwen.agent_evolving.trajectory.FileTrajectoryStore;
-import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryRegistry;
-import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryStore;
-import com.openjiuwen.agent_evolving.trajectory.MemberTrajectorySnapshot;
-import com.openjiuwen.agent_evolving.trajectory.ToolCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectorySink;
+import com.openjiuwen.agentevolving.trajectory.FileTrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.InMemoryTrajectoryRegistry;
+import com.openjiuwen.agentevolving.trajectory.InMemoryTrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.MemberTrajectorySnapshot;
+import com.openjiuwen.agentevolving.trajectory.ToolCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectorySink;
 import com.openjiuwen.agent_teams.schema.TeamRole;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;

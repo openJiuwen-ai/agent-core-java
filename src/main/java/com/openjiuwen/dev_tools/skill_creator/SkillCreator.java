@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.skill_creator;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -13,7 +14,9 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -39,12 +42,25 @@ import java.util.concurrent.CompletableFuture;
 public class SkillCreator {
 
     private ReActAgent agent;
+    private final Path allowedOutputRoot;
 
     /**
-     * Default constructor.
+     * Default constructor using the current working directory as the allowed output root.
      */
     public SkillCreator() {
-        // Empty constructor, agent is initialized in createAgent()
+        this(Path.of("").toAbsolutePath().normalize());
+    }
+
+    /**
+     * Creates a skill creator restricted to outputs under the given root.
+     *
+     * @param allowedOutputRoot trusted root for generated skill files
+     */
+    public SkillCreator(Path allowedOutputRoot) {
+        if (allowedOutputRoot == null) {
+            throw new IllegalArgumentException("Allowed output root must not be null.");
+        }
+        this.allowedOutputRoot = allowedOutputRoot.toAbsolutePath().normalize();
     }
 
     /**
@@ -65,7 +81,7 @@ public class SkillCreator {
      * @return a CompletableFuture that completes when the agent is configured
      */
     public CompletableFuture<Void> createAgent() {
-        return CompletableFuture.runAsync(() -> {
+        return OpenJiuwenExecutors.runBackgroundAsync(() -> {
             // Get skills directory path
             String skillsDirEnv = getEnvOrDefault("SKILLS_DIR", "");
             Path skillsDir;
@@ -173,12 +189,12 @@ public class SkillCreator {
      * @return a CompletableFuture containing the generation result
      */
     public CompletableFuture<Object> generate(String requirement, String outputPath) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             if (this.agent == null) {
                 throw new IllegalStateException("Agent not initialized. Call createAgent() first.");
             }
 
-            Path outputDir = Paths.get(outputPath);
+            Path outputDir = resolveSafeOutputDirectory(outputPath);
             String query = requirement + "\nPut all generated files at " + outputDir;
 
             Map<String, Object> inputs = new HashMap<>();
@@ -198,6 +214,43 @@ public class SkillCreator {
      */
     public CompletableFuture<Object> generate(String requirement, Path outputPath) {
         return generate(requirement, outputPath.toString());
+    }
+
+    Path resolveSafeOutputDirectory(String outputPath) {
+        if (outputPath == null || outputPath.isBlank()) {
+            throw new IllegalArgumentException("Output path must not be blank.");
+        }
+        try {
+            Files.createDirectories(allowedOutputRoot);
+            Path requestedPath = Paths.get(outputPath);
+            Path targetPath = requestedPath.isAbsolute()
+                    ? requestedPath.toAbsolutePath().normalize()
+                    : allowedOutputRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(allowedOutputRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+
+            Path existingAncestor = targetPath;
+            while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+                existingAncestor = existingAncestor.getParent();
+            }
+            Path realRoot = allowedOutputRoot.toRealPath();
+            if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+
+            Files.createDirectories(targetPath);
+            Path realOutputPath = targetPath.toRealPath();
+            if (!realOutputPath.startsWith(realRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+            if (!Files.isDirectory(realOutputPath)) {
+                throw new IllegalArgumentException("Output path must be a directory: " + outputPath);
+            }
+            return realOutputPath;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve output path: " + outputPath, e);
+        }
     }
 
     /**

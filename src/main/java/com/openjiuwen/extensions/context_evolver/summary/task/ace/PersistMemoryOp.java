@@ -15,6 +15,7 @@ import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorS
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.nio.file.Path;
 
 /**
  * Persist ACE vector nodes for the current user.
@@ -39,6 +40,15 @@ public class PersistMemoryOp extends BaseOp {
                            String milvusHost,
                            int milvusPort,
                            String milvusCollection) {
+        this(persistType, persistPath, milvusHost, milvusPort, milvusCollection, null);
+    }
+
+    public PersistMemoryOp(String persistType,
+                           String persistPath,
+                           String milvusHost,
+                           int milvusPort,
+                           String milvusCollection,
+                           Path allowedRoot) {
         super(Map.of(
                 "persist_type", persistType,
                 "persist_path", persistPath,
@@ -51,7 +61,8 @@ public class PersistMemoryOp extends BaseOp {
                 persistPath,
                 milvusHost,
                 milvusPort,
-                milvusCollection
+                milvusCollection,
+                allowedRoot
         );
     }
 

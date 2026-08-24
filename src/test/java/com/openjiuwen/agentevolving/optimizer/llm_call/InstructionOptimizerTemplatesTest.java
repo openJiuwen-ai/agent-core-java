@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.llm_call;
+package com.openjiuwen.agentevolving.optimizer.llm_call;
 
 import org.junit.jupiter.api.Test;
 

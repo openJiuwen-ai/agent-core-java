@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.prompts.sections;
 
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -10,7 +10,7 @@ import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.ControllerOutputPayload;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.util.Iterator;
 import java.util.List;

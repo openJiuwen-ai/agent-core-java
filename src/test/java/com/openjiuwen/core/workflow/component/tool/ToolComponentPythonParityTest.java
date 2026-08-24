@@ -4,9 +4,9 @@
 
 package com.openjiuwen.core.workflow.component.tool;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -67,7 +67,7 @@ class ToolComponentPythonParityTest {
 
         Map<?, ?> result = assertInstanceOf(Map.class, executable.invoke(
                 linkedMap("location", "Beijing", "date", 15),
-                null,
+                (BaseSession) null,
                 null));
 
         assertThat(result.get("error_code")).isEqualTo(0);
@@ -104,7 +104,7 @@ class ToolComponentPythonParityTest {
         WorkflowOutput output = invokeLocalToolWorkflow(new ToolComponent(config), "test_tool");
 
         assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
-        assertThat(output.getResult()).isEqualTo(Map.of("response", "{'res': '你好', 'info': 789}"));
+        assertThat(output.getResult()).isEqualTo(Map.of("response", "{res=你好, info=789}"));
     }
 
     @Test
@@ -114,7 +114,7 @@ class ToolComponentPythonParityTest {
         WorkflowOutput output = invokeLocalToolWorkflow(toolComponent, "test_tool_2");
 
         assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
-        assertThat(output.getResult()).isEqualTo(Map.of("response", "{'res': '你好', 'info': 789}"));
+        assertThat(output.getResult()).isEqualTo(Map.of("response", "{res=你好, info=789}"));
     }
 
     @Test

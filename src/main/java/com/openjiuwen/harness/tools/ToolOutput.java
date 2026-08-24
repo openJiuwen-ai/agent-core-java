@@ -88,4 +88,9 @@ public class ToolOutput {
             return new ToolOutput(success, data, error);
         }
     }
+
+    @Override
+    public String toString() {
+        return "ToolOutput(success=" + success + ", data=" + data + ", error=" + error + ")";
+    }
 }

@@ -32,30 +32,24 @@ public class PersistenceCheckpointerProvider implements CheckpointerProvider {
      * @return the result
      * @since 0.1.7
      */
+    @Override
     public String typeName() {
         return "persistence";
     }
 
     /**
      * Creates a persistence-based checkpointer from the given configuration.
-     * <p>
-     * If a {@code kv_store} instance is provided in the configuration, it will be used
-     * directly. Otherwise, falls back to an in-memory checkpointer.
-     * 
-     * @param conf the configuration map, may contain "kv_store" (BaseKVStore), "db_type", and "db_path"
-     * @return a Checkpointer instance backed by the provided KV store or an in-memory fallback
+     *
+     * <p>Delegates to {@link PersistenceCheckpointer#createFromConfig(Map)} so sqlite /
+     * shelve / DataSource / explicit {@link BaseKVStore} configs keep working when this
+     * provider is discovered via ServiceLoader.</p>
+     *
+     * @param conf the configuration map, may contain "kv_store", "db_type", and "db_path"
+     * @return a Checkpointer instance
      * @since 0.1.7
      */
     @Override
     public Checkpointer create(Map<String, Object> conf) {
-        // First, check if kv_store is directly provided
-        Object kvStoreObj = conf != null ? conf.get("kv_store") : null;
-        if (kvStoreObj instanceof BaseKVStore kvStore) {
-            return new PersistenceCheckpointer(kvStore);
-        }
-
-        // Fall back to in-memory checkpointer if no proper kv_store is configured
-        // This allows tests to run without requiring specific KVStore implementations
-        return new InMemoryCheckpointer();
+        return PersistenceCheckpointer.createFromConfig(conf);
     }
 }

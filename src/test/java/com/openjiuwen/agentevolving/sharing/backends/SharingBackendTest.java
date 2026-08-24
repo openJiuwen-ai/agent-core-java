@@ -2,13 +2,13 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.sharing.backends;
+package com.openjiuwen.agentevolving.sharing.backends;
 
-import com.openjiuwen.agent_evolving.sharing.QueryKeywords;
-import com.openjiuwen.agent_evolving.sharing.SharedSkillBundle;
-import com.openjiuwen.agent_evolving.sharing.SkillPackageMeta;
-import com.openjiuwen.agent_evolving.sharing.SkillSearchResult;
-import com.openjiuwen.agent_evolving.sharing.UploadResult;
+import com.openjiuwen.agentevolving.sharing.QueryKeywords;
+import com.openjiuwen.agentevolving.sharing.SharedSkillBundle;
+import com.openjiuwen.agentevolving.sharing.SkillPackageMeta;
+import com.openjiuwen.agentevolving.sharing.SkillSearchResult;
+import com.openjiuwen.agentevolving.sharing.UploadResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

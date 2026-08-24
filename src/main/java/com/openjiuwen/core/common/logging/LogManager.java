@@ -112,13 +112,14 @@ public final class LogManager {
         return Map.copyOf(LOGGERS);
     }
 
-    /** Reset the log manager 鈥?primarily for testing. */
+    /** Reset the log manager — primarily for testing. */
     public static synchronized void reset() {
         closeAndClearLoggers();
         initialized = false;
         defaultLoggerFactory = null;
         defaultLoggerFactoryBackend = null;
         selectedBackend = null;
+        LogConfigProvider.setProvider(null);
         LazyLogger.resetAll();
         try {
             com.openjiuwen.core.common.logging.events.EventClassRegistry.resetCommonLoggerCache();
@@ -190,7 +191,6 @@ public final class LogManager {
             if (config != null) {
                 return config;
             }
-            return Map.of("level", LogLevels.INFO, "output", "console");
         }
         return LoggingDefaults.logConfig().getCustomConfig(logType, backend);
     }

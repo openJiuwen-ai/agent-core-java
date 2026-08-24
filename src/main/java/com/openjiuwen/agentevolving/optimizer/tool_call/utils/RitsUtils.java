@@ -78,7 +78,7 @@ public final class RitsUtils {
                         .clientProvider("OpenAI")
                         .apiBase("https://api.openai.com/v1")
                         .apiKey(llmApiKey)
-                        .verifySsl(false)
+                        .verifySsl(true)
                         .build();
 
                 String output = responseProvider.invoke(

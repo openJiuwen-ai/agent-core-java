@@ -37,6 +37,7 @@ public class ToolManager {
     private static final float DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS = 30.0F;
 
     private final Map<String, Tool> tools = new LinkedHashMap<>();
+    private final Map<String, Object> compatibilityTools = new LinkedHashMap<>();
     private final Map<String, List<String>> mcpServerNameToIds = new LinkedHashMap<>();
     private final Map<String, McpServerResource> mcpServerResources = new LinkedHashMap<>();
     private final Map<String, SysOpToolResource> sysOpResources = new LinkedHashMap<>();
@@ -55,11 +56,32 @@ public class ToolManager {
         return mcpServerLocks.computeIfAbsent(serverId, ignored -> new ReentrantLock());
     }
 
+    public String kind() {
+        return "tool";
+    }
+
     public void addTool(String toolId, Tool tool) {
         if (tools.get(toolId) != null) {
             throw new IllegalArgumentException("already exist tool " + toolId);
         }
         tools.put(toolId, tool);
+    }
+
+    public void put(String toolId, Object tool) {
+        compatibilityTools.put(toolId, tool);
+    }
+
+    public boolean contains(String toolId) {
+        return compatibilityTools.containsKey(toolId) || getTool(toolId) != null;
+    }
+
+    public int size() {
+        return compatibilityTools.size() + tools.size();
+    }
+
+    public Object get(String toolId) {
+        Object compatibilityValue = compatibilityTools.get(toolId);
+        return compatibilityValue != null ? compatibilityValue : getTool(toolId);
     }
 
     public Tool getTool(String toolId) {
@@ -71,6 +93,10 @@ public class ToolManager {
         return TracerDecorator.decorateToolWithTrace(tool, session);
     }
 
+    public Tool getMcpTool(String toolName, String serverId) {
+        return getMcpTool(toolName, serverId, null);
+    }
+
     public Tool getMcpTool(String toolName, String serverId, Object session) {
         McpServerResource resource = mcpServerResources.get(serverId);
         if (resource == null) {
@@ -78,6 +104,10 @@ public class ToolManager {
         }
         String toolId = generateMcpToolId(serverId, resource.config().getServerName(), toolName);
         return getTool(toolId, session);
+    }
+
+    public List<Tool> getMcpTools(String serverId) {
+        return getMcpTools(serverId, null);
     }
 
     public List<Tool> getMcpTools(String serverId, Object session) {
@@ -106,7 +136,11 @@ public class ToolManager {
     }
 
     public Tool removeTool(String toolId) {
-        return tools.remove(toolId);
+        Tool removed = tools.remove(toolId);
+        if (removed == null) {
+            compatibilityTools.remove(toolId);
+        }
+        return removed;
     }
 
     public static String generateMcpToolId(String serverId, String serverName, String toolName) {
@@ -297,12 +331,18 @@ public class ToolManager {
     }
 
     private static Object defaultCreateClient(McpServerConfig config) {
-        McpClients.registerDefaults();
-        return ClientRegistry.getClientRegistry().getClient(
-                McpClients.normalizeClientType(config.getClientType()),
-                "mcp",
-                Map.of("config", config)
-        );
+        // Prefer SPI factory (ServiceLoader / register); fall back to ClientRegistry for
+        // transports that only exist on the legacy registry path.
+        try {
+            return com.openjiuwen.core.foundation.tool.mcp.McpClientFactory.create(config);
+        } catch (UnsupportedOperationException ignored) {
+            McpClients.registerDefaults();
+            return ClientRegistry.getClientRegistry().getClient(
+                    McpClients.normalizeClientType(config.getClientType()),
+                    "mcp",
+                    Map.of("config", config)
+            );
+        }
     }
 
     private List<McpToolCard> innerRefreshMcpTools(Object client,
@@ -426,6 +466,12 @@ public class ToolManager {
     }
 
     static float operationTimeout(McpServerConfig config) {
+        if (config != null && config.getCallTimeoutSeconds() != null && config.getCallTimeoutSeconds() > 0) {
+            return config.getCallTimeoutSeconds().floatValue();
+        }
+        if (config != null && config.getConnectTimeoutSeconds() != null && config.getConnectTimeoutSeconds() > 0) {
+            return config.getConnectTimeoutSeconds().floatValue();
+        }
         if (config == null || config.getParams() == null || config.getParams().isEmpty()) {
             return DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS;
         }

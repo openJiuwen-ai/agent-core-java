@@ -4,13 +4,18 @@
 
 package com.openjiuwen.core.sysop.result;
 
-import lombok.NoArgsConstructor;
-
-/** Result type for list files operation. */
-@NoArgsConstructor
+/**
+ * Mirrors Python's {@code ListFilesResult} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
+ */
 public class ListFilesResult extends BaseResult<FileSystemData> {
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public ListFilesResult(int code, String message, FileSystemData data) { setCode(code); setMessage(message); setData(data); }
+
+    public ListFilesResult() {
+    }
+
+    public ListFilesResult(int code, String message, FileSystemData data) {
+        setCode(code);
+        setMessage(message);
+        setData(data);
+    }
 }

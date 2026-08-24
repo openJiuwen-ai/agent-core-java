@@ -1,7 +1,7 @@
-package com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory;
+package com.openjiuwen.agentevolving.agent_rl.online.gateway.trajectory;
 
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.GatewayConfig;
-import com.openjiuwen.agent_evolving.agent_rl.storage.RedisTrajectoryStoreBackend;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.GatewayConfig;
+import com.openjiuwen.agentevolving.agent_rl.storage.RedisTrajectoryStoreBackend;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

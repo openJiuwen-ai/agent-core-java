@@ -7,7 +7,7 @@ package com.openjiuwen.core.multiagent.teams.hierarchical_tools;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.multiagent.runtime.TeamRuntime;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Iterator;
@@ -31,7 +31,7 @@ import java.util.Map;
  * <p>
  * Unlike {@code HierarchicalMsgBusTeam}'s {@code DelegateTool} which only
  * returns the child's result, this tool also calls
- * {@link AgentGroupSessionApi#writeStream(Object)} with a
+ * {@link AgentGroupSession#writeStream(Object)} with a
  * {@code {"message": <child result text>}} payload. The session's
  * {@code enrichWithTeamMetadata} then adds {@code source_agent_id} (this tool
  * sets {@code currentAgentId = targetId} before writeStream, because
@@ -86,16 +86,16 @@ public class HierarchicalDelegateTool extends Tool {
      */
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        AgentGroupSessionApi session = null;
+        AgentGroupSession session = null;
         if (kwargs != null) {
             Object sessionObj = kwargs.get("session");
-            if (sessionObj instanceof AgentGroupSessionApi groupSession) {
+            if (sessionObj instanceof AgentGroupSession groupSession) {
                 session = groupSession;
             }
         }
         String sessionId = null;
         if (session == null) {
-            session = new AgentGroupSessionApi();
+            session = new AgentGroupSession();
             if (teamId != null) {
                 session.setTeamId(teamId);
             }

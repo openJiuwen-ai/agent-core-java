@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.UploadFileResult
+# com.openjiuwen.core.sysop.result.UploadFileResult
 
 ## 类 UploadFileResult
 

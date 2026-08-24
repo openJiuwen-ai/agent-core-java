@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox;
 
-import com.openjiuwen.core.sys_operation.sandbox.SandboxRegistry;
+import com.openjiuwen.core.sysop.sandbox.SandboxRegistry;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioCodeProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioFsProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.AioShellProvider;

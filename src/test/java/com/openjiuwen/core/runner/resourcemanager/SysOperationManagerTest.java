@@ -6,13 +6,13 @@ package com.openjiuwen.core.runner.resourcemanager;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.ContainerScope;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxIsolationConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.ContainerScope;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 
 import org.junit.jupiter.api.Test;
 

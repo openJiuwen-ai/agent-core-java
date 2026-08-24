@@ -22,7 +22,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.stages.BaseStage;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

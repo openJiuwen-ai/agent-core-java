@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Shared base for harness-local tool implementations.
@@ -32,13 +33,25 @@ public abstract class AbstractHarnessTool extends Tool {
     }
 
     protected static ToolCard toolCard(String id, String name, String description) {
+        return toolCard(id, name, description, "en");
+    }
+
+    protected static ToolCard toolCard(String id, String name, String description, String language) {
         String resolvedDescription = description == null ? "" : description;
         Map<String, Object> inputParams = emptySchema();
+        String resolvedLanguage = language == null || language.isBlank() ? "en" : language;
         try {
-            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, "en");
-            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, "en");
-        } catch (RuntimeException ignored) {
-            // Some internal helper tools intentionally have no prompt metadata provider.
+            resolvedDescription = HarnessPromptToolsPackage.getToolDescription(id, resolvedLanguage);
+            inputParams = HarnessPromptToolsPackage.getToolInputParams(id, resolvedLanguage);
+        } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
+                | NullPointerException ignoredById) {
+            try {
+                resolvedDescription = HarnessPromptToolsPackage.getToolDescription(name, resolvedLanguage);
+                inputParams = HarnessPromptToolsPackage.getToolInputParams(name, resolvedLanguage);
+            } catch (NoSuchElementException | IllegalArgumentException | IllegalStateException
+                    | NullPointerException ignoredByName) {
+                // Some internal helper tools intentionally have no prompt metadata provider.
+            }
         }
         return ToolCard.builder()
                 .id(id)

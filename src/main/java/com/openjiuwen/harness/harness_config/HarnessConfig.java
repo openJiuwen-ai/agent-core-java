@@ -203,6 +203,10 @@ public class HarnessConfig {
 
         @Builder.Default
         private String mode = "all";
+
+        @Builder.Default
+        @JsonProperty("enable_cache")
+        private boolean enableCache = true;
     }
 
     /**

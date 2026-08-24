@@ -229,7 +229,7 @@ class LegacyReActAgentMockPythonParityTest {
     }
 
     private static final class MemorySession implements AgentSessionApi,
-            com.openjiuwen.core.context_engine.ContextEngine.SessionPort {
+            com.openjiuwen.core.context.ContextEngine.SessionPort {
         private final String sessionId;
         private final Map<String, Object> state = new LinkedHashMap<>();
         private final List<Object> stream = new java.util.ArrayList<>();

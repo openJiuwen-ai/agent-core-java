@@ -12,12 +12,12 @@ import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sys_operation.Cwd;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.ContextSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.prompts.sections.WorkspaceSection;
@@ -449,7 +449,8 @@ class ContextAssembleRailPythonParityTest {
 
         rail.init(agent);
 
-        assertThat(rail.getSystemPromptBuilder()).isNull();
+        // Java DeepAgent always exposes a ReActAgent SystemPromptBuilder; Python may omit it.
+        assertThat(rail.getSystemPromptBuilder()).isNotNull();
         assertThat(rail.getAbilityManager()).isSameAs(agent.getAbilityManager());
     }
 
@@ -564,6 +565,9 @@ class ContextAssembleRailPythonParityTest {
         SysOperation sysOperation = root == null ? null : localSysOperation(root);
         DeepAgentConfig config = new DeepAgentConfig();
         config.setWorkspace(workspace);
+        if (workspace == null) {
+            config.setAutoCreateWorkspace(false);
+        }
         config.setSysOperation(sysOperation);
 
         DeepAgent deepAgent = new DeepAgent(new AgentCard("test", "test", "test"));

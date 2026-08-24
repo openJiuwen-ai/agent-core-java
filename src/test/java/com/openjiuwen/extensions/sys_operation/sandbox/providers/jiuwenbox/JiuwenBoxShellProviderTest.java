@@ -16,7 +16,7 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

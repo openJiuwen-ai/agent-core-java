@@ -4,319 +4,353 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import com.openjiuwen.core.context.token.TokenCounter;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
-import com.openjiuwen.core.context_engine.context.SessionModelContext;
-import com.openjiuwen.core.context_engine.processor.ContextEvent;
-import com.openjiuwen.core.context_engine.processor.compressor.CompressorUtils;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
-import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Focused parity tests for current-round compression behavior.
+ *
+ * <p>Mirrors Python's tests for
+ * {@code openjiuwen/core/context_engine/processor/compressor/current_round_compressor.py}.</p>
+ *
+ * <p>Mirrors Python's {@code TestCurrentRoundCompressor} in
+ * {@code tests/unit_tests/core/context_engine/test_current_round_compressor.py}.</p>
+ */
 class CurrentRoundCompressorTest {
 
-    private static final String TEST_PROVIDER = "CurrentRoundCompressorTestProvider";
-
-    @BeforeAll
-    static void registerModelFactory() {
-        Model.registerFactory(new Model.ModelClientFactory() {
-            @Override
-            public String providerName() {
-                return TEST_PROVIDER;
-            }
-
-            @Override
-            public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
-                return new TestModelClient(modelConfig, clientConfig);
-            }
-        });
-    }
-
     @Test
-    void triggerUsesTokenThresholdAndMessagesToKeepGuard() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .tokensThreshold(10)
-                .messagesToKeep(3)
+    void addMessagesCompressesCompletedApiRoundAndEmitsCompactSummaryAndUsage() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        AssistantMessage modelResponse = new AssistantMessage("compressed tool result");
+        modelResponse.setUsageMetadata(UsageMetadata.builder()
+                .inputTokens(2)
+                .outputTokens(3)
+                .totalTokens(5)
+                .modelName("unit-model")
                 .build());
-        ContextEngine contextEngine = new ContextEngine();
-        SessionModelContext context = (SessionModelContext) contextEngine.createContext(
-                "test",
-                null,
-                null,
-                List.of(new UserMessage("u1"), new AssistantMessage("a1")),
-                adaptTokenCounter(tokenCounter(100)));
-
-        assertFalse(compressor.triggerAddMessages(context, List.of(), Map.of()).toCompletableFuture().join());
-        assertTrue(compressor.triggerAddMessages(context, List.of(new AssistantMessage("a2")), Map.of()).toCompletableFuture().join());
-    }
-
-    @Test
-    void getCompressIdxReturnsLatestEligibleUserBeforeKeptTail() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .messagesToKeep(1)
-                .build());
-        List<BaseMessage> messages = List.of(
-                new UserMessage("u1"),
-                new AssistantMessage("a1"),
-                new UserMessage("u2"),
-                new AssistantMessage("a2"));
-
-        assertEquals(2, compressor.getCompressIdx(messages));
-        assertEquals(-1, compressor.getCompressIdx(List.of(new UserMessage("tail user"))));
-    }
-
-    @Test
-    void onAddMessagesReplacesSelectedCompletedRoundWithMemoryBlock() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .tokensThreshold(1)
-                .messagesToKeep(1)
-                .minSelectedTokensForCompression(1)
-                .build());
-        ContextEngine contextEngine = new ContextEngine();
-        SessionModelContext context = (SessionModelContext) contextEngine.createContext(
-                "test",
-                null,
-                null,
-                List.of(
-                        new UserMessage("question"),
-                        new AssistantMessage("safe-prefix-1"),
-                        new AssistantMessage("safe-prefix-2"),
-                        AssistantMessage.builder()
-                                .content("")
-                                .toolCalls(List.of(toolCall("tc-1", "tool_a")))
-                                .build(),
-                        new ToolMessage("tool result", "tc-1"),
-                        new AssistantMessage("final answer")),
-                adaptTokenCounter(compressionBenefitTokenCounter()));
-
-        SessionModelContext.ProcessResult result = compressor.onAddMessages(context, List.of(), false, Map.of()).toCompletableFuture().join();
-
-        assertNotNull(result.event());
-        List<BaseMessage> updated = context.getMessages();
-        assertTrue(updated.get(1).getContentAsString().startsWith(CurrentRoundCompressor.SUMMARY_MARKER));
-        assertEquals("final answer", updated.get(2).getContentAsString());
-        ContextEvent evt = (ContextEvent) result.event();
-        assertEquals(List.of(1, 2, 3, 4), evt.getMessagesToModify());
-    }
-
-    @Test
-    void compressSkipsWhenSelectedSpanBelowMinimumTokens() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .minSelectedTokensForCompression(200)
-                .build());
-        ContextEngine contextEngine = new ContextEngine();
-        SessionModelContext context = (SessionModelContext) contextEngine.createContext(
-                "test",
-                null,
-                null,
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(config, modelReturning(modelResponse));
+        SessionModelContext context = new SessionModelContext(
+                "ctx",
+                "session",
+                new ContextEngineConfig(),
                 List.of(),
-                adaptTokenCounter(tokenCounter(1)));
+                List.of(compressor),
+                messages -> messages.stream().mapToInt(message -> message.getContentAsString().length()).sum());
 
-        BaseMessage compressed = compressor.compress(
-                List.of(new AssistantMessage("small")),
-                context,
-                List.of(new UserMessage("u"), new AssistantMessage("small")),
-                1,
-                0);
-
-        assertEquals(null, compressed);
-    }
-
-    @Test
-    void iterSummaryMergeRangesReturnsContiguousSummaryBlocks() {
         List<BaseMessage> messages = List.of(
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\na"),
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nb"),
-                new AssistantMessage("break"),
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nc"),
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nd"),
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\ne"));
+                new UserMessage("question"),
+                AssistantMessage.builder()
+                        .role("assistant")
+                        .content("")
+                        .toolCalls(List.of(ToolCall.builder()
+                                .id("call-1")
+                                .name("tool")
+                                .type("function")
+                                .arguments("{}")
+                                .build()))
+                        .build(),
+                new ToolMessage("large tool result ".repeat(20), "call-1"),
+                new AssistantMessage("final answer"));
 
-        List<CompressorUtils.SummaryMergeRange> ranges = CompressorUtils.iterSummaryMergeRanges(messages, CurrentRoundCompressor.SUMMARY_MARKER, 3);
+        context.addMessages(messages).toCompletableFuture().join();
 
-        assertEquals(1, ranges.size());
-        assertEquals(3, ranges.get(0).startIndex());
-        assertEquals(5, ranges.get(0).endIndex());
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result).hasSize(3);
+        assertThat(result.get(1)).isInstanceOf(UserMessage.class);
+        assertThat(result.get(1).getContentAsString())
+                .startsWith(CurrentRoundCompressor.SUMMARY_MARKER)
+                .contains("compressed tool result");
+        assertThat(context.compressionHistory()).last()
+                .extracting(state -> state.get("compact_summary"))
+                .asString()
+                .contains(CurrentRoundCompressor.SUMMARY_MARKER)
+                .contains("compressed tool result");
+        Map<?, ?> usage = (Map<?, ?>) context.compressionHistory()
+                .get(context.compressionHistory().size() - 1)
+                .get("compression_usage");
+        assertThat(((Number) usage.get("calls")).longValue()).isEqualTo(1L);
+        assertThat(((Number) usage.get("input_tokens")).longValue()).isEqualTo(2L);
+        assertThat(((Number) usage.get("output_tokens")).longValue()).isEqualTo(3L);
+        assertThat(((Number) usage.get("total_tokens")).longValue()).isEqualTo(5L);
     }
 
     @Test
-    void configDefaultsMatchPythonCurrentConfig() {
-        CurrentRoundCompressorConfig config = CurrentRoundCompressorConfig.builder().build();
+    void multiCompressMergesContiguousSummaryBlocksAndUnwrapsNestedMemory() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        config.setAccumulatedSummaryTokenLimit(1);
+        config.setSummaryMergeMinBlocks(3);
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(config,
+                modelReturning(new AssistantMessage(CurrentRoundCompressor.SUMMARY_MARKER
+                        + "\nSummary:\nmerged memory")));
+        SessionModelContext context = new SessionModelContext(
+                "ctx",
+                "session",
+                new ContextEngineConfig(),
+                List.of(),
+                List.of(compressor),
+                messages -> 100);
+        List<BaseMessage> messages = new ArrayList<>(List.of(
+                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nSummary:\none"),
+                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nSummary:\ntwo"),
+                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nSummary:\nthree"),
+                new UserMessage("latest question"),
+                new AssistantMessage("latest answer")));
 
-        assertEquals(100000, config.getTokensThreshold());
-        assertEquals(3, config.getMessagesToKeep());
-        assertEquals(20000, config.getMinSelectedTokensForCompression());
-        assertEquals(4000, config.getCompressionTargetTokens());
-        assertEquals(4000, config.getSummaryMergeTargetTokens());
-        assertEquals(20000, config.getAccumulatedSummaryTokenLimit());
-        assertEquals(3, config.getSummaryMergeMinBlocks());
-        assertEquals(10, config.getPriorContextWindowSize());
+        CurrentRoundCompressor.MultiCompressResult result = compressor.multiCompress(messages, 3, 2, context);
+
+        assertThat(result.messages()).hasSize(3);
+        assertThat(result.modifiedIndices()).containsExactly(0, 1, 2);
+        assertThat(result.compactSummary())
+                .contains(CurrentRoundCompressor.SUMMARY_MARKER)
+                .contains("merged memory")
+                .doesNotContain("Summary:\n[CURRENT_ROUND_MEMORY_BLOCK]");
     }
 
     @Test
-    void processorTypeAndStateAreStable() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder().build());
-
-        assertEquals("CurrentRoundCompressor", compressor.processorType());
-        assertTrue(compressor.saveState().isEmpty());
-        compressor.loadState(java.util.Map.of());
-    }
-
-    private static ToolCall toolCall(String id, String name) {
-        return ToolCall.builder().id(id).name(name).type("function").arguments("{}").build();
-    }
-
-    private static CurrentRoundCompressorConfig.Builder configBuilder() {
-        return CurrentRoundCompressorConfig.builder()
-                .model(ModelRequestConfig.builder().modelName("test-model").build())
-                .modelClient(ModelClientConfig.builder()
-                        .clientProvider(TEST_PROVIDER)
-                        .apiKey("test-key")
-                        .apiBase("http://test.local")
-                        .verifySsl(false)
+    void utilityFindsLastCompletedRoundBeforeIncompleteToolCall() {
+        List<BaseMessage> messages = List.of(
+                new UserMessage("question"),
+                new AssistantMessage("prefix"),
+                AssistantMessage.builder()
+                        .role("assistant")
+                        .content("")
+                        .toolCalls(List.of(ToolCall.builder()
+                                .id("call-1")
+                                .name("tool")
+                                .type("function")
+                                .arguments("{}")
+                                .build()))
                         .build());
+
+        assertThat(CompressorUtils.findLastCompletedApiRoundEndIdx(messages, 1, 2)).isEqualTo(1);
     }
 
-    private static TokenCounter tokenCounter(int returnValue) {
-        return new TokenCounter() {
-            @Override
-            public int count(String text, String model) {
-                return returnValue;
-            }
+    @Test
+    void pythonParityLargeMessageCompressionTriggered() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("Compressed: tool execution result.")));
+        SessionModelContext context = newContext(compressor, CurrentRoundCompressorTest::sumContentLength);
+        String largeContent = "large tool execution result ".repeat(30);
 
-            @Override
-            public int countMessages(List<BaseMessage> messages, String model) {
-                return returnValue;
-            }
+        context.addMessages(List.of(
+                new UserMessage("First message"),
+                assistantWithToolCalls("tc-1", "_add_2025"),
+                new ToolMessage(largeContent, "tc-1"),
+                assistantWithToolCalls("tc-2", "_add_2025"))).toCompletableFuture().join();
 
-            @Override
-            public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
-            }
-        };
+        assertThat(context.getMessages())
+                .filteredOn(message -> message instanceof UserMessage
+                        && message.getContentAsString().contains(CurrentRoundCompressor.SUMMARY_MARKER))
+                .hasSize(1);
     }
 
-    private static TokenCounter compressionBenefitTokenCounter() {
-        return new TokenCounter() {
-            @Override
-            public int count(String text, String model) {
-                return text != null ? text.length() : 0;
-            }
+    @Test
+    void pythonParityStreamsStateWhenCurrentRoundCompressorTriggers() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("Compressed: tool execution result.")));
+        SessionModelContext context = newContext(compressor, CurrentRoundCompressorTest::sumContentLength);
 
-            @Override
-            public int countMessages(List<BaseMessage> messages, String model) {
-                if (messages.size() == 1 && messages.get(0) instanceof UserMessage
-                        && (messages.get(0).getContentAsString().startsWith("role:")
-                        || messages.get(0).getContentAsString().equals("compressed summary"))) {
-                    return 1;
-                }
-                return 100;
-            }
+        context.addMessages(List.of(
+                new UserMessage("First message".repeat(100)),
+                assistantWithToolCalls("tc-stream", "_add_2025"),
+                new ToolMessage("large tool result1 ".repeat(300), "tc-stream"),
+                new AssistantMessage("done1"),
+                assistantWithToolCalls("tc-stream-2", "_add_2025"),
+                new ToolMessage("large tool result2 ".repeat(300), "tc-stream-2"),
+                new AssistantMessage("done2"))).toCompletableFuture().join();
 
-            @Override
-            public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
-            }
-        };
+        List<Map<String, Object>> states = context.compressionHistory();
+        assertThat(states).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(states.get(states.size() - 2))
+                .containsEntry("status", "started")
+                .containsEntry("processor", "CurrentRoundCompressor");
+        assertThat(states.get(states.size() - 1))
+                .containsEntry("status", "completed")
+                .containsEntry("processor", "CurrentRoundCompressor")
+                .extracting(state -> state.get("compact_summary"))
+                .asString()
+                .contains(CurrentRoundCompressor.SUMMARY_MARKER)
+                .contains("Compressed: tool execution result.");
     }
 
-    private static ModelContext.TokenCounterPort adaptTokenCounter(TokenCounter counter) {
-        return messages -> counter.countMessages(messages, "");
+    @Test
+    void pythonParityCompressionWithAssistantAndToolMessages() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("Through _add_2025 tool, obtained: result is -6.")));
+        SessionModelContext context = newContext(compressor, CurrentRoundCompressorTest::sumContentLength);
+        String largeContent = "tool result is -6 ".repeat(30);
+
+        context.addMessages(List.of(
+                new UserMessage("Calculate 10 + 20"),
+                assistantWithToolCalls("tc-1", "_add_2025"),
+                new ToolMessage(largeContent, "tc-1"),
+                assistantWithToolCalls("tc-2", "_add_2025"),
+                new ToolMessage(largeContent, "tc-2"),
+                new AssistantMessage("The answer is -6."))).toCompletableFuture().join();
+
+        assertThat(context.getMessages())
+                .filteredOn(message -> message instanceof UserMessage
+                        && message.getContentAsString().contains(CurrentRoundCompressor.SUMMARY_MARKER))
+                .hasSizeGreaterThanOrEqualTo(1);
     }
 
-    private static final class TestModelClient extends BaseModelClient {
-        private TestModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-            super(modelConfig, modelClientConfig);
-        }
+    @Test
+    void pythonParityCompressionWithMultiAssistantAndToolMessages() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("Through _add_2025 tool, obtained: result is -6.")));
+        SessionModelContext context = newContext(compressor, CurrentRoundCompressorTest::sumContentLength);
+        String largeContent = "multi tool result is -6 ".repeat(30);
 
-        @Override
-        public AssistantMessage invoke(Object messages,
-                                       Object tools,
-                                       Float temperature,
-                                       Float topP,
-                                       String model,
-                                       Integer maxTokens,
-                                       String stop,
-                                       BaseOutputParser outputParser,
-                                       Float timeout,
-                                       Map<String, Object> kwargs) {
-            return new AssistantMessage("compressed summary");
-        }
+        context.addMessages(List.of(
+                new UserMessage("Calculate 10 + 20"),
+                assistantWithToolCalls("tc-1", "_add_2025"),
+                new ToolMessage(largeContent, "tc-1"),
+                assistantWithToolCalls("tc-2", "_add_2025"),
+                new ToolMessage(largeContent, "tc-2"),
+                new AssistantMessage("The answer is -6."))).toCompletableFuture().join();
 
-        @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                      Object tools,
-                                                      Float temperature,
-                                                      Float topP,
-                                                      String model,
-                                                      Integer maxTokens,
-                                                      String stop,
-                                                      BaseOutputParser outputParser,
-                                                      Float timeout,
-                                                      Map<String, Object> kwargs) {
-            return List.<AssistantMessageChunk>of().iterator();
-        }
+        assertThat(context.getMessages())
+                .filteredOn(message -> message instanceof UserMessage
+                        && message.getContentAsString().contains(CurrentRoundCompressor.SUMMARY_MARKER))
+                .hasSizeGreaterThanOrEqualTo(1);
+    }
 
-        @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                     String model,
-                                                     String size,
-                                                     String negativePrompt,
-                                                     int n,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     int seed,
-                                                     Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("not used");
-        }
+    @Test
+    void pythonParityNoCompressionBelowThreshold() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        config.setTokensThreshold(1_000);
+        AtomicInteger modelCalls = new AtomicInteger();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("should not be used"), modelCalls));
+        SessionModelContext context = newContext(compressor, messages -> 10);
 
-        @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                      String model,
-                                                      String voice,
-                                                      String languageType,
-                                                      Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("not used");
-        }
+        context.addMessages(List.of(
+                new UserMessage("Short message"),
+                new AssistantMessage("Short response"))).toCompletableFuture().join();
 
-        @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                     String imgUrl,
-                                                     String audioUrl,
-                                                     String model,
-                                                     String size,
-                                                     String resolution,
-                                                     int duration,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     String negativePrompt,
-                                                     Integer seed,
-                                                     Map<String, Object> kwargs) {
-            throw new UnsupportedOperationException("not used");
-        }
+        assertThat(context.getMessages()).hasSize(2);
+        assertThat(context.getMessages())
+                .noneMatch(message -> message instanceof UserMessage
+                        && message.getContentAsString().contains(CurrentRoundCompressor.SUMMARY_MARKER));
+        assertThat(modelCalls).hasValue(0);
+    }
+
+    @Test
+    void pythonParityNoCompressionWhenUserMessageIsLast() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        AtomicInteger modelCalls = new AtomicInteger();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("should not be used"), modelCalls));
+        SessionModelContext context = newContext(compressor, messages -> 100);
+
+        context.addMessages(List.of(
+                new UserMessage("First message"),
+                new AssistantMessage("Response"),
+                new UserMessage("Last message is user"))).toCompletableFuture().join();
+
+        assertThat(context.getMessages()).hasSize(3);
+        assertThat(context.getMessages())
+                .noneMatch(message -> message instanceof UserMessage
+                        && message.getContentAsString().contains(CurrentRoundCompressor.SUMMARY_MARKER));
+        assertThat(modelCalls).hasValue(0);
+    }
+
+    @Test
+    void pythonParityMultiCompressReplacesSelectedSpanWithMemoryBlock() {
+        CurrentRoundCompressorConfig config = lowThresholdConfig();
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                config, modelReturning(new AssistantMessage("compressed")));
+        SessionModelContext context = newContext(compressor, CurrentRoundCompressorTest::sumContentLength);
+        List<BaseMessage> contextMessages = List.of(
+                new UserMessage("question"),
+                new AssistantMessage("safe-prefix-1"),
+                new AssistantMessage("safe-prefix-2"),
+                assistantWithToolCalls("tc-1", "tool_a"),
+                new ToolMessage("tool result", "tc-1"),
+                new AssistantMessage("final answer"));
+
+        CurrentRoundCompressor.MultiCompressResult result = compressor.multiCompress(contextMessages, 0, 3, context);
+
+        assertThat(result.messages()).isNotNull();
+        assertThat(result.messages()).hasSize(5);
+        assertThat(result.messages().get(1)).isInstanceOf(UserMessage.class);
+        assertThat(result.messages().get(1).getContentAsString())
+                .contains(CurrentRoundCompressor.SUMMARY_MARKER)
+                .contains("compressed");
+        assertThat(((AssistantMessage) result.messages().get(2)).getToolCalls().get(0).getId()).isEqualTo("tc-1");
+        assertThat(((ToolMessage) result.messages().get(3)).getToolCallId()).isEqualTo("tc-1");
+        assertThat(result.modifiedIndices()).containsExactly(1, 2);
+        assertThat(result.compactSummary()).contains(CurrentRoundCompressor.SUMMARY_MARKER).contains("compressed");
+    }
+
+    private static CurrentRoundCompressorConfig lowThresholdConfig() {
+        CurrentRoundCompressorConfig config = new CurrentRoundCompressorConfig();
+        config.setTokensThreshold(1);
+        config.setMessagesToKeep(1);
+        config.setMinSelectedTokensForCompression(1);
+        return config;
+    }
+
+    private static SessionModelContext newContext(CurrentRoundCompressor compressor,
+                                                  ModelContext.TokenCounterPort tokenCounter) {
+        return new SessionModelContext(
+                "ctx",
+                "session",
+                new ContextEngineConfig(),
+                List.of(),
+                List.of(compressor),
+                tokenCounter);
+    }
+
+    private static int sumContentLength(List<BaseMessage> messages) {
+        return messages.stream().mapToInt(message -> message.getContentAsString().length()).sum();
+    }
+
+    private static AssistantMessage assistantWithToolCalls(String toolCallId, String toolName) {
+        return AssistantMessage.builder()
+                .role("assistant")
+                .content("")
+                .toolCalls(List.of(ToolCall.builder()
+                        .id(toolCallId)
+                        .name(toolName)
+                        .type("function")
+                        .arguments("")
+                        .build()))
+                .build();
+    }
+
+    private static Model modelReturning(AssistantMessage message) {
+        return modelReturning(message, new AtomicInteger());
+    }
+
+    private static Model modelReturning(AssistantMessage message, AtomicInteger invocationCount) {
+        return new Model((messages, modelConfig, modelClientConfig, options) ->
+                CompletableFuture.completedFuture(recordInvocationAndReturn(invocationCount, message)));
+    }
+
+    private static AssistantMessage recordInvocationAndReturn(AtomicInteger invocationCount, AssistantMessage message) {
+        invocationCount.incrementAndGet();
+        return message;
     }
 }

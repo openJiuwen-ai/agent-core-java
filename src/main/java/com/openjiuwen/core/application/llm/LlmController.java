@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.application.llm;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.InputEvent;

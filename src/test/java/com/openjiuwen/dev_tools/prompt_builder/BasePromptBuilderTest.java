@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,6 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code openjiuwen/dev_tools/prompt_builder/base.py}.
  */
 class BasePromptBuilderTest {
+
+    @AfterEach
+    void unregisterOpenAiInvoker() {
+        Model.unregisterInvoker(ProviderType.OPEN_AI.getValue());
+    }
+
     @Test
     void constructorCreatesModelFromConfigsLikePythonInitializer() {
         Model.registerInvoker(ProviderType.OPEN_AI.getValue(), (messages, modelConfig, modelClientConfig, options) ->

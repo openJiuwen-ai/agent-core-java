@@ -5,7 +5,7 @@
 package com.openjiuwen.cli.integration;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.cli.agent.CliAgentFactory;
 import com.openjiuwen.harness.cli.agent.LocalBackend;
 import com.openjiuwen.harness.cli.rails.TokenTrackingRail;

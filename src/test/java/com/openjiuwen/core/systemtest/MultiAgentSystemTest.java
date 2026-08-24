@@ -6,9 +6,8 @@ package com.openjiuwen.core.systemtest;
 import com.openjiuwen.core.multiagent.BaseGroup;
 import com.openjiuwen.core.multiagent.GroupConfig;
 import com.openjiuwen.core.multiagent.schema.GroupCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
-import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentGroupSession;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -49,7 +48,7 @@ class MultiAgentSystemTest extends SystemTestSupport {
         group.addAgent(new TemplateAgent(uniqueId("alpha"), "alpha"), "alpha");
         group.addAgent(new TemplateAgent(uniqueId("beta"), "beta"), "beta");
 
-        AgentGroupSessionApi session = AgentGroupSessionApi.create(
+        AgentGroupSession session = AgentGroupSession.create(
                 trackSessionId("group-session"),
                 Map.of("topic", "incident-response")
         );
@@ -82,7 +81,7 @@ class MultiAgentSystemTest extends SystemTestSupport {
         group.addAgent(new TemplateAgent(uniqueId("stream-alpha"), "stream-alpha"), "alpha");
         group.addAgent(new TemplateAgent(uniqueId("stream-beta"), "stream-beta"), "beta");
 
-        AgentGroupSessionApi session = AgentGroupSessionApi.create(
+        AgentGroupSession session = AgentGroupSession.create(
                 trackSessionId("group-stream-session"),
                 Map.of("topic", "streaming")
         );
@@ -101,7 +100,7 @@ class MultiAgentSystemTest extends SystemTestSupport {
         }
 
         @Override
-        public Object invoke(Object message, AgentGroupSessionApi session) {
+        public Object invoke(Object message, AgentGroupSession session) {
             Map<String, Object> inputs = normalizeInputs(message);
             String topic = String.valueOf(session.getState("topic"));
             Map<String, Object> results = new LinkedHashMap<>();
@@ -109,20 +108,20 @@ class MultiAgentSystemTest extends SystemTestSupport {
             results.put("topic", topic);
 
             for (Map.Entry<String, BaseAgent> entry : getAgents().entrySet()) {
-                Session agentSession = new Session();
+                AgentSession agentSession = new AgentSession();
                 results.put(entry.getKey(), entry.getValue().invoke(inputs, agentSession));
             }
             return results;
         }
 
         @Override
-        public Iterator<Object> stream(Object message, AgentGroupSessionApi session) {
+        public Iterator<Object> stream(Object message, AgentGroupSession session) {
             Map<String, Object> inputs = normalizeInputs(message);
             String topic = String.valueOf(session.getState("topic"));
             List<Object> items = new ArrayList<>();
 
             for (Map.Entry<String, BaseAgent> entry : getAgents().entrySet()) {
-                Session agentSession = new Session();
+                AgentSession agentSession = new AgentSession();
                 items.add(Map.of(
                         "agent_id", entry.getKey(),
                         "payload", entry.getValue().invoke(inputs, agentSession)
@@ -164,10 +163,10 @@ class MultiAgentSystemTest extends SystemTestSupport {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session) {
+        public Object invoke(Object inputs, AgentSession session) {
             String query = extractQuery(inputs);
             Object topic = "";
-            if (session instanceof AgentSessionApi) {
+            if (session != null) {
                 Object envTopic = session.getState("topic");
                 if (envTopic != null) {
                     topic = envTopic;
@@ -181,7 +180,7 @@ class MultiAgentSystemTest extends SystemTestSupport {
         }
 
         @Override
-        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
             return List.<Object>of(invoke(inputs, session)).iterator();
         }
 

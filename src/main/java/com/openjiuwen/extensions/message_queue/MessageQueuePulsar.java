@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.message_queue;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.PulsarConfig;
@@ -23,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -70,7 +70,7 @@ public class MessageQueuePulsar extends MessageQueueBase {
         }
         try {
             client = clientFactory.create(url);
-            executor = Executors.newFixedThreadPool(maxWorkers);
+            executor = OpenJiuwenExecutors.newFixedThreadPool("message-queue-pulsar", maxWorkers, false);
             running = true;
             LOGGER.info("[MessageQueuePulsar] started with url={}", url);
         } catch (Exception exception) {

@@ -18,7 +18,7 @@ import com.openjiuwen.core.controller.schema.TaskCompletionEvent;
 import com.openjiuwen.core.controller.schema.TaskFailedEvent;
 import com.openjiuwen.core.controller.schema.TaskInteractionEvent;
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 

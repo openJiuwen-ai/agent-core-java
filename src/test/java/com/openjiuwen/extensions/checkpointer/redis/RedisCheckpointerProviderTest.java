@@ -34,6 +34,13 @@ import static org.mockito.Mockito.verify;
 class RedisCheckpointerProviderTest {
 
     @Test
+    void providerDeclaresLegacyClusterAlias() {
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
+        assertEquals(RedisCheckpointer.Provider.TYPE_NAME, provider.typeName());
+        assertEquals(List.of(RedisCheckpointer.Provider.LEGACY_TYPE_NAME), provider.aliases());
+    }
+
+    @Test
     void providerUsesSuppliedRedisClient() {
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
         FakeRedisClient redisClient = new FakeRedisClient();

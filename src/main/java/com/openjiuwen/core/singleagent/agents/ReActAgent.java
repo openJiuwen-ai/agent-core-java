@@ -5,11 +5,11 @@
 package com.openjiuwen.core.singleagent.agents;
 
 import com.openjiuwen.core.common.VirtualThreadSupport;
-
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ContextWindow;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -26,8 +26,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentSessionLifecycle;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -69,6 +69,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.logging.Logger;
 
@@ -87,6 +88,9 @@ public class ReActAgent extends BaseAgent {
     public static final int SKILLS_SECTION_PRIORITY = 90;
     public static final String EXTERNAL_TOOL_PENDING_KEY = "__react_agent_external_tool_pending__";
 
+    /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
+    private static final int STREAM_CHUNK_SIZE = 200;
+
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
             "External tool results must contain exactly all pending tool_call_id values";
@@ -95,7 +99,8 @@ public class ReActAgent extends BaseAgent {
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
-    private Model llm;
+    private volatile Model llm;
+    private final Object llmLock = new Object();
     private SystemPromptBuilder promptBuilder = new SystemPromptBuilder();
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private final ToolInterruptHandler hitlHandler;
@@ -136,7 +141,9 @@ public class ReActAgent extends BaseAgent {
         if (!Objects.equals(oldConfig.getModelProvider(), effectiveConfig.getModelProvider())
                 || !Objects.equals(oldConfig.getApiKey(), effectiveConfig.getApiKey())
                 || !Objects.equals(oldConfig.getApiBase(), effectiveConfig.getApiBase())) {
-            llm = null;
+            synchronized (llmLock) {
+                llm = null;
+            }
             kvReleaseWarningLogged = false;
         }
         if (!Objects.equals(oldConfig.getContextEngineConfig(), effectiveConfig.getContextEngineConfig())) {
@@ -146,7 +153,7 @@ public class ReActAgent extends BaseAgent {
         String systemContent = joinSystemPromptTemplate(effectiveConfig.getPromptTemplate());
         promptBuilder = new SystemPromptBuilder();
         systemPromptBuilder = promptBuilder;
-        addPromptBuilderSection(IDENTITY_SECTION, systemContent, IDENTITY_SECTION_PRIORITY);
+        addPersistentPromptBuilderSection(IDENTITY_SECTION, systemContent, IDENTITY_SECTION_PRIORITY);
         return this;
     }
 
@@ -155,7 +162,9 @@ public class ReActAgent extends BaseAgent {
     }
 
     public void setLlm(Model llm) {
-        this.llm = llm;
+        synchronized (llmLock) {
+            this.llm = llm;
+        }
     }
 
     public void set_llm(Model llm) {
@@ -163,13 +172,22 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Model getLlm() {
-        if (llm == null) {
+        Model local = llm;
+        if (local != null) {
+            return local;
+        }
+        synchronized (llmLock) {
+            local = llm;
+            if (local != null) {
+                return local;
+            }
             if (config.getModelClientConfig() == null) {
                 throw new IllegalStateException("model_client_config is required. Use configure_model_client() to set it.");
             }
-            llm = new Model(config.getModelClientConfig(), config.getModelConfigObj());
+            local = new Model(config.getModelClientConfig(), config.getModelConfigObj());
+            llm = local;
+            return local;
         }
-        return llm;
     }
 
     public Model _get_llm() {
@@ -183,6 +201,15 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         promptBuilder.addSection(new PromptSection(name, Map.of("cn", text, "en", text), priority));
+    }
+
+    public void addPersistentPromptBuilderSection(String name, String content, int priority) {
+        String text = content == null ? "" : content.strip();
+        if (text.isEmpty()) {
+            promptBuilder.removeSection(name);
+            return;
+        }
+        promptBuilder.addPersistentSection(new PromptSection(name, Map.of("cn", text, "en", text), priority));
     }
 
     public void add_prompt_builder_section(String name, String content, int priority) {
@@ -221,7 +248,7 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         warnMissingSkillReadFileTool();
-        addPromptBuilderSection(SKILLS_SECTION, skillUtil.getSkillPrompt(), SKILLS_SECTION_PRIORITY);
+        addPersistentPromptBuilderSection(SKILLS_SECTION, skillUtil.getSkillPrompt(), SKILLS_SECTION_PRIORITY);
     }
 
     public List<BaseMessage> buildPreviewMessages(ModelContext context) {
@@ -341,7 +368,7 @@ public class ReActAgent extends BaseAgent {
             logModelCallCompleted(ctx, false, modelStartNanos, aiMessage, null);
             return aiMessage;
         }
-        return streamModelResponse(ctx, model, messages, options, modelInputs);
+        return streamModelResponseWithRetry(ctx, model, messages, options, modelInputs);
     }
 
     public static void renderSystemMessages(List<SystemMessage> systemMessages, Object inputs,
@@ -388,35 +415,114 @@ public class ReActAgent extends BaseAgent {
             return List.of();
         }
         listEffectiveToolInfo(session);
-        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
-        for (ToolCall toolCall : toolCalls) {
-            long toolStartNanos = System.nanoTime();
-            logToolCallStarted(ctx, toolCall);
-            Optional<Tool> skillTool = findActiveSkillTool(toolCall.getName(), session);
-            Object ability = getAbilityManager().get(toolCall.getName()).orElse(null);
-            boolean toolRuntimeMissing = ability instanceof ToolCard toolCard
-                    && Runner.resourceMgr().getTool(toolCard.getId()) == null;
-            boolean notFound = skillTool.isEmpty()
-                    && (ability == null || toolRuntimeMissing)
-                    && !getAbilityManager().isExternalTool(toolCall.getName());
-            List<AbilityManager.ExecutionResult> executionResults;
-            try {
-                executionResults = skillTool
-                        .map(tool -> getAbilityManager().executeResolvedTool(tool, toolCall))
-                        .orElseGet(() -> getAbilityManager().execute(toolCall));
-            } catch (RuntimeException exception) {
-                logToolCallCompleted(ctx, toolCall, "exception", toolStartNanos);
-                throw exception;
-            }
-            for (AbilityManager.ExecutionResult result : executionResults) {
-                results.add(result);
-                if (result.toolMessage() != null) {
-                    context.addMessages(result.toolMessage()).toCompletableFuture().join();
-                }
-            }
-            logToolCallCompleted(ctx, toolCall, classifyToolOutcome(executionResults, notFound), toolStartNanos);
+        Object previousSession = SessionContextHolder.getCurrentSession();
+        if (previousSession == null && session != null) {
+            SessionContextHolder.setCurrentSession(session);
         }
+        List<Long> toolStartNanos = new ArrayList<>(toolCalls.size());
+        List<Boolean> notFoundFlags = new ArrayList<>(toolCalls.size());
+        for (ToolCall toolCall : toolCalls) {
+            toolStartNanos.add(System.nanoTime());
+            logToolCallStarted(ctx, toolCall);
+            notFoundFlags.add(isToolRuntimeMissing(toolCall, session));
+        }
+        List<AbilityManager.ExecutionResult> results;
+        try {
+            results = getAbilityManager().execute(
+                    ctx,
+                    toolCalls,
+                    session,
+                    config == null || config.isParallelToolCalls(),
+                    null,
+                    toolCall -> findActiveSkillTool(toolCall.getName(), session)
+            );
+        } catch (RuntimeException exception) {
+            for (int i = 0; i < toolCalls.size(); i++) {
+                logToolCallCompleted(ctx, toolCalls.get(i), "exception", toolStartNanos.get(i));
+            }
+            throw exception;
+        } finally {
+            if (previousSession == null) {
+                SessionContextHolder.restoreCurrentSession(null);
+            }
+        }
+        for (int i = 0; i < toolCalls.size(); i++) {
+            ToolCall toolCall = toolCalls.get(i);
+            AbilityManager.ExecutionResult result = i < results.size() ? results.get(i) : null;
+            if (result != null && result.toolMessage() != null) {
+                context.addMessages(result.toolMessage()).toCompletableFuture().join();
+            }
+            List<AbilityManager.ExecutionResult> perToolResults =
+                    result == null ? List.of() : List.of(result);
+            logToolCallCompleted(ctx, toolCall,
+                    classifyToolOutcome(perToolResults, Boolean.TRUE.equals(notFoundFlags.get(i))),
+                    toolStartNanos.get(i));
+        }
+        maybeForceFinishOnToolError(ctx, toolCalls, results);
         return results;
+    }
+
+    /**
+     * When {@link ReActAgentConfig#isShouldFailTaskOnToolError()} is enabled, escalate tool
+     * execution failures to a force-finish so the task does not close as COMPLETED (issue #51).
+     */
+    private void maybeForceFinishOnToolError(AgentCallbackContext ctx,
+                                             List<ToolCall> toolCalls,
+                                             List<AbilityManager.ExecutionResult> results) {
+        if (ctx == null || ctx.hasForceFinishRequest()
+                || config == null || !config.isShouldFailTaskOnToolError()
+                || toolCalls == null || results == null) {
+            return;
+        }
+        List<Map<String, Object>> outcomes = new ArrayList<>();
+        String firstError = null;
+        for (int i = 0; i < toolCalls.size(); i++) {
+            ToolCall toolCall = toolCalls.get(i);
+            AbilityManager.ExecutionResult result = i < results.size() ? results.get(i) : null;
+            if (toolCall == null || result == null || !isAbilityExecutionError(result)) {
+                continue;
+            }
+            String errorMsg = result.toolMessage() == null ? "Ability execution error"
+                    : String.valueOf(result.toolMessage().getContent());
+            if (firstError == null) {
+                firstError = errorMsg;
+            }
+            Map<String, Object> outcome = new LinkedHashMap<>();
+            outcome.put("tool_name", toolCall.getName());
+            outcome.put("tool_call_id", toolCall.getId());
+            outcome.put("status", "failed");
+            outcome.put("error", errorMsg);
+            outcomes.add(outcome);
+        }
+        if (outcomes.isEmpty()) {
+            return;
+        }
+        Map<String, Object> finishResult = new LinkedHashMap<>();
+        finishResult.put("output", firstError);
+        finishResult.put("result_type", "error");
+        finishResult.put("tool_outcomes", outcomes);
+        ctx.requestForceFinish(finishResult);
+    }
+
+    private static boolean isAbilityExecutionError(AbilityManager.ExecutionResult result) {
+        if (result.result() != null || result.toolMessage() == null) {
+            return false;
+        }
+        Object content = result.toolMessage().getContent();
+        return isToolOrAbilityExecutionError(content == null ? null : String.valueOf(content));
+    }
+
+    private boolean isToolRuntimeMissing(ToolCall toolCall, AgentSessionApi session) {
+        if (toolCall == null) {
+            return true;
+        }
+        Optional<Tool> skillTool = findActiveSkillTool(toolCall.getName(), session);
+        Object ability = getAbilityManager().get(toolCall.getName()).orElse(null);
+        boolean toolRuntimeMissing = ability instanceof ToolCard toolCard
+                && Runner.resourceMgr().getTool(toolCard.getId()) == null;
+        return skillTool.isEmpty()
+                && (ability == null || toolRuntimeMissing)
+                && !getAbilityManager().isExternalTool(toolCall.getName());
     }
 
     private void appendMultimodalToolResultsMessage(List<AbilityManager.ExecutionResult> results,
@@ -1138,7 +1244,7 @@ public class ReActAgent extends BaseAgent {
     }
 
     @Override
-    public Object invoke(Object inputs, Session session) {
+    public Object invoke(Object inputs, AgentSession session) {
         return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
     }
 
@@ -1166,9 +1272,7 @@ public class ReActAgent extends BaseAgent {
                     null,
                     getCard()
             );
-            if (activeSession instanceof AgentSessionLifecycle lifecycle) {
-                lifecycle.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
-            }
+            activeSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
             needCleanup = true;
         }
         try {
@@ -1193,7 +1297,10 @@ public class ReActAgent extends BaseAgent {
         boolean streaming = false;
         boolean initializationComplete = false;
         AgentCallbackContext ctx = null;
+        Object previousSession = SessionContextHolder.getCurrentSession();
+        SessionContextHolder.setCurrentSession(session);
         try {
+            promptBuilder.clearTransient();
             InvokeInputs invokeInputs = new InvokeInputs();
             invokeInputs.setQuery(query);
             invokeInputs.setConversationId(conversationId);
@@ -1201,6 +1308,7 @@ public class ReActAgent extends BaseAgent {
             ctx = new AgentCallbackContext(this);
             ctx.setInputs(invokeInputs);
             ctx.setSession(session);
+            ctx.setConfig(config);
             streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
             ctx.getExtra().put("_streaming", streaming);
             if (streaming) {
@@ -1261,7 +1369,7 @@ public class ReActAgent extends BaseAgent {
                     inputs,
                     stringStringMap(ctx.getExtra().get("memory_variables"))
             );
-            addPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
+            addPersistentPromptBuilderSection(IDENTITY_SECTION, renderedSystemPrompt, IDENTITY_SECTION_PRIORITY);
             updateSkillPromptBuilderSection(renderedSystemPrompt);
 
             int startIteration = 0;
@@ -1415,16 +1523,18 @@ public class ReActAgent extends BaseAgent {
             }
             throw exception;
         } finally {
-            if (needCleanup && initializationComplete) {
-                try {
-                    contextEngine.saveContexts(session);
-                    if (session instanceof AgentSessionLifecycle lifecycle) {
-                        closeStreamAndCommit(lifecycle);
+            try {
+                if (needCleanup && initializationComplete) {
+                    try {
+                        contextEngine.saveContexts(session);
+                        closeStreamAndCommit(session);
+                    } catch (RuntimeException exception) {
+                        Loggers.AGENT.exception("ReActAgent cleanup failed", exception);
+                        throw exception;
                     }
-                } catch (RuntimeException exception) {
-                    Loggers.AGENT.exception("ReActAgent cleanup failed", exception);
-                    throw exception;
                 }
+            } finally {
+                SessionContextHolder.restoreCurrentSession(previousSession);
             }
         }
     }
@@ -1602,10 +1712,13 @@ public class ReActAgent extends BaseAgent {
             }
             return;
         }
-        int index = streamIndexRef != null ? streamIndexRef[0]++ : 0;
+        // Align with Python react_agent: final answer OutputSchema always uses index=0.
+        if (streamIndexRef != null) {
+            streamIndexRef[0]++;
+        }
         session.writeStream(new OutputSchema(
                 "answer",
-                index,
+                0,
                 new LinkedHashMap<>(Map.of(
                         "output", Objects.toString(result.get("output"), ""),
                         "result_type", Objects.toString(resultType, "")
@@ -1632,59 +1745,50 @@ public class ReActAgent extends BaseAgent {
             );
             needCleanup = true;
         }
-        AgentSessionLifecycle lifecycleSession = activeSession instanceof AgentSessionLifecycle lifecycle ? lifecycle : null;
-        agentSession = lifecycleSession != null;
-        if (lifecycleSession != null) {
-            lifecycleSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
-        }
+        agentSession = runsStreamInBackground(activeSession);
+        activeSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
         AgentSessionApi finalSession = activeSession;
-        AgentSessionLifecycle finalLifecycleSession = lifecycleSession;
         boolean finalNeedCleanup = needCleanup;
-        if (finalLifecycleSession != null) {
+        if (agentSession) {
             String streamThreadName = resolveStreamWorkerThreadName(inputs);
-            Thread streamThread = VirtualThreadSupport.startThread(
+            VirtualThreadSupport.startThread(
                     streamThreadName,
-                    () -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup));
+                    () -> runStreamingInvoke(inputs, finalSession, finalNeedCleanup));
             return finalSession.streamIterator();
         }
         try {
             invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
         } catch (RuntimeException exception) {
-            writeInvokeResultToStreamInternal(
-                    new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
-                    finalSession
-            );
+            writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
         } finally {
             if (finalNeedCleanup) {
                 contextEngine.saveContexts(finalSession);
             }
-            if (finalLifecycleSession != null) {
-                closeStreamAndCommit(finalLifecycleSession);
-            }
+            closeStreamAndCommit(finalSession);
         }
         return finalSession.streamIterator();
     }
 
     @Override
-    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+    public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
         return stream(inputs, (AgentSessionApi) session, streamModes);
     }
 
-    private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession,
-                                    AgentSessionLifecycle lifecycleSession, boolean finalNeedCleanup) {
+    private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession, boolean finalNeedCleanup) {
         try {
             invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
         } catch (RuntimeException exception) {
-            writeInvokeResultToStreamInternal(
-                    new LinkedHashMap<>(Map.of("output", exception.getMessage(), "result_type", "error")),
-                    finalSession
-            );
+            writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
         } finally {
             if (finalNeedCleanup) {
                 contextEngine.saveContexts(finalSession);
             }
-            closeStreamAndCommit(lifecycleSession);
+            closeStreamAndCommit(finalSession);
         }
+    }
+
+    private static boolean runsStreamInBackground(AgentSessionApi session) {
+        return session instanceof AgentSession;
     }
 
     public void clearSession(String sessionId) {
@@ -1811,6 +1915,67 @@ public class ReActAgent extends BaseAgent {
         logLlmResponse(log, aiMessage);
     }
 
+    /**
+     * Stream with retry on empty responses; exceptions are not retried.
+     * After retries are exhausted, fall back to non-stream invoke and wrap content as stream chunks.
+     */
+    private AssistantMessage streamModelResponseWithRetry(AgentCallbackContext ctx, Model model,
+                                                          List<BaseMessage> messages, ModelInvokeOptions options,
+                                                          ModelCallInputs modelInputs) {
+        int maxRetries = config.getStreamMaxRetries();
+        long retryDelayMs = config.getStreamRetryDelayMs();
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                AssistantMessage aiMessage = streamModelResponse(ctx, model, messages, options, modelInputs);
+                if (!isEmptyStreamResult(aiMessage)) {
+                    return aiMessage;
+                }
+                Loggers.AGENT.warning("ReAct stream returned empty (attempt "
+                        + (attempt + 1) + "/" + (maxRetries + 1) + ")");
+            } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                    | IllegalStateException | NullPointerException | ClassCastException
+                    | UnsupportedOperationException exception) {
+                // Partial chunks may already have been sent; do not retry.
+                Loggers.AGENT.error("ReAct stream error (attempt "
+                        + (attempt + 1) + "/" + (maxRetries + 1) + "), aborting retry: "
+                        + exception.getMessage());
+                throw exception;
+            }
+
+            if (attempt < maxRetries && retryDelayMs > 0) {
+                try {
+                    Thread.sleep(retryDelayMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        Loggers.AGENT.warning("ReAct stream returned empty after " + (maxRetries + 1)
+                + " attempts, falling back to non-stream with stream wrapping");
+        logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), false);
+        long callStartTime = System.nanoTime();
+        AssistantMessage aiMessage;
+        try {
+            aiMessage = model.invoke(messages, options).toCompletableFuture().join();
+        } catch (BaseError | CompletionException | IllegalArgumentException
+                | IllegalStateException | NullPointerException exception) {
+            logModelCallCompleted(ctx, false, callStartTime, null, exception);
+            throw exception;
+        }
+        if (aiMessage == null) {
+            aiMessage = AssistantMessage.builder().content("").toolCalls(List.of()).build();
+        }
+        modelInputs.setResponse(aiMessage);
+        logModelResponse(ctx, aiMessage);
+        logModelCallCompleted(ctx, false, callStartTime, aiMessage, null);
+        // Always stream content on fallback; tool_calls (if any) follow content.
+        writeNonStreamAsStreamChunks(ctx, aiMessage, true);
+        return aiMessage;
+    }
+
     private AssistantMessage streamModelResponse(AgentCallbackContext ctx, Model model, List<BaseMessage> messages,
                                                  ModelInvokeOptions options, ModelCallInputs modelInputs) {
         logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), true);
@@ -1860,6 +2025,11 @@ public class ReActAgent extends BaseAgent {
                     .logprobs(accumulatedChunk.getLogprobs())
                     .build();
         }
+        if (isEmptyStreamResult(aiMessage)) {
+            modelInputs.setResponse(aiMessage);
+            logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
+            return aiMessage;
+        }
         modelInputs.setResponse(aiMessage);
         logModelResponse(ctx, aiMessage);
         logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
@@ -1877,6 +2047,48 @@ public class ReActAgent extends BaseAgent {
             ctx.getSession().writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), payload));
         }
         return aiMessage;
+    }
+
+    static boolean isEmptyStreamResult(AssistantMessage message) {
+        if (message == null) {
+            return true;
+        }
+        String content = message.getContent() == null ? "" : String.valueOf(message.getContent()).trim();
+        boolean hasToolCalls = message.getToolCalls() != null && !message.getToolCalls().isEmpty();
+        return content.isEmpty() && !hasToolCalls;
+    }
+
+    /**
+     * Wrap a non-stream AssistantMessage as SSE llm_output chunks (content first, then tool_calls).
+     */
+    void writeNonStreamAsStreamChunks(AgentCallbackContext ctx, AssistantMessage aiMessage, boolean sendContent) {
+        if (ctx == null || aiMessage == null) {
+            return;
+        }
+        AgentSessionApi session = ctx.getSession();
+        if (session == null) {
+            return;
+        }
+        String content = aiMessage.getContent() == null ? "" : String.valueOf(aiMessage.getContent());
+        if (sendContent && !content.isBlank()) {
+            for (int i = 0; i < content.length(); i += STREAM_CHUNK_SIZE) {
+                int end = Math.min(i + STREAM_CHUNK_SIZE, content.length());
+                String chunkContent = content.substring(i, end);
+                session.writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx),
+                        new LinkedHashMap<>(Map.of("content", chunkContent, "result_type", "answer"))));
+            }
+        }
+        if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
+            Map<String, Object> toolPayload = new LinkedHashMap<>();
+            toolPayload.put("tool_calls", aiMessage.getToolCalls());
+            session.writeStream(new OutputSchema("llm_output", nextStreamIndex(ctx), toolPayload));
+        }
+        if (aiMessage.getUsageMetadata() != null) {
+            Map<String, Object> usagePayload = new LinkedHashMap<>();
+            usagePayload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
+            usagePayload.put("result_type", "answer");
+            session.writeStream(new OutputSchema("llm_usage", nextStreamIndex(ctx), usagePayload));
+        }
     }
 
     private void warnMissingSkillReadFileTool() {
@@ -1992,7 +2204,12 @@ public class ReActAgent extends BaseAgent {
             return false;
         }
         Object content = result.toolMessage().getContent();
-        return content instanceof String text && text.startsWith("Ability execution error:");
+        return content instanceof String text && isToolOrAbilityExecutionError(text);
+    }
+
+    private static boolean isToolOrAbilityExecutionError(String text) {
+        return text != null && (text.startsWith("Ability execution error:")
+                || text.startsWith("Tool execution error:"));
     }
 
     private static boolean isInvalidArgumentsResult(AbilityManager.ExecutionResult result) {
@@ -2073,7 +2290,10 @@ public class ReActAgent extends BaseAgent {
         return value == null ? 0 : String.valueOf(value).length();
     }
 
-    private static void closeStreamAndCommit(AgentSessionLifecycle session) {
+    private static void closeStreamAndCommit(AgentSessionApi session) {
+        if (session == null) {
+            return;
+        }
         try {
             session.commit();
         } finally {
@@ -2243,17 +2463,35 @@ public class ReActAgent extends BaseAgent {
 
     private static Map<String, Object> buildErrorResult(RuntimeException exception) {
         return new LinkedHashMap<>(Map.of(
-                "output", exceptionMessage(exception),
+                "output", describeStreamThrowable(exception),
                 "result_type", "error"
         ));
     }
 
     private static String exceptionMessage(RuntimeException exception) {
-        if (exception == null) {
-            return "";
+        return describeStreamThrowable(exception);
+    }
+
+    /**
+     * Build a non-null stream/invoke error description.
+     *
+     * <p>Exceptions such as {@link java.util.ConcurrentModificationException} often have a null
+     * {@code getMessage()}; logging that as bare {@code "null"} hides the real failure under load
+     * (issue #66 / commit 19c4f1fd).</p>
+     *
+     * @param throwable throwable
+     * @return human-readable error text for logs and stream payloads
+     * @since 0.1.14
+     */
+    static String describeStreamThrowable(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown";
         }
-        String message = exception.getMessage();
-        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+        String msg = throwable.getMessage();
+        if (msg == null || msg.isBlank()) {
+            return throwable.getClass().getName();
+        }
+        return throwable.getClass().getSimpleName() + ": " + msg;
     }
 
     private static Object readAttribute(Object target, String name) {

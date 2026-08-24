@@ -11,7 +11,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 

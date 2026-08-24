@@ -234,7 +234,6 @@ class TracerWorkflowUtilsTest {
             return tracer;
         }
 
-        @Override
         public String workflowId() {
             return workflowId;
         }

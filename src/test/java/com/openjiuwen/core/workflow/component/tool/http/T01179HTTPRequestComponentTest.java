@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.tool.http;
 
+import com.openjiuwen.core.session.BaseSession;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -172,7 +173,7 @@ class T01179HTTPRequestComponentTest {
     private static Map<?, ?> invoke(HttpRequestParamConfig requestParams, Map<String, Object> inputs) {
         HttpComponentConfig config = new HttpComponentConfig();
         config.setRequestParams(requestParams);
-        Object output = new HTTPRequestComponent(config).getExecutable().invoke(inputs, null, null);
+        Object output = new HTTPRequestComponent(config).getExecutable().invoke(inputs, (BaseSession) null, null);
         return assertInstanceOf(Map.class, output);
     }
 

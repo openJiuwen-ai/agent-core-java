@@ -47,7 +47,7 @@ class ImageCaptionerTest {
         assertThat(Path.of(copied).getFileName().toString()).isEqualTo("source.jfif");
         assertThatThrownBy(() -> ImageCaptioner.cpImage(tempDir.resolve("missing.png").toString(), target.toString()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Image not found at");
+                .hasMessageContaining("Unable to copy image from");
     }
 
     @Test

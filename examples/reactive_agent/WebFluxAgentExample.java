@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 /**
- * PR #630 响应式接口端到端示例 — 场景 5（Spring WebFlux SSE）
+ * 响应式接口端到端示例 — Spring WebFlux SSE
  *
  * <p>本示例演示应用侧如何直接基于框架的响应式 API 自行接入 Spring WebFlux。
  * HTTP 端点见同包下的 {@link WebFluxControllerExample}——框架不提供 starter 或 controller。

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.system_tests.rail;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;

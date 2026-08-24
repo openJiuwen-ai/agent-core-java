@@ -37,9 +37,17 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     private CallbackManager callbackManager;
     private ActorManager actorManager;
     private String workflowId;
+    private final String mainWorkflowId;
+    private final int workflowNestingDepth;
 
     public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
                            WorkflowCommitState state, Object callbackManager) {
+        this(workflowId, parent, sessionId, state, callbackManager, null, 0);
+    }
+
+    private WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                            WorkflowCommitState state, Object callbackManager,
+                            String mainWorkflowId, int workflowNestingDepth) {
         this.workflowId = workflowId == null ? "" : workflowId;
         this.parent = parent;
         this.sessionId = sessionId != null
@@ -49,6 +57,26 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
         this.state = state == null ? InMemoryState.create() : state;
         this.tracer = parent == null ? null : parent.tracer();
         this.callbackManager = callbackManager instanceof CallbackManager typedManager ? typedManager : null;
+        this.mainWorkflowId = mainWorkflowId == null || mainWorkflowId.isBlank() ? this.workflowId : mainWorkflowId;
+        this.workflowNestingDepth = Math.max(workflowNestingDepth, 0);
+    }
+
+    /**
+     * Nested workflow under an existing session. Keeps the root workflow id and
+     * increments nesting depth.
+     */
+    public static WorkflowSession nested(BaseSession parent, String workflowId) {
+        String mainId = workflowId;
+        int depth = 0;
+        if (parent instanceof WorkflowSession workflowSession) {
+            mainId = workflowSession.mainWorkflowId();
+            depth = workflowSession.workflowNestingDepth() + 1;
+        } else if (parent instanceof NodeSession nodeSession) {
+            mainId = nodeSession.mainWorkflowId();
+            depth = nodeSession.workflowNestingDepth() + 1;
+        }
+        String sessionId = parent == null ? null : parent.sessionId();
+        return new WorkflowSession(workflowId, parent, sessionId, null, null, mainId, depth);
     }
 
     public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
@@ -142,11 +170,11 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     }
 
     public String mainWorkflowId() {
-        return workflowId;
+        return mainWorkflowId;
     }
 
     public int workflowNestingDepth() {
-        return 0;
+        return workflowNestingDepth;
     }
 
     public BaseSession parent() {
@@ -178,10 +206,20 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
         }
     }
 
+    /**
+     * Close the session, releasing actor manager and stream writer resources.
+     *
+     * <p>The tracer is intentionally preserved so that subsequent invocations
+     * reusing the same session maintain trace_id consistency. The actor manager
+     * and stream writer manager are nulled out so they are recreated on the
+     * next createWorkflowSession call.
+     */
     @Override
     public void close() {
         if (actorManager != null) {
             actorManager.shutdown();
+            actorManager = null;
         }
+        streamWriterManager = null;
     }
 }

@@ -5,7 +5,7 @@ package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.internal.RouterSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -464,8 +464,8 @@ class WorkflowTest {
         return flow;
     }
 
-    private static WorkflowSessionApi newSession() {
-        return new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of());
+    private static WorkflowSession newSession() {
+        return new WorkflowSession(null, UUID.randomUUID().toString(), Map.of());
     }
 
     private static Map<String, Object> mapWithNullableValues(

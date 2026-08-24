@@ -25,7 +25,7 @@ class MemoryPersistenceHelperTest {
         MemoryPersistenceHelper helper = jsonHelper();
 
         assertThat(helper.jsonPath("user-1", "ace"))
-                .isEqualTo(tempDir.resolve("ace/user-1.json").toString());
+                .isEqualTo("ace/user-1.json");
     }
 
     @Test
@@ -50,17 +50,18 @@ class MemoryPersistenceHelperTest {
 
         helper.save("user-1", "ace", Map.of());
 
-        assertThat(Files.exists(Path.of(helper.jsonPath("user-1", "ace")))).isFalse();
+        assertThat(Files.exists(tempDir.resolve("ace/user-1.json"))).isFalse();
     }
 
     @Test
     void unknownPersistenceTypeRaisesSameMessageShape() {
         MemoryPersistenceHelper helper = new MemoryPersistenceHelper(
                 "bad",
-                tempDir.resolve("{algo_name}/{user_id}.json").toString(),
+                "{algo_name}/{user_id}.json",
                 "localhost",
                 19530,
-                "vector_nodes"
+                "vector_nodes",
+                tempDir
         );
 
         assertThatThrownBy(() -> helper.load("user-1", "ace"))
@@ -75,17 +76,18 @@ class MemoryPersistenceHelperTest {
         assertThat(MemoryPersistenceHelper.namespace("user-1", "reme")).isEqualTo("memory_reme_user-1");
         assertThat(helper.toString())
                 .isEqualTo("MemoryPersistenceHelper(persist_type='json', persist_path='"
-                        + tempDir.resolve("{algo_name}/{user_id}.json")
+                        + "{algo_name}/{user_id}.json"
                         + "')");
     }
 
     private MemoryPersistenceHelper jsonHelper() {
         return new MemoryPersistenceHelper(
                 "json",
-                tempDir.resolve("{algo_name}/{user_id}.json").toString(),
+                "{algo_name}/{user_id}.json",
                 "localhost",
                 19530,
-                "vector_nodes"
+                "vector_nodes",
+                tempDir
         );
     }
 }

@@ -6,8 +6,8 @@ package com.openjiuwen.core.sysop;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

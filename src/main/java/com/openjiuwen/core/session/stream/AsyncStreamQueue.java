@@ -23,6 +23,7 @@ public class AsyncStreamQueue {
 
     public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200L;
     public static final int DEFAULT_MAX_SEND_RETRIES = 5;
+    public static final int DEFAULT_MAX_SIZE = 1024;
     public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1L;
     public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000L;
 
@@ -34,7 +35,7 @@ public class AsyncStreamQueue {
     private final Object taskMonitor = new Object();
 
     public AsyncStreamQueue() {
-        this(0);
+        this(DEFAULT_MAX_SIZE);
     }
 
     public AsyncStreamQueue(int maxSize) {
@@ -94,6 +95,28 @@ public class AsyncStreamQueue {
                 maxRetries,
                 attemptTimeoutMs
         );
+    }
+
+    /**
+     * Offer a critical frame (for example END_FRAME) until the queue accepts it or closes.
+     * Regular {@link #send} may drop after retries; dropping END_FRAME leaves consumers blocked.
+     */
+    public void sendCritical(Object data) {
+        if (closed.get()) {
+            throw new IllegalStateException("StreamQueue is already closed");
+        }
+        while (!closed.get()) {
+            try {
+                if (streamQueue.offer(data, DEFAULT_SEND_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                    unfinishedTasks.incrementAndGet();
+                    return;
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        throw new IllegalStateException("StreamQueue is already closed");
     }
 
     public Object receive() {

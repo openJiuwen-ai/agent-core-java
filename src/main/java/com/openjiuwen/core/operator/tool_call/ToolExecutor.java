@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.operator.tool_call;
 
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 
 /**
  * Functional interface for executing a tool call.
@@ -21,5 +21,5 @@ public interface ToolExecutor {
      * @param session  the session context
      * @return the execution result
      */
-    ToolExecutionResult execute(Object toolCall, Session session);
+    ToolExecutionResult execute(Object toolCall, AgentSessionApi session);
 }

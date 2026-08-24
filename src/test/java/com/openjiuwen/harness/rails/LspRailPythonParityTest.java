@@ -8,11 +8,12 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.lsp.InitializeOptions;
 import com.openjiuwen.harness.lsp.InitializeResult;
 import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.lsp_tool.LspTool;
 import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -128,6 +130,27 @@ class LspRailPythonParityTest {
         assertEquals("en", tool.getLanguage());
         assertEquals("/workspace", tool.getWorkspace());
         assertNull(tool.getAgentId());
+        assertEquals("lsp", tool.getCard().getId());
+        assertEquals("LspTool", tool.getCard().getName());
+    }
+
+    @Test
+    void testRegisteredLspToolDoesNotEchoWhenManagerMissing() throws Exception {
+        CapturingRail rail = new CapturingRail();
+        rail.init(makeAgent("/workspace", "en"));
+
+        LspTool tool = assertInstanceOf(LspTool.class, rail.getLspTool());
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of(
+                "operation", "goToDefinition",
+                "file_path", "/workspace/file.py",
+                "line", 1,
+                "character", 1
+        ));
+
+        assertInstanceOf(Map.class, output.getData());
+        Map<?, ?> data = (Map<?, ?>) output.getData();
+        assertEquals(Boolean.FALSE, data.get("success"));
+        assertTrue(String.valueOf(data.get("error")).contains("not initialized"));
     }
 
     @Test
@@ -288,31 +311,23 @@ class LspRailPythonParityTest {
 
     @Test
     void testBeforeModelCallRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertTrue(callbacks.containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL.getValue()));
+        assertTrue(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.BEFORE_MODEL_CALL));
     }
 
     @Test
     void testAfterInvokeNotRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.AFTER_INVOKE.getValue()));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.AFTER_INVOKE));
     }
 
     @Test
     void testUnusedHooksNotRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.BEFORE_TOOL_CALL.getValue()));
-        assertFalse(callbacks.containsKey(AgentCallbackEvent.ON_MODEL_EXCEPTION.getValue()));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.BEFORE_TOOL_CALL));
+        assertFalse(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.ON_MODEL_EXCEPTION));
     }
 
     @Test
     void testAfterToolCallRegistered() {
-        Map<String, String> callbacks = new LspRail().getCallbacks();
-
-        assertTrue(callbacks.containsKey(AgentCallbackEvent.AFTER_TOOL_CALL.getValue()));
+        assertTrue(new LspRail().getCallbacks().containsKey(AgentCallbackEvent.AFTER_TOOL_CALL));
     }
 
     private static TestAgent makeAgent(String workspaceRoot, String language) {
@@ -336,8 +351,10 @@ class LspRailPythonParityTest {
     }
 
     private static void removeLspToolResource() {
-        if (Runner.resourceMgr().getTool("lsp_tool") != null) {
-            Runner.resourceMgr().removeTool("lsp_tool");
+        for (String toolId : List.of("lsp_tool", "lsp")) {
+            if (Runner.resourceMgr().getTool(toolId) != null) {
+                Runner.resourceMgr().removeTool(toolId);
+            }
         }
     }
 
@@ -358,7 +375,7 @@ class LspRailPythonParityTest {
      */
     private static final class NoConfigAgent extends DeepAgent {
         @Override
-        public DeepAgentConfig deepConfig() {
+        public com.openjiuwen.harness.schema.config.DeepAgentConfig deepConfig() {
             return null;
         }
     }

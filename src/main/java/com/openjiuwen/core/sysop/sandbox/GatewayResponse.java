@@ -11,9 +11,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Gateway response wrapper.
- * 
+ *
+ * @deprecated Use {@link com.openjiuwen.core.sysop.sandbox.gateway.GatewayResponse}.
  * @since 0.1.7
  */
+@Deprecated(since = "0.1.14", forRemoval = false)
 @Data
 @Builder
 @NoArgsConstructor

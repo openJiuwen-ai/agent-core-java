@@ -4,9 +4,9 @@
 
 package com.openjiuwen.agentevolving.updater;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateExecution;
-import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateExecution;
+import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.core.operator.Operator;
 
 import java.util.Collection;

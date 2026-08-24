@@ -8,7 +8,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.sysop.sandbox.gateway.SandboxEndpoint;
+
+import okhttp3.OkHttpClient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,9 +101,24 @@ public class JiuwenBoxProviderMixin {
             if (baseUrlOpt.isEmpty() || baseUrlOpt.get().isBlank()) {
                 throw new IllegalArgumentException("jiuwenbox provider requires endpoint.base_url");
             }
-            client = new JiuwenBoxClient(baseUrlOpt.get(), timeoutSeconds);
+            OkHttpClient injectedClient = resolveOkHttpClient(config);
+            client = new JiuwenBoxClient(baseUrlOpt.get(), timeoutSeconds, injectedClient);
         }
         return client;
+    }
+
+    /**
+     * Prefer runtime-injected {@code _ojw_okhttp_client} from gateway {@code params}.
+     */
+    private static OkHttpClient resolveOkHttpClient(SandboxGatewayConfig config) {
+        if (config == null || config.getParams() == null) {
+            return null;
+        }
+        Object injected = config.getParams().get("_ojw_okhttp_client");
+        if (injected instanceof OkHttpClient okHttpClient) {
+            return okHttpClient;
+        }
+        return null;
     }
 
     /**

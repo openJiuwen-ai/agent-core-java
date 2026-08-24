@@ -7,6 +7,7 @@ package com.openjiuwen.agent_teams.agent;
 import com.openjiuwen.agent_teams.messager.Messager;
 import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
 import com.openjiuwen.agent_teams.messager.Messagers;
+import com.openjiuwen.agent_teams.schema.status.MemberStatus;
 import com.openjiuwen.agent_teams.models.ModelAllocators;
 import com.openjiuwen.agent_teams.models.ModelPoolEntry;
 import com.openjiuwen.agent_teams.models.ModelPoolSupport;
@@ -41,6 +42,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handles TeamAgent configuration, setup, and initialization.
@@ -1675,6 +1677,8 @@ public class AgentConfigurator {
         private final List<String> cleanupPaths = new ArrayList<>();
         private final Object taskManager = new Object();
         private final ConfiguredMessageManager messageManager = new ConfiguredMessageManager();
+        /** Members currently in {@code SHUTDOWN_REQUESTED} (issue #59 poll suppress). */
+        private final Set<String> shuttingDownMembers = ConcurrentHashMap.newKeySet();
 
         public ConfiguredTeamBackend(
                 String teamName,
@@ -1908,7 +1912,50 @@ public class AgentConfigurator {
             if (memberStore == null) {
                 return CompletableFuture.completedFuture(false);
             }
-            return memberStore.updateMemberStatus(memberName, teamName, status);
+            return memberStore.updateMemberStatus(memberName, teamName, status).thenApply(ok -> {
+                if (Boolean.TRUE.equals(ok) && isNonBlank(memberName)) {
+                    if (MemberStatus.SHUTDOWN_REQUESTED.value().equals(status)) {
+                        shuttingDownMembers.add(memberName);
+                    } else {
+                        shuttingDownMembers.remove(memberName);
+                    }
+                }
+                return ok;
+            });
+        }
+
+        /**
+         * Whether any non-leader member is mid-shutdown ({@link MemberStatus#SHUTDOWN_REQUESTED}).
+         *
+         * <p>Used to suppress Leader empty {@code POLL_MAILBOX} rounds while members drain
+         * (issue #59 / commit 5fe732f4).</p>
+         *
+         * @return true if shutdown transition window is active
+         * @since 0.1.14
+         */
+        public boolean isAnyMemberShuttingDown() {
+            return !shuttingDownMembers.isEmpty();
+        }
+
+        /**
+         * Mark a member as entering/leaving the shutdown-requested window.
+         *
+         * <p>Used when the DB-backed {@code tools.TeamBackend} advances status outside
+         * {@link #updateMemberStatus}.</p>
+         *
+         * @param memberName member id
+         * @param shouldShuttingDown true when status becomes {@code SHUTDOWN_REQUESTED}
+         * @since 0.1.14
+         */
+        public void markMemberShuttingDown(String memberName, boolean shouldShuttingDown) {
+            if (!isNonBlank(memberName)) {
+                return;
+            }
+            if (shouldShuttingDown) {
+                shuttingDownMembers.add(memberName);
+            } else {
+                shuttingDownMembers.remove(memberName);
+            }
         }
 
         private static Object memberRow(String requestedName, TeamMember.MemberSnapshot snapshot) {

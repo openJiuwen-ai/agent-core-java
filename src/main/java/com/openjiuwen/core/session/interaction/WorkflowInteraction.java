@@ -5,7 +5,6 @@
 package com.openjiuwen.core.session.interaction;
 
 import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.session.BaseSession;
@@ -13,6 +12,7 @@ import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
 import java.lang.reflect.InvocationTargetException;
@@ -116,33 +116,11 @@ public class WorkflowInteraction extends BaseInteraction {
 
     private void writeOutput(OutputSchema output) {
         rememberOutput(output);
-        Object writerManager = session == null ? null : session.streamWriterManager();
-        if (writerManager == null) {
+        StreamWriterManager writerManager = session == null ? null : session.streamWriterManager();
+        if (writerManager == null || writerManager.getOutputWriter() == null) {
             return;
         }
-        if (writerManager instanceof Vertex.VertexStreamWriterManager vertexWriterManager
-                && vertexWriterManager.getOutputWriter() != null) {
-            try {
-                vertexWriterManager.getOutputWriter().write(output);
-            } catch (RuntimeException runtimeException) {
-                throw runtimeException;
-            } catch (Exception exception) {
-                throw new IllegalStateException(exception);
-            }
-            return;
-        }
-        try {
-            Object outputWriter = writerManager.getClass().getMethod("getOutputWriter").invoke(writerManager);
-            outputWriter.getClass().getMethod("write", Object.class).invoke(outputWriter, output);
-        } catch (NoSuchMethodException | IllegalAccessException ignored) {
-            // Streaming is optional in the Python implementation.
-        } catch (InvocationTargetException exception) {
-            Throwable target = exception.getTargetException();
-            if (target instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException(target);
-        }
+        writerManager.getOutputWriter().write(output);
     }
 
     @SuppressWarnings("unchecked")
@@ -154,7 +132,7 @@ public class WorkflowInteraction extends BaseInteraction {
         while (current != null) {
             try {
                 rememberStateOutput(current, output);
-                current = current.parent();
+                current = WorkflowSessionSupport.parent(current);
             } catch (RuntimeException ignored) {
                 return;
             }

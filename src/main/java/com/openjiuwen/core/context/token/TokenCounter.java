@@ -11,42 +11,37 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Backward-compatible token counter base class for the pre-0.1.14 context token package.
- *
- * <p>Mirrors Python's {@code TokenCounter} in
- * {@code openjiuwen/core/context_engine/token/base.py}.</p>
+ * Mirrors Python's {@code TokenCounter} in
+ * {@code openjiuwen/core/context_engine/token/base.py}.
  */
-public abstract class TokenCounter implements com.openjiuwen.core.context_engine.token.TokenCounter {
-    public abstract int count(String text, String model);
+public interface TokenCounter {
+    int count(String text, String model, Map<String, Object> kwargs);
 
-    public int count(String text) {
-        return count(text, "");
+    default int count(String text, String model) {
+        return count(text, model, Map.of());
     }
 
-    public abstract int countMessages(List<BaseMessage> messages, String model);
-
-    public int countMessages(List<BaseMessage> messages) {
-        return countMessages(messages, "");
+    default int count(String text) {
+        return count(text, "", Map.of());
     }
 
-    public abstract int countTools(List<ToolInfo> tools, String model);
+    int countMessages(List<BaseMessage> messages, String model, Map<String, Object> kwargs);
 
-    public int countTools(List<ToolInfo> tools) {
-        return countTools(tools, "");
+    default int countMessages(List<BaseMessage> messages, String model) {
+        return countMessages(messages, model, Map.of());
     }
 
-    @Override
-    public int count(String text, String model, Map<String, Object> kwargs) {
-        return count(text, model);
+    default int countMessages(List<BaseMessage> messages) {
+        return countMessages(messages, "", Map.of());
     }
 
-    @Override
-    public int countMessages(List<BaseMessage> messages, String model, Map<String, Object> kwargs) {
-        return countMessages(messages, model);
+    int countTools(List<ToolInfo> tools, String model, Map<String, Object> kwargs);
+
+    default int countTools(List<ToolInfo> tools, String model) {
+        return countTools(tools, model, Map.of());
     }
 
-    @Override
-    public int countTools(List<ToolInfo> tools, String model, Map<String, Object> kwargs) {
-        return countTools(tools, model);
+    default int countTools(List<ToolInfo> tools) {
+        return countTools(tools, "", Map.of());
     }
 }

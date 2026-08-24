@@ -8,7 +8,9 @@ import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 
 /**
  * Legacy Java sandbox client facade backed by gateway-routed sandbox operations.
- * 
+ *
+ * @deprecated Prefer {@link com.openjiuwen.core.sysop.sandbox.gateway.SandboxGatewayClient}
+ *     or {@code SysOperation} sandbox operations.
  * @since 0.1.7
  */
 public class SandboxClient {

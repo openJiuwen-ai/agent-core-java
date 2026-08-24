@@ -5,8 +5,8 @@ import com.openjiuwen.core.multiagent.teams.hierarchical_msgbus.HierarchicalMsgB
 import com.openjiuwen.core.multiagent.teams.hierarchical_msgbus.HierarchicalMsgBusTeamConfig;
 import com.openjiuwen.core.multiagent.teams.hierarchical_tools.HierarchicalToolsTeam;
 import com.openjiuwen.core.multiagent.teams.hierarchical_tools.HierarchicalToolsTeamConfig;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentGroupSession;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -30,7 +30,7 @@ class HierarchicalTeamsCompatibilityTest {
         HierarchicalToolsTeam team = new HierarchicalToolsTeam(card, new HierarchicalToolsTeamConfig(root));
         team.addAgent(root, () -> new EchoAgent(root, "root-ok"));
 
-        Object result = team.invoke(Map.of("query", "work"), new AgentGroupSessionApi("hier-tools-session"));
+        Object result = team.invoke(Map.of("query", "work"), new AgentGroupSession("hier-tools-session"));
 
         assertThat(result).isEqualTo("root-ok");
     }
@@ -43,7 +43,7 @@ class HierarchicalTeamsCompatibilityTest {
         HierarchicalMsgBusTeam team = new HierarchicalMsgBusTeam(card, new HierarchicalMsgBusTeamConfig(supervisor, 30.0));
         team.addAgent(supervisor, () -> new EchoAgent(supervisor, Map.of("result", "supervised")));
 
-        Object result = team.invoke("hello", new AgentGroupSessionApi("hier-msgbus-session"));
+        Object result = team.invoke("hello", new AgentGroupSession("hier-msgbus-session"));
 
         assertThat(result).isEqualTo(Map.of("result", "supervised"));
     }
@@ -88,12 +88,12 @@ class HierarchicalTeamsCompatibilityTest {
         }
 
         @Override
-        public Object invoke(Object inputs, Session session) {
+        public Object invoke(Object inputs, AgentSession session) {
             return output;
         }
 
         @Override
-        public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
             return List.of(output).iterator();
         }
     }

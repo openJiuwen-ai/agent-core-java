@@ -4,11 +4,16 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -113,12 +118,31 @@ public class AgentAdapter {
         mqServerAdapterFactory = DEFAULT_MQ_SERVER_ADAPTER_FACTORY;
     }
 
-    private Object handleInvoke(Map<String, Object> inputs) {
+    Object handleInvoke(Map<String, Object> inputs) {
+        Optional<TenantContext> tenantCtx = extractTenantContext(inputs);
+        if (tenantCtx.isPresent()) {
+            return Runner.runAgent(agentId, inputs, null, null, null, tenantCtx.get());
+        }
         return MqServerAdapter.RunnerAccess.runAgent(agentId, inputs);
     }
 
-    private Object handleStream(Map<String, Object> inputs) {
+    Object handleStream(Map<String, Object> inputs) {
+        Optional<TenantContext> tenantCtx = extractTenantContext(inputs);
+        if (tenantCtx.isPresent()) {
+            return Runner.runAgentStreaming(agentId, inputs, null, null,
+                    List.of(StreamMode.OUTPUT), null, tenantCtx.get());
+        }
         return MqServerAdapter.RunnerAccess.runAgentStreaming(agentId, inputs);
+    }
+
+    private Optional<TenantContext> extractTenantContext(Map<String, Object> inputs) {
+        if (inputs != null) {
+            Object tenantId = inputs.get("tenant_id");
+            if (tenantId instanceof String tid && !tid.isBlank()) {
+                return Optional.of(TenantContext.builder().tenantId(tid).build());
+            }
+        }
+        return Optional.empty();
     }
 
     private Object createA2aServer() {

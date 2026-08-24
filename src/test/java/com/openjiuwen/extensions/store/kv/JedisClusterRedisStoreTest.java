@@ -313,13 +313,19 @@ class JedisClusterRedisStoreTest {
     }
 
     private static Object readField(Object target, String fieldName) {
-        try {
-            Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field.get(target);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError("Failed to inspect " + fieldName, e);
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException e) {
+                throw new AssertionError("Failed to inspect " + fieldName, e);
+            }
         }
+        throw new AssertionError("Failed to inspect " + fieldName, new NoSuchFieldException(fieldName));
     }
 
     private static IllegalStateException invokeIsMaster(Jedis jedis) throws ReflectiveOperationException {

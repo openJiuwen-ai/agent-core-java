@@ -7,7 +7,7 @@ package com.openjiuwen.harness.tools.subagent;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 
@@ -96,7 +96,7 @@ public class TaskTool extends AbstractHarnessTool {
             Map<String, Object> result = subagent.invoke(linkedMap(
                     "query", taskDescription,
                     "conversation_id", subSessionId
-            )).join();
+            ));
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("output", stringValue(result == null ? null : result.getOrDefault("output", "")));
             data.put("agent_id", subagent.getCard().getId());

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.function.Executable;
@@ -43,6 +44,13 @@ class GlobalSessionControllerPythonParityTest {
 
     @TempDir
     Path tempDir;
+
+    @AfterEach
+    void resetCallbackFramework() {
+        CallbackUtils.resetFrameworkSupplier();
+        GlobalSessionController.resetForTesting();
+        RunnerConfig.setRunnerConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+    }
 
     @TestFactory
     List<DynamicTest> pythonGlobalControllerParityCases() {

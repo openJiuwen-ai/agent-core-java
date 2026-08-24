@@ -8,6 +8,8 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PipelineSpec;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageSpec;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +30,16 @@ class BaseRegistryTest {
         assertThat(registry.get("custom_stage")).isSameAs(spec);
         assertThat(registry.require("custom_stage")).isSameAs(spec);
         assertThat(registry.names()).containsExactly("custom_stage");
+    }
+
+    @Test
+    void namesPreserveRegistrationOrder() {
+        StageRegistry registry = new StageRegistry();
+        registry.register(StageSpec.builder().name("assess").stageCls(DummyStage.class).build());
+        registry.register(StageSpec.builder().name("plan").stageCls(DummyStage.class).build());
+        registry.register(StageSpec.builder().name("implement").stageCls(DummyStage.class).build());
+
+        assertThat(registry.names()).containsExactly("assess", "plan", "implement");
     }
 
     @Test

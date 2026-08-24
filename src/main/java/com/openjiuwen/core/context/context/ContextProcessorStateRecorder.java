@@ -4,238 +4,210 @@
 
 package com.openjiuwen.core.context.context;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextStats;
-import com.openjiuwen.core.context.processor.ContextProcessor;
-import com.openjiuwen.core.context.schema.ContextCompressionMetric;
-import com.openjiuwen.core.context.schema.ContextCompressionSaved;
-import com.openjiuwen.core.context.schema.ContextCompressionState;
-import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.runner.callback.CallbackUtils;
+import com.openjiuwen.core.runner.callback.ContextEvents;
 import com.openjiuwen.core.session.stream.OutputSchema;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Records and emits context compression state transitions.
- * <p>
- * Mirrors Python's {@code ContextProcessorStateRecorder}.
- * 
- * @since 0.1.7
+ * Builds, records, and emits context compression state snapshots.
+ *
+ * <p>Mirrors Python's {@code ContextProcessorStateRecorder} in
+ * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
  */
 public class ContextProcessorStateRecorder {
-    private static final DateTimeFormatter TIME_FORMATTER =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").withZone(ZoneId.systemDefault());
+    public static final String CONTEXT_COMPRESSION_STATE_TYPE = "context.compression_state";
 
     private final String sessionId;
     private final String contextId;
-    private final Supplier<Session> sessionSupplier;
-    private final TokenCounter tokenCounter;
+    private final Supplier<Object> getSessionRef;
+    private final TokenCounterPort tokenCounter;
     private final int historyLimit;
+    private final CallbackPort callbackPort;
+    private List<Map<String, Object>> history = new ArrayList<>();
 
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<Map<String, Object>> history = new ArrayList<>();
+    public ContextProcessorStateRecorder(String sessionId, String contextId, Supplier<Object> getSessionRef) {
+        this(sessionId, contextId, getSessionRef, null, 100, null);
+    }
 
-    /**
-     * ContextProcessorStateRecorder.
-     * 
-     * @param sessionId sessionId
-     * @param contextId contextId
-     * @param sessionSupplier sessionSupplier
-     * @param tokenCounter tokenCounter
-     * @param historyLimit historyLimit
-     * @since 0.1.7
-     */
-    public ContextProcessorStateRecorder(String sessionId, String contextId, Supplier<Session> sessionSupplier,
-            TokenCounter tokenCounter, int historyLimit) {
+    public ContextProcessorStateRecorder(String sessionId, String contextId, Supplier<Object> getSessionRef,
+                                         TokenCounterPort tokenCounter, int historyLimit,
+                                         CallbackPort callbackPort) {
         this.sessionId = sessionId;
         this.contextId = contextId;
-        this.sessionSupplier = sessionSupplier;
+        this.getSessionRef = getSessionRef == null ? () -> null : getSessionRef;
         this.tokenCounter = tokenCounter;
         this.historyLimit = historyLimit;
+        this.callbackPort = callbackPort;
     }
 
-    /**
-     * ContextProcessorStateRecorder.
-     * 
-     * @param sessionId sessionId
-     * @param contextId contextId
-     * @param sessionSupplier sessionSupplier
-     * @param tokenCounter tokenCounter
-     * @since 0.1.7
-     */
-    public ContextProcessorStateRecorder(String sessionId, String contextId, Supplier<Session> sessionSupplier,
-            TokenCounter tokenCounter) {
-        this(sessionId, contextId, sessionSupplier, tokenCounter, 100);
-    }
-
-    /**
-     * history.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     public List<Map<String, Object>> history() {
-        return List.copyOf(history);
-    }
-
-    /**
-     * loadHistory.
-     * 
-     * @param entries entries
-     * @since 0.1.7
-     */
-    public void loadHistory(List<Map<String, Object>> entries) {
-        history.clear();
-        if (entries == null || entries.isEmpty()) {
-            return;
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> item : history) {
+            result.add(new LinkedHashMap<>(item));
         }
-        int start = Math.max(0, entries.size() - historyLimit);
-        history.addAll(entries.subList(start, entries.size()));
+        return result;
     }
 
-    /**
-     * emit.
-     * 
-     * @param context context
-     * @param state state
-     * @since 0.1.7
-     */
-    public void emit(SessionModelContext context, ContextCompressionState state) {
+    public void loadHistory(List<Map<String, Object>> externalHistory) {
+        List<Map<String, Object>> source = externalHistory == null ? List.of() : externalHistory;
+        int start = Math.max(0, source.size() - historyLimit);
+        history = new ArrayList<>();
+        for (Map<String, Object> item : source.subList(start, source.size())) {
+            history.add(new LinkedHashMap<>(item));
+        }
+    }
+
+    public void emit(Object context, ContextCompressionState state) {
         record(state);
-        Loggers.CONTEXT_ENGINE.info(
-                "context compression state: status={} phase={} processor={} session_id={} context_id={}"
-                        + " op={} before={} after={} saved={}",
-                state.getStatus(), state.getPhase(), state.getProcessor(), sessionId, contextId, state.getOperationId(),
-                formatMetricForLog(state.getBefore()), formatMetricForLog(state.getAfter()), state.getSaved());
-        Session session = sessionSupplier.get();
+        triggerCallbackFramework(context, state);
+        try {
+            if (callbackPort != null) {
+                callbackPort.trigger("CONTEXT_COMPRESSION_STATE", context, getSessionRef.get(), sessionId, contextId,
+                        state);
+            }
+        } catch (RuntimeException ignored) {
+            // Python logs callback failures and continues.
+        }
+        Object session = getSessionRef.get();
         if (session == null) {
-            Loggers.CONTEXT_ENGINE
-                    .debug("context compression state stream skipped: no session writer session_id={} context_id={}"
-                            + " op={}", sessionId, contextId, state.getOperationId());
             return;
         }
+        OutputSchema output = new OutputSchema(CONTEXT_COMPRESSION_STATE_TYPE, 0, state.modelDump());
         try {
-            session.writeStream(new OutputSchema(ContextCompressionState.CONTEXT_COMPRESSION_STATE_TYPE, 0, state));
-        } catch (RuntimeException exception) {
-            Loggers.CONTEXT_ENGINE.warning(
-                    "failed to emit context compression state to session stream: session_id={} context_id={}"
-                            + " op={} status={} error={}",
-                    sessionId, contextId, state.getOperationId(), state.getStatus(), exception.getMessage());
+            if (session instanceof SessionStreamPort sessionStreamPort) {
+                sessionStreamPort.writeStream(output);
+                return;
+            }
+            if (invokeWriteStream(session, "writeStream", output)) {
+                return;
+            }
+            invokeWriteStream(session, "write_stream", output);
+        } catch (RuntimeException ignored) {
+            // Python logs stream failures and continues.
         }
     }
 
-    /**
-     * buildState.
-     * 
-     * @param input input
-     * @return the result
-     * @since 0.1.7
-     */
-    public ContextCompressionState buildState(ContextProcessorStateInput input) {
-        ContextCompressionMetric before = buildMetric(input.beforeMessages(), input.contextMax(), input.startedAt());
-        ContextCompressionMetric after = input.afterMessages() != null
-                ? buildMetric(input.afterMessages(), input.contextMax(), input.endedAt())
-                : null;
+    private void triggerCallbackFramework(Object context, ContextCompressionState state) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("context", context);
+        kwargs.put("session_ref", getSessionRef.get());
+        kwargs.put("session_id", sessionId);
+        kwargs.put("context_id", contextId);
+        kwargs.put("state", state);
+        try {
+            CallbackUtils.lazyCallbackFramework.trigger(ContextEvents.CONTEXT_COMPRESSION_STATE, new Object[0], kwargs);
+        } catch (RuntimeException ignored) {
+            // Python logs callback failures and still emits stream state.
+        }
+    }
+
+    private static boolean invokeWriteStream(Object session, String methodName, OutputSchema output) {
+        try {
+            Method method = session.getClass().getMethod(methodName, OutputSchema.class);
+            method.invoke(session, output);
+            return true;
+        } catch (IllegalAccessException ignored) {
+            return invokeDeclaredWriteStream(session, methodName, output);
+        } catch (InvocationTargetException | NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean invokeDeclaredWriteStream(Object session, String methodName, OutputSchema output) {
+        try {
+            Method method = session.getClass().getDeclaredMethod(methodName, OutputSchema.class);
+            method.setAccessible(true);
+            method.invoke(session, output);
+            return true;
+        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    public ContextCompressionState buildState(ContextProcessorStateInput stateInput) {
+        ContextCompressionMetric before = buildMetric(stateInput.beforeMessages(), stateInput.contextMax(),
+                stateInput.startedAt());
+        ContextCompressionMetric after = stateInput.afterMessages() == null
+                ? null
+                : buildMetric(stateInput.afterMessages(), stateInput.contextMax(), stateInput.endedAt());
         ContextCompressionSaved saved = buildSaved(before, after);
-        List<BaseMessage> statisticMessages =
-            input.afterMessages() != null ? input.afterMessages() : input.beforeMessages();
+        List<BaseMessage> statisticMessages = stateInput.afterMessages() != null
+                ? stateInput.afterMessages()
+                : stateInput.beforeMessages();
+        Integer durationMs = stateInput.endedAt() == null
+                ? null
+                : (int) ((stateInput.endedAt() - stateInput.startedAt()) * 1000);
 
-        return ContextCompressionState.builder().operationId(input.operationId()).status(input.status())
-                .phase(input.phase()).processor(input.processor() != null ? input.processor().processorType() : "")
-                .model(resolveModelName(input.processor(), input.trigger(), input.isForce())).before(before)
-                .after(after).statistic(buildStatistic(statisticMessages)).saved(saved)
-                .durationMs(input.endedAt() != null ? (int) ((input.endedAt() - input.startedAt()) * 1000) : null)
-                .contextMax(input.contextMax())
-                .summary(buildSummary(input.status(), before, after, saved, input.reason(), input.messagesToModify()))
-                .error(input.error()).build();
+        return new ContextCompressionState(
+                CONTEXT_COMPRESSION_STATE_TYPE,
+                stateInput.operationId(),
+                stateInput.status(),
+                stateInput.phase(),
+                stateInput.processor() == null ? "" : stateInput.processor().processorType(),
+                resolveModelName(stateInput.processor(), stateInput.trigger(), stateInput.force()),
+                before,
+                after,
+                buildStatistic(statisticMessages),
+                saved,
+                ContextCompressionUsage.fromMap(stateInput.compressionUsage()),
+                durationMs,
+                stateInput.contextMax(),
+                buildSummary(new SummaryInput(stateInput.status(), before, after, saved, stateInput.reason(),
+                        stateInput.messagesToModify())),
+                stateInput.compactSummary() == null ? "" : stateInput.compactSummary(),
+                stateInput.error()
+        );
     }
 
-    /**
-     * record.
-     * 
-     * @param state state
-     * @since 0.1.7
-     */
     private void record(ContextCompressionState state) {
-        history.add(Map.of("type", state.getType(), "operation_id", state.getOperationId(), "status", state.getStatus(),
-                "phase", state.getPhase(), "processor", state.getProcessor(), "summary", state.getSummary()));
+        history.add(state.modelDump());
         if (history.size() > historyLimit) {
-            history.subList(0, history.size() - historyLimit).clear();
+            history = new ArrayList<>(history.subList(history.size() - historyLimit, history.size()));
         }
     }
 
-    /**
-     * buildMetric.
-     * 
-     * @param messages messages
-     * @param contextMax contextMax
-     * @param observedAt observedAt
-     * @return the result
-     * @since 0.1.7
-     */
     private ContextCompressionMetric buildMetric(List<BaseMessage> messages, Integer contextMax, Double observedAt) {
-        List<BaseMessage> safeMessages = messages != null ? messages : List.of();
+        List<BaseMessage> safeMessages = messages == null ? List.of() : messages;
         int tokens = measureMessages(safeMessages);
-        return ContextCompressionMetric.builder().time(formatTime(observedAt)).messages(safeMessages.size())
-                .tokens(tokens).contextPercent(contextPercent(tokens, contextMax)).build();
+        return new ContextCompressionMetric(formatTime(observedAt), safeMessages.size(), tokens,
+                contextPercent(tokens, contextMax));
     }
 
-    /**
-     * measureMessages.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
-     */
     private int measureMessages(List<BaseMessage> messages) {
         if (tokenCounter != null) {
             try {
-                return tokenCounter.countMessages(messages);
-            } catch (IllegalArgumentException | IllegalStateException ignored) {
-                return approximateTokens(messages);
+                Integer tokens = tokenCounter.countMessages(messages);
+                if (tokens != null) {
+                    return tokens;
+                }
+            } catch (RuntimeException ignored) {
             }
         }
-        return approximateTokens(messages);
-    }
-
-    /**
-     * approximateTokens.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
-     */
-    private int approximateTokens(List<BaseMessage> messages) {
         int totalChars = 0;
         for (BaseMessage message : messages) {
-            totalChars += String.valueOf(message.getContent() != null ? message.getContent() : "").length();
+            Object content = message.getContent();
+            totalChars += String.valueOf(content == null ? "" : content).length();
         }
-        return (int) Math.ceil(totalChars / 4.0);
+        return (int) Math.ceil(totalChars / 4.0d);
     }
 
-    /**
-     * buildStatistic.
-     * 
-     * @param messages messages
-     * @return the result
-     * @since 0.1.7
-     */
     private ContextStats buildStatistic(List<BaseMessage> messages) {
         ContextStats stat = new ContextStats();
-        List<BaseMessage> safeMessages = messages != null ? messages : List.of();
-        for (BaseMessage message : safeMessages) {
+        for (BaseMessage message : messages == null ? List.<BaseMessage>of() : messages) {
             stat.setTotalMessages(stat.getTotalMessages() + 1);
             int tokens = countMessageForStatistic(message);
             switch (message.getRole()) {
@@ -255,252 +227,322 @@ public class ContextProcessorStateRecorder {
                     stat.setToolMessages(stat.getToolMessages() + 1);
                     stat.setToolMessageTokens(stat.getToolMessageTokens() + tokens);
                 }
-                default -> { // no-op
+                default -> {
                 }
             }
         }
-        stat.setTotalTokens(stat.getAssistantMessageTokens() + stat.getUserMessageTokens()
-                + stat.getSystemMessageTokens() + stat.getToolMessageTokens());
-        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(safeMessages).size());
+        stat.setTotalTokens(stat.getAssistantMessageTokens()
+                + stat.getUserMessageTokens()
+                + stat.getSystemMessageTokens()
+                + stat.getToolMessageTokens());
+        stat.setTotalDialogues(ContextUtils.findAllDialogueRound(messages == null ? List.of() : messages).size());
         return stat;
     }
 
-    /**
-     * countMessageForStatistic.
-     * 
-     * @param message message
-     * @return the result
-     * @since 0.1.7
-     */
     private int countMessageForStatistic(BaseMessage message) {
         if (tokenCounter == null) {
             return 0;
         }
         try {
-            return tokenCounter.count(String.valueOf(message.getContent() != null ? message.getContent() : ""));
-        } catch (IllegalArgumentException | IllegalStateException ignored) {
+            Integer tokens = tokenCounter.count(message.getContent() == null ? "" : message.getContent());
+            return tokens == null ? 0 : tokens;
+        } catch (RuntimeException ignored) {
             return 0;
         }
     }
 
-    /**
-     * buildSaved.
-     * 
-     * @param before before
-     * @param after after
-     * @return the result
-     * @since 0.1.7
-     */
     private static ContextCompressionSaved buildSaved(ContextCompressionMetric before, ContextCompressionMetric after) {
         if (after == null) {
-            return nullValue();
+            return null;
         }
-        int savedMessages = before.getMessages() - after.getMessages();
-        int savedTokens = before.getTokens() - after.getTokens();
-        float savedPercent =
-            before.getTokens() > 0 ? Math.round((savedTokens * 1000.0f / before.getTokens())) / 10.0f : 0.0f;
-        return ContextCompressionSaved.builder().messages(savedMessages).tokens(savedTokens).percent(savedPercent)
-                .build();
+        int savedMessages = before.messages() - after.messages();
+        int savedTokens = before.tokens() - after.tokens();
+        double savedPercent = before.tokens() > 0 ? Math.round(savedTokens / (double) before.tokens() * 1000.0) / 10.0
+                : 0.0d;
+        return new ContextCompressionSaved(savedMessages, savedTokens, savedPercent);
     }
 
-    /**
-     * formatMetricForLog.
-     * 
-     * @param metric metric
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String formatMetricForLog(ContextCompressionMetric metric) {
-        if (metric == null) {
-            return nullValue();
-        }
-        return "messages=" + metric.getMessages() + " tokens=" + metric.getTokens() + " percent="
-                + metric.getContextPercent() + " time=" + metric.getTime();
-    }
-
-    /**
-     * contextPercent.
-     * 
-     * @param tokens tokens
-     * @param contextMax contextMax
-     * @return the result
-     * @since 0.1.7
-     */
     private static Integer contextPercent(int tokens, Integer contextMax) {
-        if (contextMax == null || contextMax <= 0) {
-            return nullValue();
+        if (contextMax == null || contextMax == 0) {
+            return null;
         }
-        return Math.max(0, Math.min(100, Math.round(tokens * 100.0f / contextMax)));
+        return Math.max(0, Math.min(100, (int) Math.round(tokens / (double) contextMax * 100.0)));
     }
 
-    /**
-     * compactNumber.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String compactNumber(Integer value) {
         if (value == null) {
             return "unknown";
         }
-        int absValue = Math.abs(value);
-        if (absValue >= 1_000_000) {
-            return stripTrailingZero(value / 1_000_000.0) + "m";
+        int absoluteValue = Math.abs(value);
+        if (absoluteValue >= 1_000_000) {
+            return String.format(Locale.ROOT, "%.1fm", value / 1_000_000.0d).replace(".0m", "m");
         }
-        if (absValue >= 1_000) {
-            return stripTrailingZero(value / 1_000.0) + "k";
+        if (absoluteValue >= 1_000) {
+            return String.format(Locale.ROOT, "%.1fk", value / 1_000.0d).replace(".0k", "k");
         }
         return String.valueOf(value);
     }
 
-    /**
-     * stripTrailingZero.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String stripTrailingZero(double value) {
-        String text = String.format(java.util.Locale.ROOT, "%.1f", value);
-        return text.endsWith(".0") ? text.substring(0, text.length() - 2) : text;
-    }
-
-    /**
-     * formatTime.
-     * 
-     * @param timestamp timestamp
-     * @return the result
-     * @since 0.1.7
-     */
     private static String formatTime(Double timestamp) {
         if (timestamp == null) {
-            return nullValue();
+            return null;
         }
-        long millis = (long) (timestamp * 1000);
-        return TIME_FORMATTER.format(Instant.ofEpochMilli(millis));
+        long millis = Math.round(timestamp * 1000.0d);
+        return DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+                .format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()));
     }
 
-    /**
-     * buildSummary.
-     * 
-     * @param status status
-     * @param before before
-     * @param after after
-     * @param saved saved
-     * @param reason reason
-     * @param messagesToModify messagesToModify
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String buildSummary(String status, ContextCompressionMetric before, ContextCompressionMetric after,
-            ContextCompressionSaved saved, String reason, List<Integer> messagesToModify) {
+    private String buildSummary(SummaryInput summaryInput) {
+        String status = summaryInput.status();
+        ContextCompressionMetric before = summaryInput.before();
+        ContextCompressionMetric after = summaryInput.after();
+        ContextCompressionSaved saved = summaryInput.saved();
         if ("started".equals(status)) {
-            return "Compressing " + before.getMessages() + " messages, ~" + compactNumber(before.getTokens())
-                    + " tokens";
+            return "Compressing " + before.messages() + " messages, ~" + compactNumber(before.tokens()) + " tokens";
         }
         if ("failed".equals(status)) {
-            return "Context processor failed; context remains ~" + compactNumber(before.getTokens()) + " tokens";
+            return "Context processor failed; context remains ~" + compactNumber(before.tokens()) + " tokens";
         }
         if (after == null || saved == null) {
-            return "Context processor skipped: " + reason;
+            return "Context processor skipped: " + summaryInput.reason();
         }
         if ("noop".equals(status)) {
-            return "Context unchanged at ~" + compactNumber(after.getTokens()) + " tokens " + "(saved "
-                    + String.format(java.util.Locale.ROOT, "%.1f", saved.getPercent()) + "%)";
+            return "Context unchanged at ~" + compactNumber(after.tokens()) + " tokens (saved "
+                    + String.format(Locale.ROOT, "%.1f", saved.percent()) + "%)";
         }
-        String modified = messagesToModify != null && !messagesToModify.isEmpty()
-                ? ", modified " + messagesToModify.size() + " messages"
-                : "";
-        return "Compressed " + before.getMessages() + " -> " + after.getMessages() + " messages, " + "~"
-                + compactNumber(before.getTokens()) + " -> ~" + compactNumber(after.getTokens()) + " tokens"
-                + ", saved ~" + compactNumber(saved.getTokens()) + " tokens ("
-                + String.format(java.util.Locale.ROOT, "%.1f", saved.getPercent()) + "%)" + modified;
+        List<Integer> messagesToModify = summaryInput.messagesToModify() == null ? List.of()
+                : summaryInput.messagesToModify();
+        String modified = messagesToModify.isEmpty() ? "" : ", modified " + messagesToModify.size() + " messages";
+        return "Compressed " + before.messages() + " -> " + after.messages() + " messages, ~"
+                + compactNumber(before.tokens()) + " -> ~" + compactNumber(after.tokens()) + " tokens, saved ~"
+                + compactNumber(saved.tokens()) + " tokens (" + String.format(Locale.ROOT, "%.1f", saved.percent())
+                + "%)" + modified;
     }
 
-    /**
-     * resolveModelName.
-     * 
-     * @param processor processor
-     * @param trigger trigger
-     * @param isForced isForced
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String resolveModelName(ContextProcessor processor, String trigger, boolean isForced) {
+    private static String resolveModelName(ContextProcessorStateInput.ContextProcessorPort processor, String trigger,
+                                           boolean force) {
         if (processor == null) {
             return "";
         }
-        Object config = processor.getConfig();
-        if (config == null) {
-            return "";
-        }
-        String modelFromNested = readStringProperty(readProperty(config, "model"), "modelName", "model");
-        if (!modelFromNested.isBlank()) {
-            return modelFromNested;
-        }
-        String model = readStringProperty(config, "modelName", "model");
-        return model != null ? model : "";
-    }
-
-    /**
-     * readProperty.
-     * 
-     * @param target target
-     * @param propertyName propertyName
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Object readProperty(Object target, String propertyName) {
-        if (target == null) {
-            return nullValue();
-        }
-        try {
-            return target.getClass().getMethod("get" + capitalize(propertyName)).invoke(target);
-        } catch (ReflectiveOperationException | SecurityException ignored) {
-            return nullValue();
-        }
-    }
-
-    /**
-     * readStringProperty.
-     * 
-     * @param target target
-     * @param propertyNames propertyNames
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String readStringProperty(Object target, String... propertyNames) {
-        for (String propertyName : propertyNames) {
-            Object value = readProperty(target, propertyName);
-            if (value instanceof String text && !text.isBlank()) {
-                return text;
+        Object config = readProperty(processor, "config");
+        Object modelConfig = readProperty(config, "model");
+        if (modelConfig != null) {
+            String fromModelName = readTextProperty(modelConfig, "modelName");
+            if (!fromModelName.isBlank()) {
+                return fromModelName;
+            }
+            String fromModel = readTextProperty(modelConfig, "model");
+            if (!fromModel.isBlank()) {
+                return fromModel;
             }
         }
-        return "";
-    }
-
-    /**
-     * capitalize.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String capitalize(String value) {
-        if (value == null || value.isEmpty()) {
-            return "";
+        String fromConfigModelName = readTextProperty(config, "modelName");
+        if (!fromConfigModelName.isBlank()) {
+            return fromConfigModelName;
         }
-        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
+        return readTextProperty(config, "model");
+    }
+
+    private static Object readProperty(Object target, String property) {
+        if (target == null) {
+            return null;
+        }
+        String getter = "get" + Character.toUpperCase(property.charAt(0)) + property.substring(1);
+        try {
+            Method method = target.getClass().getMethod(getter);
+            return method.invoke(target);
+        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignored) {
+            try {
+                Method method = target.getClass().getMethod(property);
+                return method.invoke(target);
+            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException ignoredAgain) {
+                return null;
+            }
+        }
+    }
+
+    private static String readTextProperty(Object target, String property) {
+        Object value = readProperty(target, property);
+        return value instanceof String text ? text : "";
+    }
+
+    private static Map<String, Object> statsMap(ContextStats stats) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total_messages", stats.getTotalMessages());
+        result.put("total_tokens", stats.getTotalTokens());
+        result.put("total_dialogues", stats.getTotalDialogues());
+        result.put("system_messages", stats.getSystemMessages());
+        result.put("user_messages", stats.getUserMessages());
+        result.put("assistant_messages", stats.getAssistantMessages());
+        result.put("tool_messages", stats.getToolMessages());
+        result.put("tools", stats.getTools());
+        result.put("system_message_tokens", stats.getSystemMessageTokens());
+        result.put("user_message_tokens", stats.getUserMessageTokens());
+        result.put("assistant_message_tokens", stats.getAssistantMessageTokens());
+        result.put("tool_message_tokens", stats.getToolMessageTokens());
+        result.put("tool_tokens", stats.getToolTokens());
+        return result;
     }
 
     /**
-     * nullValue.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Summary-building input DTO.
+     *
+     * <p>Mirrors Python's {@code _SummaryInput} in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
      */
-    private static <T> T nullValue() {
-        return null;
+    private record SummaryInput(String status, ContextCompressionMetric before, ContextCompressionMetric after,
+                                ContextCompressionSaved saved, String reason, List<Integer> messagesToModify) {
+    }
+
+    /**
+     * Token counter adapter.
+     *
+     * <p>Mirrors Python's {@code TokenCounter} dependency in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public interface TokenCounterPort {
+        Integer countMessages(List<BaseMessage> messages);
+
+        Integer count(Object content);
+    }
+
+    /**
+     * Callback adapter for compression-state events.
+     *
+     * <p>Mirrors Python's {@code lazy_callback_framework.trigger(...)} dependency in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public interface CallbackPort {
+        void trigger(String event, Object context, Object sessionRef, String sessionId, String contextId,
+                     ContextCompressionState state);
+    }
+
+    /**
+     * Session stream adapter.
+     *
+     * <p>Mirrors Python's {@code session.write_stream(...)} dependency in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public interface SessionStreamPort {
+        void writeStream(OutputSchema outputSchema);
+    }
+
+    /**
+     * Context compression metric DTO.
+     *
+     * <p>Mirrors Python's {@code ContextCompressionMetric} use in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public record ContextCompressionMetric(String time, int messages, int tokens, Integer contextPercent) {
+        public Map<String, Object> modelDump() {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("time", time);
+            result.put("messages", messages);
+            result.put("tokens", tokens);
+            result.put("context_percent", contextPercent);
+            return result;
+        }
+    }
+
+    /**
+     * Context compression saved-metric DTO.
+     *
+     * <p>Mirrors Python's {@code ContextCompressionSaved} use in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public record ContextCompressionSaved(int messages, int tokens, double percent) {
+        public Map<String, Object> modelDump() {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("messages", messages);
+            result.put("tokens", tokens);
+            result.put("percent", percent);
+            return result;
+        }
+    }
+
+    /**
+     * Context compression usage DTO.
+     *
+     * <p>Mirrors Python's {@code ContextCompressionUsage} use in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public record ContextCompressionUsage(int calls, int inputTokens, int outputTokens, int totalTokens,
+                                          int cacheTokens, double inputCost, double outputCost, double totalCost,
+                                          String modelName, List<Map<String, Object>> details) {
+        @SuppressWarnings("unchecked")
+        public static ContextCompressionUsage fromMap(Map<String, Object> usage) {
+            if (usage == null || usage.isEmpty()) {
+                return null;
+            }
+            return new ContextCompressionUsage(
+                    intValue(usage.get("calls")),
+                    intValue(usage.get("input_tokens")),
+                    intValue(usage.get("output_tokens")),
+                    intValue(usage.get("total_tokens")),
+                    intValue(usage.get("cache_tokens")),
+                    doubleValue(usage.get("input_cost")),
+                    doubleValue(usage.get("output_cost")),
+                    doubleValue(usage.get("total_cost")),
+                    usage.get("model_name") instanceof String text ? text : "",
+                    usage.get("details") instanceof List<?> list ? (List<Map<String, Object>>) list : List.of()
+            );
+        }
+
+        public Map<String, Object> modelDump() {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("calls", calls);
+            result.put("input_tokens", inputTokens);
+            result.put("output_tokens", outputTokens);
+            result.put("total_tokens", totalTokens);
+            result.put("cache_tokens", cacheTokens);
+            result.put("input_cost", inputCost);
+            result.put("output_cost", outputCost);
+            result.put("total_cost", totalCost);
+            result.put("model_name", modelName);
+            result.put("details", details);
+            return result;
+        }
+
+        private static int intValue(Object value) {
+            return value instanceof Number number ? number.intValue() : 0;
+        }
+
+        private static double doubleValue(Object value) {
+            return value instanceof Number number ? number.doubleValue() : 0.0d;
+        }
+    }
+
+    /**
+     * Context compression state DTO.
+     *
+     * <p>Mirrors Python's {@code ContextCompressionState} use in
+     * {@code openjiuwen/core/context_engine/context/processor_state_recorder.py}.</p>
+     */
+    public record ContextCompressionState(String type, String operationId, String status, String phase,
+                                          String processor, String model, ContextCompressionMetric before,
+                                          ContextCompressionMetric after, ContextStats statistic,
+                                          ContextCompressionSaved saved, ContextCompressionUsage compressionUsage,
+                                          Integer durationMs, Integer contextMax, String summary,
+                                          String compactSummary, String error) {
+        public Map<String, Object> modelDump() {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("type", type);
+            result.put("operation_id", operationId);
+            result.put("status", status);
+            result.put("phase", phase);
+            result.put("processor", processor);
+            result.put("model", model);
+            result.put("before", before == null ? null : before.modelDump());
+            result.put("after", after == null ? null : after.modelDump());
+            result.put("statistic", statsMap(statistic));
+            result.put("saved", saved == null ? null : saved.modelDump());
+            result.put("compression_usage", compressionUsage == null ? null : compressionUsage.modelDump());
+            result.put("duration_ms", durationMs);
+            result.put("context_max", contextMax);
+            result.put("summary", summary);
+            result.put("compact_summary", compactSummary);
+            result.put("error", error);
+            return result;
+        }
     }
 }

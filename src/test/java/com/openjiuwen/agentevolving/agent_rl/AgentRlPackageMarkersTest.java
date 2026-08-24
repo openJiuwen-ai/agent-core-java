@@ -2,14 +2,14 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl;
+package com.openjiuwen.agentevolving.agent_rl;
 
-import com.openjiuwen.agent_evolving.agent_rl.offline.OfflineRlPackage;
-import com.openjiuwen.agent_evolving.agent_rl.offline.coordinator.OfflineCoordinatorPackage;
-import com.openjiuwen.agent_evolving.agent_rl.offline.store.OfflineStorePackage;
-import com.openjiuwen.agent_evolving.agent_rl.online.OnlineRlPackage;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.OnlineGatewayPackage;
-import com.openjiuwen.agent_evolving.agent_rl.online.gateway.app.OnlineGatewayAppPackage;
+import com.openjiuwen.agentevolving.agent_rl.offline.OfflineRlPackage;
+import com.openjiuwen.agentevolving.agent_rl.offline.coordinator.OfflineCoordinatorPackage;
+import com.openjiuwen.agentevolving.agent_rl.offline.store.OfflineStorePackage;
+import com.openjiuwen.agentevolving.agent_rl.online.OnlineRlPackage;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.OnlineGatewayPackage;
+import com.openjiuwen.agentevolving.agent_rl.online.gateway.app.OnlineGatewayAppPackage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

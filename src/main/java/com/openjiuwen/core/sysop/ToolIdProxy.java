@@ -5,15 +5,12 @@
 package com.openjiuwen.core.sysop;
 
 /**
- * Backward-compatible helper for generating system operation tool IDs.
+ * Helper for generating tool IDs by operation type and method name.
  *
  * <p>Mirrors Python's {@code ToolIdProxy} in
  * {@code openjiuwen/core/sys_operation/sys_operation.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.ToolIdProxy}.
  */
-@Deprecated(since = "0.1.14", forRemoval = false)
-public class ToolIdProxy {
+public final class ToolIdProxy {
 
     private final String cardId;
     private final String opType;

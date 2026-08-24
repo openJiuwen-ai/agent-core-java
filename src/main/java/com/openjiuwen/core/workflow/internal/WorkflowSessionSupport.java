@@ -192,11 +192,40 @@ public final class WorkflowSessionSupport {
         }
     }
 
+    public static String workflowId(BaseSession session) {
+        if (session instanceof WorkflowRuntimeSession runtimeSession) {
+            return runtimeSession.workflowId();
+        }
+        if (session instanceof com.openjiuwen.core.session.internal.WorkflowSession workflowSession) {
+            return workflowSession.workflowId();
+        }
+        if (session instanceof com.openjiuwen.core.session.internal.NodeSession nodeSession) {
+            return nodeSession.workflowId();
+        }
+        Object value = invokeOptional(session, "workflowId");
+        return value == InvokeResult.NOT_FOUND || value == null ? "" : String.valueOf(value);
+    }
+
+    public static BaseSession parent(BaseSession session) {
+        if (session instanceof WorkflowRuntimeSession runtimeSession) {
+            return runtimeSession.parent();
+        }
+        if (session instanceof com.openjiuwen.core.session.internal.WorkflowSession workflowSession) {
+            return workflowSession.parent();
+        }
+        if (session instanceof com.openjiuwen.core.session.internal.NodeSession nodeSession) {
+            return nodeSession.parent();
+        }
+        Object reflected = invokeOptional(session, "parent");
+        return reflected instanceof BaseSession baseSession ? baseSession : null;
+    }
+
     private static String executionKey(BaseSession session) {
-        if (session == null || session.sessionId() == null || session.workflowId() == null) {
+        String workflowId = workflowId(session);
+        if (session == null || session.sessionId() == null || workflowId == null) {
             return null;
         }
-        return session.sessionId() + '\u0000' + session.workflowId();
+        return session.sessionId() + '\u0000' + workflowId;
     }
 
     public static String componentId(BaseSession session) {
@@ -235,11 +264,8 @@ public final class WorkflowSessionSupport {
     }
 
     public static BaseSession parentOrSelf(BaseSession session) {
-        if (session instanceof WorkflowRuntimeSession runtimeSession && runtimeSession.parent() != null) {
-            return runtimeSession.parent();
-        }
-        Object reflected = invokeOptional(session, "parent");
-        return reflected instanceof BaseSession baseSession ? baseSession : session;
+        BaseSession parent = parent(session);
+        return parent != null ? parent : session;
     }
 
     private static Object invokeOptional(Object target, String methodName, Object... args) {

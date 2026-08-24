@@ -6,6 +6,7 @@ package com.openjiuwen.harness.rails.memory;
 
 import com.openjiuwen.core.memory.external.MemoryProvider;
 import com.openjiuwen.core.singleagent.rail.RunKind;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import org.junit.jupiter.api.Test;
 
@@ -150,7 +151,7 @@ class ExternalMemoryRailPythonParityTest {
 
     private static ExternalMemoryRail initializedRail(RecordingProvider provider) {
         ExternalMemoryRail rail = new ExternalMemoryRail(provider);
-        rail.init(null);
+        rail.init((DeepAgent) null);
         return rail;
     }
 

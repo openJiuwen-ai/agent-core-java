@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.FileSystemItem
+# com.openjiuwen.core.sysop.result.FileSystemItem
 
 ## 类 FileSystemItem
 

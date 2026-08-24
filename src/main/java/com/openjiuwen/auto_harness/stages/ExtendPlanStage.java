@@ -17,7 +17,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExtensionDesignArtif
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.Gap;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.GapAnalysisArtifact;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

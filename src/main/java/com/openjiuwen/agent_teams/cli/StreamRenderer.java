@@ -269,7 +269,7 @@ public final class StreamRenderer {
     }
 
     /**
-     * Testable source adapter for {@link Runner#runAgentTeamStreaming(Object, Object, Object, com.openjiuwen.core.context_engine.ModelContext, java.util.List, Map)}.
+     * Testable source adapter for {@link Runner#runAgentTeamStreaming(Object, Object, Object, com.openjiuwen.core.context.ModelContext, java.util.List, Map)}.
      *
      * <p>Mirrors Python's call to {@code Runner.run_agent_team_streaming} in
      * {@code openjiuwen/agent_teams/cli/stream_renderer.py}.</p>

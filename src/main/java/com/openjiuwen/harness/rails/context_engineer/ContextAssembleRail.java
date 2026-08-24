@@ -8,8 +8,8 @@ import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.core.singleagent.rail.RunKind;
-import com.openjiuwen.core.sys_operation.SysOperation;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.ContextSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.prompts.sections.WorkspaceSection;
@@ -64,7 +64,14 @@ public class ContextAssembleRail extends DeepAgentRail {
         if (systemPromptBuilder == null) {
             return;
         }
-        Workspace workspace = normalizeWorkspace(getWorkspace(), language());
+        Object rawWorkspace = getWorkspace();
+        if (rawWorkspace == null
+                || (rawWorkspace instanceof CharSequence text && text.toString().isBlank())) {
+            systemPromptBuilder.removeSection(SectionName.WORKSPACE);
+            systemPromptBuilder.removeSection(SectionName.CONTEXT);
+            return;
+        }
+        Workspace workspace = normalizeWorkspace(rawWorkspace, language());
         if (workspace == null) {
             systemPromptBuilder.removeSection(SectionName.WORKSPACE);
             systemPromptBuilder.removeSection(SectionName.CONTEXT);

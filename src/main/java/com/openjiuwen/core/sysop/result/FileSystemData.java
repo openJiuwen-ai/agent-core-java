@@ -11,18 +11,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Backward-compatible file-system data payload for moved sys-operation results.
- *
- * <p>Mirrors Python's {@code FileSystemData} in
- * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.result.FileSystemData}.
+ * Mirrors Python's {@code FileSystemData} in
+ * {@code openjiuwen/core/sys_operation/result/fs_operation_result.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Deprecated(since = "0.1.14", forRemoval = false)
 public class FileSystemData {
 
     private int totalCount;

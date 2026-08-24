@@ -2,11 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.optimizer;
+package com.openjiuwen.agentevolving.agent_rl.optimizer;
 
-import com.openjiuwen.agent_evolving.agent_rl.config.RLConfig;
-import com.openjiuwen.agent_evolving.agent_rl.config.TrainingConfig;
-import com.openjiuwen.agent_evolving.agent_rl.online.scheduler.OnlineTrainingScheduler;
+import com.openjiuwen.agentevolving.agent_rl.config.RLConfig;
+import com.openjiuwen.agentevolving.agent_rl.config.TrainingConfig;
+import com.openjiuwen.agentevolving.agent_rl.online.scheduler.OnlineTrainingScheduler;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

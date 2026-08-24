@@ -4,11 +4,12 @@
 
 package com.openjiuwen.core.singleagent;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -69,6 +70,12 @@ public class ControllerAgent extends BaseAgent {
     }
 
     @Override
+    public Object invoke(Object inputs, AgentSession session) {
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession).toCompletableFuture().join();
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
         if (controller == null) {
@@ -85,6 +92,12 @@ public class ControllerAgent extends BaseAgent {
             return (Iterator<Object>) iterable.iterator();
         }
         return List.of(result).iterator();
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
     }
 
     public CompletionStage<Void> releaseSession(String sessionId) {

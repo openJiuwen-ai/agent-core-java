@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.agent_teams.AgentTeamI18n;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.ConfiguredTeamBackend;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamAgentSpec;
@@ -32,6 +33,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -41,6 +44,16 @@ import org.junit.jupiter.api.Test;
  * {@code openjiuwen/agent_teams/agent/coordination/handlers/task_board.py}.</p>
  */
 class TaskBoardHandlerTest {
+
+    @BeforeEach
+    void pinChineseI18n() {
+        AgentTeamI18n.setLanguage("cn");
+    }
+
+    @AfterEach
+    void restoreI18n() {
+        AgentTeamI18n.setLanguage(AgentTeamI18n.DEFAULT_LANGUAGE);
+    }
 
     @Test
     void callbackMapPreservesPythonTaskBoardOrder() {

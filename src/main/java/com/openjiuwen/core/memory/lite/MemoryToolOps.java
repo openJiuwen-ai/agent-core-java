@@ -5,7 +5,7 @@
 package com.openjiuwen.core.memory.lite;
 
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.lang.reflect.Field;

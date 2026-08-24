@@ -18,7 +18,7 @@ import java.util.UUID;
  * <p>Mirrors Python's {@code Session} in
  * {@code openjiuwen/core/session/agent_team.py}.</p>
  */
-public class AgentTeamSession implements AgentSessionApi, AgentSessionLifecycle {
+public class AgentTeamSession implements AgentSessionApi {
 
     private final String sessionId;
     private final String teamId;

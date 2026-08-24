@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.tools.mobile_gui.rails;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.tools.mobile_gui.MobileGuiRuntimeSettings;

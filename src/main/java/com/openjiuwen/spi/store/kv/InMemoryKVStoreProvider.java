@@ -119,5 +119,10 @@ public final class InMemoryKVStoreProvider implements KVStoreProvider {
                 return results;
             });
         }
+
+        @Override
+        public void close() {
+            delegate.close();
+        }
     }
 }

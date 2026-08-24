@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow.components;
 
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.NodeSessionApi;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,6 +36,6 @@ class WorkflowComponentsPackageTest {
         assertTrue(WorkflowComponentsPackage.exports("Session"));
         assertFalse(WorkflowComponentsPackage.exports("Workflow"));
         assertEquals("openjiuwen.core.session.node.Session", WorkflowComponentsPackage.sourceFor("Session"));
-        assertSame(Session.class, WorkflowComponentsPackage.javaTypeFor("Session"));
+        assertSame(NodeSessionApi.class, WorkflowComponentsPackage.javaTypeFor("Session"));
     }
 }

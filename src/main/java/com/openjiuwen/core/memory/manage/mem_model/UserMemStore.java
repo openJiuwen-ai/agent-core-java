@@ -13,6 +13,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -275,7 +276,7 @@ public class UserMemStore {
         for (String field : fields) {
             key.append(SEPARATOR).append(field);
         }
-        return key.toString();
+        return TenantKVStoreKeyResolver.resolveKey(key.toString());
     }
 
     private CompletableFuture<Void> innerDelete(String userId, String scopeId, String memId) {

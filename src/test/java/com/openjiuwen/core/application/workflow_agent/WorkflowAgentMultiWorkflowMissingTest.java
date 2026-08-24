@@ -6,7 +6,7 @@ package com.openjiuwen.core.application.workflow_agent;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.constants.TaskType;
-import com.openjiuwen.core.context_engine.ContextEngine;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.modules.EventQueue;
@@ -288,7 +288,7 @@ class WorkflowAgentMultiWorkflowMissingTest {
 
         @Override
         protected Iterator<?> runWorkflowStreaming(Object workflow, Object inputs, Object workflowSession,
-                                                   com.openjiuwen.core.context_engine.ModelContext context) {
+                                                   com.openjiuwen.core.context.ModelContext context) {
             String workflowId = workflow.toString();
             if (inputs instanceof InteractiveInput interactiveInput) {
                 Object answer = interactiveInput.getUserInputs().values().iterator().next();

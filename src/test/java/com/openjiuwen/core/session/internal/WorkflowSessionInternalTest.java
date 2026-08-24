@@ -22,8 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 /**
  * Focused tests for internal workflow sessions.
  *
- * <p>Mirrors Python's {@code WorkflowSession}, {@code NodeSession}, and
- * {@code SubWorkflowSession} in
+ * <p>Mirrors Python's {@code WorkflowSession} and {@code NodeSession} in
  * {@code openjiuwen/core/session/internal/workflow.py}.</p>
  */
 class WorkflowSessionInternalTest {
@@ -97,20 +96,18 @@ class WorkflowSessionInternalTest {
     }
 
     @Test
-    void subWorkflowSessionMirrorsPythonNodeSessionConstructor() {
+    void nestedWorkflowSessionKeepsRootIdAndIncrementsDepth() {
         WorkflowSession root =
                 new WorkflowSession("main-workflow", null, "session-a", (WorkflowCommitState) null, (Object) null);
-        NodeSession node = new NodeSession(root, "node-a", "llm");
 
-        SubWorkflowSession subWorkflow = new SubWorkflowSession(node, "sub-workflow");
+        WorkflowSession nested = WorkflowSession.nested(root, "sub-workflow");
 
-        assertSame(root, subWorkflow.parent());
-        assertEquals("node-a", subWorkflow.nodeId());
-        assertEquals("llm", subWorkflow.nodeType());
-        assertEquals("sub-workflow", subWorkflow.workflowId());
-        assertEquals("main-workflow", subWorkflow.mainWorkflowId());
-        assertEquals(1, subWorkflow.workflowNestingDepth());
-        assertNull(subWorkflow.actorManager());
+        assertSame(root, nested.parent());
+        assertEquals("sub-workflow", nested.workflowId());
+        assertEquals("main-workflow", nested.mainWorkflowId());
+        assertEquals(1, nested.workflowNestingDepth());
+        assertEquals("session-a", nested.sessionId());
+        assertNull(nested.actorManager());
     }
 
     private static final class ParentSession extends BaseSession {

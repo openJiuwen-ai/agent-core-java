@@ -4,185 +4,188 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
-import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.context.ContextUtils;
-import com.openjiuwen.core.context.context.SessionMemoryManager;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.processor.ContextEvent;
 import com.openjiuwen.core.context.processor.ContextProcessor;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Clear stale tool results while keeping recent ones per tool.
+ * Clears stale compactable tool results while keeping each tool's recent tail.
+ *
+ * <p>Mirrors Python's {@code MicroCompactProcessor} in
+ * {@code openjiuwen/core/context_engine/processor/compressor/micro_compact_processor.py}.</p>
  */
 public class MicroCompactProcessor extends ContextProcessor {
-    /**
-     * Auto-generated for codecheck compliance.
-     */
+    public static final String MICRO_COMPACT_CLEARED_MARKER =
+            MicroCompactProcessorConfig.DEFAULT_CLEARED_MARKER;
+
+    static {
+        ContextEngine.registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class);
+    }
+
+    private final MicroCompactProcessorConfig config;
+
+    public MicroCompactProcessor(Object config) {
+        this(asConfig(config));
+    }
+
     public MicroCompactProcessor(MicroCompactProcessorConfig config) {
-        super(config);
-        config.validate();
+        super(config == null ? new MicroCompactProcessorConfig() : config);
+        this.config = config == null ? new MicroCompactProcessorConfig() : config;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
+    public MicroCompactProcessorConfig getConfig() {
+        return config;
+    }
+
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
-        if (messagesToAdd != null) {
-            allMessages.addAll(messagesToAdd);
-        }
+    public CompletionStage<Boolean> triggerAddMessages(SessionModelContext context, List<BaseMessage> messages,
+                                                       Map<String, Object> kwargs) {
+        List<BaseMessage> allMessages = concatenate(context == null ? List.of() : context.getMessages(), messages);
         if (!apiRound(allMessages)) {
-            return false;
+            return CompletableFuture.completedFuture(false);
         }
-        return hasAnyToolExceedThreshold(allMessages);
+        return CompletableFuture.completedFuture(hasAnyToolExceedThreshold(allMessages));
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
-        MicroCompactProcessorConfig config = getConfig();
-        List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
-        if (messagesToAdd != null) {
-            allMessages.addAll(messagesToAdd);
-        }
-
-        List<Integer> indicesToClear = collectFlatIndicesForCompact(allMessages, false);
+    public CompletionStage<SessionModelContext.ProcessResult> onAddMessages(SessionModelContext context,
+                                                                            List<BaseMessage> messages,
+                                                                            boolean force,
+                                                                            Map<String, Object> kwargs) {
+        List<BaseMessage> incoming = messages == null ? List.of() : messages;
+        List<BaseMessage> allMessages = concatenate(context == null ? List.of() : context.getMessages(), incoming);
+        List<Integer> indicesToClear = collectFlatIndicesForCompact(allMessages, force || kwargsForce(kwargs));
         if (indicesToClear.isEmpty()) {
-            return ProcessResult.ofMessages(null, messagesToAdd);
+            return CompletableFuture.completedFuture(
+                    new SessionModelContext.ProcessResult(null, incoming, null));
         }
 
-        List<BaseMessage> updatedMessages = new ArrayList<>(allMessages);
         List<Integer> modifiedIndices = new ArrayList<>();
-        String clearedMarker = config.getClearedMarker();
         for (Integer index : indicesToClear) {
-            BaseMessage message = updatedMessages.get(index);
+            if (index == null || index < 0 || index >= allMessages.size()) {
+                continue;
+            }
+            BaseMessage message = allMessages.get(index);
             if (!(message instanceof ToolMessage toolMessage)) {
                 continue;
             }
-            if (clearedMarker.equals(toolMessage.getContentAsString())) {
+            if (config.getClearedMarker().equals(message.getContentAsString())) {
                 continue;
             }
-            ToolMessage cleared = new ToolMessage();
-            cleared.setRole(toolMessage.getRole());
-            cleared.setName(toolMessage.getName());
-            cleared.setToolCallId(toolMessage.getToolCallId());
-            cleared.setMetadata(toolMessage.getMetadata() == null
-                    ? new LinkedHashMap<>()
-                    : new LinkedHashMap<>(toolMessage.getMetadata()));
-            cleared.setContent(clearedMarker);
-            updatedMessages.set(index, cleared);
+            allMessages.set(index, copyClearedToolMessage(toolMessage));
             modifiedIndices.add(index);
         }
 
-        context.setMessages(updatedMessages);
-        return ProcessResult.ofMessages(
-                ContextEvent.builder()
-                        .eventType(processorType())
-                        .messagesToModify(modifiedIndices)
-                        .build(),
-                List.of());
+        if (modifiedIndices.isEmpty()) {
+            return CompletableFuture.completedFuture(
+                    new SessionModelContext.ProcessResult(null, incoming, null));
+        }
+        if (context != null) {
+            context.setMessages(allMessages, true);
+        }
+        ContextEvent event = new ContextEvent(processorType(), modifiedIndices, "", null);
+        return CompletableFuture.completedFuture(new SessionModelContext.ProcessResult(event, List.of(), null));
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void loadState(Map<String, Object> state) {
-        // stateless
+        // Python implementation is stateless.
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> saveState() {
-        return Map.of();
+        return new LinkedHashMap<>();
     }
 
-    @Override
-    public boolean triggerGetContextWindow(ModelContext context, com.openjiuwen.core.context.ContextWindow contextWindow) {
+    Map<String, List<Integer>> collectCompactableIndicesByTool(List<BaseMessage> messages) {
+        Set<String> allowedNames = new HashSet<>(config.getCompactableToolNames());
+        Map<String, List<Integer>> result = new LinkedHashMap<>();
+        List<BaseMessage> safeMessages = messages == null ? List.of() : messages;
+        for (int index = 0; index < safeMessages.size(); index++) {
+            BaseMessage message = safeMessages.get(index);
+            if (!(message instanceof ToolMessage)) {
+                continue;
+            }
+            if (config.getClearedMarker().equals(message.getContentAsString())) {
+                continue;
+            }
+            String toolName = ContextUtils.resolveToolNameFromMessage(message, safeMessages).orElse(null);
+            if (toolName != null && allowedNames.contains(toolName)) {
+                result.computeIfAbsent(toolName, ignored -> new ArrayList<>()).add(index);
+            }
+        }
+        return result;
+    }
+
+    boolean hasAnyToolExceedThreshold(List<BaseMessage> messages) {
+        int threshold = config.getTriggerThreshold() + config.getKeepRecentPerTool();
+        for (List<Integer> indices : collectCompactableIndicesByTool(messages).values()) {
+            if (indices.size() > threshold) {
+                return true;
+            }
+        }
         return false;
     }
 
-    @Override
-    public ProcessResult onGetContextWindow(ModelContext context, com.openjiuwen.core.context.ContextWindow contextWindow) {
-        return ProcessResult.ofContextWindow(null, contextWindow);
-    }
-
-    private boolean hasAnyToolExceedThreshold(List<BaseMessage> messages) {
-        MicroCompactProcessorConfig config = getConfig();
-        Map<String, List<Integer>> grouped = collectCompactableIndicesByTool(messages);
-        return grouped.values().stream().anyMatch(indices ->
-                indices.size() > config.getTriggerThreshold() + config.getKeepRecentPerTool());
-    }
-
-    private List<Integer> collectFlatIndicesForCompact(List<BaseMessage> messages, boolean isForce) {
-        MicroCompactProcessorConfig config = getConfig();
+    List<Integer> collectFlatIndicesForCompact(List<BaseMessage> messages, boolean force) {
         Map<String, List<Integer>> grouped = collectCompactableIndicesByTool(messages);
         List<Integer> result = new ArrayList<>();
         for (List<Integer> indices : grouped.values()) {
-            int threshold = isForce ? config.getKeepRecentPerTool()
+            int threshold = force
+                    ? config.getKeepRecentPerTool()
                     : config.getTriggerThreshold() + config.getKeepRecentPerTool();
-            if (indices.size() > threshold) {
-                if (config.getKeepRecentPerTool() > 0) {
-                    result.addAll(indices.subList(0, indices.size() - config.getKeepRecentPerTool()));
-                } else {
-                    result.addAll(indices);
-                }
+            if (indices.size() <= threshold) {
+                continue;
+            }
+            int keep = config.getKeepRecentPerTool();
+            if (keep > 0) {
+                result.addAll(indices.subList(0, indices.size() - keep));
+            } else {
+                result.addAll(indices);
             }
         }
         return result;
     }
 
-    private Map<String, List<Integer>> collectCompactableIndicesByTool(List<BaseMessage> messages) {
-        MicroCompactProcessorConfig config = getConfig();
-        Map<String, List<Integer>> result = new LinkedHashMap<>();
-        for (int index = 0; index < messages.size(); index++) {
-            BaseMessage message = messages.get(index);
-            if (!(message instanceof ToolMessage toolMessage)) {
-                continue;
-            }
-            if (config.getClearedMarker().equals(toolMessage.getContentAsString())) {
-                continue;
-            }
-            String toolName = ContextUtils.resolveToolNameFromMessage(toolMessage, messages);
-            if (toolName != null && config.getCompactableToolNames().contains(toolName)) {
-                result.computeIfAbsent(toolName, key -> new ArrayList<>()).add(index);
-            }
-        }
+    private ToolMessage copyClearedToolMessage(ToolMessage source) {
+        ToolMessage cleared = new ToolMessage(config.getClearedMarker(), source.getToolCallId(), source.getName());
+        cleared.setMetadata(source.getMetadata() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(source.getMetadata()));
+        return cleared;
+    }
+
+    private static List<BaseMessage> concatenate(List<BaseMessage> left, List<BaseMessage> right) {
+        List<BaseMessage> result = new ArrayList<>(left == null ? List.of() : left);
+        result.addAll(right == null ? List.of() : right);
         return result;
     }
 
-    private static boolean apiRound(List<BaseMessage> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return false;
+    private static boolean kwargsForce(Map<String, Object> kwargs) {
+        Object value = kwargs == null ? null : kwargs.get("force");
+        return Boolean.TRUE.equals(value);
+    }
+
+    private static MicroCompactProcessorConfig asConfig(Object config) {
+        if (config == null) {
+            return new MicroCompactProcessorConfig();
         }
-        List<int[]> rounds = SessionMemoryManager.groupCompletedApiRounds(messages);
-        if (rounds.isEmpty()) {
-            return false;
+        if (config instanceof MicroCompactProcessorConfig microCompactConfig) {
+            return microCompactConfig;
         }
-        int[] last = rounds.get(rounds.size() - 1);
-        return last.length > 1 && last[1] == messages.size();
+        throw new IllegalArgumentException("MicroCompactProcessor requires MicroCompactProcessorConfig");
     }
 }

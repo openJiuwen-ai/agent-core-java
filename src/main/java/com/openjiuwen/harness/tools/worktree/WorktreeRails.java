@@ -8,8 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.sys_operation.Cwd;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.core.sysop.Cwd;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
@@ -87,9 +87,10 @@ public final class WorktreeRails {
             WorktreeSessionContext.initSessionState();
 
             String agentId = agent == null || agent.getCard() == null ? null : agent.getCard().getId();
+            String language = resolveLanguage(agent);
             tools = List.of(
-                    new EnterWorktreeTool(manager, "cn", agentId),
-                    new ExitWorktreeTool(manager, "cn", agentId)
+                    new EnterWorktreeTool(manager, language, agentId),
+                    new ExitWorktreeTool(manager, language, agentId)
             );
             for (Tool tool : tools) {
                 Runner.resourceMgr().addTool(tool);
@@ -149,6 +150,14 @@ public final class WorktreeRails {
             update.put(SESSION_STATE_KEY, current == null ? null : JSON.convertValue(current, Map.class));
             update.put(DEFAULT_WORKTREE_NAME_KEY, WorktreeSessionContext.getDefaultWorktreeName());
             session.updateState(update);
+        }
+
+        private static String resolveLanguage(DeepAgent agent) {
+            if (agent == null || agent.deepConfig() == null) {
+                return "cn";
+            }
+            String language = agent.deepConfig().getLanguage();
+            return language == null || language.isBlank() ? "cn" : language;
         }
 
         private static AgentSessionApi sessionFrom(CallbackContext ctx) {

@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.rails.subagent;
 
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SessionToolsSection;
 import com.openjiuwen.harness.prompts.sections.TaskToolSection;
 import com.openjiuwen.harness.rails.CallbackContext;
@@ -50,15 +50,16 @@ public class SubagentRail extends DeepAgentRail {
     @Override
     public void init(DeepAgent agent) {
         super.init(agent);
-        if (agent == null || agent.deepConfig() == null || agent.deepConfig().getSubagents().isEmpty()) {
+        if (agent == null || agent.deepConfig() == null || agent.getSubagents().isEmpty()) {
             return;
         }
         language = agent.deepConfig().getLanguage();
-        availableAgentsDescription = buildAvailableAgentsDescription(new ArrayList<>(agent.deepConfig().getSubagents().values()));
+        availableAgentsDescription = buildAvailableAgentsDescription(new ArrayList<>(agent.getSubagents().values()));
         registeredToolNames.clear();
         if (enableAsyncSubagent) {
             toolkit = new EmptySessionToolkit();
-            agent.setSessionToolkit(toolkit);
+            // DeepAgent.setSessionToolkit only accepts harness.tools.SessionToolkit.
+            agent.setSessionToolkit(new com.openjiuwen.harness.tools.SessionToolkit());
             registeredToolNames.add("sessions_list");
             registeredToolNames.add("sessions_spawn");
             registeredToolNames.add("sessions_cancel");

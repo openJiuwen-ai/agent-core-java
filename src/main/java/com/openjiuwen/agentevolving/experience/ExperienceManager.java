@@ -6,12 +6,12 @@ package com.openjiuwen.agentevolving.experience;
 
 import com.openjiuwen.agentevolving.ApplyResult;
 import com.openjiuwen.agentevolving.Protocols;
-import com.openjiuwen.agent_evolving.UpdateExecution;
-import com.openjiuwen.agent_evolving.UpdateValue;
+import com.openjiuwen.agentevolving.UpdateExecution;
+import com.openjiuwen.agentevolving.UpdateValue;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionLog;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
+import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.operator.Operator;
@@ -226,25 +226,7 @@ public class ExperienceManager implements OnlineEvolutionOrchestrator.Experience
             Map<String, ? extends Operator> operators,
             Map<UpdateKey, ?> updates
     ) {
-        List<com.openjiuwen.agent_evolving.ApplyResult> rawResults = UpdateExecution.executeUpdates(operators, updates);
-        List<ApplyResult> results = new ArrayList<>();
-        for (com.openjiuwen.agent_evolving.ApplyResult r : rawResults) {
-            results.add(ApplyResult.builder()
-                    .operatorId(r.getOperatorId())
-                    .target(r.getTarget())
-                    .applied(r.isApplied())
-                    .mode(r.getMode())
-                    .effect(r.getEffect())
-                    .value(r.getValue())
-                    .records(r.getRecords())
-                    .changeType(r.getChangeType())
-                    .lifecycleStage(r.getLifecycleStage())
-                    .pendingChangeId(r.getPendingChangeId())
-                    .errors(r.getErrors())
-                    .metadata(r.getMetadata())
-                    .build());
-        }
-        return results;
+        return UpdateExecution.executeUpdates(operators, updates);
     }
 
     @Override

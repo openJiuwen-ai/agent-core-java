@@ -5,8 +5,7 @@
 package com.openjiuwen.core.session.constants;
 
 /**
- * Mirrors Python's constant module in
- * {@code openjiuwen/core/session/constants.py}.
+ * SessionConstants
  */
 public final class SessionConstants {
     public static final String WORKFLOW_EXECUTE_TIMEOUT = "_execute_timeout";

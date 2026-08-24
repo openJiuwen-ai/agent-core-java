@@ -12,6 +12,7 @@ import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.checkpointer.CheckpointerProvider;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -194,7 +195,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
             return false;
         }
 
-        return !redisStore.getByPrefix(sessionId + ":").join().isEmpty();
+        return !redisStore.getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).join().isEmpty();
     }
 
     /**
@@ -212,7 +213,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
         if (agentId != null) {
             agentStorage.clear(agentId, sessionId).join();
         } else {
-            redisStore.deleteByPrefix(sessionId + ":", 500).join();
+            redisStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":"), 500).join();
         }
     }
 
@@ -267,7 +268,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
     }
 
     private String getWorkflowId(BaseSession session) {
-        String workflowId = session.workflowId();
+        String workflowId = Checkpointer.workflowId(session);
         return workflowId == null || workflowId.isBlank() ? session.sessionId() : workflowId;
     }
 
@@ -289,6 +290,19 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
 
         Provider(JedisClusterFactory jedisClusterFactory) {
             this.jedisClusterFactory = jedisClusterFactory;
+        }
+
+        static final String TYPE_NAME = "redis";
+        static final String LEGACY_TYPE_NAME = "redis_checkpointer_cluster";
+
+        @Override
+        public String typeName() {
+            return TYPE_NAME;
+        }
+
+        @Override
+        public List<String> aliases() {
+            return List.of(LEGACY_TYPE_NAME);
         }
 
         @Override

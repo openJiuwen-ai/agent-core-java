@@ -26,9 +26,11 @@ import java.util.concurrent.CancellationException;
  * Implements the {@link RemoteClient} interface using message queue transport
  * for distributed agent communication. Supports both synchronous invocation
  * and streaming response modes.
- * 
+ *
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client}.
  */
+@Deprecated(since = "0.1.14")
 public class MqRemoteClient implements RemoteClient {
     private static final Logger logger = LoggerFactory.getLogger(MqRemoteClient.class);
 

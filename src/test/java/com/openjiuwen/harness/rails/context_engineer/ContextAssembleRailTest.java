@@ -9,7 +9,7 @@ import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
@@ -140,6 +140,9 @@ class ContextAssembleRailTest {
         DeepAgent agent = new DeepAgent();
         DeepAgentConfig config = new DeepAgentConfig();
         config.setWorkspace(workspace);
+        if (workspace == null) {
+            config.setAutoCreateWorkspace(false);
+        }
         agent.configure(config);
         return agent;
     }

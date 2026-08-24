@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.tool;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,6 +24,9 @@ public class ToolCard extends BaseCard {
 
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> properties = new LinkedHashMap<>();
+    private boolean isParallelSafe = true;
+    private boolean isStateless;
+    private boolean isIdempotent;
 
     public ToolCard() {
         super();
@@ -52,7 +56,17 @@ public class ToolCard extends BaseCard {
     }
 
     public void setInputParams(Map<String, Object> inputParams) {
-        this.inputParams = inputParams != null ? new LinkedHashMap<>(inputParams) : new LinkedHashMap<>();
+        // Prefer caller reference when the map is already mutable (Python assigns directly).
+        // Copy unmodifiable maps (e.g. Map.of) so getters remain mutable per ToolCard instance.
+        if (inputParams == null) {
+            this.inputParams = new LinkedHashMap<>();
+            return;
+        }
+        if (inputParams instanceof LinkedHashMap || inputParams instanceof HashMap) {
+            this.inputParams = inputParams;
+            return;
+        }
+        this.inputParams = new LinkedHashMap<>(inputParams);
     }
 
     public Map<String, Object> getProperties() {
@@ -60,7 +74,39 @@ public class ToolCard extends BaseCard {
     }
 
     public void setProperties(Map<String, Object> properties) {
-        this.properties = properties != null ? new LinkedHashMap<>(properties) : new LinkedHashMap<>();
+        if (properties == null) {
+            this.properties = new LinkedHashMap<>();
+            return;
+        }
+        if (properties instanceof LinkedHashMap || properties instanceof HashMap) {
+            this.properties = properties;
+            return;
+        }
+        this.properties = new LinkedHashMap<>(properties);
+    }
+
+    public boolean isParallelSafe() {
+        return isParallelSafe;
+    }
+
+    public void setParallelSafe(boolean isParallelSafe) {
+        this.isParallelSafe = isParallelSafe;
+    }
+
+    public boolean isStateless() {
+        return isStateless;
+    }
+
+    public void setStateless(boolean isStateless) {
+        this.isStateless = isStateless;
+    }
+
+    public boolean isIdempotent() {
+        return isIdempotent;
+    }
+
+    public void setIdempotent(boolean isIdempotent) {
+        this.isIdempotent = isIdempotent;
     }
 
     /**
@@ -101,6 +147,9 @@ public class ToolCard extends BaseCard {
         private String description = "";
         private Map<String, Object> inputParams;
         private Map<String, Object> properties;
+        private Boolean isParallelSafe;
+        private Boolean isStateless;
+        private Boolean isIdempotent;
 
         protected Builder() {
         }
@@ -130,12 +179,36 @@ public class ToolCard extends BaseCard {
             return this;
         }
 
+        public Builder parallelSafe(boolean isParallelSafe) {
+            this.isParallelSafe = isParallelSafe;
+            return this;
+        }
+
+        public Builder stateless(boolean isStateless) {
+            this.isStateless = isStateless;
+            return this;
+        }
+
+        public Builder idempotent(boolean isIdempotent) {
+            this.isIdempotent = isIdempotent;
+            return this;
+        }
+
         public ToolCard build() {
             ToolCard card = id == null ? new ToolCard() : new ToolCard(id, name, description);
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);
             card.setProperties(properties);
+            if (isParallelSafe != null) {
+                card.setParallelSafe(isParallelSafe);
+            }
+            if (isStateless != null) {
+                card.setStateless(isStateless);
+            }
+            if (isIdempotent != null) {
+                card.setIdempotent(isIdempotent);
+            }
             return card;
         }
     }

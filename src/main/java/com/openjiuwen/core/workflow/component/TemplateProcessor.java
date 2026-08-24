@@ -6,7 +6,6 @@ package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
@@ -217,9 +216,7 @@ public class TemplateProcessor {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> restoreSourceContainerOrder(
             Map<String, Object> inputs, BaseSession session) {
-        BaseSession effectiveSession = session instanceof NodeSessionApi nodeSession
-                ? nodeSession.getInner()
-                : session;
+        BaseSession effectiveSession = session;
         if (!(effectiveSession instanceof Vertex.VertexSession vertexSession)) {
             return inputs;
         }

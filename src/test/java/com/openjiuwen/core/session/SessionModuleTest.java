@@ -10,6 +10,8 @@ import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -55,12 +57,17 @@ class SessionModuleTest {
     }
 
     @Test
-    @SuppressWarnings("deprecation")
-    void deprecatedSessionExposesPythonDeprecationMessage() {
-        Session session = new Session();
+    void productSessionAndKernelShareMinimalContract() {
+        AgentSession facade = new AgentSession("facade-session", null, null);
+        TestSession kernel = new TestSession("kernel-session");
 
-        assertTrue(session.deprecationMessage().contains("openjiuwen.core.session.Session"));
-        assertTrue(session.deprecationMessage().contains("openjiuwen.core.[module].Session"));
+        assertSame(facade.getInner(), facade.getInner());
+        assertEquals("kernel-session", kernel.getSessionId());
+
+        facade.updateState(Map.of("topic", "global"));
+        assertEquals("global", facade.getState("topic"));
+        assertNull(facade.getInner().getState("topic"));
+        assertEquals("global", facade.getInner().state().getGlobal("topic"));
     }
 
     private static final class TestSession extends BaseSession {

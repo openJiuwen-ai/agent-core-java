@@ -16,7 +16,10 @@ package com.openjiuwen.core.runner.drunner.remoteclient;
  * @see RemoteClientFactory
  * @see RemoteClient
  * @since 0.1.7
+ * @deprecated Use {@link com.openjiuwen.core.runner.drunner.remote_client} for production
+ *     async callers. This interface remains the ServiceLoader SPI contract.
  */
+@Deprecated(since = "0.1.14")
 public interface RemoteClientProvider {
     /**
      * typeName.

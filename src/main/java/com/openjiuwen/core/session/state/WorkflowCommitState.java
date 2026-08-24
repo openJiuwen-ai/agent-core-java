@@ -92,10 +92,6 @@ public class WorkflowCommitState extends WorkflowStateCollection {
         workflowState.rollback(nodeId);
     }
 
-    public void commitWorkflow() {
-        workflowState.commit(nodeId);
-    }
-
     @Override
     public Map<String, Object> getState() {
         Map<String, Object> state = new HashMap<>();

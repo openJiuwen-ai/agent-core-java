@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -87,22 +88,75 @@ public class ImageCaptioner {
      * {@code openjiuwen/core/retrieval/indexing/processor/parser/captioner.py}.
      */
     public static String cpImage(String imageLoc, String targetDir) {
-        Path source = Path.of(imageLoc);
-        if (!Files.exists(source)) {
-            throw new IllegalArgumentException("Image not found at: " + imageLoc);
+        Path sourcePath = Path.of(imageLoc).toAbsolutePath().normalize();
+        Path allowedBaseDir = sourcePath.getParent();
+        if (allowedBaseDir == null) {
+            allowedBaseDir = Path.of("").toAbsolutePath().normalize();
         }
-        Path destination = Path.of(targetDir == null || targetDir.isBlank() ? SAVED_IMAGE_DIR : targetDir)
-                .resolve(source.getFileName().toString());
+        return cpImage(imageLoc, targetDir, allowedBaseDir);
+    }
+
+    public static String cpImage(String imageLoc, String targetDir, Path allowedBaseDir) {
         try {
-            Files.createDirectories(destination.getParent());
-            if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
+            Path source = resolveSafeSourcePath(imageLoc);
+            Path directory = resolveSafeTargetDirectory(targetDir, allowedBaseDir);
+            Path destination = directory.resolve(source.getFileName()).normalize();
+            if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+                Path realDestination = destination.toRealPath();
+                if (!realDestination.startsWith(allowedBaseDir.toRealPath())) {
+                    throw new SecurityException("Image destination is outside the allowed base directory.");
+                }
+                destination = realDestination;
+            }
+            if (!source.equals(destination)) {
                 Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
             }
-        } catch (Exception exception) {
-            LOGGER.warn("Failed to save copy of {} to {}: {}", imageLoc, destination, exception.getMessage());
-            return imageLoc;
+            return destination.toString();
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Unable to copy image from: " + imageLoc, exception);
         }
-        return destination.toString();
+    }
+
+    static Path resolveSafeSourcePath(String imageLoc) throws IOException {
+        if (imageLoc == null || imageLoc.isBlank()) {
+            throw new IllegalArgumentException("Image path must not be blank.");
+        }
+        Path source = Path.of(imageLoc).toRealPath();
+        if (!Files.isRegularFile(source)) {
+            throw new IllegalArgumentException("Image path is not a regular file: " + imageLoc);
+        }
+        return source;
+    }
+
+    static Path resolveSafeTargetDirectory(String targetDir, Path allowedBaseDir) throws IOException {
+        if (targetDir == null || targetDir.isBlank() || allowedBaseDir == null) {
+            throw new IllegalArgumentException("Target directory and allowed base directory must not be blank.");
+        }
+        Files.createDirectories(allowedBaseDir);
+        Path normalizedBaseDir = allowedBaseDir.toAbsolutePath().normalize();
+        Path requestedDirectory = Path.of(targetDir);
+        Path targetDirectory = requestedDirectory.isAbsolute()
+                ? requestedDirectory.toAbsolutePath().normalize()
+                : normalizedBaseDir.resolve(requestedDirectory).normalize();
+        if (!targetDirectory.startsWith(normalizedBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+
+        Path existingAncestor = targetDirectory;
+        while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            existingAncestor = existingAncestor.getParent();
+        }
+        Path realBaseDir = normalizedBaseDir.toRealPath();
+        if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+
+        Files.createDirectories(targetDirectory);
+        Path realTargetDirectory = targetDirectory.toRealPath();
+        if (!realTargetDirectory.startsWith(realBaseDir)) {
+            throw new SecurityException("Image target directory is outside the allowed base directory.");
+        }
+        return realTargetDirectory;
     }
 
     /**
@@ -114,8 +168,9 @@ public class ImageCaptioner {
             return CompletableFuture.completedFuture("");
         }
         try {
-            String mimeType = mimeType(imageLoc);
-            String imageBase64 = Base64.getEncoder().encodeToString(Files.readAllBytes(Path.of(imageLoc)));
+            Path imagePath = resolveSafeSourcePath(imageLoc);
+            String mimeType = mimeType(imagePath);
+            String imageBase64 = Base64.getEncoder().encodeToString(Files.readAllBytes(imagePath));
             List<Map<String, Object>> content = List.of(
                     Map.of("type", "text", "text", IMAGE_CAPTION_PROMPT),
                     Map.of("type", "image_url", "image_url",
@@ -144,7 +199,9 @@ public class ImageCaptioner {
         CompletableFuture<List<String>> chain = CompletableFuture.completedFuture(new ArrayList<>());
         for (String imageLoc : safeImageLocs) {
             chain = chain.thenCompose(captions -> {
-                if (imageLoc == null || !Files.exists(Path.of(imageLoc))) {
+                try {
+                    resolveSafeSourcePath(imageLoc);
+                } catch (IOException | IllegalArgumentException exception) {
                     LOGGER.warn("Image file {} does not exist, skipping captioning.", imageLoc);
                     captions.add("");
                     return CompletableFuture.completedFuture(captions);
@@ -239,8 +296,7 @@ public class ImageCaptioner {
         return null;
     }
 
-    private static String mimeType(String imageLoc) throws IOException {
-        Path imagePath = Path.of(imageLoc);
+    private static String mimeType(Path imagePath) throws IOException {
         String mimeType = Files.probeContentType(imagePath);
         if (mimeType != null && !mimeType.isBlank()) {
             return mimeType;
@@ -253,7 +309,7 @@ public class ImageCaptioner {
                 return entry.getValue();
             }
         }
-        LOGGER.warn("Could not determine MIME type for imageLoc={}, using image/png", imageLoc);
+        LOGGER.warn("Could not determine MIME type for imageLoc={}, using image/png", imagePath);
         return "image/png";
     }
 }

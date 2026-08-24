@@ -12,159 +12,100 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Synchronous compatibility wrapper for the pre-0.1.14 root context package.
+ * Abstract contract for managing conversational context.
  *
  * <p>Mirrors Python's {@code ModelContext} in
  * {@code openjiuwen/core/context_engine/base.py}.</p>
  */
-public class ModelContext implements com.openjiuwen.core.context_engine.ModelContext {
-    private final com.openjiuwen.core.context_engine.ModelContext delegate;
+public interface ModelContext {
 
-    protected ModelContext(com.openjiuwen.core.context_engine.ModelContext delegate) {
-        this.delegate = delegate;
+    /** No-op compatibility helper after context/context_engine merge. */
+    static ModelContext wrap(ModelContext context) {
+        return context;
     }
 
-    public static ModelContext wrap(com.openjiuwen.core.context_engine.ModelContext context) {
-        if (context instanceof ModelContext modelContext) {
-            return modelContext;
-        }
-        return context == null ? null : new ModelContext(context);
+    /** No-op compatibility helper after context/context_engine merge. */
+    static ModelContext unwrap(ModelContext context) {
+        return context;
     }
 
-    public static com.openjiuwen.core.context_engine.ModelContext unwrap(ModelContext context) {
-        return context == null ? null : context.unwrap();
+    /** No-op compatibility helper after context/context_engine merge. */
+    default ModelContext unwrap() {
+        return this;
     }
 
-    public com.openjiuwen.core.context_engine.ModelContext unwrap() {
-        return delegate;
+    int length();
+
+    /** Compatibility alias for {@link #length()}. */
+    default int size() {
+        return length();
     }
 
-    public int size() {
-        return delegate.length();
-    }
+    List<BaseMessage> getMessages(Integer size, boolean withHistory);
 
-    @Override
-    public int length() {
-        return delegate.length();
-    }
-
-    @Override
-    public List<BaseMessage> getMessages(Integer size, boolean withHistory) {
-        return delegate.getMessages(size, withHistory);
-    }
-
-    public List<BaseMessage> getMessages() {
+    /** Defaults to {@code getMessages(null, true)}. */
+    default List<BaseMessage> getMessages() {
         return getMessages(null, true);
     }
 
-    @Override
-    public void setMessages(List<BaseMessage> messages, boolean withHistory) {
-        delegate.setMessages(messages, withHistory);
-    }
+    void setMessages(List<BaseMessage> messages, boolean withHistory);
 
-    public void setMessages(List<BaseMessage> messages) {
+    /** Defaults to {@code setMessages(messages, true)}. */
+    default void setMessages(List<BaseMessage> messages) {
         setMessages(messages, true);
     }
 
-    @Override
-    public List<BaseMessage> popMessages(int size, boolean withHistory) {
-        return delegate.popMessages(size, withHistory);
-    }
+    List<BaseMessage> popMessages(int size, boolean withHistory);
 
-    public List<BaseMessage> popMessages() {
+    /** Defaults to {@code popMessages(1, true)}. */
+    default List<BaseMessage> popMessages() {
         return popMessages(1, true);
     }
 
-    @Override
-    public CompletionStage<Void> clearMessages(boolean withHistory) {
-        CompletionStage<Void> stage = delegate.clearMessages(withHistory);
-        await(stage);
-        return stage;
-    }
+    CompletionStage<Void> clearMessages(boolean withHistory);
 
-    public CompletionStage<Void> clearMessages() {
+    /** Defaults to {@code clearMessages(true)}. */
+    default CompletionStage<Void> clearMessages() {
         return clearMessages(true);
     }
 
-    @Override
-    public CompletionStage<List<BaseMessage>> addMessages(List<BaseMessage> messages) {
-        CompletionStage<List<BaseMessage>> stage = delegate.addMessages(messages);
-        await(stage);
-        return stage;
+    CompletionStage<List<BaseMessage>> addMessages(BaseMessage message);
+
+    CompletionStage<List<BaseMessage>> addMessages(List<BaseMessage> messages);
+
+    CompletionStage<ContextWindow> getContextWindow(List<BaseMessage> systemMessages,
+                                                    List<ToolInfo> tools,
+                                                    Integer windowSize,
+                                                    Integer dialogueRound,
+                                                    Map<String, Object> kwargs);
+
+    ContextStats statistic();
+
+    String sessionId();
+
+    String contextId();
+
+    TokenCounterPort tokenCounter();
+
+    ToolPort reloaderTool();
+
+    /**
+     * Narrow token-counter return type for the abstract context contract.
+     *
+     * <p>Mirrors Python's {@code TokenCounter} dependency in
+     * {@code openjiuwen/core/context_engine/base.py}.</p>
+     */
+    interface TokenCounterPort {
+        int countTokens(List<BaseMessage> messages);
     }
 
-    @Override
-    public CompletionStage<List<BaseMessage>> addMessages(BaseMessage message) {
-        CompletionStage<List<BaseMessage>> stage = delegate.addMessages(message);
-        await(stage);
-        return stage;
-    }
-
-    public String compressContext(List<String> processorTypes, Map<String, Object> kwargs) {
-        if (delegate instanceof com.openjiuwen.core.context_engine.context.SessionModelContext sessionModelContext) {
-            Object result = await(sessionModelContext.compressContext(processorTypes, kwargs));
-            return String.valueOf(result);
-        }
-        throw new UnsupportedOperationException("compressContext is not implemented");
-    }
-
-    public String compressContext() {
-        return compressContext(null, Map.of());
-    }
-
-    @Override
-    public ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize,
-                                          Integer dialogueRound, Map<String, Object> kwargs) {
-        return ContextWindow.from(await(delegate.getContextWindow(systemMessages, tools, windowSize, dialogueRound,
-                kwargs == null ? Map.of() : kwargs)));
-    }
-
-    public ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize,
-                                          Integer dialogueRound) {
-        return getContextWindow(systemMessages, tools, windowSize, dialogueRound, Map.of());
-    }
-
-    public ContextWindow getContextWindow() {
-        return getContextWindow(null, null, null, null, Map.of());
-    }
-
-    @Override
-    public com.openjiuwen.core.context_engine.ContextStats statistic() {
-        return delegate.statistic();
-    }
-
-    @Override
-    public String sessionId() {
-        return delegate.sessionId();
-    }
-
-    @Override
-    public String contextId() {
-        return delegate.contextId();
-    }
-
-    public String workspaceDir() {
-        if (delegate instanceof com.openjiuwen.core.context_engine.context.SessionModelContext sessionModelContext) {
-            return sessionModelContext.workspaceDir();
-        }
-        return "";
-    }
-
-    public Object sysOperation() {
-        return null;
-    }
-
-    @Override
-    public com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort tokenCounter() {
-        return delegate.tokenCounter();
-    }
-
-    @Override
-    public com.openjiuwen.core.context_engine.ModelContext.ToolPort reloaderTool() {
-        return delegate.reloaderTool();
-    }
-
-    private static <T> T await(CompletionStage<T> stage) {
-        return stage.toCompletableFuture().join();
+    /**
+     * Narrow reload-tool return type for the abstract context contract.
+     *
+     * <p>Mirrors Python's {@code Tool} dependency in
+     * {@code openjiuwen/core/context_engine/base.py}.</p>
+     */
+    interface ToolPort {
+        String name();
     }
 }

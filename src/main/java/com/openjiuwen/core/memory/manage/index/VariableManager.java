@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.memory.codec.AesStorageCodec;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
@@ -167,8 +168,8 @@ public class VariableManager extends BaseMemoryManager {
             );
             return CompletableFuture.completedFuture(null);
         }
-        String userPrefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
-        String sessionPrefix = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        String userPrefix = makeVariablePrefix(USER_VAR_PREFIX, userId, scopeId);
+        String sessionPrefix = makeVariablePrefix(SESSION_VAR_PREFIX, userId, scopeId);
         return kvStore.deleteByPrefix(userPrefix, null)
                 .thenCompose(ignored -> kvStore.deleteByPrefix(sessionPrefix, null))
                 .thenApply(ignored -> null);
@@ -226,7 +227,7 @@ public class VariableManager extends BaseMemoryManager {
                                                               String sessionId) {
         checkUserAndScopeId(userId, scopeId, "Search");
         if (name == null || name.strip().isEmpty()) {
-            String prefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+            String prefix = makeVariablePrefix(USER_VAR_PREFIX, userId, scopeId);
             return kvStore.getByPrefix(prefix).thenApply(kvRet -> {
                 Map<String, String> result = new LinkedHashMap<>();
                 for (Map.Entry<String, Object> entry : kvRet.entrySet()) {
@@ -238,13 +239,7 @@ public class VariableManager extends BaseMemoryManager {
             });
         }
 
-        String key;
-        if (sessionId != null) {
-            key = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId
-                    + SEPARATOR + sessionId + SEPARATOR + name;
-        } else {
-            key = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + name;
-        }
+        String key = makeVariableKey(userId, scopeId, name, sessionId);
 
         return kvStore.get(key).thenApply(kvRet -> {
             Map<String, String> result = new LinkedHashMap<>();
@@ -269,15 +264,30 @@ public class VariableManager extends BaseMemoryManager {
         String encodedSessionVarValue = codec.encode(sessionVarValue);
         if (varName != null) {
             if (sessionId == null) {
-                key = USER_VAR_PREFIX + SEPARATOR + usrId + SEPARATOR + scopeId + SEPARATOR + varName;
+                key = makeVariableKey(usrId, scopeId, varName, null);
                 value = forDeletion ? null : encodedUserVarValue;
             } else {
-                key = SESSION_VAR_PREFIX + SEPARATOR + usrId + SEPARATOR + scopeId
-                        + SEPARATOR + sessionId + SEPARATOR + varName;
+                key = makeVariableKey(usrId, scopeId, varName, sessionId);
                 value = forDeletion ? null : encodedSessionVarValue;
             }
         }
         return new VariablePair(key, value);
+    }
+
+    private String makeVariableKey(String userId, String scopeId, String varName, String sessionId) {
+        String rawKey;
+        if (sessionId != null) {
+            rawKey = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
+                    + varName;
+        } else {
+            rawKey = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
+        }
+        return TenantKVStoreKeyResolver.resolveKey(rawKey);
+    }
+
+    private String makeVariablePrefix(String prefix, String userId, String scopeId) {
+        String rawPrefix = prefix + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        return TenantKVStoreKeyResolver.resolvePrefix(rawPrefix);
     }
 
     static void checkUserAndScopeId(String userId, String scopeId, String context) {

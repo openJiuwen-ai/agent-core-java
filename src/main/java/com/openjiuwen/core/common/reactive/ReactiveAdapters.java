@@ -10,6 +10,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.Iterator;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionStage;
 
 /**
  * 将框架阻塞同步 API 提升为 Reactor Mono/Flux 的适配器。
@@ -37,6 +38,17 @@ public final class ReactiveAdapters {
      */
     public static <T> Mono<T> fromCallable(Callable<T> callable) {
         return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * 将 {@link CompletionStage} 包装为 Mono，并在 boundedElastic 上订阅。
+     *
+     * @param stage 异步完成阶段
+     * @return 在 boundedElastic 上订阅的 Mono
+     * @since 0.1.7
+     */
+    public static <T> Mono<T> fromCompletionStage(CompletionStage<T> stage) {
+        return Mono.fromCompletionStage(stage).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**

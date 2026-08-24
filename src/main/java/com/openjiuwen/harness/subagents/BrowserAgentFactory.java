@@ -10,7 +10,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.tools.browser_move.playwright_runtime.BrowserAgentRuntime;

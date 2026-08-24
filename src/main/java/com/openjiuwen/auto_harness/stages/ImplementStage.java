@@ -10,11 +10,12 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExtensionDesign;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageSlot;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -278,14 +279,19 @@ public abstract class ImplementStage extends TaskStage {
         }
         String effectivePrompt = prompt == null || prompt.isBlank() ? buildImplementPrompt(task, related) : prompt;
         List<Object> events = new ArrayList<>();
-        Iterator<Map<String, Object>> iterator = agent.stream(Map.of("query", effectivePrompt));
+        Iterator<?> iterator = agent.stream(Map.of("query", effectivePrompt));
         while (iterator.hasNext()) {
             events.add(restoreOutputSchemaIfPresent(iterator.next()));
         }
         return events;
     }
 
-    static Object restoreOutputSchemaIfPresent(Map<String, Object> chunk) {
+    static Object restoreOutputSchemaIfPresent(Object rawChunk) {
+        if (!(rawChunk instanceof Map<?, ?> map)) {
+            return rawChunk;
+        }
+        Map<String, Object> chunk = new LinkedHashMap<>();
+        map.forEach((k, v) -> chunk.put(String.valueOf(k), v));
         Object output = chunk.get("_output");
         if (output instanceof OutputSchema) {
             return output;

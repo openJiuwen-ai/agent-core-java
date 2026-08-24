@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.sysop.config;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,14 +12,17 @@ import lombok.NoArgsConstructor;
 
 /**
  * Gateway store configuration.
- * 
- * @since 0.1.7
+ * <p>
+ * Mirrors Python's {@code GatewayStoreConfig} in
+ * {@code openjiuwen/core/sys_operation/config.py}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class GatewayStoreConfig {
+
     @Builder.Default
     private String type = "memory";
 

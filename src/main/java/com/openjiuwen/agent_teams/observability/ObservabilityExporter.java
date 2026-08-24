@@ -16,7 +16,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum ObservabilityExporter {
     OTLP_GRPC("otlp_grpc"),
     OTLP_HTTP("otlp_http"),
-    CONSOLE("console");
+    CONSOLE("console"),
+    FILE("file");
 
     private final String value;
 

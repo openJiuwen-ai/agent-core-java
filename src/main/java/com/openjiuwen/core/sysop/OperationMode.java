@@ -4,15 +4,15 @@
 
 package com.openjiuwen.core.sysop;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
- * Backward-compatible enum for the moved system operation mode type.
+ * Enum for operation mode.
  *
  * <p>Mirrors Python's {@code OperationMode} in
  * {@code openjiuwen/core/sys_operation/base.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.OperationMode}.
  */
-@Deprecated(since = "0.1.14", forRemoval = false)
 public enum OperationMode {
     LOCAL("local"),
     SANDBOX("sandbox");
@@ -23,35 +23,42 @@ public enum OperationMode {
         this.value = value;
     }
 
-    public String getValue() {
-        return value;
-    }
-
+    @JsonValue
     public String value() {
         return value;
     }
 
-    public com.openjiuwen.core.sys_operation.OperationMode toNewMode() {
-        return com.openjiuwen.core.sys_operation.OperationMode.fromValue(value);
+    /** Bean-style alias used by older tests/call sites. */
+    public String getValue() {
+        return value;
     }
 
-    public static OperationMode fromNewMode(com.openjiuwen.core.sys_operation.OperationMode mode) {
-        if (mode == null) {
-            return LOCAL;
-        }
-        return fromString(mode.value());
-    }
-
-    public static OperationMode fromString(String text) {
-        if (text == null) {
+    @JsonCreator
+    public static OperationMode fromValue(String value) {
+        if (value == null) {
             return LOCAL;
         }
         for (OperationMode mode : values()) {
-            if (mode.value.equalsIgnoreCase(text.trim())) {
+            if (mode.value.equalsIgnoreCase(value.trim())) {
                 return mode;
             }
         }
-        throw new IllegalArgumentException("Unknown operation mode: " + text);
+        return LOCAL;
+    }
+
+    /**
+     * Strict parse used by legacy APIs; throws on unknown values.
+     */
+    public static OperationMode fromString(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Invalid operation mode: " + value);
+        }
+        for (OperationMode mode : values()) {
+            if (mode.value.equalsIgnoreCase(value.trim())) {
+                return mode;
+            }
+        }
+        throw new IllegalArgumentException("Invalid operation mode: " + value);
     }
 
     @Override

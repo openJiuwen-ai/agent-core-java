@@ -6,12 +6,13 @@ package com.openjiuwen.harness.lsp.core;
 
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Mirrors Python's {@code LspDiagnosticRegistry} in
@@ -22,10 +23,10 @@ public final class LspDiagnosticRegistry {
     public static final int MAX_DIAG_PER_FILE = 10;
     public static final int MAX_DIAG_TOTAL = 30;
 
-    private static LspDiagnosticRegistry instance;
+    private static volatile LspDiagnosticRegistry instance;
 
-    private final Map<String, PendingBatch> pending = new LinkedHashMap<>();
-    private final Map<String, Set<String>> delivered = new LinkedHashMap<>();
+    private final Map<String, PendingBatch> pending = Collections.synchronizedMap(new LinkedHashMap<>());
+    private final Map<String, Set<String>> delivered = new ConcurrentHashMap<>();
 
     private LspDiagnosticRegistry() {
     }
@@ -45,7 +46,7 @@ public final class LspDiagnosticRegistry {
         return pending.size();
     }
 
-    public String register(String serverName, String uri, List<?> rawDiagnostics) {
+    public synchronized String register(String serverName, String uri, List<?> rawDiagnostics) {
         List<LspDiagnosticItem> items = parseRaw(rawDiagnostics);
         if (items.isEmpty()) {
             return "";
@@ -55,7 +56,7 @@ public final class LspDiagnosticRegistry {
         return batchId;
     }
 
-    public List<LspDiagnosticFile> getAndClear(int maxPerFile, int maxTotal) {
+    public synchronized List<LspDiagnosticFile> getAndClear(int maxPerFile, int maxTotal) {
         if (pending.isEmpty() || maxPerFile <= 0 || maxTotal <= 0) {
             pending.clear();
             return List.of();
@@ -119,7 +120,7 @@ public final class LspDiagnosticRegistry {
                     entry.getValue().serverName(),
                     FileUriUtils.fileUriToPath(uri)
             ));
-            Set<String> seen = delivered.computeIfAbsent(uri, ignored -> new LinkedHashSet<>());
+            Set<String> seen = delivered.computeIfAbsent(uri, ignored -> ConcurrentHashMap.newKeySet());
             for (LspDiagnosticItem item : clipped) {
                 seen.add(diagKey(item));
             }
@@ -129,7 +130,7 @@ public final class LspDiagnosticRegistry {
         return result;
     }
 
-    public void clearAll() {
+    public synchronized void clearAll() {
         pending.clear();
         delivered.clear();
     }

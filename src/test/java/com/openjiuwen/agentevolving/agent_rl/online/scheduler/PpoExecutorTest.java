@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.online.scheduler;
+package com.openjiuwen.agentevolving.agent_rl.online.scheduler;
 
-import com.openjiuwen.agent_evolving.agent_rl.online.inference.InferenceNotifier;
-import com.openjiuwen.agent_evolving.agent_rl.storage.LoRARepository;
+import com.openjiuwen.agentevolving.agent_rl.online.inference.InferenceNotifier;
+import com.openjiuwen.agentevolving.agent_rl.storage.LoRARepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.ExecuteCmdResult
+# com.openjiuwen.core.sysop.result.ExecuteCmdResult
 
 ## 类 ExecuteCmdResult
 

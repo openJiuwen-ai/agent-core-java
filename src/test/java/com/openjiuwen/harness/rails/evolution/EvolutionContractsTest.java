@@ -4,9 +4,9 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.experience.PendingChange;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.experience.PendingChange;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.Test;
 

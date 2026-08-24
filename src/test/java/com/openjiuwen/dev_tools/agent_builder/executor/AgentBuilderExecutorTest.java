@@ -40,6 +40,8 @@ class AgentBuilderExecutorTest {
     @AfterEach
     void tearDown() {
         AgentBuilderFactory.clearRegistry();
+        Model.unregisterInvoker("OpenAI");
+        Model.unregisterInvoker("DashScope");
     }
 
     @Test

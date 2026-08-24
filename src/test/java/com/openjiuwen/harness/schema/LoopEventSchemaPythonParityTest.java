@@ -69,21 +69,21 @@ class LoopEventSchemaPythonParityTest {
 
     @Test
     void createLoopEventDefaultPriorities() {
-        DeepLoopEvent abortEvent = HarnessSchemaPackage.createLoopEvent(
+        DeepLoopEvent abortEvent = DeepLoopEvent.create(
                 1,
                 DeepLoopEventType.ABORT,
                 "stop",
                 null,
                 null,
                 null);
-        DeepLoopEvent steerEvent = HarnessSchemaPackage.createLoopEvent(
+        DeepLoopEvent steerEvent = DeepLoopEvent.create(
                 2,
                 DeepLoopEventType.STEER,
                 "guide",
                 null,
                 null,
                 null);
-        DeepLoopEvent followupEvent = HarnessSchemaPackage.createLoopEvent(
+        DeepLoopEvent followupEvent = DeepLoopEvent.create(
                 3,
                 DeepLoopEventType.FOLLOWUP,
                 "next",

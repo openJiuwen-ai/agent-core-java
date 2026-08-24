@@ -16,7 +16,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.auto_harness.stages.ExtendActivateStage;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

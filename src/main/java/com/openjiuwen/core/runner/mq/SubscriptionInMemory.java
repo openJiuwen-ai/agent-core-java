@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -19,7 +20,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -67,11 +67,7 @@ public class SubscriptionInMemory extends SubscriptionBase {
     public void activate() {
         if (!active) {
             active = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable);
-                thread.setName("subscription-inmemory-" + thread.getId());
-                return thread;
-            });
+            consumerExecutor = OpenJiuwenExecutors.newSingleThreadExecutor("sub-inmemory", true);
             consumerExecutor.submit(this::consumeMessages);
         }
     }

@@ -3,7 +3,7 @@
  */
 
 package com.openjiuwen.core.graph;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -48,6 +48,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -56,6 +57,7 @@ import java.util.function.Consumer;
  */
 public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
+    /** Matches Python {@code SUB_WORKFLOW_COMPONENT = "sub_workflow"} for register-check. */
     public static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
     public static final String INTERACTIVE_INPUT = Constant.INTERACTIVE_INPUT;
     public static final String END_NODE_STREAM = Constant.END_NODE_STREAM;
@@ -70,7 +72,8 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private static final VertexTraceSink PYTHON_NONE_TRACE_SINK = null;
     private static final ErrorRecoveryHandler PYTHON_NONE_ERROR_RECOVERY_HANDLER = null;
     private static final VertexEventSink PYTHON_NONE_EVENT_SINK = null;
-    private static final Executor STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
+    private static final Executor STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("vertex-stream", false);
 
     private final String nodeId;
     private final Executable<Map<String, Object>, Object> executable;
@@ -79,8 +82,8 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private Object context;
     private int streamCallTimeoutSeconds = 10;
     private CompletableFuture<Object> streamDone = new CompletableFuture<>();
-    private int callCount;
-    private int streamCallCount;
+    private final AtomicInteger callCount = new AtomicInteger();
+    private final AtomicInteger streamCallCount = new AtomicInteger();
     private boolean endNode;
     private boolean started;
     private boolean callStarted;
@@ -174,7 +177,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             }
             future.completeExceptionally(error);
         } finally {
-            callCount += 1;
+            callCount.incrementAndGet();
             started = false;
             callStarted = false;
         }
@@ -729,7 +732,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                     ? message
                     : new OutputSchema(END_NODE_STREAM, endStreamIndex, message);
             traceComponentStreamOutput(streamData);
-            VertexStreamWriterManager writerManager = session.streamWriterManager();
+            VertexStreamWriterManager writerManager = session.vertexStreamWriterManager();
             if (writerManager != null && writerManager.getOutputWriter() != null) {
                 writerManager.getOutputWriter().write(streamData);
             }
@@ -808,20 +811,20 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     @Override
     public boolean isDone() {
-        return callCount == streamCallCount
-                || callCount == streamCallCount + 1
-                || streamCallCount == callCount + 1;
+        return callCount.get() == streamCallCount.get()
+                || callCount.get() == streamCallCount.get() + 1
+                || streamCallCount.get() == callCount.get() + 1;
     }
 
     public boolean streamCalled() {
-        return streamCallCount == callCount + 1;
+        return streamCallCount.get() == callCount.get() + 1;
     }
 
     @Override
     public void streamCall(CountDownLatch latch, Consumer<Exception> errorCallback) {
         CountDownLatch readyLatch = latch != null ? latch : new CountDownLatch(0);
         Consumer<Exception> safeErrorCallback = errorCallback != null ? errorCallback : ignored -> { };
-        streamCallCount += 1;
+        streamCallCount.incrementAndGet();
         streamDone = new CompletableFuture<>();
 
         if (session == null || session.actorManager() == null) {
@@ -887,8 +890,8 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     public void reset() {
-        callCount = 0;
-        streamCallCount = 0;
+        callCount.set(0);
+        streamCallCount.set(0);
         streamDone.cancel(true);
         streamDone = new CompletableFuture<>();
     }
@@ -902,11 +905,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     }
 
     public int callCount() {
-        return callCount;
+        return callCount.get();
     }
 
     public int streamCallCount() {
-        return streamCallCount;
+        return streamCallCount.get();
     }
 
     public List<ComponentAbility> streamAbilitiesForTest() {
@@ -1055,14 +1058,28 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return session == null || session.tracer() == null || executable == null || executable.skipTrace();
     }
 
+    /**
+     * Node type stored on the session (trace metadata {@code component_type}).
+     *
+     * <p>Mirrors Python {@code Vertex} which uses {@code type(executable).__name__},
+     * not {@code executable.component_type()}. Nested {@code *Executable} wrappers
+     * resolve to their enclosing component class name.</p>
+     */
     private String componentTypeName() {
         if (executable == null) {
             return "";
         }
-        String componentType = executable.componentType();
-        return componentType == null || componentType.isBlank()
-                ? executable.getClass().getSimpleName()
-                : componentType;
+        Class<?> type = executable.getClass();
+        if (type.isMemberClass()
+                && type.getEnclosingClass() != null
+                && type.getSimpleName().endsWith("Executable")) {
+            String enclosing = type.getEnclosingClass().getSimpleName();
+            // SubWorkflowComponentImpl → SubWorkflowComponent (Python class __name__)
+            return enclosing.endsWith("Impl")
+                    ? enclosing.substring(0, enclosing.length() - 4)
+                    : enclosing;
+        }
+        return type.getSimpleName();
     }
 
     private boolean isEndComponent() {
@@ -1246,7 +1263,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             return PYTHON_NONE_ACTOR_MANAGER;
         }
 
-        public VertexStreamWriterManager streamWriterManager() {
+        public VertexStreamWriterManager vertexStreamWriterManager() {
             return PYTHON_NONE_STREAM_WRITER_MANAGER;
         }
 

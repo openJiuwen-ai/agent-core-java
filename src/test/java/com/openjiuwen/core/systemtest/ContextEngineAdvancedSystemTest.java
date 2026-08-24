@@ -244,12 +244,11 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("DialogueCompressorConfig builder")
         void testDialogueCompressorBuilder() {
-            DialogueCompressorConfig config = DialogueCompressorConfig.builder()
-                    .messagesThreshold(20)
-                    .tokensThreshold(8000)
-                    .keepLastRound(true)
-                    .compressionTargetTokens(3000)
-                    .build();
+            DialogueCompressorConfig config = new DialogueCompressorConfig();
+            config.setMessagesThreshold(20);
+            config.setTokensThreshold(8000);
+            config.setKeepLastRound(true);
+            config.setCompressionTargetTokens(3000);
 
             assertEquals(20, config.getMessagesThreshold());
             assertEquals(8000, config.getTokensThreshold());
@@ -260,11 +259,10 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("RoundLevelCompressorConfig builder")
         void testRoundLevelCompressorBuilder() {
-            RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder()
-                    .triggerTotalTokens(5000)
-                    .targetTotalTokens(3000)
-                    .keepRecentMessages(2)
-                    .build();
+            RoundLevelCompressorConfig config = new RoundLevelCompressorConfig();
+            config.setTriggerTotalTokens(5000);
+            config.setTargetTotalTokens(3000);
+            config.setKeepRecentMessages(2);
 
             assertEquals(5000, config.getTriggerTotalTokens());
             assertEquals(3000, config.getTargetTotalTokens());
@@ -289,13 +287,12 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("MessageOffloaderConfig builder")
         void testMessageOffloaderBuilder() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(50)
-                    .tokensThreshold(15000)
-                    .offloadMessageType(List.of("tool", "system"))
-                    .trimSize(200)
-                    .keepLastRound(false)
-                    .build();
+            MessageOffloaderConfig config = new MessageOffloaderConfig();
+            config.setMessagesThreshold(50);
+            config.setTokensThreshold(15000);
+            config.setOffloadMessageType(List.of("tool", "system"));
+            config.setTrimSize(200);
+            config.setKeepLastRound(false);
 
             assertEquals(50, config.getMessagesThreshold());
             assertEquals(15000, config.getTokensThreshold());
@@ -307,15 +304,12 @@ class ContextEngineAdvancedSystemTest {
         @Test
         @DisplayName("MessageSummaryOffloaderConfig builder")
         void testMessageSummaryOffloaderBuilder() {
-            MessageSummaryOffloaderConfig config = MessageSummaryOffloaderConfig.builder()
-                    .messagesThreshold(30)
-                    .tokensThreshold(10000)
-                    .summaryMaxTokens(600)
-                    .enablePreciseStep(true)
-                    .build();
+            MessageSummaryOffloaderConfig config = new MessageSummaryOffloaderConfig();
+            config.setLargeMessageThreshold(30);
+            config.setSummaryMaxTokens(600);
+            config.setEnablePreciseStep(true);
 
-            assertEquals(30, config.getMessagesThreshold());
-            assertEquals(10000, config.getTokensThreshold());
+            assertEquals(30, config.getLargeMessageThreshold());
             assertEquals(600, config.getSummaryMaxTokens());
             assertTrue(config.isEnablePreciseStep());
         }

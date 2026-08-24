@@ -18,19 +18,19 @@ import java.util.function.Supplier;
  * <p>Mirrors Python's {@code HierarchicalTeam} in
  * {@code openjiuwen/core/multi_agent/teams/hierarchical_tools/hierarchical_team.py}.</p>
  */
-public class HierarchicalTeam extends com.openjiuwen.core.multi_agent.teams.hierarchical_tools.HierarchicalTeam {
+public class HierarchicalTeam extends com.openjiuwen.core.multiagent.teams.hierarchical_tools.HierarchicalTeam {
 
     public HierarchicalTeam(TeamCard card, HierarchicalTeamConfig config) {
         super(card, config);
     }
 
-    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<?> provider) {
+    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<? extends com.openjiuwen.core.singleagent.BaseAgent> provider) {
         Objects.requireNonNull(provider, "provider must not be null");
-        super.addAgent(agentCard, ignored -> provider.get());
+        super.addAgent(agentCard, provider);
         return this;
     }
 
-    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<?> provider, String parentAgentId) {
+    public HierarchicalTeam addAgent(AgentCard agentCard, Supplier<? extends com.openjiuwen.core.singleagent.BaseAgent> provider, String parentAgentId) {
         Objects.requireNonNull(provider, "provider must not be null");
         super.addAgent(agentCard, ignored -> provider.get(), parentAgentId);
         return this;

@@ -7,7 +7,7 @@ package com.openjiuwen.core.workflow.components.flow.loop;
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 
 import java.util.List;

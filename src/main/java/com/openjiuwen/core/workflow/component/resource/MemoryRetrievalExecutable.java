@@ -11,7 +11,7 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.security.UserConfig;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.session.BaseSession;
@@ -179,7 +179,8 @@ public class MemoryRetrievalExecutable extends ComponentExecutable<Object, Map<S
         if (reflected != null) {
             return reflected;
         }
-        return session == null || session.getCurrentOperatorId() == null ? "" : session.getCurrentOperatorId();
+        String fallback = stringMethod("getCurrentOperatorId");
+        return fallback == null ? "" : fallback;
     }
 
     private String sessionId() {

@@ -12,6 +12,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.model_clients.errors.ErrorResponseBodySanitizer;
@@ -20,6 +21,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+import com.openjiuwen.core.foundation.llm.ModelCircuitBreaker;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
@@ -75,6 +77,7 @@ public class OpenAIModelClient extends BaseModelClient {
     private final HttpClient httpClient;
     private final OpenAIRetryingHttpClient retryingHttpClient;
     private final Map<String, String> baseHeaders;
+    private final ModelCircuitBreaker circuitBreaker = new ModelCircuitBreaker();
 
     static {
         registerClientClass(OpenAIModelClient.class);
@@ -437,12 +440,16 @@ public class OpenAIModelClient extends BaseModelClient {
                 params, timeout, authorization, requestHeaders);
         HttpResponse<String> response;
         try {
+            circuitBreaker.beforeCall();
             response = retryingHttpClient.send(retryCount ->
                     sendStringAttempt(preparedRequest, retryCount), retryListener);
+            circuitBreaker.onSuccess();
         } catch (IOException exception) {
+            circuitBreaker.onFailure(exception);
             throw transportException(exception, false, sensitiveValues);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            circuitBreaker.onFailure(exception);
             throw transportException(exception, false, sensitiveValues);
         }
         ensureSuccess(response.statusCode(), response.body(), false, sensitiveValues);
@@ -465,12 +472,16 @@ public class OpenAIModelClient extends BaseModelClient {
                 params, timeout, authorization, requestHeaders);
         HttpResponse<InputStream> response;
         try {
+            circuitBreaker.beforeCall();
             response = retryingHttpClient.send(retryCount ->
                     sendStreamAttempt(preparedRequest, retryCount), retryListener);
+            circuitBreaker.onSuccess();
         } catch (IOException exception) {
+            circuitBreaker.onFailure(exception);
             throw transportException(exception, true, sensitiveValues);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            circuitBreaker.onFailure(exception);
             throw transportException(exception, true, sensitiveValues);
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {

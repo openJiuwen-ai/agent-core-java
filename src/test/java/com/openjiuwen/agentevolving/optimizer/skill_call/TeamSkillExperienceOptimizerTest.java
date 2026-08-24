@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.optimizer.skill_call;
+package com.openjiuwen.agentevolving.optimizer.skill_call;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -10,19 +10,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateValue;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionRecord;
-import com.openjiuwen.agent_evolving.experience.EvolutionContext;
-import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
-import com.openjiuwen.agent_evolving.trajectory.ToolCallDetail;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateValue;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionRecord;
+import com.openjiuwen.agentevolving.experience.EvolutionContext;
+import com.openjiuwen.agentevolving.optimizer.LlmResilience;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.trajectory.ToolCallDetail;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
+import com.openjiuwen.agentevolving.trajectory.Updates;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;

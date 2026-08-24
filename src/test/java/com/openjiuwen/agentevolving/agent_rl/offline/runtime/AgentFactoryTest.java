@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
+package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 
-import com.openjiuwen.agent_evolving.agent_rl.config.AgentRuntimeConfig;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
+import com.openjiuwen.agentevolving.agent_rl.config.AgentRuntimeConfig;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RLTask;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -21,7 +21,7 @@ import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

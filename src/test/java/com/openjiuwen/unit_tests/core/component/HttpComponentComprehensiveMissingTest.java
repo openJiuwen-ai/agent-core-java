@@ -4,7 +4,7 @@
 
 package com.openjiuwen.unit_tests.core.component;
 
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.component.tool.http.HTTPRequestComponent;
 import com.openjiuwen.core.workflow.component.tool.http.HTTPRequestExecutable;

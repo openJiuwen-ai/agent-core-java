@@ -57,6 +57,14 @@ public class ObservabilityConfig {
     @JsonProperty("export_timeout_ms")
     private int exportTimeoutMs = 5000;
 
+    @Builder.Default
+    @JsonProperty("traces_dir")
+    private String tracesDir = "./traces";
+
+    @Builder.Default
+    @JsonProperty("file_retention_days")
+    private int fileRetentionDays = 7;
+
     public void setSampleRate(double sampleRate) {
         if (sampleRate < 0.0 || sampleRate > 1.0) {
             throw new IllegalArgumentException("sampleRate must be between 0.0 and 1.0");

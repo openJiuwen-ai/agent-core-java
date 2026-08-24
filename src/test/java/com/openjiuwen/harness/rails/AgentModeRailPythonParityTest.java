@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.AgentModeSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
@@ -241,10 +241,13 @@ class AgentModeRailPythonParityTest {
         FakeAgent agent = new FakeAgent(state(mode), planFile().toString());
         DeepAgentConfig config = new DeepAgentConfig();
         config.setLanguage("en");
-        if (withSubagent) {
-            config.setSubagents(Map.of("general", new DeepAgentConfig.SubAgentConfig("general", "general", "")));
-        }
+        // Configure without subagents first so applyAutoRailsFromConfig does not pre-register
+        // task_tool via SubagentRail (which would prevent AgentModeRail from owning it).
         agent.configure(config);
+        if (withSubagent) {
+            agent.deepConfig().getSubagents().add(
+                    new DeepAgentConfig.SubAgentConfig("general", "general", ""));
+        }
         AgentModeRail rail = new AgentModeRail();
         rail.init(agent);
         SystemPromptBuilder builder = rail.getSystemPromptBuilder();

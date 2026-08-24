@@ -66,6 +66,18 @@ class RunnerConfigTest {
         void defaultEnvPrefix() {
             assertEquals("", RunnerConfig.DEFAULT.getEnvPrefix());
         }
+
+        @Test
+        @DisplayName("DEFAULT has enableTenantIsolation=false")
+        void defaultEnableTenantIsolation() {
+            assertFalse(RunnerConfig.DEFAULT.isEnableTenantIsolation());
+        }
+
+        @Test
+        @DisplayName("DEFAULT has null tenantDataRoot")
+        void defaultTenantDataRoot() {
+            assertNull(RunnerConfig.DEFAULT.getTenantDataRoot());
+        }
     }
 
     // ========== Global config management ==========
@@ -186,28 +198,33 @@ class RunnerConfigTest {
         }
     }
 
-    // ========== MCP server config (McpServerConfig unit) ==========
+    // ========== MCP servers config ==========
 
     @Nested
-    @DisplayName("McpServerConfig builder")
-    class McpServerConfigTests {
+    @DisplayName("MCP servers config")
+    class McpServersConfig {
 
         @Test
-        @DisplayName("McpServerConfig builder with single SSE server")
-        void mcpServerConfigSingleSse() {
+        @DisplayName("mcpServers with single SSE server")
+        void mcpServersSingleSse() {
             McpServerConfig server = McpServerConfig.builder()
                     .serverName("my-mcp")
                     .serverPath("http://localhost:8080/mcp")
                     .clientType("sse")
                     .build();
+            RunnerConfig config = RunnerConfig.builder()
+                    .distributedMode(false)
+                    .mcpServers(List.of(server))
+                    .build();
 
-            assertEquals("my-mcp", server.getServerName());
-            assertEquals("sse", server.getClientType());
+            assertEquals(1, config.getMcpServers().size());
+            assertEquals("my-mcp", config.getMcpServers().get(0).getServerName());
+            assertEquals("sse", config.getMcpServers().get(0).getClientType());
         }
 
         @Test
-        @DisplayName("McpServerConfig builder with multiple servers of different types")
-        void mcpServerConfigMultipleTypes() {
+        @DisplayName("mcpServers with multiple servers of different types")
+        void mcpServersMultipleTypes() {
             McpServerConfig sseServer = McpServerConfig.builder()
                     .serverName("sse-mcp")
                     .serverPath("http://localhost:8080/mcp")
@@ -218,171 +235,184 @@ class RunnerConfigTest {
                     .serverPath("/usr/local/bin/mcp-server")
                     .clientType("stdio")
                     .build();
+            RunnerConfig config = RunnerConfig.builder()
+                    .distributedMode(false)
+                    .mcpServers(List.of(sseServer, stdioServer))
+                    .build();
 
-            assertEquals("sse", sseServer.getClientType());
-            assertEquals("stdio", stdioServer.getClientType());
+            assertEquals(2, config.getMcpServers().size());
+            assertEquals("sse", config.getMcpServers().get(0).getClientType());
+            assertEquals("stdio", config.getMcpServers().get(1).getClientType());
         }
 
         @Test
-        @DisplayName("McpServerConfig with auth headers")
-        void mcpServerConfigWithAuthHeaders() {
+        @DisplayName("mcpServers with auth headers")
+        void mcpServersWithAuthHeaders() {
             McpServerConfig server = McpServerConfig.builder()
                     .serverName("auth-mcp")
                     .serverPath("http://localhost:8080/mcp")
                     .clientType("sse")
                     .authHeaders(Map.of("Authorization", "Bearer token123"))
                     .build();
+            RunnerConfig config = RunnerConfig.builder()
+                    .distributedMode(false)
+                    .mcpServers(List.of(server))
+                    .build();
 
-            Map<String, String> headers = server.getAuthHeaders();
+            Map<String, String> headers = config.getMcpServers().get(0).getAuthHeaders();
             assertNotNull(headers);
             assertEquals("Bearer token123", headers.get("Authorization"));
         }
 
         @Test
-        @DisplayName("McpServerConfig with custom params")
-        void mcpServerConfigWithParams() {
+        @DisplayName("mcpServers with custom params")
+        void mcpServersWithParams() {
             McpServerConfig server = McpServerConfig.builder()
                     .serverName("param-mcp")
                     .serverPath("http://localhost:8080/mcp")
                     .clientType("sse")
                     .params(Map.of("timeout", 30, "retry_count", 3))
                     .build();
+            RunnerConfig config = RunnerConfig.builder()
+                    .distributedMode(false)
+                    .mcpServers(List.of(server))
+                    .build();
 
-            Map<String, Object> params = server.getParams();
+            Map<String, Object> params = config.getMcpServers().get(0).getParams();
             assertNotNull(params);
             assertEquals(30, params.get("timeout"));
         }
 
         @Test
-        @DisplayName("McpServerConfig defaults to sse clientType")
-        void mcpServerConfigDefaultsToSse() {
-            McpServerConfig server = McpServerConfig.builder()
-                    .serverName("default-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .build();
-            assertEquals("sse", server.getClientType());
+        @DisplayName("mcpServers defaults to empty list")
+        void mcpServersDefaultsToEmptyList() {
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
+            assertNotNull(config.getMcpServers());
+            assertTrue(config.getMcpServers().isEmpty());
         }
     }
 
-    // ========== KV store config (via CheckpointerConfig conf) ==========
+    // ========== KV store config ==========
 
     @Nested
-    @DisplayName("KV store config in checkpointer conf")
+    @DisplayName("KV store config")
     class KvStoreConfigTests {
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry redis kv config")
+        @DisplayName("kvStoreConfig with redis type")
         void kvStoreConfigRedis() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("redis",
-                    Map.of("url", "redis://localhost:6379", "cluster_mode", false));
+            Map<String, Object> kvConfig = Map.of(
+                    "type", "redis",
+                    "conf", Map.of("url", "redis://localhost:6379", "cluster_mode", false));
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .kvStoreConfig(kvConfig)
                     .build();
 
-            assertEquals("redis", config.getCheckpointerConfig().getType());
-            assertEquals("redis://localhost:6379", config.getCheckpointerConfig().getConf().get("url"));
+            assertEquals("redis", config.getKvStoreConfig().get("type"));
         }
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry in_memory kv config")
+        @DisplayName("kvStoreConfig with in_memory type")
         void kvStoreConfigInMemory() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("in_memory", Map.of());
+            Map<String, Object> kvConfig = Map.of("type", "in_memory", "conf", Map.of());
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .kvStoreConfig(kvConfig)
                     .build();
 
-            assertEquals("in_memory", config.getCheckpointerConfig().getType());
+            assertEquals("in_memory", config.getKvStoreConfig().get("type"));
         }
 
         @Test
-        @DisplayName("kvStoreConfig is null by default (no checkpointerConfig)")
+        @DisplayName("kvStoreConfig is null by default")
         void kvStoreConfigNullByDefault() {
             RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
-            assertNull(config.getCheckpointerConfig());
+            assertNull(config.getKvStoreConfig());
         }
     }
 
-    // ========== Vector store config (via CheckpointerConfig conf) ==========
+    // ========== Vector store config ==========
 
     @Nested
-    @DisplayName("Vector store config in checkpointer conf")
+    @DisplayName("Vector store config")
     class VectorStoreConfigTests {
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry milvus vector config")
+        @DisplayName("vectorStoreConfig with milvus type")
         void vectorStoreConfigMilvus() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("persistence",
-                    Map.of("uri", "http://localhost:19530", "collection", "kb_chunks"));
+            Map<String, Object> vsConfig = Map.of(
+                    "type", "milvus",
+                    "conf", Map.of("uri", "http://localhost:19530", "collection", "kb_chunks"));
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .vectorStoreConfig(vsConfig)
                     .build();
 
-            assertEquals("persistence", config.getCheckpointerConfig().getType());
-            assertEquals("http://localhost:19530", config.getCheckpointerConfig().getConf().get("uri"));
+            assertEquals("milvus", config.getVectorStoreConfig().get("type"));
         }
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry chroma vector config")
+        @DisplayName("vectorStoreConfig with chroma type")
         void vectorStoreConfigChroma() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("persistence",
-                    Map.of("host", "localhost", "port", 8000));
+            Map<String, Object> vsConfig = Map.of(
+                    "type", "chroma",
+                    "conf", Map.of("host", "localhost", "port", 8000));
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .vectorStoreConfig(vsConfig)
                     .build();
 
-            assertEquals("persistence", config.getCheckpointerConfig().getType());
+            assertEquals("chroma", config.getVectorStoreConfig().get("type"));
         }
 
         @Test
-        @DisplayName("vectorStoreConfig is null by default (no checkpointerConfig)")
+        @DisplayName("vectorStoreConfig is null by default")
         void vectorStoreConfigNullByDefault() {
             RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
-            assertNull(config.getCheckpointerConfig());
+            assertNull(config.getVectorStoreConfig());
         }
     }
 
-    // ========== Object storage config (via CheckpointerConfig conf) ==========
+    // ========== Object storage config ==========
 
     @Nested
-    @DisplayName("Object storage config in checkpointer conf")
+    @DisplayName("Object storage config")
     class ObjectStorageConfigTests {
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry obs storage config")
+        @DisplayName("objectStorageConfig with obs type")
         void objectStorageConfigObs() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("persistence",
-                    Map.of("endpoint", "https://obs.example.com", "bucket", "my-bucket"));
+            Map<String, Object> obsConfig = Map.of(
+                    "type", "obs",
+                    "conf", Map.of("endpoint", "https://obs.example.com", "bucket", "my-bucket"));
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .objectStorageConfig(obsConfig)
                     .build();
 
-            assertEquals("persistence", config.getCheckpointerConfig().getType());
-            assertEquals("https://obs.example.com", config.getCheckpointerConfig().getConf().get("endpoint"));
+            assertEquals("obs", config.getObjectStorageConfig().get("type"));
         }
 
         @Test
-        @DisplayName("checkpointerConfig conf can carry s3 storage config")
+        @DisplayName("objectStorageConfig with s3 type")
         void objectStorageConfigS3() {
-            CheckpointerConfig cpConfig = new CheckpointerConfig("persistence",
-                    Map.of("region", "us-east-1", "bucket", "my-s3-bucket"));
+            Map<String, Object> obsConfig = Map.of(
+                    "type", "s3",
+                    "conf", Map.of("region", "us-east-1", "bucket", "my-s3-bucket"));
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
+                    .objectStorageConfig(obsConfig)
                     .build();
 
-            assertEquals("persistence", config.getCheckpointerConfig().getType());
+            assertEquals("s3", config.getObjectStorageConfig().get("type"));
         }
 
         @Test
-        @DisplayName("objectStorageConfig is null by default (no checkpointerConfig)")
+        @DisplayName("objectStorageConfig is null by default")
         void objectStorageConfigNullByDefault() {
             RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
-            assertNull(config.getCheckpointerConfig());
+            assertNull(config.getObjectStorageConfig());
         }
     }
 
@@ -536,14 +566,22 @@ class RunnerConfigTest {
                     "test",
                     "instance-1",
                     cpConfig,
+                    List.of(),
+                    null,
+                    null,
+                    null,
                     false,
-                    false
+                    false,
+                    true,
+                    "/data/tenants"
             );
 
             assertFalse(config.isDistributedMode());
             assertEquals("test", config.getEnvPrefix());
             assertEquals("instance-1", config.getInstanceId());
             assertEquals("redis", config.getCheckpointerConfig().getType());
+            assertTrue(config.isEnableTenantIsolation());
+            assertEquals("/data/tenants", config.getTenantDataRoot());
         }
     }
 
@@ -554,30 +592,28 @@ class RunnerConfigTest {
     class RunnerRunnerConfigIntegration {
 
         @Test
-        @DisplayName("RunnerImpl constructor sets RunnerConfig as global")
-        void runnerImplConstructorSetsGlobalConfig() {
+        @DisplayName("Runner.setConfig() sets RunnerConfig as global")
+        void runnerSetConfigSetsGlobalConfig() {
             CheckpointerConfig cpConfig = new CheckpointerConfig("in_memory", Map.of());
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig)
                     .build();
 
-            RunnerImpl runner = new RunnerImpl("test-runner", config);
-            assertSame(config, runner.getConfig());
-            assertEquals("in_memory", runner.getConfig().getCheckpointerConfig().getType());
+            Runner.setConfig(config);
+            assertSame(config, Runner.getConfig());
+            assertEquals("in_memory", Runner.getConfig().getCheckpointerConfig().getType());
         }
 
         @Test
-        @DisplayName("RunnerImpl with null config uses DEFAULT")
-        void runnerImplWithNullConfigUsesDefault() {
-            RunnerImpl runner = new RunnerImpl("test-runner", null);
-            assertFalse(runner.getConfig().isDistributedMode());
+        @DisplayName("Runner.getConfig() with unset global uses DEFAULT")
+        void runnerGetConfigUsesDefaultWhenUnset() {
+            assertFalse(Runner.getConfig().isDistributedMode());
         }
 
         @Test
-        @DisplayName("RunnerImpl.setConfig() updates global config")
-        void runnerImplSetConfigUpdatesGlobal() {
-            RunnerImpl runner = new RunnerImpl("test-runner", null);
+        @DisplayName("Runner.setConfig() updates global config")
+        void runnerSetConfigUpdatesGlobal() {
             CheckpointerConfig cpConfig = new CheckpointerConfig("redis",
                     Map.of("connection", Map.of("url", "redis://localhost:6379")));
 
@@ -585,86 +621,82 @@ class RunnerConfigTest {
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig)
                     .build();
-            runner.setConfig(newConfig);
+            Runner.setConfig(newConfig);
 
-            assertEquals("redis", runner.getConfig().getCheckpointerConfig().getType());
+            assertEquals("redis", Runner.getConfig().getCheckpointerConfig().getType());
         }
 
         @Test
-        @DisplayName("RunnerImpl.start() initializes in_memory checkpointer from config")
-        void runnerImplStartInitializesInMemoryCheckpointer() {
+        @DisplayName("Runner.start() initializes in_memory checkpointer from config")
+        void runnerStartInitializesInMemoryCheckpointer() {
             CheckpointerConfig cpConfig = new CheckpointerConfig("in_memory", Map.of());
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig)
                     .build();
 
-            RunnerImpl runner = new RunnerImpl("test-runner", config);
-            boolean started = runner.start();
+            Runner.setConfig(config);
+            boolean started = Runner.start().toCompletableFuture().join();
             assertTrue(started);
 
-            CheckpointerFactory.installDefaultCheckpointer(cpConfig);
             Checkpointer cp = CheckpointerFactory.getCheckpointer();
             assertNotNull(cp);
             assertInstanceOf(InMemoryCheckpointer.class, cp);
 
-            runner.stop();
+            Runner.stop().toCompletableFuture().join();
         }
 
         @Test
-        @DisplayName("RunnerImpl.start() returns true for non-distributed mode")
-        void runnerImplStartNonDistributed() {
+        @DisplayName("Runner.start() returns true for non-distributed mode")
+        void runnerStartNonDistributed() {
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
                     .build();
 
-            RunnerImpl runner = new RunnerImpl("test-runner", config);
-            boolean started = runner.start();
+            Runner.setConfig(config);
+            boolean started = Runner.start().toCompletableFuture().join();
             assertTrue(started);
 
-            runner.stop();
+            Runner.stop().toCompletableFuture().join();
         }
 
         @Test
-        @DisplayName("RunnerImpl.start() without checkpointerConfig does not override default")
-        void runnerImplStartWithoutCheckpointerConfig() {
+        @DisplayName("Runner.start() without checkpointerConfig does not override default")
+        void runnerStartWithoutCheckpointerConfig() {
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
                     .build();
             assertNull(config.getCheckpointerConfig());
 
-            RunnerImpl runner = new RunnerImpl("test-runner", config);
-            boolean started = runner.start();
+            Runner.setConfig(config);
+            boolean started = Runner.start().toCompletableFuture().join();
             assertTrue(started);
 
-            // Default checkpointer should be InMemoryCheckpointer
             Checkpointer cp = CheckpointerFactory.getCheckpointer();
             assertInstanceOf(InMemoryCheckpointer.class, cp);
 
-            runner.stop();
+            Runner.stop().toCompletableFuture().join();
         }
 
         @Test
-        @DisplayName("RunnerImpl.setConfig() then getConfig() returns new config")
-        void runnerImplSetConfigThenGetConfig() {
-            // Start with in_memory
+        @DisplayName("Runner.setConfig() then getConfig() returns new config")
+        void runnerSetConfigThenGetConfig() {
             CheckpointerConfig cpConfig1 = new CheckpointerConfig("in_memory", Map.of());
             RunnerConfig config1 = RunnerConfig.builder()
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig1)
                     .build();
-            RunnerImpl runner = new RunnerImpl("test-runner", config1);
-            assertEquals("in_memory", runner.getConfig().getCheckpointerConfig().getType());
+            Runner.setConfig(config1);
+            assertEquals("in_memory", Runner.getConfig().getCheckpointerConfig().getType());
 
-            // Switch to redis via setConfig
             CheckpointerConfig cpConfig2 = new CheckpointerConfig("redis",
                     Map.of("connection", Map.of("url", "redis://localhost:6379")));
             RunnerConfig config2 = RunnerConfig.builder()
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig2)
                     .build();
-            runner.setConfig(config2);
-            assertEquals("redis", runner.getConfig().getCheckpointerConfig().getType());
+            Runner.setConfig(config2);
+            assertEquals("redis", Runner.getConfig().getCheckpointerConfig().getType());
         }
 
         @Test
@@ -693,20 +725,17 @@ class RunnerConfigTest {
         }
 
         @Test
-        @DisplayName("Multiple RunnerImpl instances share same global config")
-        void multipleRunnerImplsShareGlobalConfig() {
+        @DisplayName("Runner.setConfig() is process-global")
+        void runnerSetConfigIsProcessGlobal() {
             CheckpointerConfig cpConfig = new CheckpointerConfig("in_memory", Map.of());
             RunnerConfig config = RunnerConfig.builder()
                     .distributedMode(false)
                     .checkpointerConfig(cpConfig)
                     .build();
 
-            RunnerImpl runner1 = new RunnerImpl("runner-1", config);
-            // runner2 with null config uses global config set by runner1
-            RunnerImpl runner2 = new RunnerImpl("runner-2", null);
-
-            // Both share the same global config
-            assertSame(runner1.getConfig(), runner2.getConfig());
+            Runner.setConfig(config);
+            assertSame(config, Runner.getConfig());
+            assertSame(Runner.getConfig(), RunnerConfig.getRunnerConfig());
         }
 
         @Test

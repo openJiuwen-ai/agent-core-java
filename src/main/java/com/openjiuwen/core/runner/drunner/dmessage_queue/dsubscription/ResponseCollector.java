@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 
 import com.openjiuwen.core.common.BackgroundTask;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.RunnerTermination;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -21,11 +22,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,8 +41,8 @@ public class ResponseCollector {
     private static final double DEFAULT_TTL_SECONDS = 30.0d;
     private static final String TASK_GROUP = "runner.dmq.response_collector";
     private static final LoggerProtocol LOGGER = Loggers.RUNNER;
-    private static final ScheduledExecutorService EXPIRER = Executors.newSingleThreadScheduledExecutor(
-            new ResponseCollectorThreadFactory());
+    private static final ScheduledExecutorService EXPIRER =
+            OpenJiuwenExecutors.newScheduledThreadPool("response-collector-ttl", 1, false);
 
     private final String messageId;
     private final String receiverId;
@@ -307,14 +306,5 @@ public class ResponseCollector {
 
     private static CompletionException completion(Throwable error) {
         return error instanceof CompletionException completion ? completion : new CompletionException(error);
-    }
-
-    private static final class ResponseCollectorThreadFactory implements ThreadFactory {
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "response-collector-expirer");
-            thread.setDaemon(true);
-            return thread;
-        }
     }
 }

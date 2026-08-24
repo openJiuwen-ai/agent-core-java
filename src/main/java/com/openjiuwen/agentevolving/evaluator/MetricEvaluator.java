@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.evaluator;
@@ -7,78 +7,53 @@ package com.openjiuwen.agentevolving.evaluator;
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.agentevolving.evaluator.metrics.Metric;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Evaluates using one or more Metrics with aggregation.
- * <p>
- * Supports per-metric breakdown and configurable aggregation (mean, first).
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.MetricEvaluator}.
- * 
- * @since 0.1.7
+ * Evaluator that computes one or more metric scores and aggregates them.
+ *
+ * <p>Mirrors Python's {@code MetricEvaluator} in
+ * {@code openjiuwen/agent_evolving/evaluator/evaluator.py}.</p>
  */
 public class MetricEvaluator extends BaseEvaluator {
+
     private final List<Metric> metrics;
     private final String aggregate;
 
-    /**
-     * Create with single metric.
-     * 
-     * @param metric Metric instance
-     * @since 0.1.7
-     */
     public MetricEvaluator(Metric metric) {
-        this(Collections.singletonList(metric), "mean");
+        this(metric, "mean");
     }
 
-    /**
-     * Create with multiple metrics.
-     * 
-     * @param metrics List of metrics
-     * @param aggregate Aggregation method ("mean" or "first")
-     * @since 0.1.7
-     */
-    public MetricEvaluator(List<Metric> metrics, String aggregate) {
-        this.metrics = metrics != null ? metrics : new ArrayList<>();
-        this.aggregate = aggregate != null ? aggregate : "mean";
+    public MetricEvaluator(Metric metric, String aggregate) {
+        this(List.of(metric), aggregate);
     }
 
-    /**
-     * evaluate.
-     * 
-     * @param caseData caseData
-     * @param predict predict
-     * @return the result
-     * @since 0.1.7
-     */
+    public MetricEvaluator(List<? extends Metric> metrics) {
+        this(metrics, "mean");
+    }
+
+    public MetricEvaluator(List<? extends Metric> metrics, String aggregate) {
+        this.metrics = new ArrayList<>(metrics);
+        this.aggregate = aggregate;
+    }
+
     @Override
-    public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
-        EvaluatedCase evaluated = EvaluatedCase.builder().caseData(caseData).answer(predict).build();
-
+    public EvaluatedCase evaluate(Case caseValue, Map<String, Object> predict) {
+        EvaluatedCase evaluated = new EvaluatedCase(caseValue, predict, 0.0d, "", null);
         Map<String, Double> perMetric = new LinkedHashMap<>();
         List<Double> scores = new ArrayList<>();
-
         for (Metric metric : metrics) {
-            Map<String, Object> kwargs = new HashMap<>();
-            kwargs.put("question", caseData.getInputs());
-            kwargs.put("case", caseData);
-
-            Object out = metric.compute(predict, caseData.getLabel(), kwargs);
-
-            if (out instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> outMap = (Map<String, Object>) out;
-                for (Map.Entry<String, Object> entry : outMap.entrySet()) {
-                    double vf = safeConvert(entry.getValue());
-                    perMetric.put(entry.getKey(), vf);
-                    scores.add(vf);
+            Object out = metric.compute(predict, caseValue.getLabel(), metricKwargs(caseValue));
+            if (out instanceof Map<?, ?> metricMap) {
+                for (Map.Entry<?, ?> entry : metricMap.entrySet()) {
+                    double value = safeConvert(entry.getValue());
+                    perMetric.put(String.valueOf(entry.getKey()), value);
+                    scores.add(value);
                 }
             } else {
                 double score = safeConvert(out);
@@ -86,48 +61,30 @@ public class MetricEvaluator extends BaseEvaluator {
                 scores.add(score);
             }
         }
-
-        evaluated.setScore(aggScore(scores, aggregate));
+        evaluated.setScore(EvaluatorScoreAggregator.aggregateScore(scores, aggregate));
         evaluated.setPerMetric(perMetric.isEmpty() ? null : perMetric);
         return evaluated;
     }
 
-    /**
-     * safeConvert.
-     * 
-     * @param num num
-     * @return the result
-     * @since 0.1.7
-     */
-    private double safeConvert(Object num) {
-        if (num instanceof Number) {
-            return ((Number) num).doubleValue();
+    double safeConvert(Object numberValue) {
+        if (numberValue instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (numberValue instanceof Boolean bool) {
+            return bool ? 1.0d : 0.0d;
         }
         try {
-            return Double.parseDouble(String.valueOf(num));
-        } catch (NumberFormatException e) {
-            java.util.logging.Logger.getLogger(MetricEvaluator.class.getName())
-                    .warning("Could not convert metric value " + num + " to double");
-            return 0.0;
+            return Double.parseDouble(String.valueOf(numberValue));
+        } catch (NumberFormatException exception) {
+            Loggers.COMMON.warn("Could not convert metric value {} to float", 0.0d);
+            return 0.0d;
         }
     }
 
-    /**
-     * aggScore.
-     * 
-     * @param results results
-     * @param aggregate aggregate
-     * @return the result
-     * @since 0.1.7
-     */
-    private double aggScore(List<Double> results, String aggregate) {
-        if (results == null || results.isEmpty()) {
-            return 0.0;
-        }
-        if ("first".equals(aggregate)) {
-            return results.get(0);
-        }
-        // Default: mean
-        return results.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+    private static Map<String, Object> metricKwargs(Case caseValue) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("question", caseValue.getInputs());
+        kwargs.put("case", caseValue);
+        return kwargs;
     }
 }

@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.local.LocalFsOperation
+# com.openjiuwen.core.sysop.local.LocalFsOperation
 
 ## 类 LocalFsOperation
 

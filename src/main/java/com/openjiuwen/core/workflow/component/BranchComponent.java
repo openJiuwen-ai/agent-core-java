@@ -6,7 +6,7 @@ package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
@@ -144,7 +144,7 @@ public class BranchComponent extends WorkflowComponent<Object, Map<String, Objec
 
     @Override
     public Map<String, Object> invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
-        return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
+        return invoke(inputs, session.getInner(), context == null ? null : context.unwrap());
     }
 
     @Override

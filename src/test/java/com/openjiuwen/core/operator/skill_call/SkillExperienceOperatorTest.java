@@ -4,9 +4,9 @@
 
 package com.openjiuwen.core.operator.skill_call;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.Protocols;
-import com.openjiuwen.agent_evolving.UpdateValue;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.Protocols;
+import com.openjiuwen.agentevolving.UpdateValue;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

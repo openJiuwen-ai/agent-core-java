@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent.legacy.agent;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.stream.StreamMode;

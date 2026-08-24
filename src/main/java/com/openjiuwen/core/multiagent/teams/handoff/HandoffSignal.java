@@ -4,313 +4,228 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.common.logging.Loggers;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
- * Public record HandoffSignal used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Mirrors Python's {@code HandoffSignal} in
+ * {@code openjiuwen/core/multi_agent/teams/handoff/handoff_signal.py}.
  */
-public record HandoffSignal(String target, String message, String reason) {
-    /**
-     * HANDOFF_TARGET_KEY.
-     * 
-     * @since 0.1.7
-     */
+public final class HandoffSignal {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+    private static final String DEFAULT_CONTEXT_ID = "default_context_id";
+
     public static final String HANDOFF_TARGET_KEY = "__handoff_to__";
-
-    /**
-     * HANDOFF_MESSAGE_KEY.
-     * 
-     * @since 0.1.7
-     */
     public static final String HANDOFF_MESSAGE_KEY = "__handoff_message__";
-
-    /**
-     * HANDOFF_REASON_KEY.
-     * 
-     * @since 0.1.7
-     */
     public static final String HANDOFF_REASON_KEY = "__handoff_reason__";
 
-    private static final String DEFAULT_CONTEXT_ID = "default_context_id";
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private final String target;
+    private final String message;
+    private final String reason;
 
-    /**
-     * extract.
-     * 
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    public static HandoffSignal extract(Object result) {
-        return extract(result, null);
+    public HandoffSignal(String target) {
+        this(target, null, null);
     }
 
-    /**
-     * extract.
-     * 
-     * @param result result
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    public static HandoffSignal extract(Object result, Session session) {
-        Map<String, Object> payload = findPayload(result);
-        if (payload.isEmpty() && session != null) {
-            payload = findHandoffFromSession(session);
-        }
-        if (payload.isEmpty()) {
-            return null;
-        }
-        Object target = payload.get(HANDOFF_TARGET_KEY);
-        if (!(target instanceof String targetId) || targetId.isBlank()) {
-            return null;
-        }
-        String message = normalize(payload.get(HANDOFF_MESSAGE_KEY));
-        String reason = normalize(payload.get(HANDOFF_REASON_KEY));
-        return new HandoffSignal(targetId, message, reason);
+    public HandoffSignal(String target, String message, String reason) {
+        this.target = target;
+        this.message = message;
+        this.reason = reason;
+    }
+
+    public String getTarget() {
+        return target;
+    }
+
+    public Optional<String> getMessage() {
+        return Optional.ofNullable(message);
+    }
+
+    public Optional<String> getReason() {
+        return Optional.ofNullable(reason);
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * findPayload.
-     * 
-     * @param result result
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> findPayload(Object result) {
+    public static Optional<Map<String, Object>> findHandoffPayload(Object result) {
         if (!(result instanceof Map<?, ?> raw)) {
-            return Map.of();
+            return Optional.empty();
         }
-        if (raw.containsKey(HANDOFF_TARGET_KEY)) {
-            return (Map<String, Object>) raw;
+        Map<String, Object> map = (Map<String, Object>) raw;
+        if (map.containsKey(HANDOFF_TARGET_KEY)) {
+            return Optional.of(map);
         }
-        for (String key : new String[]{"output", "result", "content"}) {
-            Object nested = raw.get(key);
-            if (nested instanceof Map<?, ?> nestedMap && nestedMap.containsKey(HANDOFF_TARGET_KEY)) {
-                return (Map<String, Object>) nestedMap;
+        for (String key : List.of("output", "result", "content")) {
+            Object nested = map.get(key);
+            if (nested instanceof Map<?, ?> nestedRaw) {
+                Map<String, Object> nestedMap = (Map<String, Object>) nestedRaw;
+                if (nestedMap.containsKey(HANDOFF_TARGET_KEY)) {
+                    return Optional.of(nestedMap);
+                }
             }
         }
-        return Map.of();
+        return Optional.empty();
+    }
+
+    public static Optional<HandoffSignal> extractHandoffSignal(Object result) {
+        return extractHandoffSignal(result, null);
+    }
+
+    public static Optional<HandoffSignal> extractHandoffSignal(Object result, Object agentSession) {
+        Optional<Map<String, Object>> payload = findHandoffPayload(result);
+        if (payload.isEmpty() && agentSession != null) {
+            payload = findHandoffFromSession(agentSession);
+        }
+        return payload.flatMap(HandoffSignal::fromPayload);
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * findHandoffFromSession.
-     * 
-     * @param session session
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> findHandoffFromSession(Session session) {
-        if (session == null) {
-            return Collections.emptyMap();
+    public static Optional<Map<String, Object>> findHandoffFromSession(Object agentSession) {
+        if (agentSession == null) {
+            return Optional.empty();
         }
-        Object rawStates = session.getState("context");
-        if (!(rawStates instanceof Map<?, ?> rawStateMap)) {
-            return Collections.emptyMap();
+
+        Object ctxState = readState(agentSession, "context");
+        if (!(ctxState instanceof Map<?, ?> ctxMap)) {
+            return Optional.empty();
         }
-        Object rawContext = rawStateMap.get(DEFAULT_CONTEXT_ID);
-        if (!(rawContext instanceof Map<?, ?> rawCtxMap)) {
-            return Collections.emptyMap();
+        Object defaultContext = ctxMap.get(DEFAULT_CONTEXT_ID);
+        if (!(defaultContext instanceof Map<?, ?> defaultMap)) {
+            return Optional.empty();
         }
-        Object rawMessages = rawCtxMap.get("messages");
-        if (!(rawMessages instanceof List<?> messages)) {
-            return Collections.emptyMap();
+        Object messagesValue = defaultMap.get("messages");
+        if (!(messagesValue instanceof List<?> messages) || messages.isEmpty()) {
+            return Optional.empty();
         }
-        // Walk in reverse so the most recent handoff tool result wins.
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            Object item = messages.get(i);
-            if (!(item instanceof BaseMessage message)) {
+
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            Object message = messages.get(index);
+            if (!"tool".equals(readMessageProperty(message, "role"))) {
                 continue;
             }
-            if (!"tool".equals(message.getRole())) {
+            Object contentValue = readMessageProperty(message, "content");
+            if (!(contentValue instanceof String content) || content.isEmpty()) {
                 continue;
             }
-            Object content = message.getContent();
-            if (content == null) {
-                continue;
-            }
-            Map<String, Object> parsed = parseHandoffContent(content);
-            if (parsed != null) {
-                return parsed;
+
+            Map<String, Object> parsed = parsePayloadContent(content);
+            if (parsed != null && parsed.containsKey(HANDOFF_TARGET_KEY)) {
+                return Optional.of(parsed);
             }
         }
-        return Collections.emptyMap();
+        return Optional.empty();
     }
 
-    /**
-     * parseHandoffContent.
-     * 
-     * @param content content
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> parseHandoffContent(Object content) {
-        if (content instanceof Map<?, ?> map && map.containsKey(HANDOFF_TARGET_KEY)) {
-            return toStrMap(map);
+    private static Optional<HandoffSignal> fromPayload(Map<String, Object> payload) {
+        Object targetValue = payload.get(HANDOFF_TARGET_KEY);
+        if (!(targetValue instanceof String targetText) || targetText.isEmpty()) {
+            return Optional.empty();
         }
-        if (!(content instanceof String text) || text.isBlank()) {
+        String message = nonEmptyString(payload.get(HANDOFF_MESSAGE_KEY));
+        String reason = nonEmptyString(payload.get(HANDOFF_REASON_KEY));
+        return Optional.of(new HandoffSignal(targetText, message, reason));
+    }
+
+    private static Object readState(Object session, String key) {
+        try {
+            Method method = session.getClass().getMethod("getState", String.class);
+            return method.invoke(session, key);
+        } catch (ReflectiveOperationException ignored) {
             return null;
         }
-        Map<String, Object> parsed = tryParseJson(text);
-        if (parsed != null && parsed.containsKey(HANDOFF_TARGET_KEY)) {
+    }
+
+    private static Object readMessageProperty(Object message, String propertyName) {
+        if (message == null) {
+            return null;
+        }
+        if (message instanceof Map<?, ?> map) {
+            return map.get(propertyName);
+        }
+        String accessor = "get" + Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
+        try {
+            Method method = message.getClass().getMethod(accessor);
+            return method.invoke(message);
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                Field field = message.getClass().getDeclaredField(propertyName);
+                field.setAccessible(true);
+                return field.get(message);
+            } catch (ReflectiveOperationException ignoredAgain) {
+                return null;
+            }
+        }
+    }
+
+    private static Map<String, Object> parsePayloadContent(String content) {
+        Map<String, Object> parsed = parseJsonMap(content);
+        if (parsed != null) {
             return parsed;
         }
-        Map<String, Object> javaMap = tryParseJavaMapString(text);
-        if (javaMap != null && javaMap.containsKey(HANDOFF_TARGET_KEY)) {
-            return javaMap;
+
+        parsed = parseJsonMap(toJsonLikePythonDict(content));
+        if (parsed == null) {
+            Loggers.MULTI_AGENT.debug("[HandoffSignal] failed to parse handoff payload from tool content: {}", content);
         }
-        return null;
+        return parsed;
     }
 
-    @SuppressWarnings("unchecked")
-    /**
-     * toStrMap.
-     * 
-     * @param map map
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> toStrMap(Map<?, ?> map) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            result.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return result;
-    }
-
-    /**
-     * tryParseJson.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> tryParseJson(String text) {
+    private static Map<String, Object> parseJsonMap(String content) {
         try {
-            Object parsed = JSON_MAPPER.readValue(text, Object.class);
-            if (parsed instanceof Map<?, ?> map) {
-                return toStrMap(map);
-            }
-        } catch (JsonProcessingException e) {
-            // Not JSON; fall through to Java map literal parsing.
-        }
-        return null;
-    }
-
-    /**
-     * Parse Java's {@code Map.toString()} output such as
-     * {@code {__handoff_to__=billing_support, __handoff_reason__=用户质疑...}}.
-     * 
-     * @param text text
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> tryParseJavaMapString(String text) {
-        String trimmed = text.trim();
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return OBJECT_MAPPER.readValue(content, MAP_TYPE);
+        } catch (Exception ignored) {
             return null;
         }
-        String body = trimmed.substring(1, trimmed.length() - 1);
-        if (body.isBlank()) {
-            return new LinkedHashMap<>();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        StringBuilder key = new StringBuilder();
-        StringBuilder value = new StringBuilder();
-        StringBuilder current = key;
-        boolean inValue = false;
-        int depth = 0;
-        boolean escaped = false;
-        for (int i = 0; i < body.length(); i++) {
-            char c = body.charAt(i);
-            if (escaped) {
-                current.append(c);
-                escaped = false;
-                continue;
-            }
-            if (c == '\\') {
-                escaped = true;
-                continue;
-            }
-            if (!inValue) {
-                if (c == '=') {
-                    inValue = true;
-                    current = value;
-                    continue;
-                }
-                key.append(c);
-                continue;
-            }
-            if (c == '{' || c == '[' || c == '(') {
-                depth++;
-                current.append(c);
-                continue;
-            }
-            if (c == '}' || c == ']' || c == ')') {
-                depth--;
-                current.append(c);
-                continue;
-            }
-            if (c == ',' && depth == 0) {
-                putEntry(result, key.toString(), value.toString());
-                key.setLength(0);
-                value.setLength(0);
-                inValue = false;
-                current = key;
-                continue;
-            }
-            current.append(c);
-        }
-        if (key.length() > 0 || inValue) {
-            putEntry(result, key.toString(), value.toString());
-        }
-        return result;
     }
 
-    /**
-     * putEntry.
-     * 
-     * @param result result
-     * @param rawKey rawKey
-     * @param rawValue rawValue
-     * @since 0.1.7
-     */
-    private static void putEntry(Map<String, Object> result, String rawKey, String rawValue) {
-        String key = rawKey.strip();
-        String value = rawValue.strip();
-        if (key.isEmpty()) {
-            return;
+    private static String toJsonLikePythonDict(String content) {
+        if (content == null) {
+            return "";
         }
-        if ("null".equals(value) || value.isEmpty()) {
-            result.put(key, null);
-        } else {
-            result.put(key, value);
-        }
+        return content.replace("'", "\"")
+                .replace(": None", ": null")
+                .replace(": True", ": true")
+                .replace(": False", ": false");
     }
 
-    /**
-     * normalize.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String normalize(Object value) {
-        if (!(value instanceof String text) || text.isBlank()) {
+    private static String nonEmptyString(Object value) {
+        if (!(value instanceof String text) || text.isEmpty()) {
             return null;
         }
         return text;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof HandoffSignal that)) {
+            return false;
+        }
+        return Objects.equals(target, that.target)
+                && Objects.equals(message, that.message)
+                && Objects.equals(reason, that.reason);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(target, message, reason);
+    }
+
+    @Override
+    public String toString() {
+        return "HandoffSignal(target=%s, message=%s, reason=%s)"
+                .formatted(target, message, reason);
     }
 }

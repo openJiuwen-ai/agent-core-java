@@ -7,6 +7,7 @@ package com.openjiuwen.extensions.checkpointer.redis.storage;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.foundation.store.BasedKVStorePipeline;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 
 import java.util.List;
@@ -34,9 +35,9 @@ public class GraphStore extends BaseRedisStorage {
      */
     public CompletableFuture<Object> get(String sessionId, String ns) {
         try {
-            String keyType = Checkpointer.buildKeyWithNamespace(
+            String keyType = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = Checkpointer.buildKeyWithNamespace(
+            String keyValue = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();
@@ -76,9 +77,9 @@ public class GraphStore extends BaseRedisStorage {
                 return CompletableFuture.completedFuture(null);
             }
 
-            String keyType = Checkpointer.buildKeyWithNamespace(
+            String keyType = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = Checkpointer.buildKeyWithNamespace(
+            String keyValue = Checkpointer.resolveNsKey(
                     sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             BasedKVStorePipeline pipeline = redisStore.pipeline();
@@ -97,11 +98,10 @@ public class GraphStore extends BaseRedisStorage {
     public CompletableFuture<Void> delete(String sessionId, String ns) {
         try {
             if (ns == null || ns.isEmpty()) {
-                redisStore.deleteByPrefix(Checkpointer.buildKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH), 500)
+                redisStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(Checkpointer.buildKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH)), 500)
                         .join();
             } else {
-                redisStore.deleteByPrefix(
-                        Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns), 500)
+                redisStore.deleteByPrefix(Checkpointer.resolveNsPrefix(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns), 500)
                         .join();
             }
             return CompletableFuture.completedFuture(null);

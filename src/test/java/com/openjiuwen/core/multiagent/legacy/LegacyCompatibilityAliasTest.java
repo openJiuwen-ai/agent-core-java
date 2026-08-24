@@ -5,7 +5,7 @@ package com.openjiuwen.core.multiagent.legacy;
 
 import com.openjiuwen.core.multiagent.legacy.schema.LegacyEventDrivenGroupCard;
 import com.openjiuwen.core.multiagent.legacy.schema.LegacyGroupCard;
-import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentGroupSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 
@@ -28,7 +28,7 @@ class LegacyCompatibilityAliasTest {
         assertEquals("legacy-session", session.getSessionId());
         assertEquals("legacy", String.valueOf(session.getState("mode")));
         assertEquals(1, session.getState("round"));
-        assertInstanceOf(AgentGroupSessionApi.class, session);
+        assertInstanceOf(AgentGroupSession.class, session);
     }
 
     @Test
@@ -46,12 +46,12 @@ class LegacyCompatibilityAliasTest {
 
         BaseGroup group = new BaseGroup(new AgentGroupConfig("legacy-group")) {
             @Override
-            public Object invoke(Object message, AgentGroupSessionApi session) {
+            public Object invoke(Object message, AgentGroupSession session) {
                 return Map.of("message", message, "session", session != null ? session.getSessionId() : null);
             }
 
             @Override
-            public Iterator<Object> stream(Object message, AgentGroupSessionApi session) {
+            public Iterator<Object> stream(Object message, AgentGroupSession session) {
                 return List.<Object>of(message).iterator();
             }
         };

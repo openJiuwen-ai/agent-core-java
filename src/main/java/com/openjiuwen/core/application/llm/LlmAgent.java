@@ -232,6 +232,8 @@ public class LlmAgent extends LLMAgent {
             com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig constrain =
                     new com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig();
             constrain.setReservedMaxChatRounds(source.getConstrain().getReservedMaxChatRounds());
+            // Align with Python LlmAgentConfig.constrain.max_iteration wiring.
+            constrain.setMaxIteration(source.getConstrain().getMaxIteration());
             config.setConstrain(constrain);
         }
         return config;

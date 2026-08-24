@@ -4,9 +4,10 @@
 
 package com.openjiuwen.harness.rails.evolution;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

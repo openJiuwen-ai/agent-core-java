@@ -4,106 +4,117 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 /**
- * Backward-compatible config DTO for the pre-0.1.14 compressor package.
+ * Configuration for {@link DialogueCompressor}.
  *
  * <p>Mirrors Python's {@code DialogueCompressorConfig} in
  * {@code openjiuwen/core/context_engine/processor/compressor/dialogue_compressor.py}.</p>
  */
-public class DialogueCompressorConfig
-        extends com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressorConfig {
-    public DialogueCompressorConfig() {
+public class DialogueCompressorConfig {
+    @JsonProperty("messages_threshold")
+    private Integer messagesThreshold;
+
+    @JsonProperty("tokens_threshold")
+    private int tokensThreshold = 10000;
+
+    @JsonProperty("messages_to_keep")
+    private Integer messagesToKeep;
+
+    @JsonProperty("keep_last_round")
+    private boolean keepLastRound = true;
+
+    @JsonProperty("compression_target_tokens")
+    private int compressionTargetTokens = 1800;
+
+    @JsonProperty("custom_compression_prompt")
+    private String customCompressionPrompt;
+
+    private ModelRequestConfig model;
+
+    @JsonProperty("model_client")
+    private ModelClientConfig modelClient;
+
+    public Integer getMessagesThreshold() {
+        return messagesThreshold;
     }
 
-    public DialogueCompressorConfig(Integer messagesThreshold, int tokensThreshold, Integer messagesToKeep,
-                                    boolean keepLastRound, int compressionTargetTokens,
-                                    String customCompressionPrompt, ModelRequestConfig model,
-                                    ModelClientConfig modelClient) {
-        setMessagesThreshold(messagesThreshold);
-        setTokensThreshold(tokensThreshold);
-        setMessagesToKeep(messagesToKeep);
-        setKeepLastRound(keepLastRound);
-        setCompressionTargetTokens(compressionTargetTokens);
-        setCustomCompressionPrompt(customCompressionPrompt);
-        setModel(model);
-        setModelClient(modelClient);
+    public void setMessagesThreshold(Integer messagesThreshold) {
+        validateNullableGt(messagesThreshold, "messages_threshold");
+        this.messagesThreshold = messagesThreshold;
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public int getTokensThreshold() {
+        return tokensThreshold;
     }
 
-    public void validate() {
-        setMessagesThreshold(getMessagesThreshold());
-        setTokensThreshold(getTokensThreshold());
-        setMessagesToKeep(getMessagesToKeep());
-        setCompressionTargetTokens(getCompressionTargetTokens());
+    public void setTokensThreshold(int tokensThreshold) {
+        validateGt(tokensThreshold, "tokens_threshold");
+        this.tokensThreshold = tokensThreshold;
     }
 
-    public static final class Builder {
-        private Integer messagesThreshold;
-        private int tokensThreshold = 10000;
-        private Integer messagesToKeep;
-        private boolean keepLastRound = true;
-        private int compressionTargetTokens = 1800;
-        private String customCompressionPrompt;
-        private ModelRequestConfig model;
-        private ModelClientConfig modelClient;
+    public Integer getMessagesToKeep() {
+        return messagesToKeep;
+    }
 
-        private Builder() {
+    public void setMessagesToKeep(Integer messagesToKeep) {
+        validateNullableGt(messagesToKeep, "messages_to_keep");
+        this.messagesToKeep = messagesToKeep;
+    }
+
+    public boolean isKeepLastRound() {
+        return keepLastRound;
+    }
+
+    public void setKeepLastRound(boolean keepLastRound) {
+        this.keepLastRound = keepLastRound;
+    }
+
+    public int getCompressionTargetTokens() {
+        return compressionTargetTokens;
+    }
+
+    public void setCompressionTargetTokens(int compressionTargetTokens) {
+        validateGt(compressionTargetTokens, "compression_target_tokens");
+        this.compressionTargetTokens = compressionTargetTokens;
+    }
+
+    public String getCustomCompressionPrompt() {
+        return customCompressionPrompt;
+    }
+
+    public void setCustomCompressionPrompt(String customCompressionPrompt) {
+        this.customCompressionPrompt = customCompressionPrompt;
+    }
+
+    public ModelRequestConfig getModel() {
+        return model;
+    }
+
+    public void setModel(ModelRequestConfig model) {
+        this.model = model;
+    }
+
+    public ModelClientConfig getModelClient() {
+        return modelClient;
+    }
+
+    public void setModelClient(ModelClientConfig modelClient) {
+        this.modelClient = modelClient;
+    }
+
+    private static void validateNullableGt(Integer value, String fieldName) {
+        if (value != null && value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be > 0");
         }
+    }
 
-        public Builder messagesThreshold(Integer messagesThreshold) {
-            this.messagesThreshold = messagesThreshold;
-            return this;
-        }
-
-        public Builder tokensThreshold(int tokensThreshold) {
-            this.tokensThreshold = tokensThreshold;
-            return this;
-        }
-
-        public Builder messagesToKeep(Integer messagesToKeep) {
-            this.messagesToKeep = messagesToKeep;
-            return this;
-        }
-
-        public Builder keepLastRound(boolean keepLastRound) {
-            this.keepLastRound = keepLastRound;
-            return this;
-        }
-
-        public Builder compressionTargetTokens(int compressionTargetTokens) {
-            this.compressionTargetTokens = compressionTargetTokens;
-            return this;
-        }
-
-        public Builder compressionTokenLimit(int compressionTokenLimit) {
-            this.compressionTargetTokens = compressionTokenLimit;
-            return this;
-        }
-
-        public Builder customCompressionPrompt(String customCompressionPrompt) {
-            this.customCompressionPrompt = customCompressionPrompt;
-            return this;
-        }
-
-        public Builder model(ModelRequestConfig model) {
-            this.model = model;
-            return this;
-        }
-
-        public Builder modelClient(ModelClientConfig modelClient) {
-            this.modelClient = modelClient;
-            return this;
-        }
-
-        public DialogueCompressorConfig build() {
-            return new DialogueCompressorConfig(messagesThreshold, tokensThreshold, messagesToKeep,
-                    keepLastRound, compressionTargetTokens, customCompressionPrompt, model, modelClient);
+    private static void validateGt(int value, String fieldName) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be > 0");
         }
     }
 }

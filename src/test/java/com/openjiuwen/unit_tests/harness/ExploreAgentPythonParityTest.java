@@ -6,7 +6,7 @@ package com.openjiuwen.unit_tests.harness;
 
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.ExploreAgent;
@@ -44,6 +44,10 @@ class ExploreAgentPythonParityTest {
         assertEquals(1, spec.getConfig().getRails().size());
         SysOperationRail rail = assertInstanceOf(SysOperationRail.class, spec.getConfig().getRails().get(0));
         assertTrue(rail.isReadOnly());
+        assertTrue(spec.getSystemPrompt().contains("READ-ONLY OPERATION"));
+        assertTrue(spec.getSystemPrompt().contains("Use `glob`"));
+        assertTrue(spec.getSystemPrompt().contains("Calibrate search depth"));
+        assertTrue(spec.getCard().getDescription().contains("thoroughness"));
     }
 
     @Test

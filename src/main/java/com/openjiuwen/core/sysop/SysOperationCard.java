@@ -4,50 +4,111 @@
 
 package com.openjiuwen.core.sysop;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+
 /**
- * Backward-compatible card for the moved system operation package.
+ * Configuration card for system operations.
  *
  * <p>Mirrors Python's {@code SysOperationCard} in
  * {@code openjiuwen/core/sys_operation/sys_operation.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.SysOperationCard}.
  */
-@Deprecated(since = "0.1.14", forRemoval = false)
-public class SysOperationCard extends com.openjiuwen.core.sys_operation.SysOperationCard {
+public class SysOperationCard extends BaseCard {
+
+    private OperationMode mode = OperationMode.LOCAL;
+    private LocalWorkConfig workConfig;
+    private SandboxGatewayConfig gatewayConfig;
 
     public SysOperationCard() {
         super();
     }
 
-    public SysOperationCard(String id,
-                            OperationMode mode,
-                            com.openjiuwen.core.sys_operation.config.LocalWorkConfig workConfig) {
-        super(id, mode != null ? mode.toNewMode() : com.openjiuwen.core.sys_operation.OperationMode.LOCAL,
-                workConfig);
+    public SysOperationCard(String id, OperationMode mode, LocalWorkConfig workConfig) {
+        super(id, "", "");
+        setMode(mode);
+        this.workConfig = workConfig;
     }
 
-    public OperationMode getLegacyMode() {
-        return OperationMode.fromNewMode(super.getMode());
+    public OperationMode getMode() {
+        return mode;
     }
 
     public void setMode(OperationMode mode) {
-        super.setMode(mode != null ? mode.toNewMode() : com.openjiuwen.core.sys_operation.OperationMode.LOCAL);
+        this.mode = mode != null ? mode : OperationMode.LOCAL;
     }
 
-    public ToolIdProxy fs() {
+    public void setMode(String mode) {
+        if (mode != null && mode.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg",
+                    "mode must be one of [local, sandbox], current value: " + mode
+            );
+        }
+        OperationMode parsed = OperationMode.fromValue(mode);
+        if (mode != null && !parsed.value().equalsIgnoreCase(mode.trim())) {
+            throw ErrorHelper.buildError(
+                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
+                    "error_msg",
+                    "mode must be one of [local, sandbox], current value: " + mode
+            );
+        }
+        this.mode = parsed;
+    }
+
+    public LocalWorkConfig getWorkConfig() {
+        return workConfig;
+    }
+
+    public void setWorkConfig(LocalWorkConfig workConfig) {
+        this.workConfig = workConfig;
+    }
+
+    public SandboxGatewayConfig getGatewayConfig() {
+        return gatewayConfig;
+    }
+
+    public void setGatewayConfig(SandboxGatewayConfig gatewayConfig) {
+        this.gatewayConfig = gatewayConfig;
+    }
+
+    public ToolIdProxy getFs() {
         return new ToolIdProxy(getId(), "fs");
     }
 
-    public ToolIdProxy shell() {
+    public ToolIdProxy getShell() {
         return new ToolIdProxy(getId(), "shell");
     }
 
-    public ToolIdProxy code() {
+    public ToolIdProxy getCode() {
         return new ToolIdProxy(getId(), "code");
     }
 
+    public ToolIdProxy operation(String name) {
+        return new ToolIdProxy(getId(), name);
+    }
+
+    public static String generateToolId(String cardId, String opType, String methodName) {
+        return cardId + "." + opType + "." + methodName;
+    }
+
+    public ToolIdProxy fs() {
+        return getFs();
+    }
+
+    public ToolIdProxy shell() {
+        return getShell();
+    }
+
+    public ToolIdProxy code() {
+        return getCode();
+    }
+
     public ToolIdProxy proxy(String opType) {
-        return new ToolIdProxy(getId(), opType);
+        return operation(opType);
     }
 
     public static OperationMode validateMode(String modeValue) {
@@ -58,17 +119,13 @@ public class SysOperationCard extends com.openjiuwen.core.sys_operation.SysOpera
         return new Builder();
     }
 
-    /**
-     * Backward-compatible builder accepting the old OperationMode enum while
-     * delegating storage to the new card implementation.
-     */
-    public static class Builder {
+    public static final class Builder {
         private String id;
         private String name = "";
         private String description = "";
         private OperationMode mode = OperationMode.LOCAL;
-        private com.openjiuwen.core.sys_operation.config.LocalWorkConfig workConfig;
-        private com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig gatewayConfig;
+        private LocalWorkConfig workConfig;
+        private SandboxGatewayConfig gatewayConfig;
 
         public Builder id(String id) {
             this.id = id;
@@ -90,17 +147,12 @@ public class SysOperationCard extends com.openjiuwen.core.sys_operation.SysOpera
             return this;
         }
 
-        public Builder mode(com.openjiuwen.core.sys_operation.OperationMode mode) {
-            this.mode = OperationMode.fromNewMode(mode);
-            return this;
-        }
-
-        public Builder workConfig(com.openjiuwen.core.sys_operation.config.LocalWorkConfig workConfig) {
+        public Builder workConfig(LocalWorkConfig workConfig) {
             this.workConfig = workConfig;
             return this;
         }
 
-        public Builder gatewayConfig(com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig gatewayConfig) {
+        public Builder gatewayConfig(SandboxGatewayConfig gatewayConfig) {
             this.gatewayConfig = gatewayConfig;
             return this;
         }

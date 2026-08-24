@@ -15,10 +15,10 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -240,12 +240,11 @@ class AbilityManagerSupplementTest {
         assertThat(results).isEmpty();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
-    void testExecutePreservesSkipToolMarkerThroughAfterToolCallThenClearsIt() {
-        class SkippingAgent extends BaseAgent {
-            SkippingAgent() {
-                super(AgentCard.builder().id("skip-agent").name("skip-agent").build());
+    void executeWithCallbackContextFiresBeforeToolCallAndHonorsSkipTool() {
+        class ProbeAgent extends BaseAgent {
+            ProbeAgent() {
+                super(AgentCard.builder().id("probe-agent").name("probe-agent").build());
             }
 
             @Override
@@ -259,29 +258,28 @@ class AbilityManagerSupplementTest {
             }
 
             @Override
-            public Object invoke(Object inputs, com.openjiuwen.core.session.Session session) {
+            public Object invoke(Object inputs, com.openjiuwen.core.session.AgentSession session) {
                 return null;
             }
 
             @Override
-            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.Session session,
+            public java.util.Iterator<Object> stream(Object inputs, com.openjiuwen.core.session.AgentSession session,
                     List<com.openjiuwen.core.session.stream.StreamMode> streamModes) {
                 return List.of().iterator();
             }
         }
 
         class SkipRail extends AgentRail {
-            private boolean skipVisibleInAfter;
+            private Object capturedInputs;
 
             @Override
             public java.util.concurrent.CompletionStage<Void> beforeToolCall(AgentCallbackContext ctx) {
+                capturedInputs = ctx.getInputs();
                 ctx.getExtra().put("_skip_tool", Boolean.TRUE);
-                return completed();
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<Void> afterToolCall(AgentCallbackContext ctx) {
-                skipVisibleInAfter = Boolean.TRUE.equals(ctx.getExtra().get("_skip_tool"));
+                if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+                    inputs.setToolResult("skipped");
+                    inputs.setToolMsg(new ToolMessage("skipped", "tc-skip", "skip-tool"));
+                }
                 return completed();
             }
         }
@@ -289,26 +287,31 @@ class AbilityManagerSupplementTest {
         String toolId = "skip-tool-" + UUID.randomUUID();
         LocalFunction tool = new LocalFunction(
                 ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
-                inputs -> "should-not-run"
+                inputs -> {
+                    throw new IllegalStateException("should-not-run");
+                }
         );
         Runner.resourceMgr().addTool(tool, null);
         try {
-            SkippingAgent agent = new SkippingAgent();
+            ProbeAgent agent = new ProbeAgent();
             SkipRail rail = new SkipRail();
             agent.registerRail(rail).toCompletableFuture().join();
             manager.add(tool.getCard());
-            Map<String, Object> extra = new java.util.LinkedHashMap<>();
             AgentCallbackContext ctx = new AgentCallbackContext(agent);
-            ctx.setExtra(extra);
 
             List<AbilityManager.ExecutionResult> results = manager.execute(
-                    ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build()
+                    ctx,
+                    ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(),
+                    false,
+                    null
             );
 
+            assertThat(rail.capturedInputs).isInstanceOf(ToolCallInputs.class);
+            assertThat(((ToolCallInputs) rail.capturedInputs).getToolName())
+                    .isEqualTo(toolId);
             assertThat(results).hasSize(1);
-            assertThat(results.get(0).result()).isNull();
-            assertThat(rail.skipVisibleInAfter).isTrue();
-            assertThat(extra).doesNotContainKey("_skip_tool");
+            assertThat(results.get(0).result()).isEqualTo("skipped");
+            assertThat(results.get(0).toolMessage().getContent()).isEqualTo("skipped");
         } finally {
             Runner.resourceMgr().removeTool(toolId, null, TagMatchStrategy.ALL, true);
         }
@@ -322,10 +325,11 @@ class AbilityManagerSupplementTest {
                 .arguments("{}")
                 .build();
 
-        // Tool not registered — execute returns a result with null ability
         List<AbilityManager.ExecutionResult> results = manager.execute(tc);
         assertThat(results).hasSize(1);
-        assertThat(results.get(0).result()).isNotNull();
+        assertThat(results.get(0).result()).isNull();
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("Ability not found in resource_mgr: nonexistent-tool");
     }
 
     @Test
@@ -337,7 +341,9 @@ class AbilityManagerSupplementTest {
                 .build();
 
         List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).isNotEmpty();
+        assertThat(results).hasSize(1);
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("Ability not found in resource_mgr: nonexistent-tool");
     }
 
     @Test
@@ -360,9 +366,10 @@ class AbilityManagerSupplementTest {
                 .arguments("not json")
                 .build();
 
-        // Invalid JSON args should be handled gracefully
         List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).isNotEmpty();
+        assertThat(results).hasSize(1);
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("Invalid tool arguments JSON:");
     }
 
     @Test
@@ -372,17 +379,22 @@ class AbilityManagerSupplementTest {
         assertThat(calls).isEmpty();
     }
 
-    @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
     @Test
-    void testExecuteSingleToolCallResolvesMcpToolByNameWithoutPreListing() throws Exception {
+    void executeUsesGeneratedMcpToolCardIdToResolveResourceManagerInstance() {
         String serverId = "mcp-server-id-" + UUID.randomUUID();
+        String generatedName = "mcp_demo-server_browser_navigate";
         String toolId = serverId + ".demo-server.browser_navigate";
-
         McpServerConfig server = McpServerConfig.builder()
                 .serverName("demo-server")
                 .serverId(serverId)
                 .build();
         manager.add(server);
+        manager.add(ToolCard.builder()
+                .id(toolId)
+                .name(generatedName)
+                .description("Navigate browser")
+                .inputParams(Map.of("type", "object"))
+                .build());
 
         McpClient client = new McpClient() {
             @Override
@@ -415,32 +427,53 @@ class AbilityManagerSupplementTest {
                 return "mock://demo-server";
             }
         };
-
-        McpToolCard card = McpToolCard.builder()
+        Tool tool = new McpTool(client, McpToolCard.builder()
                 .id(toolId)
                 .name("browser_navigate")
                 .description("Navigate browser")
                 .serverId(serverId)
                 .serverName("demo-server")
-                .build();
-        Tool tool = new McpTool(client, card);
+                .build());
         Runner.resourceMgr().addTool(tool, "ut-mcp");
-
         try {
-            ToolCall tc = ToolCall.builder()
+            List<AbilityManager.ExecutionResult> results = manager.execute(ToolCall.builder()
                     .id("tc-mcp")
-                    .name("browser_navigate")
+                    .name(generatedName)
                     .arguments("{\"url\":\"https://example.com\"}")
-                    .build();
-
-            List<AbilityManager.ExecutionResult> results = manager.execute(tc);
+                    .build());
 
             assertThat(results).hasSize(1);
             assertThat(results.get(0).result()).isNotNull();
-            assertThat(manager.get("browser_navigate")).isPresent();
+            assertThat(String.valueOf(results.get(0).result())).contains("browser_navigate");
         } finally {
             Runner.resourceMgr().removeTool(toolId, "ut-mcp", TagMatchStrategy.ALL, true);
         }
+    }
+
+    @Test
+    void mcpAllowlistFiltersListedToolsAndRejectsDisallowedExecution() {
+        McpServerConfig server = McpServerConfig.builder()
+                .serverName("weather")
+                .serverId("mcp-weather")
+                .build();
+        TestableAbilityManager allowlistManager = new TestableAbilityManager(List.of(
+                ToolInfo.builder().name("forecast").description("forecast").parameters(Map.of()).build(),
+                ToolInfo.builder().name("alerts").description("alerts").parameters(Map.of()).build()
+        ));
+        allowlistManager.add(server);
+        allowlistManager.setMcpToolAllowlist(server, List.of("forecast"));
+
+        List<String> names = allowlistManager.listToolInfo().stream().map(ToolInfo::getName).toList();
+        assertThat(names).contains("mcp_weather_forecast");
+        assertThat(names).doesNotContain("mcp_weather_alerts");
+
+        List<AbilityManager.ExecutionResult> results = allowlistManager.execute(ToolCall.builder()
+                .id("tc-alert")
+                .name("mcp_weather_alerts")
+                .arguments("{}")
+                .build());
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("MCP tool 'alerts' is not allowed for server 'mcp-weather'");
     }
 
     @Test
@@ -456,9 +489,11 @@ class AbilityManagerSupplementTest {
                 .arguments("{}")
                 .build();
 
-        // MCP server name is not directly executable — execute returns result with the McpServerConfig as ability
         List<AbilityManager.ExecutionResult> results = manager.execute(tc);
-        assertThat(results).isNotEmpty();
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).result()).isNull();
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("MCP tool execution not yet implemented: mcp-server");
     }
 
     // ========== ToolExecutionEntry record ==========
@@ -477,5 +512,18 @@ class AbilityManagerSupplementTest {
         AbilityManager.ExecutionResult entry = new AbilityManager.ExecutionResult(null, null);
         assertThat(entry.result()).isNull();
         assertThat(entry.toolMessage()).isNull();
+    }
+
+    private static final class TestableAbilityManager extends AbilityManager {
+        private final List<ToolInfo> mcpToolInfos;
+
+        private TestableAbilityManager(List<ToolInfo> mcpToolInfos) {
+            this.mcpToolInfos = mcpToolInfos;
+        }
+
+        @Override
+        protected List<ToolInfo> loadMcpToolInfos(McpServerConfig mcpServer) {
+            return mcpToolInfos;
+        }
     }
 }

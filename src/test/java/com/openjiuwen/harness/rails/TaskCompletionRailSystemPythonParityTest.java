@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.CompletionPromiseEvaluator;
 import com.openjiuwen.harness.schema.StopConditionEvaluator;
 import com.openjiuwen.harness.schema.StopEvaluationContext;

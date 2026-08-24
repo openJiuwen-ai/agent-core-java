@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
+import com.openjiuwen.core.session.config.SessionConfigAccess;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
@@ -196,7 +197,7 @@ class ActorManagerTest {
         private final WorkflowCommitState state = InMemoryState.create();
 
         @Override
-        public ConfigView config() {
+        public SessionConfigAccess config() {
             return config;
         }
 
@@ -206,7 +207,7 @@ class ActorManagerTest {
         }
     }
 
-    private static final class SimpleConfig implements ActorManagerSession.ConfigView {
+    private static final class SimpleConfig implements SessionConfigAccess {
         private final Map<String, Object> env = new LinkedHashMap<>();
 
         private SimpleConfig() {

@@ -132,8 +132,8 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     private Object getInternal(String key) {
         requireKey(key);
         try {
-            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"get"}, key);
-            Object value = normalizeValue(outcome.value());
+            // Prefer Jedis get(byte[]) for binary checkpoints; get(String) may UTF-8-corrupt payloads.
+            Object value = normalizeValue(getValuePreferringBinaryKey(key));
             if (value == null) {
                 logger.debug("Key not found: {}", key);
             } else {
@@ -367,6 +367,12 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     private void setInternal(String key, Object value, Integer expiry) {
         requireKey(key);
         try {
+            if (value instanceof byte[] bytes) {
+                setBinaryValue(key, bytes, expiry);
+                logger.debug("Successfully set binary key: {}", key);
+                return;
+            }
+
             boolean expiryApplied = false;
             if (expiry != null && expiry > 0) {
                 InvocationOutcome combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
@@ -392,8 +398,80 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
         }
     }
 
+    private void setBinaryValue(String key, byte[] value, Integer expiry) throws Exception {
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        boolean expiryApplied = false;
+        if (expiry != null && expiry > 0) {
+            InvocationOutcome combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
+            if (!combinedSet.handled()) {
+                combinedSet = tryInvoke(
+                        redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
+            }
+            if (combinedSet.handled()) {
+                expiryApplied = true;
+            }
+        }
+        InvocationOutcome binarySet = expiryApplied
+                ? InvocationOutcome.notHandled()
+                : tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value);
+        if (!binarySet.handled()) {
+            invokeRequired(redisClient, new String[]{"set"}, key, value);
+            if (expiry != null && expiry > 0) {
+                expireKey(key, expiry);
+            }
+            return;
+        }
+        if (expiry != null && expiry > 0 && !expiryApplied) {
+            expireKey(key, expiry);
+        }
+    }
+
     private void requireKey(String key) {
         Objects.requireNonNull(key, "key must not be null");
+    }
+
+    /**
+     * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
+     * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
+     */
+    private Object getValuePreferringBinaryKey(String key) throws Exception {
+        Object stringValue = null;
+        InvocationOutcome stringOutcome = tryInvoke(redisClient, new String[]{"get"}, key);
+        if (stringOutcome.handled()) {
+            stringValue = stringOutcome.value();
+        }
+
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        InvocationOutcome binaryOutcome = tryInvoke(redisClient, new String[]{"get"}, byte[].class, keyBytes);
+        Object binaryValue = binaryOutcome.handled() ? binaryOutcome.value() : null;
+
+        if (binaryValue instanceof byte[] bytes) {
+            String text = stringValue instanceof String ? (String) stringValue : null;
+            if (stringValue == null || preferBinaryOverString(bytes, text)) {
+                return bytes;
+            }
+        }
+
+        if (stringValue != null) {
+            return stringValue;
+        }
+        if (!stringOutcome.handled()) {
+            InvocationOutcome outcome = invokeRequired(redisClient, new String[]{"get"}, key);
+            return outcome.value();
+        }
+        return binaryValue;
+    }
+
+    private boolean preferBinaryOverString(byte[] bytes, String text) {
+        // Java serialization magic: 0xACED
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xAC && bytes[1] == (byte) 0xED) {
+            return true;
+        }
+        if (text == null) {
+            return true;
+        }
+        return !text.equals(new String(bytes, StandardCharsets.UTF_8));
     }
 
     private List<Object> tryMget(List<String> keys) throws Exception {
@@ -639,11 +717,21 @@ public class RedisStore extends BaseKVStore implements AutoCloseable {
     }
 
     private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) throws Exception {
+        return tryInvoke(target, methodNames, null, args);
+    }
+
+    private InvocationOutcome tryInvoke(
+            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) throws Exception {
         MethodMatch bestMatch = null;
         for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
             String methodName = methodNames[nameIndex];
             for (Method method : target.getClass().getMethods()) {
                 if (!method.getName().equals(methodName)) {
+                    continue;
+                }
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if (requiredFirstParamType != null
+                        && (parameterTypes.length == 0 || parameterTypes[0] != requiredFirstParamType)) {
                     continue;
                 }
 

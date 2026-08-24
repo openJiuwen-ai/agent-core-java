@@ -1,7 +1,7 @@
 package com.openjiuwen.deepagents;
 
 import com.openjiuwen.deepagents.subagents.DeepAgentSubagents;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.tools.browser.BrowserRunGuardrails;
 import com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings;

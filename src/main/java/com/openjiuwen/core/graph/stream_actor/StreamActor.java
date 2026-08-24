@@ -3,8 +3,10 @@
  */
 
 package com.openjiuwen.core.graph.stream_actor;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.concurrent.StripedKeyLocks;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
@@ -13,14 +15,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 /**
@@ -31,12 +36,16 @@ public class StreamActor {
 
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000L;
-    private static final ExecutorService VIRTUAL_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
+    private static final long START_LATCH_TIMEOUT_SECONDS = 30L;
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("stream-actor", false);
 
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
     private final StreamConsumer vertex;
     private final String nodeId;
     private final List<RunningTask> runningTasks = new ArrayList<>();
+    private final StripedKeyLocks producerLocks = new StripedKeyLocks(32);
+    private final Object startGuard = new Object();
 
     private Future<?> task;
     private CompletableFuture<Void> taskCompletion;
@@ -63,10 +72,24 @@ public class StreamActor {
      * @param firstFrame whether this is the first frame
      * @param producerId producer node id for logging
      */
-    public synchronized void send(
+    public void send(
             Object message,
             ComponentAbility sourceAbility,
             boolean firstFrame,
+            String producerId) {
+        ReentrantLock producerLock = producerLocks.get(producerId == null ? nodeId : producerId);
+        producerLock.lock();
+        try {
+            sendOnProducer(message, sourceAbility, firstFrame, producerId);
+        } finally {
+            producerLock.unlock();
+        }
+    }
+
+    private void sendOnProducer(
+            Object message,
+            ComponentAbility sourceAbility,
+            boolean isFirstFrame,
             String producerId) {
         String abilityName = sourceAbility.getAbilityName();
         if (!vertex.shouldHandleMessage()) {
@@ -75,25 +98,32 @@ public class StreamActor {
             return;
         }
 
-        if (task == null || task.isDone()) {
-            taskFailure(task).ifPresent(failure ->
-                    LOGGER.warning("Exception occurred while sending chunk of node [{}]", nodeId, failure));
-            if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
-                LOGGER.warning("Discard chunk send from [{}], {}[{}] occur exception",
-                        producerId, nodeId, abilityName);
-                return;
-            }
-            if (hasActiveProcessorTasks()) {
-                LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
-                        producerId, nodeId, abilityName);
-            } else {
-                if (!firstFrame || !vertex.isDone()) {
-                    LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
+        CountDownLatch startLatch = null;
+        synchronized (startGuard) {
+            if (task == null || task.isDone()) {
+                taskFailure(task).ifPresent(failure ->
+                        LOGGER.warning("Exception occurred while sending chunk of node [{}]", nodeId, failure));
+                if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
+                    LOGGER.warning("Discard chunk send from [{}], {}[{}] occur exception",
                             producerId, nodeId, abilityName);
                     return;
                 }
-                startStreamCall();
+                if (hasActiveProcessorTasks()) {
+                    LOGGER.debug("Continue chunk dispatch from [{}] to active {}[{}] processors",
+                            producerId, nodeId, abilityName);
+                } else {
+                    if (!isFirstFrame || !vertex.isDone()) {
+                        LOGGER.warning("Discard chunk send from [{}], {}[{}] vertex is done",
+                                producerId, nodeId, abilityName);
+                        return;
+                    }
+                    startLatch = beginStreamCall();
+                }
             }
+        }
+        if (startLatch != null) {
+            awaitStartLatch(startLatch);
+            startProcessorTasks();
         }
 
         LOGGER.debug("Send chunk from [{}] to {}[{}]", producerId, nodeId, abilityName);
@@ -125,12 +155,14 @@ public class StreamActor {
     /**
      * Waits for the stream call and processor tasks to complete.
      */
-    public synchronized void awaitCompletion() {
-        if (taskCompletion != null) {
-            awaitCompletion(taskCompletion, "stream actor task");
-        }
-        for (RunningTask runningTask : runningTasks) {
-            awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
+    public void awaitCompletion() {
+        synchronized (startGuard) {
+            if (taskCompletion != null) {
+                awaitCompletion(taskCompletion, "stream actor task");
+            }
+            for (RunningTask runningTask : runningTasks) {
+                awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
+            }
         }
     }
 
@@ -147,72 +179,86 @@ public class StreamActor {
     /**
      * Cancels the stream call and all processor tasks.
      */
-    public synchronized void shutdown() {
-        LOGGER.debug("Begin to shutdown stream actor task for {}", nodeId);
-        try {
-            if (task != null && !task.isDone() && !task.isCancelled()) {
-                task.cancel(true);
-            }
-            if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
-                taskError.cancel(true);
-            }
-            for (RunningTask runningTask : runningTasks) {
-                Future<?> future = runningTask.future();
-                if (!future.isDone() && !future.isCancelled()) {
-                    future.cancel(true);
+    public void shutdown() {
+        synchronized (startGuard) {
+            LOGGER.debug("Begin to shutdown stream actor task for {}", nodeId);
+            try {
+                if (task != null && !task.isDone() && !task.isCancelled()) {
+                    task.cancel(true);
                 }
-            }
+                if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
+                    taskError.cancel(true);
+                }
+                for (RunningTask runningTask : runningTasks) {
+                    Future<?> future = runningTask.future();
+                    if (!future.isDone() && !future.isCancelled()) {
+                        future.cancel(true);
+                    }
+                }
 
-            if (taskCompletion != null) {
-                awaitCompletion(taskCompletion, "stream actor task");
+                if (taskCompletion != null) {
+                    awaitCompletion(taskCompletion, "stream actor task");
+                }
+                for (RunningTask runningTask : runningTasks) {
+                    awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
+                }
+                LOGGER.debug("Succeed to shutdown stream actor task for {}", nodeId);
+            } finally {
+                task = null;
+                taskCompletion = null;
+                runningTasks.clear();
             }
-            for (RunningTask runningTask : runningTasks) {
-                awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
-            }
-            LOGGER.debug("Succeed to shutdown stream actor task for {}", nodeId);
-        } finally {
-            task = null;
-            taskCompletion = null;
-            runningTasks.clear();
         }
     }
 
-    private void startStreamCall() {
+    private CountDownLatch beginStreamCall() {
         CountDownLatch latch = new CountDownLatch(1);
         taskError = new CompletableFuture<>();
         taskCompletion = new CompletableFuture<>();
-        task = VIRTUAL_EXECUTOR.submit(() -> {
-            try {
-                vertex.streamCall(latch, this::errorCallback);
-                taskCompletion.complete(null);
-            } catch (Throwable throwable) {
-                taskCompletion.completeExceptionally(throwable);
-                throw throwable;
-            }
-        });
+        task = STREAM_EXECUTOR.submit(() -> runStreamTask(
+                () -> vertex.streamCall(latch, this::errorCallback), taskCompletion));
+        return latch;
+    }
 
+    private void awaitStartLatch(CountDownLatch latch) {
         try {
-            latch.await();
+            if (!latch.await(START_LATCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                LOGGER.warning("Timed out waiting for stream actor task node [{}] to start", nodeId);
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            return;
         }
+    }
 
-        LOGGER.debug("Stream actor task node [{}] started", nodeId);
-        for (Map.Entry<ComponentAbility, StreamProcessor> entry : processors.entrySet()) {
-            ComponentAbility ability = entry.getKey();
-            StreamProcessor processor = entry.getValue();
-            CompletableFuture<Void> completion = new CompletableFuture<>();
-            Future<?> processorTask = VIRTUAL_EXECUTOR.submit(() -> {
-                try {
-                    processor.run(ability);
-                    completion.complete(null);
-                } catch (Throwable throwable) {
-                    completion.completeExceptionally(throwable);
-                    throw throwable;
-                }
-            });
-            runningTasks.add(new RunningTask(ability, processorTask, completion));
+    private void startProcessorTasks() {
+        synchronized (startGuard) {
+            if (!runningTasks.isEmpty()) {
+                return;
+            }
+            LOGGER.debug("Stream actor task node [{}] started", nodeId);
+            for (Map.Entry<ComponentAbility, StreamProcessor> entry : processors.entrySet()) {
+                ComponentAbility ability = entry.getKey();
+                StreamProcessor processor = entry.getValue();
+                CompletableFuture<Void> completion = new CompletableFuture<>();
+                Future<?> processorTask = STREAM_EXECUTOR.submit(() -> runStreamTask(
+                        () -> processor.run(ability), completion));
+                runningTasks.add(new RunningTask(ability, processorTask, completion));
+            }
+        }
+    }
+
+    private static void runStreamTask(Runnable work, CompletableFuture<Void> completion) {
+        try {
+            work.run();
+            completion.complete(null);
+        } catch (Error error) {
+            completion.completeExceptionally(error);
+            throw error;
+        } catch (BaseError | CompletionException | IllegalArgumentException | IllegalStateException
+                | ClassCastException | NullPointerException | IndexOutOfBoundsException
+                | UnsupportedOperationException | NoSuchElementException exception) {
+            completion.completeExceptionally(exception);
+            throw exception;
         }
     }
 

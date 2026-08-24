@@ -4,8 +4,8 @@
 
 package com.openjiuwen.harness.rails.context_engineer;
 
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressorConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.processor.compressor.DialogueCompressorConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;

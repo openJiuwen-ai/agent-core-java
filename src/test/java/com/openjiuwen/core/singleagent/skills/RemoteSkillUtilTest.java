@@ -4,22 +4,24 @@
 
 package com.openjiuwen.core.singleagent.skills;
 
-import com.openjiuwen.core.sys_operation.BaseFsOperation;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
-import com.openjiuwen.core.sys_operation.result.DownloadFileResult;
-import com.openjiuwen.core.sys_operation.result.DownloadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.ListDirsResult;
-import com.openjiuwen.core.sys_operation.result.ListFilesResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
-import com.openjiuwen.core.sys_operation.result.ReadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.SearchFilesResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileResult;
-import com.openjiuwen.core.sys_operation.result.UploadFileStreamResult;
-import com.openjiuwen.core.sys_operation.result.WriteFileResult;
+import com.openjiuwen.core.sysop.BaseFsOperation;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
+import com.openjiuwen.core.sysop.result.DownloadFileResult;
+import com.openjiuwen.core.sysop.result.DownloadFileStreamResult;
+import com.openjiuwen.core.sysop.result.ListDirsResult;
+import com.openjiuwen.core.sysop.result.ListFilesResult;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileStreamResult;
+import com.openjiuwen.core.sysop.result.SearchFilesResult;
+import com.openjiuwen.core.sysop.result.UploadFileResult;
+import com.openjiuwen.core.sysop.result.UploadFileStreamResult;
+import com.openjiuwen.core.sysop.result.WriteFileResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,6 +39,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code openjiuwen/core/single_agent/skills/remote_skill_util.py}.</p>
  */
 class RemoteSkillUtilTest {
+
+    @TempDir
+    Path tempDir;
+
     private static final String API = "https://github.test";
     private static final String TREE_URL = API + "/repos/owner/repo/git/trees/HEAD?recursive=492";
     private static final String SKILL_MD = "skills/example-skill/SKILL.md";
@@ -90,7 +96,8 @@ class RemoteSkillUtilTest {
     }
 
     @Test
-    void uploadSkillFromGithubWritesBytesViaSysOperationFs() {
+    void uploadSkillFromGithubWritesBytesViaSysOperationFs() throws Exception {
+        Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
         RecordingFsOperation fs = new RecordingFsOperation();
         StubTransport transport = new StubTransport()
                 .respond(TREE_URL, 200, treePayload())
@@ -103,17 +110,15 @@ class RemoteSkillUtilTest {
                 ignored -> fs
         );
 
-        Object result = util.upload_skill_from_github(githubTree(), "workspace", "token");
+        Object result = util.upload_skill_from_github(githubTree(), workspace.toString(), "token");
 
         assertThat(result).isInstanceOf(List.class);
         assertThat(result).isEqualTo(List.of(Path.of("example-skill")));
+        Path skillMd = workspace.resolve("example-skill").resolve("SKILL.md");
+        Path referenceMd = workspace.resolve("example-skill").resolve("references").resolve("example-reference.md");
         assertThat(fs.writes())
                 .extracting(WriteCall::path)
-                .containsExactly(
-                        Path.of("workspace").resolve("example-skill").resolve("SKILL.md").toString(),
-                        Path.of("workspace").resolve("example-skill").resolve("references")
-                                .resolve("example-reference.md").toString()
-                );
+                .containsExactly(skillMd.toString(), referenceMd.toString());
         assertThat(fs.writes())
                 .extracting(WriteCall::mode)
                 .containsOnly(BaseFsOperation.FileMode.BYTES);

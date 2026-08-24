@@ -7,7 +7,7 @@ package com.openjiuwen.harness.rails.subagent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.schema.DeepAgentState;

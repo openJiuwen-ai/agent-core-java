@@ -818,28 +818,8 @@ public class DeepAgentConfig {
         }
     }
 
-    private static String firstEnv(String... names) {
-        for (String name : names) {
-            String value = System.getenv(name);
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return "";
-    }
-
-    private static String firstEnvOrDefault(String defaultValue, String... names) {
-        String value = firstEnv(names);
-        return value == null || value.isBlank() ? defaultValue : value;
-    }
-
     private static String blankDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
-    }
-
-    private static int parseIntFromEnv(String name, int defaultValue) {
-        String value = System.getenv(name);
-        return parseInt(value, defaultValue);
     }
 
     private static String firstValue(Map<String, String> values, String... names) {

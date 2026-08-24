@@ -36,6 +36,45 @@ import java.util.concurrent.CompletionException;
 public class PDFParser extends Parser {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PDFParser.class);
+    private final Path allowedDocDir;
+
+    public PDFParser() {
+        this(null);
+    }
+
+    public PDFParser(Path allowedDocDir) {
+        this.allowedDocDir = allowedDocDir == null
+                ? null
+                : allowedDocDir.toAbsolutePath().normalize();
+    }
+
+    Path resolveSafeDocument(String doc) throws IOException {
+        Path requestedPath = Path.of(doc);
+        if (allowedDocDir == null) {
+            Path documentPath = requestedPath.toAbsolutePath().normalize();
+            if (!Files.isRegularFile(documentPath)) {
+                throw new IOException("PDF path is not a regular file: " + doc);
+            }
+            return documentPath.toRealPath();
+        }
+
+        Path realAllowedDir = allowedDocDir.toRealPath();
+        Path documentPath = requestedPath.isAbsolute()
+                ? requestedPath.toAbsolutePath().normalize()
+                : allowedDocDir.resolve(requestedPath).normalize();
+        if (!documentPath.startsWith(allowedDocDir)) {
+            throw new SecurityException("PDF path is outside the allowed document directory.");
+        }
+
+        Path realDocumentPath = documentPath.toRealPath();
+        if (!realDocumentPath.startsWith(realAllowedDir)) {
+            throw new SecurityException("PDF path is outside the allowed document directory.");
+        }
+        if (!Files.isRegularFile(realDocumentPath)) {
+            throw new IOException("PDF path is not a regular file: " + doc);
+        }
+        return realDocumentPath;
+    }
 
     /**
      * Mirrors Python's {@code PDFParser._parse} in
@@ -95,8 +134,9 @@ public class PDFParser extends Parser {
     }
 
     private ParseResult extractPdfContent(String filePath, BaseModelClient llmClient) {
-        Path path = Path.of(filePath);
-        try (PDDocument document = PDDocument.load(path.toFile())) {
+        try {
+            Path path = resolveSafeDocument(filePath);
+            try (PDDocument document = PDDocument.load(path.toFile())) {
             List<String> content = new ArrayList<>();
             List<CompletableFuture<List<String>>> captionFutures = new ArrayList<>();
             ImageCaptioner imageCaptioner = createImageCaptioner(llmClient);
@@ -118,6 +158,9 @@ public class PDFParser extends Parser {
                 pageNumber++;
             }
             return new ParseResult(content, captionFutures);
+            }
+        } catch (SecurityException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new CompletionException(exception);
         }

@@ -2,10 +2,10 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.sharing;
+package com.openjiuwen.agentevolving.sharing;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
-import com.openjiuwen.agent_evolving.signal.EvolutionTarget;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
+import com.openjiuwen.agentevolving.signal.EvolutionTarget;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;

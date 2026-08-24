@@ -6,8 +6,8 @@ package com.openjiuwen.core.singleagent.agents;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -51,6 +51,24 @@ public class ReActAgentConfig {
 
     @JsonProperty("max_iterations")
     private int maxIterations = 5;
+
+    /** Stream failure retry count (excluding the first attempt). */
+    @JsonProperty("stream_max_retries")
+    private int streamMaxRetries = 2;
+
+    /** Delay between stream retries in milliseconds. */
+    @JsonProperty("stream_retry_delay_ms")
+    private long streamRetryDelayMs = 1000;
+
+    @JsonProperty("parallel_tool_calls")
+    private boolean parallelToolCalls = true;
+
+    /**
+     * When true, a tool execution error force-finishes the task as FAILED instead of
+     * continuing the ReAct loop toward a misleading COMPLETED state (issue #51).
+     */
+    @JsonProperty("fail_task_on_tool_error")
+    private boolean shouldFailTaskOnToolError;
 
     @JsonProperty("llm_return_token_ids")
     private boolean llmReturnTokenIds;
@@ -153,6 +171,19 @@ public class ReActAgentConfig {
 
     public ReActAgentConfig configure_max_iterations(int maxIterations) {
         return configureMaxIterations(maxIterations);
+    }
+
+    /**
+     * Set the stream retry parameters for streaming model calls.
+     *
+     * @param maxRetries max retry count (excluding the first attempt)
+     * @param retryDelayMs delay between retries in milliseconds
+     * @return this config
+     */
+    public ReActAgentConfig configureStreamRetry(int maxRetries, long retryDelayMs) {
+        this.streamMaxRetries = maxRetries;
+        this.streamRetryDelayMs = retryDelayMs;
+        return this;
     }
 
     public ReActAgentConfig configureModelClient(String provider, String apiKey, String apiBase, String modelName,
@@ -283,6 +314,52 @@ public class ReActAgentConfig {
 
     public void setMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
+    }
+
+    public int getStreamMaxRetries() {
+        return streamMaxRetries;
+    }
+
+    public void setStreamMaxRetries(int streamMaxRetries) {
+        this.streamMaxRetries = streamMaxRetries;
+    }
+
+    public long getStreamRetryDelayMs() {
+        return streamRetryDelayMs;
+    }
+
+    public void setStreamRetryDelayMs(long streamRetryDelayMs) {
+        this.streamRetryDelayMs = streamRetryDelayMs;
+    }
+
+    public boolean isParallelToolCalls() {
+        return parallelToolCalls;
+    }
+
+    public void setParallelToolCalls(boolean parallelToolCalls) {
+        this.parallelToolCalls = parallelToolCalls;
+    }
+
+    public ReActAgentConfig configureParallelToolCalls(boolean parallelToolCalls) {
+        this.parallelToolCalls = parallelToolCalls;
+        return this;
+    }
+
+    public ReActAgentConfig configure_parallel_tool_calls(boolean parallelToolCalls) {
+        return configureParallelToolCalls(parallelToolCalls);
+    }
+
+    public boolean isShouldFailTaskOnToolError() {
+        return shouldFailTaskOnToolError;
+    }
+
+    public void setShouldFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
+        this.shouldFailTaskOnToolError = shouldFailTaskOnToolError;
+    }
+
+    public ReActAgentConfig configureFailTaskOnToolError(boolean shouldFailTaskOnToolError) {
+        this.shouldFailTaskOnToolError = shouldFailTaskOnToolError;
+        return this;
     }
 
     public boolean isLlmReturnTokenIds() {
@@ -428,6 +505,21 @@ public class ReActAgentConfig {
 
         public Builder maxIterations(int maxIterations) {
             config.setMaxIterations(maxIterations);
+            return this;
+        }
+
+        public Builder streamMaxRetries(int streamMaxRetries) {
+            config.setStreamMaxRetries(streamMaxRetries);
+            return this;
+        }
+
+        public Builder streamRetryDelayMs(long streamRetryDelayMs) {
+            config.setStreamRetryDelayMs(streamRetryDelayMs);
+            return this;
+        }
+
+        public Builder parallelToolCalls(boolean parallelToolCalls) {
+            config.setParallelToolCalls(parallelToolCalls);
             return this;
         }
 

@@ -1,348 +1,239 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
 package com.openjiuwen.agentevolving.optimizer;
 
-import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.agentevolving.trajectory.Updates;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.operator.Operator;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Common skeleton for dimension-specific optimizers.
- * <p>
- * bind(): Filters optimizable Operators, returns count (0 triggers soft-exit).
- * add_trajectory / get_trajectories: Caches Trajectory for backward.
- * step(): Returns Updates, applied by Trainer.apply_updates.
- * <p>
- * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.base.BaseOptimizer}.
- * 
- * @since 0.1.7
+ *
+ * <p>Mirrors Python's {@code BaseOptimizer} in
+ * {@code openjiuwen/agent_evolving/optimizer/base.py}.</p>
  */
-public abstract class BaseOptimizer {
-    /**
-     * domain.
-     * 
-     * @since 0.1.7
-     */
+public abstract class BaseOptimizer implements AutoCloseable {
+
     protected String domain = "";
-
-    /**
-     * operators.
-     * 
-     * @since 0.1.7
-     */
-    protected Map<String, Object> operators = new HashMap<>();
-
-    /**
-     * parameters.
-     * 
-     * @since 0.1.7
-     */
-    protected Map<String, TextualParameter> parameters = new HashMap<>();
-
-    /**
-     * targets.
-     * 
-     * @since 0.1.7
-     */
+    protected Map<String, Operator> operators = new LinkedHashMap<>();
+    protected Map<String, TextualParameter> parameters = new LinkedHashMap<>();
     protected List<String> targets = new ArrayList<>();
-
-    /**
-     * trajectories.
-     * 
-     * @since 0.1.7
-     */
     protected List<Trajectory> trajectories = new ArrayList<>();
+    protected List<EvolutionSignal> selectedSignals = new ArrayList<>();
 
     /**
-     * badCases.
-     * 
-     * @since 0.1.7
-     */
-    protected List<EvaluatedCase> badCases = new ArrayList<>();
-
-    /**
-     * Whether this optimizer needs framework to execute forward on train_cases.
-     * 
-     * @return True (default): optimizer uses trajectories/evaluated_cases from forward.
-     * @since 0.1.7
+     * Whether this optimizer needs framework to execute forward on train cases.
+     *
+     * @return {@code true} by default
      */
     public boolean requiresForwardData() {
         return true;
     }
 
     /**
-     * Subclass can override to provide default target list for this dimension.
-     * 
-     * @return Default targets list
-     * @since 0.1.7
+     * Enter the optimizer scope.
+     *
+     * @return current optimizer instance
+     */
+    public BaseOptimizer enter() {
+        return this;
+    }
+
+    /**
+     * Async enter compatibility for translated callers.
+     *
+     * @return completed stage with the current optimizer instance
+     */
+    public CompletionStage<BaseOptimizer> aenter() {
+        return CompletableFuture.completedFuture(this);
+    }
+
+    /**
+     * Async exit compatibility for translated callers.
+     *
+     * @return completed stage with {@code null}
+     */
+    public CompletionStage<Void> aexit(Throwable excType, Throwable excVal, Throwable excTb) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Subclasses can override to provide default optimization targets.
+     *
+     * @return default targets list
      */
     public List<String> defaultTargets() {
-        return Collections.emptyList();
+        return List.of();
     }
 
     /**
-     * Filter Operators that expose any of the targets.
-     * 
-     * @param operators Operators map
-     * @param targets Target list
-     * @return Filtered operators
-     * @since 0.1.7
+     * Filter operators that expose any of the targets.
+     *
+     * @param operators operators keyed by operator id
+     * @param targets optimization targets
+     * @return matching operators
      */
-    public static Map<String, Object> filterOperators(Map<String, Object> operators, List<String> targets) {
-        Map<String, Object> result = new HashMap<>();
-        if (operators == null || targets == null || targets.isEmpty()) {
-            return result;
-        }
-        for (Map.Entry<String, Object> entry : operators.entrySet()) {
-            String opId = entry.getKey();
-            Object op = entry.getValue();
-            try {
-                Set<String> tunableNames = extractTunableNames(op);
-                boolean matched = false;
-                for (String target : targets) {
-                    if (tunableNames.contains(target)) {
-                        matched = true;
-                        break;
-                    }
+    public static Map<String, Operator> filterOperators(Map<String, Operator> operators, List<String> targets) {
+        Map<String, Operator> filtered = new LinkedHashMap<>();
+        for (Map.Entry<String, Operator> entry : (operators == null ? Map.<String, Operator>of() : operators).entrySet()) {
+            String operatorId = entry.getKey();
+            Operator operator = entry.getValue();
+            Map<String, ?> tunables = operator.getTunables();
+            List<String> matched = new ArrayList<>();
+            for (String target : targets) {
+                if (tunables.containsKey(target)) {
+                    matched.add(target);
                 }
-                if (matched) {
-                    result.put(opId, op);
-                } else {
-                    Loggers.AGENT.warn("[optimizer] operator {} has no tunables in targets={}", opId, targets);
-                }
-            } catch (ReflectiveOperationException e) {
-                Loggers.AGENT.warn("[optimizer] operator {} does not support getTunables", opId);
             }
+            if (matched.isEmpty()) {
+                Loggers.AGENT.warning("[optimizer] operator " + operatorId + " has no tunables in targets=" + targets);
+                continue;
+            }
+            filtered.put(operatorId, operator);
         }
-        return result;
+        return filtered;
     }
 
     /**
-     * Filter and bind optimizable Operators.
-     * 
-     * @param operators Operators map
-     * @param targets Target list
-     * @param config Configuration map
-     * @return Count of bound operators (0 triggers soft-exit)
-     * @since 0.1.7
+     * Filter and bind optimizable operators.
+     *
+     * @param operators operators keyed by operator id
+     * @param targets optimization targets
+     * @param config optimizer-specific config, currently unused here
+     * @return number of bound operators
      */
-    public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
-        if (operators == null) {
-            operators = new HashMap<>();
-        }
-        this.targets = targets != null ? new ArrayList<>(targets) : defaultTargets();
-        this.operators = filterOperators(operators, this.targets);
-        this.parameters = new HashMap<>();
-        for (String opId : this.operators.keySet()) {
-            this.parameters.put(opId, new TextualParameter(opId));
+    public int bind(Map<String, Operator> operators, List<String> targets, Map<String, Object> config) {
+        Map<String, Operator> resolvedOperators = operators == null ? Map.of() : operators;
+        this.targets = new ArrayList<>(targets == null || targets.isEmpty() ? defaultTargets() : targets);
+        this.operators = filterOperators(resolvedOperators, this.targets);
+        this.parameters = new LinkedHashMap<>();
+        for (String operatorId : this.operators.keySet()) {
+            this.parameters.put(operatorId, new TextualParameter(operatorId));
         }
         this.trajectories = new ArrayList<>();
-        this.badCases = new ArrayList<>();
-
+        this.selectedSignals = new ArrayList<>();
         if (this.operators.isEmpty()) {
-            Loggers.AGENT.error("[optimizer] no operator matches targets={}; will soft-exit", this.targets);
+            Loggers.AGENT.error("[optimizer] no operator matches targets=" + this.targets + "; will soft-exit");
         }
         return this.operators.size();
     }
 
     /**
-     * Cache Trajectory for backward phase query.
-     * 
-     * @param trajectory Trajectory to add
-     * @since 0.1.7
+     * Cache one trajectory for the backward phase.
+     *
+     * @param trajectory trajectory to cache
      */
     public void addTrajectory(Trajectory trajectory) {
-        trajectories.add(trajectory);
+        this.trajectories.add(trajectory);
     }
 
     /**
-     * Returns currently cached trajectory list.
-     * 
-     * @return List of trajectories
-     * @since 0.1.7
+     * Return a snapshot of cached trajectories.
+     *
+     * @return copied trajectory list
      */
     public List<Trajectory> getTrajectories() {
         return new ArrayList<>(trajectories);
     }
 
     /**
-     * Clear trajectory cache after update.
-     * 
-     * @since 0.1.7
+     * Clear cached trajectories after a step.
      */
     public void clearTrajectories() {
         trajectories.clear();
     }
 
     /**
-     * Execute backward pass.
-     * 
-     * @param evaluatedCases Evaluated cases
-     * @since 0.1.7
+     * Run backward over the selected signals.
+     *
+     * @param signals evolution signals
+     * @return completion stage for the backward pass
      */
-    public void backward(List<EvaluatedCase> evaluatedCases) {
+    public CompletionStage<Void> backward(List<EvolutionSignal> signals) {
         validateParameters();
-        getBadCases(evaluatedCases != null ? evaluatedCases : Collections.emptyList());
+        List<EvolutionSignal> resolvedSignals = new ArrayList<>(signals == null ? List.of() : signals);
+        this.selectedSignals = new ArrayList<>(selectSignals(resolvedSignals));
         try {
-            doBackward(evaluatedCases != null ? evaluatedCases : Collections.emptyList());
-        } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR, e.getMessage(), null,
-                    e, Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+            return doBackward(resolvedSignals).handle((ignored, throwable) -> {
+                if (throwable != null) {
+                    throw wrapFailure(StatusCode.TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR, throwable);
+                }
+                return null;
+            });
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(
+                    wrapFailure(StatusCode.TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR, exception)
+            );
         }
     }
 
     /**
-     * Execute step and return Updates.
-     * 
-     * @return Updates to apply
-     * @since 0.1.7
+     * Execute one optimization step and return update mappings.
+     *
+     * @return generated updates
      */
     public Updates step() {
         validateParameters();
         try {
             Updates updates = doStep();
             clearTrajectories();
-            return updates != null ? updates : new Updates();
-        } catch (Exception e) {
+            return updates == null ? new Updates() : updates;
+        } catch (Exception exception) {
             clearTrajectories();
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR, e.getMessage(), null, e,
-                    Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+            throw wrapFailure(StatusCode.TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR, exception);
         }
     }
 
     /**
-     * Subclass implements: generates Updates based on gradients written during backward.
-     * 
-     * @return Updates
-     * @since 0.1.7
-     */
-    protected abstract Updates doStep();
-
-    /**
-     * Subclass implements: backward pass logic.
-     * 
-     * @param evaluatedCases Evaluated cases
-     * @since 0.1.7
-     */
-    protected abstract void doBackward(List<EvaluatedCase> evaluatedCases);
-
-    /**
-     * Get parameters map.
-     * 
-     * @return Copy of parameters
-     * @since 0.1.7
+     * Expose the current parameter map.
+     *
+     * @return shallow copy of parameters
      */
     public Map<String, TextualParameter> parameters() {
-        return new HashMap<>(parameters);
+        return new LinkedHashMap<>(parameters);
     }
 
     /**
-     * Get cases with score == 0.
-     * 
-     * @param evaluatedCases All evaluated cases
-     * @return Filtered list of bad cases
-     * @since 0.1.7
+     * Select consumable signals for this optimizer.
+     *
+     * @param signals source signals
+     * @return selected signals
      */
-    protected List<EvaluatedCase> getBadCases(List<EvaluatedCase> evaluatedCases) {
-        badCases = (evaluatedCases != null ? evaluatedCases : Collections.<EvaluatedCase>emptyList()).stream()
-                .filter(c -> c.getScore() == 0.0).collect(Collectors.toList());
-        return badCases;
+    protected List<EvolutionSignal> selectSignals(List<EvolutionSignal> signals) {
+        return new ArrayList<>(signals);
     }
 
-    /**
-     * Validate parameters are not empty.
-     * 
-     * @since 0.1.7
-     */
     protected void validateParameters() {
         if (parameters.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg",
-                    "cannot optimize empty parameters");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg", "cannot optimize empty parameters");
         }
     }
 
-    /**
-     * Get domain name.
-     * 
-     * @return Domain string
-     * @since 0.1.7
-     */
-    public String getDomain() {
-        return domain;
+    protected BaseError wrapFailure(StatusCode statusCode, Throwable throwable) {
+        String message = throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
+        return ErrorHelper.buildError(statusCode, message, null, throwable, Map.of("error_msg", message));
     }
 
-    /**
-     * Get operators map.
-     * 
-     * @return Operators map
-     * @since 0.1.7
-     */
-    public Map<String, Object> getOperators() {
-        return operators;
-    }
+    protected abstract CompletionStage<Void> doBackward(List<EvolutionSignal> signals);
 
-    /**
-     * Get bad cases.
-     * 
-     * @return Bad cases list
-     * @since 0.1.7
-     */
-    public List<EvaluatedCase> getBadCases() {
-        return badCases;
-    }
+    protected abstract Updates doStep();
 
-    /**
-     * extractTunableNames.
-     * 
-     * @param operator operator
-     * @return the result
-     * @throws ReflectiveOperationException ReflectiveOperationException
-     * @since 0.1.7
-     */
-    @SuppressWarnings("unchecked")
-    protected static Set<String> extractTunableNames(Object operator) throws ReflectiveOperationException {
-        if (operator == null) {
-            return Collections.emptySet();
-        }
-        java.lang.reflect.Method method = operator.getClass().getMethod("getTunables");
-        Object tunables = method.invoke(operator);
-        if (tunables instanceof Map<?, ?> map) {
-            Set<String> keys = new LinkedHashSet<>();
-            for (Object key : map.keySet()) {
-                keys.add(String.valueOf(key));
-            }
-            return keys;
-        }
-        if (tunables instanceof Collection<?> collection) {
-            Set<String> keys = new LinkedHashSet<>();
-            for (Object item : collection) {
-                keys.add(String.valueOf(item));
-            }
-            return keys;
-        }
-        if (tunables != null && tunables.getClass().isArray()) {
-            Set<String> keys = new LinkedHashSet<>();
-            Object[] array = (Object[]) tunables;
-            for (Object item : array) {
-                keys.add(String.valueOf(item));
-            }
-            return keys;
-        }
-        return Collections.emptySet();
+    @Override
+    public void close() {
+        // Python context manager exit is a no-op.
     }
 }

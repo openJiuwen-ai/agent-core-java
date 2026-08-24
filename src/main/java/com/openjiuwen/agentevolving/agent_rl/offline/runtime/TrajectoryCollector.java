@@ -5,9 +5,8 @@
 package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 
 import com.openjiuwen.agentevolving.agent_rl.RLRail;
-import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryStore;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.TrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.InMemoryTrajectoryStore;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.BaseAgent;

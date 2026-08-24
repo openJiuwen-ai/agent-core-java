@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult
+# com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult
 
 ## 类 ExecuteCodeStreamResult
 

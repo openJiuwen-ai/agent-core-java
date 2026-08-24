@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,21 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JiuwenBoxClientTest {
+
+    @Test
+    @DisplayName("constructor uses injected OkHttpClient when provided")
+    void testInjectedOkHttpClient() {
+        OkHttpClient injected = new OkHttpClient();
+        JiuwenBoxClient client = new JiuwenBoxClient("http://localhost:0", 1, injected);
+        assertThat(client.httpClient()).isSameAs(injected);
+    }
+
+    @Test
+    @DisplayName("constructor builds default OkHttpClient when injection is null")
+    void testDefaultOkHttpClient() {
+        JiuwenBoxClient client = new JiuwenBoxClient("http://localhost:0", 1);
+        assertThat(client.httpClient()).isNotNull();
+    }
 
     @Test
     @DisplayName("deleteSandbox is no-op when sandboxId is null or empty")

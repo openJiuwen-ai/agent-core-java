@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.ListDirsResult
+# com.openjiuwen.core.sysop.result.ListDirsResult
 
 ## 类 ListDirsResult
 

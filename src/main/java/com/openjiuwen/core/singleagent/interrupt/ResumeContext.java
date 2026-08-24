@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.singleagent.interrupt;
 
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;

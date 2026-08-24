@@ -12,7 +12,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExtensionBuildArtifa
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ExtensionDesign;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,7 +81,7 @@ public class ExtendImplementStage extends ImplementStage {
         String prompt = buildImplementExtPrompt(design, extensionRoot, configPath);
         List<Object> events = new ArrayList<>();
         events.add(BaseExecutionContext.message("开始实现扩展: " + design.getExtensionName()));
-        Iterator<Map<String, Object>> iterator = agent.stream(Map.of("query", prompt));
+        Iterator<?> iterator = agent.stream(Map.of("query", prompt));
         String implementError = "";
         while (iterator.hasNext()) {
             Object chunk = restoreOutputSchemaIfPresent(iterator.next());

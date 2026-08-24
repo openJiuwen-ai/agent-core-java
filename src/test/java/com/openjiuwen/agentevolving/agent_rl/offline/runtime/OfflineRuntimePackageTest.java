@@ -2,9 +2,9 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.offline.runtime;
+package com.openjiuwen.agentevolving.agent_rl.offline.runtime;
 
-import com.openjiuwen.agent_evolving.agent_rl.RLRail;
+import com.openjiuwen.agentevolving.agent_rl.RLRail;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

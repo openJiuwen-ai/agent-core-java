@@ -31,7 +31,7 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.CustomSchema;
@@ -293,7 +293,12 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             // Create workflow session
-            WorkflowSessionApi workflowSession = ((com.openjiuwen.core.session.AgentSession) session).createWorkflowSession();
+            WorkflowSession workflowSession;
+            if (session instanceof com.openjiuwen.core.session.AgentSession agentSession) {
+                workflowSession = agentSession.createWorkflowSession();
+            } else {
+                throw new ClassCastException("session is not AgentSession");
+            }
 
             // Prepare inputs
             Object inputs = getTaskArguments(task);
@@ -304,7 +309,7 @@ public class WorkflowEventHandler extends EventHandler {
             }
 
             // Execute workflow with streaming
-            ModelContext context = appContextEngine.createContext(workflowId, ((com.openjiuwen.core.session.AgentSession) session).getInner());
+            ModelContext context = appContextEngine.createContext(workflowId, agentSession.getInner());
             addUserMessageToWorkflowContext(context, getDisplayContent(event));
             Iterator<WorkflowChunk> workflowStream = Runner.runWorkflowStreaming(
                     workflow, inputs, workflowSession, context, resolveWorkflowStreamModes(session), null)
@@ -462,9 +467,14 @@ public class WorkflowEventHandler extends EventHandler {
         Object componentIdObj = interrupted.getOrDefault("component_id", "questioner");
         String componentId;
         if (componentIdObj instanceof List<?> list && !list.isEmpty()) {
-            componentId = String.valueOf(list.get(0));
+            componentId = list.stream()
+                    .map(String::valueOf)
+                    .filter(text -> text != null && !text.isBlank())
+                    .findFirst()
+                    .orElse("questioner");
         } else {
-            componentId = componentIdObj instanceof String s ? s : "questioner";
+            String text = componentIdObj instanceof String s ? s : String.valueOf(componentIdObj);
+            componentId = text == null || text.isBlank() || "null".equals(text) ? "questioner" : text;
         }
         Object lastValue = interrupted.get("last_interaction_value");
 
@@ -1165,9 +1175,8 @@ public class WorkflowEventHandler extends EventHandler {
         if (context != null) {
             return context;
         }
-        Object inner = session instanceof com.openjiuwen.core.session.AgentSession agentSession
-                ? agentSession.getInner() : null;
-        return appContextEngine.createContext(null, inner);
+        return appContextEngine.createContext(null,
+                session instanceof AgentSession agentSession ? agentSession.getInner() : null);
     }
 
     private void addMessageToContext(ModelContext context, BaseMessage message, boolean deduplicate) {

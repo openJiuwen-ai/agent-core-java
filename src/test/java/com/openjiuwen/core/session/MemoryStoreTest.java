@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.session.store.MemoryStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -43,14 +44,5 @@ class MemoryStoreTest {
                 "name", "alice",
                 "age", 9
         ));
-    }
-
-    @Test
-    void fileStoreMatchesCurrentPythonStub() {
-        FileStore store = new FileStore();
-
-        assertThat(store.read("any")).isNull();
-        store.write(Map.of("k", "v"));
-        assertThat(store.read("any")).isNull();
     }
 }

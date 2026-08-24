@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.common;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -42,7 +43,7 @@ public class DistributedLock {
 
     DistributedLock(BaseKVStore store, String lockName, Integer ttl, long retryDelayMillis) {
         this.store = store;
-        this.lockKey = "_lock/" + lockName;
+        this.lockKey = TenantKVStoreKeyResolver.resolveKey("_lock/" + lockName);
         this.ttl = ttl;
         this.retryDelayMillis = retryDelayMillis;
     }

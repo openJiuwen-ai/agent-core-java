@@ -4,111 +4,92 @@
 
 package com.openjiuwen.core.context.context;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
- * Tests for {@link ContextMessageBuffer}.
+ * Focused parity tests for context message buffering.
+ *
+ * <p>Mirrors Python's {@code ContextMessageBuffer} in
+ * {@code openjiuwen/core/context_engine/context/message_buffer.py}.</p>
  */
 class ContextMessageBufferTest {
+
     @Test
-    @DisplayName("New buffer with messages reports correct size")
-    void testSize() {
-        List<BaseMessage> msgs = List.of(new UserMessage("hello"), new AssistantMessage("hi"));
-        ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(msgs), null);
-        assertEquals(2, buffer.size());
+    void getBackSeparatesHistoryFromCurrentMessages() {
+        BaseMessage history = new BaseMessage("user", "history");
+        BaseMessage current = new BaseMessage("assistant", "current");
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(history), null);
+
+        buffer.addBack(current);
+
+        assertThat(buffer.size()).isEqualTo(2);
+        assertThat(buffer.getBack(null, true)).containsExactly(history, current);
+        assertThat(buffer.getBack(null, false)).containsExactly(current);
+        assertThat(buffer.getBack(1, true)).containsExactly(current);
+        assertThat(buffer.getBack(1, false)).containsExactly(current);
     }
 
     @Test
-    @DisplayName("addBack appends messages")
-    void testAddBack() {
-        ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(), null);
-        buffer.addBack(List.of(new UserMessage("hello")));
-        assertEquals(1, buffer.size());
+    void popBackUpdatesHistorySizeWhenHistoryIsPopped() {
+        BaseMessage h1 = new BaseMessage("user", "h1");
+        BaseMessage h2 = new BaseMessage("assistant", "h2");
+        BaseMessage current = new BaseMessage("user", "current");
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(h1, h2), null);
+        buffer.addBack(current);
 
-        buffer.addBack(List.of(new AssistantMessage("hi")));
-        assertEquals(2, buffer.size());
+        List<BaseMessage> popped = buffer.popBack(3, true);
+
+        assertThat(popped).containsExactly(h1, h2, current);
+        assertThat(buffer.getBack(null, true)).isEmpty();
+        assertThat(buffer.getBack(null, false)).isEmpty();
     }
 
     @Test
-    @DisplayName("getBack returns all messages when size is null")
-    void testGetBackAll() {
-        List<BaseMessage> msgs =
-            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
-        ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
+    void setMessagesCanReplaceOnlyNonHistoryMessages() {
+        BaseMessage history = new BaseMessage("user", "history");
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(history), null);
 
-        List<BaseMessage> result = buffer.getBack();
-        assertEquals(3, result.size());
+        buffer.setMessages(List.of(new BaseMessage("assistant", "new")), false);
+
+        assertThat(buffer.getBack(null, true)).extracting(BaseMessage::getContent)
+                .containsExactly("history", "new");
+        assertThat(buffer.getBack(null, false)).extracting(BaseMessage::getContent)
+                .containsExactly("new");
     }
 
     @Test
-    @DisplayName("getBack returns last N messages with history")
-    void testGetBackN() {
-        List<BaseMessage> msgs =
-            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
-        ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
+    void maxBufferSizeLimitsVisibleMessagesAndResizesWhenDoubleLimitExceeded() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(
+                new BaseMessage("user", "h1"),
+                new BaseMessage("assistant", "h2"),
+                new BaseMessage("user", "h3")
+        ), 3);
 
-        // withHistory=true to include history messages
-        List<BaseMessage> result = buffer.getBack(2, true);
-        assertEquals(2, result.size());
-        assertEquals("b", result.get(0).getContentAsString());
-        assertEquals("c", result.get(1).getContentAsString());
+        buffer.addBack(List.of(
+                new BaseMessage("assistant", "c1"),
+                new BaseMessage("user", "c2"),
+                new BaseMessage("assistant", "c3"),
+                new BaseMessage("user", "c4")
+        ));
+
+        assertThat(buffer.size()).isEqualTo(3);
+        assertThat(buffer.getBack(null, true)).extracting(BaseMessage::getContent)
+                .containsExactly("c2", "c3", "c4");
+        assertThat(buffer.getBack(null, false)).extracting(BaseMessage::getContent)
+                .containsExactly("c2", "c3", "c4");
     }
 
     @Test
-    @DisplayName("popBack removes last N messages with history")
-    void testPopBack() {
-        List<BaseMessage> msgs =
-            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
-        ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
+    void rebuildKeepsPythonMisspelledAlias() {
+        ContextMessageBuffer buffer = new ContextMessageBuffer(List.of(), null);
 
-        // withHistory=true to pop from history too
-        List<BaseMessage> popped = buffer.popBack(2, true);
-        assertEquals(2, popped.size());
-        assertEquals(1, buffer.size());
-        assertEquals("a", buffer.getBack().get(0).getContentAsString());
-    }
+        buffer.rebulid(List.of(new BaseMessage("user", "rebuilt")));
 
-    @Test
-    @DisplayName("setMessages replaces non-history messages")
-    void testSetMessages() {
-        // Start with empty buffer (no history)
-        ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(), null);
-        buffer.addBack(List.of(new UserMessage("old")));
-
-        buffer.setMessages(List.of(new UserMessage("new1"), new UserMessage("new2")), true);
-        assertEquals(2, buffer.size());
-        assertEquals("new1", buffer.getBack().get(0).getContentAsString());
-    }
-
-    @Test
-    @DisplayName("Buffer respects maxBufferSize by resizing")
-    void testMaxBufferSize() {
-        ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(), 3);
-        buffer.addBack(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
-        assertEquals(3, buffer.size());
-
-        buffer.addBack(List.of(new UserMessage("d")));
-        // Should have resized old messages to history
-        assertEquals(3, buffer.size());
-    }
-
-    @Test
-    @DisplayName("rebuild replaces all messages maintaining history")
-    void testRebuild() {
-        List<BaseMessage> initial = new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b")));
-        ContextMessageBuffer buffer = new ContextMessageBuffer(initial, null);
-
-        buffer.rebuild(List.of(new UserMessage("x"), new UserMessage("y"), new UserMessage("z")));
-        assertEquals(3, buffer.size());
+        assertThat(buffer.getBack()).extracting(BaseMessage::getContent).containsExactly("rebuilt");
     }
 }

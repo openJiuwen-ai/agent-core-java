@@ -13,105 +13,171 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 
 /**
- * Uses Model as judge to perform semantic consistency check.
+ * Uses an LLM judge to score semantic consistency between prediction and label.
  *
- * <p>Returns 1.0 if consistent, 0.0 otherwise.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.metrics.llm_as_judge.LLMAsJudgeMetric}.
+ * <p>Mirrors Python's {@code LLMAsJudgeMetric} in
+ * {@code openjiuwen/agent_evolving/evaluator/metrics/llm_as_judge.py}.</p>
  */
 public class LLMAsJudgeMetric extends Metric {
 
     private final Model model;
     private final PromptTemplate template;
 
-    /**
-     * Create LLM-as-Judge metric.
-     *
-     * @param modelConfig       Model request configuration
-     * @param modelClientConfig Model client configuration
-     * @param userMetrics       Custom user metrics
-     */
+    public LLMAsJudgeMetric(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+        this(modelConfig, modelClientConfig, "");
+    }
+
     public LLMAsJudgeMetric(
             ModelRequestConfig modelConfig,
             ModelClientConfig modelClientConfig,
             String userMetrics
     ) {
-        this.model = new Model(modelClientConfig, modelConfig);
-        this.template = PromptTemplate.builder()
-                .content(EvaluatorTemplates.LLM_METRIC_TEMPLATE)
-                .build()
-                .format(Map.of("user_metrics", userMetrics != null ? userMetrics : ""));
+        this(new Model(modelClientConfig, modelConfig), userMetrics);
     }
 
-    /**
-     * Create with default user metrics.
-     *
-     * @param modelConfig       Model request configuration
-     * @param modelClientConfig Model client configuration
-     */
-    public LLMAsJudgeMetric(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
-        this(modelConfig, modelClientConfig, "");
+    LLMAsJudgeMetric(Model model, String userMetrics) {
+        this.model = Objects.requireNonNull(model, "model");
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("user_metrics", userMetrics == null ? "" : userMetrics);
+        this.template = EvaluatorTemplates.LLM_METRIC_TEMPLATE.format(keywords);
     }
 
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "llm_as_judge";
     }
 
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isHigherIsBetter() {
         return true;
     }
 
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public Double compute(Object prediction, Object label, Map<String, Object> kwargs) {
-        Object question = kwargs != null ? kwargs.get("question") : null;
-        List<BaseMessage> messages = template.format(Map.of(
-                "question", String.valueOf(question != null ? question : ""),
-                "expected_answer", String.valueOf(label),
-                "model_answer", String.valueOf(prediction)
-        )).toMessages();
+    public Object compute(Object prediction, Object label, Map<String, Object> kwargs) {
+        List<BaseMessage> messages = template.format(metricKeywords(prediction, label, kwargs)).toMessages();
+        String response;
         try {
-            AssistantMessage response = invokeModel(messages);
-            return parseResult(response != null ? response.getContentAsString() : "");
-        } catch (Exception e) {
-            return 0.0;
+            response = invokeModel(messages);
+        } catch (RuntimeException exception) {
+            return 0.0d;
         }
+        return parseResult(response);
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    protected AssistantMessage invokeModel(List<BaseMessage> messages) throws Exception {
-        return model.invoke(messages, null, null, null, null, null, null, null, null, null);
-    }
-
-    private double parseResult(String response) {
-        Map<String, Object> data = TuneUtils.parseJsonObjectFromLlmResponse(response);
-        if (data == null) {
-            return 0.0;
+    double parseResult(String response) {
+        if (response == null) {
+            return 0.0d;
         }
-
+        Object parsed = TuneUtils.parseJsonFromLlmResponse(response);
+        if (!(parsed instanceof Map<?, ?> data)) {
+            return 0.0d;
+        }
         Object result = data.get("result");
         if (Boolean.TRUE.equals(result)) {
-            return 1.0;
+            return 1.0d;
         }
-        if (result instanceof String) {
-            return "true".equalsIgnoreCase(((String) result).trim()) ? 1.0 : 0.0;
+        if (result instanceof String text) {
+            return "true".equalsIgnoreCase(text.strip()) ? 1.0d : 0.0d;
         }
-        return 0.0;
+        return 0.0d;
+    }
+
+    private String invokeModel(List<BaseMessage> messages) {
+        CompletionStage<AssistantMessage> stage = model.invoke(messages);
+        AssistantMessage assistantMessage = stage.toCompletableFuture().join();
+        return assistantMessage == null ? "" : assistantMessage.getContentAsString();
+    }
+
+    private static Map<String, Object> metricKeywords(Object prediction, Object label, Map<String, Object> kwargs) {
+        Object question = kwargs == null ? null : kwargs.get("question");
+        Map<String, Object> keywords = new LinkedHashMap<>();
+        keywords.put("question", pythonTruthy(question) ? pythonString(question) : "");
+        keywords.put("expected_answer", pythonString(label));
+        keywords.put("model_answer", pythonString(prediction));
+        return keywords;
+    }
+
+    private static boolean pythonTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue() != 0.0d;
+        }
+        if (value instanceof CharSequence text) {
+            return !text.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            return iterable.iterator().hasNext();
+        }
+        if (value.getClass().isArray()) {
+            return Array.getLength(value) > 0;
+        }
+        return true;
+    }
+
+    private static String pythonString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Character character) {
+            return character.toString();
+        }
+        if (value instanceof Boolean bool) {
+            return bool ? "True" : "False";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .map(entry -> pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()))
+                    .collect(Collectors.joining(", ", "{", "}"));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<String> parts = new ArrayList<>();
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                parts.add(pythonRepr(iterator.next()));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            List<String> parts = new ArrayList<>(length);
+            for (int index = 0; index < length; index++) {
+                parts.add(pythonRepr(Array.get(value, index)));
+            }
+            return "[" + String.join(", ", parts) + "]";
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonRepr(Object value) {
+        if (value instanceof String text) {
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        if (value instanceof Character character) {
+            String text = character.toString();
+            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+        }
+        return pythonString(value);
     }
 }

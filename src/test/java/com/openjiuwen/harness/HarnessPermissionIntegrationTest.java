@@ -46,7 +46,7 @@ class HarnessPermissionIntegrationTest {
 
         agent.ensureInitialized();
 
-        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
+        assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
     }
 
@@ -64,7 +64,7 @@ class HarnessPermissionIntegrationTest {
         agent.invoke(Map.of("query", "read file"));
 
         assertThat(agent.isInitialized()).isTrue();
-        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
+        assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
     }
 }

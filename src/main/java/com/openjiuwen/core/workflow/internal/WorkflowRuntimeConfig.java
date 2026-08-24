@@ -4,9 +4,7 @@
 
 package com.openjiuwen.core.workflow.internal;
 
-import com.openjiuwen.core.graph.stream_actor.ActorManagerSession;
 import com.openjiuwen.core.session.config.Config;
-import com.openjiuwen.core.session.config.SessionConfigAccess;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,7 +13,7 @@ import java.util.Map;
  * Mirrors Python's workflow session config view in
  * {@code openjiuwen/core/workflow/workflow.py}.
  */
-public class WorkflowRuntimeConfig extends Config implements ActorManagerSession.ConfigView, SessionConfigAccess {
+public class WorkflowRuntimeConfig extends Config {
 
     private final Map<String, Object> workflowConfigs = new LinkedHashMap<>();
 

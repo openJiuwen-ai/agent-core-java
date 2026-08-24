@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.evaluator.evaluator_pipeline;
+package com.openjiuwen.agentevolving.evaluator.evaluator_pipeline;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;

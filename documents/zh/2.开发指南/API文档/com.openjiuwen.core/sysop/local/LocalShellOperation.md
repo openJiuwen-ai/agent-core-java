@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.local.LocalShellOperation
+# com.openjiuwen.core.sysop.local.LocalShellOperation
 
 ## 类 LocalShellOperation
 

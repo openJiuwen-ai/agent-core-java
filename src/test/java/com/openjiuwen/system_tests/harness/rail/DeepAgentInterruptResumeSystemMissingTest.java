@@ -11,7 +11,7 @@ import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.interrupt.InterruptConstants;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +40,7 @@ class DeepAgentInterruptResumeSystemMissingTest {
 
         Map<String, Object> firstResult = agent.invoke(Map.of(
                 "query", "Please write test.txt content hello world",
-                "conversation_id", session.getSessionId()), session).get(10, TimeUnit.SECONDS);
+                "conversation_id", session.getSessionId()), session);
 
         assertThat(firstResult).containsEntry("result_type", "interrupt");
         assertThat(firstResult.get("interrupt_ids")).isEqualTo(List.of("write-call-1"));
@@ -57,7 +57,7 @@ class DeepAgentInterruptResumeSystemMissingTest {
 
         Map<String, Object> resumedResult = agent.invoke(Map.of(
                 "query", interactiveInput,
-                "conversation_id", session.getSessionId()), session).get(10, TimeUnit.SECONDS);
+                "conversation_id", session.getSessionId()), session);
 
         assertThat(resumedResult).containsEntry("result_type", "answer");
         assertThat(resumedResult).containsEntry("output", "file written");

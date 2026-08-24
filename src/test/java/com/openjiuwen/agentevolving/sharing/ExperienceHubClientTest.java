@@ -2,15 +2,15 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.sharing;
+package com.openjiuwen.agentevolving.sharing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.checkpointing.EvolutionStore;
-import com.openjiuwen.agent_evolving.sharing.backends.SharingBackend;
+import com.openjiuwen.agentevolving.checkpointing.EvolutionStore;
+import com.openjiuwen.agentevolving.sharing.backends.SharingBackend;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

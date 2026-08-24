@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow.components;
 
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.NodeSessionApi;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +26,7 @@ public final class WorkflowComponentsPackage {
     );
 
     public static final Map<String, Class<?>> JAVA_TYPES = Map.of(
-            "Session", Session.class
+            "Session", NodeSessionApi.class
     );
 
     private WorkflowComponentsPackage() {

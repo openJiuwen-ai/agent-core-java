@@ -8,15 +8,15 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Backward-compatible facade for the pre-0.1.14 context schema package.
- *
- * <p>Mirrors Python's {@code create_offload_message} in
- * {@code openjiuwen/core/context_engine/schema/messages.py}.</p>
+ * Mirrors Python's {@code create_offload_message} in
+ * {@code openjiuwen/core/context_engine/schema/messages.py}.
  */
 public final class OffloadMessages {
     private OffloadMessages() {
@@ -28,37 +28,47 @@ public final class OffloadMessages {
     }
 
     public static BaseMessage createOffloadMessage(String role, String content, String offloadHandle,
-                                                   String offloadType, Map<String, Object> extraFields) {
-        Map<String, Object> safeFields = new LinkedHashMap<>(extraFields == null ? Map.of() : extraFields);
-        safeFields.remove("role");
-        safeFields.remove("content");
+                                                   String offloadType, Map<String, Object> kwargs) {
+        String safeContent = Objects.requireNonNull(content, "content");
+        String safeHandle = Objects.requireNonNull(offloadHandle, "offloadHandle");
+        String safeType = Objects.requireNonNull(offloadType, "offloadType");
+        Map<String, Object> safeKwargs = new LinkedHashMap<>(kwargs == null ? Map.of() : kwargs);
+        safeKwargs.remove("role");
+        safeKwargs.remove("content");
+
         if ("assistant".equals(role)) {
-            OffloadAssistantMessage message = new OffloadAssistantMessage(content, offloadHandle, offloadType);
-            applyBaseFields(message, safeFields);
-            applyAssistantFields(message, safeFields);
+            OffloadAssistantMessage message = new OffloadAssistantMessage(safeContent, safeHandle, safeType);
+            applyBaseKwargs(message, safeKwargs);
+            applyAssistantKwargs(message, safeKwargs);
             return message;
         }
         if ("tool".equals(role)) {
-            String toolCallId = stringValue(safeFields.get("tool_call_id"));
-            OffloadToolMessage message = new OffloadToolMessage(content, offloadHandle, offloadType, toolCallId);
-            applyBaseFields(message, safeFields);
+            String toolCallId = requiredString(safeKwargs.get("tool_call_id"), "tool_call_id");
+            OffloadToolMessage message = new OffloadToolMessage(safeContent, safeHandle, safeType, toolCallId);
+            applyBaseKwargs(message, safeKwargs);
             return message;
         }
         if ("system".equals(role)) {
-            OffloadSystemMessage message = new OffloadSystemMessage(content, offloadHandle, offloadType);
-            applyBaseFields(message, safeFields);
+            OffloadSystemMessage message = new OffloadSystemMessage(safeContent, safeHandle, safeType);
+            applyBaseKwargs(message, safeKwargs);
             return message;
         }
-        OffloadUserMessage message = new OffloadUserMessage(content, offloadHandle, offloadType);
-        applyBaseFields(message, safeFields);
+        OffloadUserMessage message = new OffloadUserMessage(safeContent, safeHandle, safeType);
+        applyBaseKwargs(message, safeKwargs);
         return message;
     }
 
-    private static void applyBaseFields(BaseMessage message, Map<String, Object> extraFields) {
-        if (extraFields.get("name") instanceof String name) {
+    static Map<String, Object> appendOffloadFields(Map<String, Object> result, OffloadMessage message) {
+        result.put("offload_type", message.getOffloadType());
+        result.put("offload_handle", message.getOffloadHandle());
+        return result;
+    }
+
+    private static void applyBaseKwargs(BaseMessage message, Map<String, Object> kwargs) {
+        if (kwargs.get("name") instanceof String name) {
             message.setName(name);
         }
-        Object rawMetadata = extraFields.get("metadata");
+        Object rawMetadata = kwargs.get("metadata");
         if (rawMetadata instanceof Map<?, ?> rawMap) {
             Map<String, Object> metadata = new LinkedHashMap<>();
             rawMap.forEach((key, value) -> metadata.put(String.valueOf(key), value));
@@ -66,106 +76,53 @@ public final class OffloadMessages {
         }
     }
 
-    private static void applyAssistantFields(AssistantMessage message, Map<String, Object> extraFields) {
-        Object toolCalls = extraFields.get("tool_calls");
-        if (toolCalls instanceof List<?> list) {
-            message.setToolCallsRaw(list);
+    private static void applyAssistantKwargs(AssistantMessage message, Map<String, Object> kwargs) {
+        Object rawToolCalls = kwargs.get("tool_calls");
+        if (rawToolCalls instanceof List<?> toolCalls) {
+            message.setToolCallsRaw(toolCalls);
         }
-        if (extraFields.get("usage_metadata") instanceof UsageMetadata usageMetadata) {
+        if (kwargs.get("usage_metadata") instanceof UsageMetadata usageMetadata) {
             message.setUsageMetadata(usageMetadata);
         }
-        if (extraFields.get("finish_reason") instanceof String finishReason) {
+        if (kwargs.get("finish_reason") instanceof String finishReason) {
             message.setFinishReason(finishReason);
         }
-        if (extraFields.containsKey("parser_content")) {
-            message.setParserContent(extraFields.get("parser_content"));
+        if (kwargs.containsKey("parser_content")) {
+            message.setParserContent(kwargs.get("parser_content"));
         }
-        if (extraFields.get("reasoning_content") instanceof String reasoningContent) {
+        if (kwargs.get("reasoning_content") instanceof String reasoningContent) {
             message.setReasoningContent(reasoningContent);
         }
-    }
-
-    private static String stringValue(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    /**
-     * Mirrors Python's {@code OffloadUserMessage} in
-     * {@code openjiuwen/core/context_engine/schema/messages.py}.
-     */
-    public static class OffloadUserMessage
-            extends com.openjiuwen.core.context_engine.schema.OffloadUserMessage {
-        public OffloadUserMessage() {
+        List<Integer> promptTokenIds = integerList(kwargs.get("prompt_token_ids"));
+        if (promptTokenIds != null) {
+            message.setPromptTokenIds(promptTokenIds);
         }
-
-        public OffloadUserMessage(String content, String offloadHandle, String offloadType) {
-            super(content, offloadHandle, offloadType);
+        List<Integer> completionTokenIds = integerList(kwargs.get("completion_token_ids"));
+        if (completionTokenIds != null) {
+            message.setCompletionTokenIds(completionTokenIds);
         }
-
-        public OffloadUserMessage(String offloadType, String offloadHandle, Map<String, Object> metadata) {
-            setOffloadType(offloadType);
-            setOffloadHandle(offloadHandle);
-            setMetadata(metadata);
+        if (kwargs.containsKey("logprobs")) {
+            message.setLogprobs(kwargs.get("logprobs"));
         }
     }
 
-    /**
-     * Mirrors Python's {@code OffloadAssistantMessage} in
-     * {@code openjiuwen/core/context_engine/schema/messages.py}.
-     */
-    public static class OffloadAssistantMessage
-            extends com.openjiuwen.core.context_engine.schema.OffloadAssistantMessage {
-        public OffloadAssistantMessage() {
+    private static String requiredString(Object value, String name) {
+        if (value instanceof String text) {
+            return text;
         }
-
-        public OffloadAssistantMessage(String content, String offloadHandle, String offloadType) {
-            super(content, offloadHandle, offloadType);
-        }
-
-        public OffloadAssistantMessage(String offloadType, String offloadHandle, Map<String, Object> metadata) {
-            setOffloadType(offloadType);
-            setOffloadHandle(offloadHandle);
-            setMetadata(metadata);
-        }
+        throw new IllegalArgumentException(name + " is required");
     }
 
-    /**
-     * Mirrors Python's {@code OffloadSystemMessage} in
-     * {@code openjiuwen/core/context_engine/schema/messages.py}.
-     */
-    public static class OffloadSystemMessage
-            extends com.openjiuwen.core.context_engine.schema.OffloadSystemMessage {
-        public OffloadSystemMessage() {
+    private static List<Integer> integerList(Object value) {
+        if (!(value instanceof List<?> rawList)) {
+            return null;
         }
-
-        public OffloadSystemMessage(String content, String offloadHandle, String offloadType) {
-            super(content, offloadHandle, offloadType);
+        List<Integer> result = new ArrayList<>();
+        for (Object item : rawList) {
+            if (item instanceof Number number) {
+                result.add(number.intValue());
+            }
         }
-
-        public OffloadSystemMessage(String offloadType, String offloadHandle, Map<String, Object> metadata) {
-            setOffloadType(offloadType);
-            setOffloadHandle(offloadHandle);
-            setMetadata(metadata);
-        }
-    }
-
-    /**
-     * Mirrors Python's {@code OffloadToolMessage} in
-     * {@code openjiuwen/core/context_engine/schema/messages.py}.
-     */
-    public static class OffloadToolMessage
-            extends com.openjiuwen.core.context_engine.schema.OffloadToolMessage {
-        public OffloadToolMessage() {
-        }
-
-        public OffloadToolMessage(String content, String offloadHandle, String offloadType, String toolCallId) {
-            super(content, offloadHandle, offloadType, toolCallId);
-        }
-
-        public OffloadToolMessage(String offloadType, String offloadHandle, Map<String, Object> metadata) {
-            setOffloadType(offloadType);
-            setOffloadHandle(offloadHandle);
-            setMetadata(metadata);
-        }
+        return result;
     }
 }

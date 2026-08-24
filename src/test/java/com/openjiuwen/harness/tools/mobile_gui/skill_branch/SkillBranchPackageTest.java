@@ -17,8 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's package exports in
- * {@code openjiuwen/harness/tools/mobile_gui/skill_branch/__init__.py}.
+ * Covers skill-branch helpers that used to be reached only through the deleted
+ * {@code SkillBranchPackage} export bridge.
  */
 class SkillBranchPackageTest {
 
@@ -26,31 +26,17 @@ class SkillBranchPackageTest {
     Path tempDir;
 
     @Test
-    void exportsMatchPythonAllOrder() {
-        assertEquals(
-                List.of(
-                        SkillBranchRunner.BranchResult.class,
-                        SkillImageEntry.class,
-                        "build_skill_image_manifest",
-                        "format_planner_tool_message",
-                        "run_skill_branch"
-                ),
-                SkillBranchPackage.exports()
-        );
-    }
-
-    @Test
-    void delegatesManifestAndFormatter() throws Exception {
+    void manifestAndFormatter() throws Exception {
         Files.writeString(tempDir.resolve("reference.png"), "x");
 
-        List<SkillImageEntry> entries = SkillBranchPackage.buildSkillImageManifest(
+        List<SkillImageEntry> entries = SkillBranchManifest.buildSkillImageManifest(
                 "![Reference](reference.png)",
                 tempDir.toString()
         );
         assertEquals(1, entries.size());
         assertEquals("reference", entries.get(0).imageId());
 
-        String rendered = SkillBranchPackage.formatPlannerToolMessage(
+        String rendered = SkillBranchFormat.formatPlannerToolMessage(
                 "contacts",
                 Map.of("skill_applicability", "high", "plan", "open profile"),
                 "use image one"
@@ -60,12 +46,12 @@ class SkillBranchPackageTest {
     }
 
     @Test
-    void delegatesRunnerBoundary() {
-        SkillBranchRunner.BranchResult empty = SkillBranchPackage.runSkillBranch();
+    void runnerBoundary() {
+        SkillBranchRunner.BranchResult empty = SkillBranchRunner.empty();
         assertFalse(empty.selected());
         assertEquals("", empty.memo());
 
-        SkillBranchRunner.BranchResult selected = SkillBranchPackage.runSkillBranch("tap card", List.of("ref"));
+        SkillBranchRunner.BranchResult selected = SkillBranchRunner.fromPlannerMemo("tap card", List.of("ref"));
         assertTrue(selected.selected());
         assertEquals("tap card", selected.memo());
         assertEquals(List.of("ref"), selected.selectedImages());

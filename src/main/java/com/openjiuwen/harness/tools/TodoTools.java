@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.FrameworkError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.ValidationError;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.harness.schema.task.TodoItem;
 import com.openjiuwen.harness.schema.task.TodoStatus;
 
@@ -437,22 +438,39 @@ public final class TodoTools {
         }
     }
 
+    /**
+     * Resolve session id for todo operations.
+     * <p>
+     * Priority: thread-bound session ({@link SessionContextHolder}, set by
+     * {@code LocalFunction} before tool lambdas) → explicit {@code session_id} /
+     * nested session map → {@code "default"} last-resort fallback.
+     * LLM tool calls typically omit optional {@code session_id}; without the
+     * holder, todos collapse under a shared default key across conversations.
+     */
     private static String sessionId(Map<String, Object> kwargs) {
+        String fromHolder = SessionContextHolder.resolveSessionId(SessionContextHolder.getCurrentSession());
+        if (fromHolder != null && !fromHolder.isBlank()) {
+            return fromHolder;
+        }
         if (kwargs == null) {
-            return null;
+            return "default";
         }
         Object direct = kwargs.get("session_id");
-        if (direct != null) {
+        if (direct != null && !String.valueOf(direct).isBlank()) {
             return String.valueOf(direct);
         }
         Object session = kwargs.get("session");
         if (session instanceof Map<?, ?> sessionMap) {
             Object nested = sessionMap.get("session_id");
-            if (nested != null) {
+            if (nested != null && !String.valueOf(nested).isBlank()) {
                 return String.valueOf(nested);
             }
         }
-        return null;
+        String fromKwargsSession = SessionContextHolder.resolveSessionId(session);
+        if (fromKwargsSession != null && !fromKwargsSession.isBlank()) {
+            return fromKwargsSession;
+        }
+        return "default";
     }
 
     private static Map<String, Object> withSession(Map<String, Object> kwargs, String sessionId) {

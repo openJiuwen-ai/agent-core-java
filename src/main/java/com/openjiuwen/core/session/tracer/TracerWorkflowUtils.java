@@ -27,6 +27,14 @@ public final class TracerWorkflowUtils {
     private TracerWorkflowUtils() {
     }
 
+    public static void registerWorkflowSpanManager(BaseSession session) {
+        Tracer tracer = tracer(session);
+        if (tracer == null) {
+            return;
+        }
+        tracer.registerWorkflowSpanManager(executableId(session));
+    }
+
     public static void traceWorkflowStart(BaseSession session, Map<String, Object> inputs) {
         Tracer tracer = tracer(session);
         if (tracer == null) {
@@ -36,6 +44,7 @@ public final class TracerWorkflowUtils {
                 payload(
                         "invoke_id", workflowId(session),
                         "parent_node_id", "",
+                        "session_id", sessionId(session),
                         "metadata", workflowMetadata(session),
                         "inputs", inputs,
                         "need_send", true
@@ -54,6 +63,7 @@ public final class TracerWorkflowUtils {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("invoke_id", executableId(session));
         payload.put("parent_node_id", parentId(session));
+        payload.put("session_id", sessionId(session));
         payload.put("source_ids", sourceIds);
         payload.put("metadata", componentMetadata(session));
         tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_call_start", payload);
@@ -194,6 +204,10 @@ public final class TracerWorkflowUtils {
         return session != null && session.tracer() instanceof Tracer tracer ? tracer : null;
     }
 
+    private static String sessionId(BaseSession session) {
+        return stringMethod(session, "sessionId");
+    }
+
     private static Map<String, Object> workflowMetadata(BaseSession session) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("workflow_id", workflowId(session));
@@ -210,6 +224,7 @@ public final class TracerWorkflowUtils {
         metadata.put("component_name", nodeId);
         metadata.put("component_type", stringMethod(session, "nodeType"));
         metadata.put("workflow_id", workflowId(session));
+        metadata.put("parent_node_id", parentId(session));
         SessionStateAccess state = state(session);
         Object loopId = state == null ? null : state.getGlobal(Constant.LOOP_ID);
         if (loopId != null) {

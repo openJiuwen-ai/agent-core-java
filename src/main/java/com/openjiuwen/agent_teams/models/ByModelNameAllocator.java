@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Lookup-by-name allocator with intra-group round-robin counters.
@@ -19,7 +21,7 @@ public class ByModelNameAllocator implements ModelAllocator {
 
     private final Map<String, List<ModelPoolEntry>> groups = new LinkedHashMap<>();
     private final String poolDigest;
-    private Map<String, Integer> innerIndexes = new LinkedHashMap<>();
+    private final Map<String, AtomicInteger> innerIndexes = new ConcurrentHashMap<>();
 
     public ByModelNameAllocator(List<ModelPoolEntry> pool) {
         List<ModelPoolEntry> safePool = pool == null ? List.of() : pool;
@@ -36,18 +38,22 @@ public class ByModelNameAllocator implements ModelAllocator {
             return null;
         }
         List<ModelPoolEntry> group = groups.get(modelName);
-        int idx = Math.floorMod(innerIndexes.get(modelName), group.size());
-        innerIndexes.put(modelName, innerIndexes.get(modelName) + 1);
+        AtomicInteger counter = innerIndexes.computeIfAbsent(modelName, ignored -> new AtomicInteger());
+        int idx = Math.floorMod(counter.getAndIncrement(), group.size());
         return new Allocation(group.get(idx), idx);
     }
 
     @Override
     public Map<String, Object> stateDict() {
         List<Map<String, Object>> counters = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : innerIndexes.entrySet()) {
+        for (String modelName : groups.keySet()) {
+            AtomicInteger counter = innerIndexes.get(modelName);
+            if (counter == null) {
+                continue;
+            }
             Map<String, Object> record = new LinkedHashMap<>();
-            record.put("model_name", entry.getKey());
-            record.put("index", entry.getValue());
+            record.put("model_name", modelName);
+            record.put("index", counter.get());
             counters.add(record);
         }
         Map<String, Object> state = new LinkedHashMap<>();
@@ -74,7 +80,7 @@ public class ByModelNameAllocator implements ModelAllocator {
                 if (!innerIndexes.containsKey(name)) {
                     continue;
                 }
-                innerIndexes.put(name, parseInt(entry.getValue(), 0));
+                innerIndexes.get(name).set(parseInt(entry.getValue(), 0));
             }
         }
     }
@@ -92,14 +98,14 @@ public class ByModelNameAllocator implements ModelAllocator {
             if (!innerIndexes.containsKey(name)) {
                 continue;
             }
-            innerIndexes.put(name, parseInt(record.get("index"), 0));
+            innerIndexes.get(name).set(parseInt(record.get("index"), 0));
         }
     }
 
     private void resetIndexes() {
-        innerIndexes = new LinkedHashMap<>();
+        innerIndexes.clear();
         for (String name : groups.keySet()) {
-            innerIndexes.put(name, 0);
+            innerIndexes.put(name, new AtomicInteger());
         }
     }
 

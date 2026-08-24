@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
-import com.openjiuwen.core.context_engine.ModelContext;
-import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -20,10 +20,11 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -438,10 +440,11 @@ class NewReActAgentMockTest {
         List<OutputSchema> outputs = collectOutputSchemas(iterator);
 
         assertThat(outputs).extracting(OutputSchema::getType).containsExactly("llm_output", "answer");
-        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 1);
+        // Final answer always uses index=0 (Python react_agent parity).
+        assertThat(outputs).extracting(OutputSchema::getIndex).containsExactly(0, 0);
         assertThat(stringObjectMap((Map<?, ?>) outputs.get(1).getPayload()))
                 .containsEntry("result_type", "error")
-                .containsEntry("output", "stream exploded");
+                .containsEntry("output", "IllegalStateException: stream exploded");
     }
 
     @Test
@@ -627,20 +630,55 @@ class NewReActAgentMockTest {
     @Test
     void executeToolCallAddsToolMessageToContext() {
         ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("unused"));
+        FakeTool addTool = new FakeTool("add_id", "add");
+        Runner.resourceMgr.addTool(addTool);
+        try {
+            agent.getAbilityManager().add(addTool.getCard());
+            MemorySession session = new MemorySession();
+            ModelContext context = agent.initContext(session);
+
+            List<AbilityManager.ExecutionResult> results = agent.executeToolCall(
+                    new AgentCallbackContext(agent),
+                    List.of(toolCall("call-1", "add", "{\"a\":1,\"b\":2}")),
+                    session,
+                    context
+            );
+
+            assertThat(results).hasSize(1);
+            assertThat(results.get(0).result()).isEqualTo(Map.of("a", 1, "b", 2));
+            assertThat(results.get(0).toolMessage().getToolCallId()).isEqualTo("call-1");
+            assertThat(context.getMessages(null, true)).hasSize(1);
+        } finally {
+            Runner.resourceMgr.removeTool("add_id");
+        }
+    }
+
+    @Test
+    void executeToolCallFiresBeforeToolCallWithToolCallInputs() {
+        ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("unused"));
         agent.getAbilityManager().add(addToolCard());
+        AtomicReference<Object> captured = new AtomicReference<>();
+        agent.registerRail(new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+                captured.set(context.getInputs());
+                return completed();
+            }
+        }).toCompletableFuture().join();
         MemorySession session = new MemorySession();
         ModelContext context = agent.initContext(session);
 
-        List<AbilityManager.ExecutionResult> results = agent.executeToolCall(
+        agent.executeToolCall(
                 new AgentCallbackContext(agent),
-                List.of(toolCall("call-1", "add", "{\"a\":1,\"b\":2}")),
+                List.of(toolCall("call-rail", "add", "{\"a\":1,\"b\":2}")),
                 session,
                 context
         );
 
-        assertThat(results).hasSize(1);
-        assertThat(String.valueOf(results.get(0).toolMessage().getContent())).contains("add");
-        assertThat(context.getMessages(null, true)).hasSize(1);
+        assertThat(captured.get()).isInstanceOf(ToolCallInputs.class);
+        ToolCallInputs inputs = (ToolCallInputs) captured.get();
+        assertThat(inputs.getToolName()).isEqualTo("add");
+        assertThat(String.valueOf(inputs.getToolArgs())).contains("a");
     }
 
     @Test
@@ -653,7 +691,9 @@ class NewReActAgentMockTest {
         );
 
         assertThat(results).hasSize(1);
-        assertThat(results.get(0).result()).isInstanceOf(AgentCard.class);
+        assertThat(results.get(0).result()).isNull();
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
+                .contains("Agent instance not found in resource_mgr: child_agent");
         assertThat(results.get(0).toolMessage().getToolCallId()).isEqualTo("call-1");
     }
 
@@ -866,33 +906,16 @@ class NewReActAgentMockTest {
         }
     }
 
-    private static final class RecordingLifecycleSession implements AgentSessionApi, AgentSessionLifecycle {
+    private static final class RecordingLifecycleSession extends AgentSession {
         private static final Object END = new Object();
 
-        private final String sessionId;
         private final java.util.concurrent.BlockingQueue<Object> stream = new java.util.concurrent.LinkedBlockingQueue<>();
-        private final Map<String, Object> state = new LinkedHashMap<>();
         private volatile boolean preRunCalled;
         private volatile boolean closeStreamCalled;
         private volatile boolean commitCalled;
 
         private RecordingLifecycleSession(String sessionId) {
-            this.sessionId = sessionId;
-        }
-
-        @Override
-        public String getSessionId() {
-            return sessionId;
-        }
-
-        @Override
-        public Object getState(String key) {
-            return state.get(key);
-        }
-
-        @Override
-        public void updateState(Map<String, Object> data) {
-            state.putAll(data);
+            super(sessionId, null, null);
         }
 
         @Override
@@ -935,7 +958,7 @@ class NewReActAgentMockTest {
         }
 
         @Override
-        public AgentSessionLifecycle preRun(Map<String, Object> kwargs) {
+        public AgentSession preRun(Map<String, Object> kwargs) {
             preRunCalled = true;
             return this;
         }
@@ -952,7 +975,7 @@ class NewReActAgentMockTest {
         }
     }
 
-    private static final class MemorySession implements AgentSessionApi, com.openjiuwen.core.context_engine.ContextEngine.SessionPort {
+    private static final class MemorySession implements AgentSessionApi, com.openjiuwen.core.context.ContextEngine.SessionPort {
         private final String sessionId = unique("session");
         private final Map<String, Object> state = new LinkedHashMap<>();
         private final List<Object> stream = new ArrayList<>();

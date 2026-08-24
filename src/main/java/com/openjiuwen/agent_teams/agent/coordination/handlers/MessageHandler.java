@@ -6,6 +6,7 @@ package com.openjiuwen.agent_teams.agent.coordination.handlers;
 
 import com.openjiuwen.agent_teams.AgentTeamI18n;
 import com.openjiuwen.agent_teams.AgentTeamTimefmt;
+import com.openjiuwen.agent_teams.agent.AgentConfigurator.ConfiguredTeamBackend;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamInfra;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
 import com.openjiuwen.agent_teams.agent.TeamAgentBlueprint;
@@ -95,6 +96,14 @@ public class MessageHandler extends BaseCoordinationHandler {
     public CompletionStage<Void> onPollMailbox(CoordinationEvent event) {
         String memberName = blueprint.getMemberName();
         LOGGER.debug("poll mailbox: member_name={}", memberName);
+        // Suppress Leader empty POLL_MAILBOX while non-leader members are mid-shutdown (#59).
+        ConfiguredTeamBackend configuredBackend = infra.getTeamBackend();
+        if (blueprint.getRole() == TeamRole.LEADER
+                && configuredBackend != null
+                && configuredBackend.isAnyMemberShuttingDown()) {
+            LOGGER.debug("poll mailbox skipped: members shutting down");
+            return CompletableFuture.completedFuture(null);
+        }
         if (memberName == null || memberName.isEmpty() || !(infra.getMessageManager() instanceof MessageManager)) {
             return CompletableFuture.completedFuture(null);
         }

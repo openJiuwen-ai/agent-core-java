@@ -18,7 +18,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageResult;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -344,7 +344,7 @@ class ImplementStagePythonParityTest {
 
         @Override
         @SuppressWarnings("unchecked")
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs) {
+        public Iterator<Object> stream(Map<String, Object> inputs) {
             query = String.valueOf(inputs.getOrDefault("query", ""));
             List<Map<String, Object>> result = new ArrayList<>();
             for (Object event : events) {
@@ -354,7 +354,7 @@ class ImplementStagePythonParityTest {
                     result.add(Map.of("type", output.getType(), "payload", output.getPayload(), "_output", output));
                 }
             }
-            return result.iterator();
+            return (Iterator<Object>) (Iterator<?>) result.iterator();
         }
     }
 

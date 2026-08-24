@@ -26,7 +26,7 @@ class TextableVariableTest {
                 "count", 5
         ));
 
-        assertThat(result).isEqualTo("Hello Ada, active=True, count=5");
+        assertThat(result).isEqualTo("Hello Ada, active=true, count=5");
     }
 
     private record Person(String name, boolean active) {

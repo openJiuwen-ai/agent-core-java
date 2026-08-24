@@ -529,6 +529,38 @@ public final class TeamTools {
         protected CompletionStage<ToolOutput> invokeRaw(Map<String, ?> inputs) {
             String memberName = stringValue(inputs.get("member_name"));
             boolean force = booleanValue(inputs.get("force"), false);
+            if (memberName == null || memberName.isBlank()) {
+                return CompletableFuture.completedFuture(ToolOutput.of(
+                        false, linkedMap("member_name", memberName), "'member_name' is required"));
+            }
+            // Refuse to shut down a member that still owns non-terminal tasks unless force=true (#59).
+            if (!force) {
+                List<TeamTask> incomplete = team.getTaskManager()
+                        .listTasks()
+                        .toCompletableFuture()
+                        .join()
+                        .stream()
+                        .filter(task -> memberName.equals(task.getAssignee()))
+                        .filter(task -> {
+                            String status = task.getStatus();
+                            return status != null
+                                    && !"completed".equals(status)
+                                    && !"cancelled".equals(status);
+                        })
+                        .toList();
+                if (!incomplete.isEmpty()) {
+                    List<String> titles = incomplete.stream()
+                            .map(task -> "[" + task.getTaskId() + "] " + task.getTitle()
+                                    + " (" + task.getStatus() + ")")
+                            .toList();
+                    String error = "Cannot shutdown member=" + memberName + " while "
+                            + incomplete.size() + " task(s) it owns are not terminal. "
+                            + "Complete, reassign, or cancel them first; or pass force=true "
+                            + "for an administrative reset. Tasks: " + titles;
+                    return CompletableFuture.completedFuture(ToolOutput.of(
+                            false, linkedMap("member_name", memberName), error));
+                }
+            }
             return team.shutdownMember(memberName, force)
                     .thenApply(result -> ToolOutput.of(
                             result.isOk(),

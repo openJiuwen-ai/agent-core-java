@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.trainer;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -30,7 +31,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
@@ -172,7 +172,7 @@ public class Trainer {
             return List.of();
         }
         int numWorkers = Math.min(numParallel, cases.size());
-        ExecutorService executor = Executors.newFixedThreadPool(numWorkers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-tune-trainer", numWorkers, false);
         try {
             List<Future<Map<String, Object>>> futures = new ArrayList<>(cases.size());
             for (Case caseValue : cases.getCases()) {

@@ -2,16 +2,16 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.trainer;
+package com.openjiuwen.agentevolving.trainer;
 
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.CaseLoader;
-import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.agent_evolving.evaluator.BaseEvaluator;
-import com.openjiuwen.agent_evolving.signal.EvolutionSignal;
-import com.openjiuwen.agent_evolving.trajectory.Trajectory;
-import com.openjiuwen.agent_evolving.trajectory.Updates;
-import com.openjiuwen.agent_evolving.updater.Updater;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.CaseLoader;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.evaluator.BaseEvaluator;
+import com.openjiuwen.agentevolving.signal.EvolutionSignal;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.Updates;
+import com.openjiuwen.agentevolving.updater.Updater;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.TunableSpec;
 import com.openjiuwen.core.session.AgentSessionApi;

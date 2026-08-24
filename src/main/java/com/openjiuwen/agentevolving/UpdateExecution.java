@@ -4,10 +4,7 @@
 
 package com.openjiuwen.agentevolving;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.EvolutionTypes;
-import com.openjiuwen.agent_evolving.UpdateValue;
-import com.openjiuwen.agent_evolving.trajectory.UpdateKey;
+import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.core.operator.Operator;
 
 import java.util.ArrayList;

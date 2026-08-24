@@ -4,166 +4,468 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.BaseCodeOperation;
-import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.OperationDef;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.OperationRegistry;
+import com.openjiuwen.core.sysop.result.BaseResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeData;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeStreamResult;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
+import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 /**
- * Backward-compatible facade for the moved local code operation.
+ * Local code operation implementation.
  *
  * <p>Mirrors Python's {@code CodeOperation} in
  * {@code openjiuwen/core/sys_operation/local/code_operation.py}.</p>
- *
- * @deprecated Use {@link com.openjiuwen.core.sys_operation.local.LocalCodeOperation}.
  */
-@Deprecated(since = "0.1.14", forRemoval = false)
 public class LocalCodeOperation extends BaseCodeOperation {
 
-    private final com.openjiuwen.core.sys_operation.local.LocalCodeOperation delegate;
+    public static final OperationDef OP_DEF = new OperationDef(
+            LocalCodeOperation.class,
+            "local code operation",
+            "code",
+            OperationMode.LOCAL
+    );
+
+    static {
+        OperationRegistry.register(LocalCodeOperation.class);
+    }
+
+    private static final int WINDOWS_CMD_LIMIT = 8000;
+    private static final int UNIX_CMD_LIMIT = 100000;
+    private static final int DEFAULT_STREAM_CHUNK_SIZE = 1024;
+    private static final String DEFAULT_ENCODING = "utf-8";
+    /** Process env override used by issue #50 / 730 LocalCodeOperation. */
+    private static final String PYTHON_EXECUTABLE_SYSTEM_ENV = "PYTHON_EXECUTABLE";
+    /** Per-execution environment map key (legacy / sandbox inject). */
+    private static final String PYTHON_EXECUTABLE_ENV = "PYTHON";
 
     public LocalCodeOperation(Object runConfig) {
-        super("code", com.openjiuwen.core.sys_operation.OperationMode.LOCAL, "local code operation", runConfig);
-        this.delegate = new com.openjiuwen.core.sys_operation.local.LocalCodeOperation(
-                "code",
-                com.openjiuwen.core.sys_operation.OperationMode.LOCAL,
-                "local code operation",
-                runConfig);
+        this("code", OperationMode.LOCAL, "Local code operation", runConfig);
     }
 
-    /**
-     * Four-parameter constructor required by {@link com.openjiuwen.core.sys_operation.OperationDef#createInstance}.
-     *
-     * @deprecated Use {@link com.openjiuwen.core.sys_operation.local.LocalCodeOperation}.
-     */
-    @Deprecated(since = "0.1.14", forRemoval = false)
-    public LocalCodeOperation(String name, com.openjiuwen.core.sys_operation.OperationMode mode,
-                              String description, Object runConfig) {
+    public LocalCodeOperation(String name, OperationMode mode, String description, Object runConfig) {
         super(name, mode, description, runConfig);
-        this.delegate = new com.openjiuwen.core.sys_operation.local.LocalCodeOperation(
-                name, mode, description, runConfig);
     }
 
     @Override
-    public ExecuteCodeResult executeCode(String code,
-                                         String language,
-                                         int timeout,
-                                         Map<String, String> environment,
-                                         Map<String, Object> options) {
-        com.openjiuwen.core.sys_operation.result.ExecuteCodeResult result = delegate.executeCode(
-                code,
-                language,
-                timeout,
-                environment,
-                workDir(),
-                options).join();
-        return copyResult(result);
+    public CompletableFuture<ExecuteCodeResult> executeCode(String code, CodeLanguage language, int timeout,
+                                                            Map<String, String> environment, String cwd,
+                                                            Map<String, Object> options) {
+        return executeCode(code, languageValue(language), timeout, environment, cwd, options);
+    }
+
+    public CompletableFuture<ExecuteCodeResult> executeCode(String code, String language, int timeout,
+                                                            Map<String, String> environment, String cwd,
+                                                            Map<String, Object> options) {
+        return CompletableFuture.supplyAsync(() -> {
+            String effectiveLanguage = normalizeLanguage(language);
+            if (code == null || code.isBlank()) {
+                return codeError("execute_code", "code can not be empty", ExecuteCodeResult.class, null);
+            }
+            if (languageConfig(effectiveLanguage) == null) {
+                return codeError("execute_code", effectiveLanguage + " is not supported", ExecuteCodeResult.class,
+                        ExecuteCodeData.builder()
+                                .codeContent(code)
+                                .language(effectiveLanguage)
+                                .build());
+            }
+
+            CommandSpec commandSpec = null;
+            try {
+                Map<String, String> mergedEnvironment = createExecutionEnvironment(effectiveLanguage, environment);
+                commandSpec = buildSubprocessCommand(code, effectiveLanguage, options, mergedEnvironment);
+                if (commandSpec == null || commandSpec.command() == null) {
+                    return codeError("execute_code", "subprocess cmd can not be none", ExecuteCodeResult.class,
+                            ExecuteCodeData.builder()
+                                    .codeContent(code)
+                                    .language(effectiveLanguage)
+                                    .build());
+                }
+
+                Process process = createProcess(commandSpec.command(), mergedEnvironment, cwd);
+                String encoding = stringOption(options, "encoding", DEFAULT_ENCODING);
+                InvokeData invokeData = OperationUtils.createHandler(process, encoding, timeout).invoke().join();
+                Exception invokeException = invokeData.getException();
+                if (invokeException instanceof TimeoutException) {
+                    return codeError("execute_code", "execution timeout after " + timeout + " seconds",
+                            ExecuteCodeResult.class, ExecuteCodeData.builder()
+                                    .codeContent(code)
+                                    .language(effectiveLanguage)
+                                    .exitCode(invokeData.getExitCode())
+                                    .stdout(invokeData.getStdout())
+                                    .stderr(invokeData.getStderr())
+                                    .build());
+                }
+
+                return successResult(ExecuteCodeResult.class, "Code executed successfully", ExecuteCodeData.builder()
+                        .codeContent(code)
+                        .language(effectiveLanguage)
+                        .exitCode(invokeData.getExitCode())
+                        .stdout(invokeData.getStdout())
+                        .stderr(invokeData.getStderr())
+                        .build());
+            } catch (IOException exception) {
+                return codeError("execute_code", effectiveLanguage + " file not found error, please install "
+                                + "and add it to your system environment variable PATH.",
+                        ExecuteCodeResult.class, ExecuteCodeData.builder()
+                                .codeContent(code)
+                                .language(effectiveLanguage)
+                                .build());
+            } catch (Exception exception) {
+                return codeError("execute_code", "unexpected error: " + rootMessage(exception),
+                        ExecuteCodeResult.class, ExecuteCodeData.builder()
+                                .codeContent(code)
+                                .language(effectiveLanguage)
+                                .build());
+            } finally {
+                deleteTempFile(commandSpec);
+            }
+        });
     }
 
     @Override
-    public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code,
-                                                               String language,
-                                                               int timeout,
-                                                               Map<String, String> environment,
-                                                               Map<String, Object> options) {
-        Flow.Publisher<com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult> publisher =
-                delegate.executeCodeStream(code, language, timeout, environment, workDir(), options);
-        return collect(publisher).iterator();
+    public Flow.Publisher<ExecuteCodeStreamResult> executeCodeStream(String code, CodeLanguage language, int timeout,
+                                                                     Map<String, String> environment, String cwd,
+                                                                     Map<String, Object> options) {
+        return executeCodeStream(code, languageValue(language), timeout, environment, cwd, options);
     }
 
-    private String workDir() {
-        Object config = getRunConfig();
-        if (config instanceof LocalWorkConfig localWorkConfig) {
-            return localWorkConfig.getWorkDir();
+    public Flow.Publisher<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
+                                                                     Map<String, String> environment, String cwd,
+                                                                     Map<String, Object> options) {
+        return asyncPublisher(publisher -> emitCodeStream(code, normalizeLanguage(language), timeout, environment, cwd,
+                options, publisher));
+    }
+
+    private void emitCodeStream(String code, String effectiveLanguage, int timeout, Map<String, String> environment,
+                                String cwd, Map<String, Object> options,
+                                SubmissionPublisher<ExecuteCodeStreamResult> publisher) {
+        int chunkIndex = 0;
+        if (code == null || code.isBlank()) {
+            publisher.submit(codeStreamError("code can not be empty", ExecuteCodeChunkData.builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build()));
+            return;
+        }
+        if (languageConfig(effectiveLanguage) == null) {
+            publisher.submit(codeStreamError(effectiveLanguage + " is not supported", ExecuteCodeChunkData.builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build()));
+            return;
+        }
+
+        CommandSpec commandSpec = null;
+        try {
+            Map<String, String> mergedEnvironment = createExecutionEnvironment(effectiveLanguage, environment);
+            commandSpec = buildSubprocessCommand(code, effectiveLanguage, options, mergedEnvironment);
+            if (commandSpec == null || commandSpec.command() == null) {
+                publisher.submit(codeStreamError("subprocess cmd can not be none", ExecuteCodeChunkData.builder()
+                        .chunkIndex(chunkIndex)
+                        .exitCode(-1)
+                        .build()));
+                return;
+            }
+
+            int chunkSize = intOption(options, "chunk_size", DEFAULT_STREAM_CHUNK_SIZE);
+            String encoding = stringOption(options, "encoding", DEFAULT_ENCODING);
+            Process process = createProcess(commandSpec.command(), mergedEnvironment, cwd);
+            BlockingQueue<StreamEvent> queue = OperationUtils.createHandler(process, chunkSize, encoding, timeout)
+                    .stream();
+            while (true) {
+                StreamEvent event = queue.poll(Math.max(timeout, 1), TimeUnit.SECONDS);
+                if (event == null) {
+                    publisher.submit(codeStreamError("execution receive error: stream timeout", ExecuteCodeChunkData
+                            .builder()
+                            .chunkIndex(chunkIndex)
+                            .exitCode(-1)
+                            .build()));
+                    return;
+                }
+                publisher.submit(toStreamResult(event, chunkIndex));
+                chunkIndex += 1;
+                if (event.getType() == StreamEventType.ERROR || event.getType() == StreamEventType.EXIT) {
+                    return;
+                }
+            }
+        } catch (IOException exception) {
+            publisher.submit(codeStreamError(effectiveLanguage + " file not found error, please install "
+                    + "and add it to your system environment variable PATH.", ExecuteCodeChunkData.builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build()));
+        } catch (Exception exception) {
+            publisher.submit(codeStreamError("unexpected error: " + rootMessage(exception), ExecuteCodeChunkData
+                    .builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build()));
+        } finally {
+            deleteTempFile(commandSpec);
+        }
+    }
+
+    private CommandSpec buildSubprocessCommand(String code, String effectiveLanguage, Map<String, Object> options,
+                                               Map<String, String> executionEnvironment) {
+        boolean forceFile = booleanOption(options, "force_file", false);
+        LanguageConfig config = languageConfig(effectiveLanguage, executionEnvironment);
+        if (config == null) {
+            return null;
+        }
+        if (!forceFile && code.length() <= getDefaultCommandLimit() && !requiresFileTransport(code)) {
+            return new CommandSpec(config.cliCommand(code), null);
+        }
+        String tempPath = OperationUtils.createTmpFile(code, config.fileSuffix()).join();
+        if (tempPath == null) {
+            return null;
+        }
+        return new CommandSpec(config.fileCommand(tempPath), tempPath);
+    }
+
+    private Process createProcess(List<String> command, Map<String, String> mergedEnvironment, String cwd)
+            throws IOException {
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.environment().clear();
+        builder.environment().putAll(mergedEnvironment);
+        if (cwd != null) {
+            builder.directory(new File(cwd));
+        }
+        return builder.start();
+    }
+
+    private Map<String, String> createExecutionEnvironment(String language, Map<String, String> environment) {
+        Map<String, String> mergedEnvironment = OperationUtils.prepareEnvironment(environment);
+        if (CodeLanguage.JAVASCRIPT.value().equals(language)) {
+            mergedEnvironment.put("NODE_DISABLE_COLORS", "1");
+        } else if (CodeLanguage.PYTHON.value().equals(language)) {
+            mergedEnvironment.put("PYTHONIOENCODING", "utf-8");
+            mergedEnvironment.put("PYTHONUTF8", "1");
+        }
+        return mergedEnvironment;
+    }
+
+    private ExecuteCodeStreamResult toStreamResult(StreamEvent event, int chunkIndex) {
+        if (event.getType() == StreamEventType.ERROR) {
+            return codeStreamError("execution receive error: " + event.getData(), ExecuteCodeChunkData.builder()
+                    .chunkIndex(chunkIndex)
+                    .exitCode(-1)
+                    .build());
+        }
+        if (event.getType() == StreamEventType.EXIT) {
+            Integer exitCode = event.getData() instanceof Number number ? number.intValue() : -1;
+            return successResult(ExecuteCodeStreamResult.class, "Code executed successfully",
+                    ExecuteCodeChunkData.builder()
+                            .chunkIndex(chunkIndex)
+                            .exitCode(exitCode)
+                            .build());
+        }
+        String type = event.getType().getValue();
+        return successResult(ExecuteCodeStreamResult.class, "Get " + type + " stream successfully",
+                ExecuteCodeChunkData.builder()
+                        .text(String.valueOf(event.getData()))
+                        .type(type)
+                        .chunkIndex(chunkIndex)
+                        .build());
+    }
+
+    private ExecuteCodeStreamResult codeStreamError(String message, ExecuteCodeChunkData data) {
+        return codeError("execute_code_stream", message, ExecuteCodeStreamResult.class, data);
+    }
+
+    private LanguageConfig languageConfig(String language) {
+        return languageConfig(language, OperationUtils.prepareEnvironment(null));
+    }
+
+    private LanguageConfig languageConfig(String language, Map<String, String> executionEnvironment) {
+        if (CodeLanguage.PYTHON.value().equals(language)) {
+            String executable = resolvePythonExecutable(executionEnvironment);
+            return new LanguageConfig(
+                    ".py",
+                    code -> List.of(executable, "-u", "-c", code),
+                    path -> List.of(executable, "-u", path));
+        }
+        if (CodeLanguage.JAVASCRIPT.value().equals(language)) {
+            return new LanguageConfig(
+                    ".js",
+                    code -> List.of("node", "-e", code),
+                    path -> List.of("node", path));
         }
         return null;
     }
 
-    private static List<ExecuteCodeStreamResult> collect(
-            Flow.Publisher<com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult> publisher) {
-        List<ExecuteCodeStreamResult> results = new ArrayList<>();
-        CountDownLatch done = new CountDownLatch(1);
-        publisher.subscribe(new Flow.Subscriber<>() {
-            @Override
-            public void onSubscribe(Flow.Subscription subscription) {
-                subscription.request(Long.MAX_VALUE);
+    private String resolvePythonExecutable(Map<String, String> executionEnvironment) {
+        // Prefer per-execution map, then process env PYTHON_EXECUTABLE (issue #50), then PATH.
+        String override = executionEnvironment == null ? null : executionEnvironment.get(PYTHON_EXECUTABLE_ENV);
+        if (override == null || override.isBlank()) {
+            override = executionEnvironment == null ? null : executionEnvironment.get(PYTHON_EXECUTABLE_SYSTEM_ENV);
+        }
+        if (override == null || override.isBlank()) {
+            override = System.getenv(PYTHON_EXECUTABLE_SYSTEM_ENV);
+        }
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        for (String candidate : List.of("python3", "python")) {
+            if (canStart(candidate, executionEnvironment)) {
+                return candidate;
             }
+        }
+        return "python";
+    }
 
-            @Override
-            public void onNext(com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult item) {
-                results.add(copyStreamResult(item));
-            }
-
-            @Override
-            public void onError(Throwable throwable) {
-                done.countDown();
-            }
-
-            @Override
-            public void onComplete() {
-                done.countDown();
-            }
-        });
+    private boolean canStart(String executable, Map<String, String> executionEnvironment) {
         try {
-            done.await();
-        } catch (InterruptedException exception) {
+            ProcessBuilder builder = new ProcessBuilder(executable, "--version");
+            if (executionEnvironment != null) {
+                builder.environment().clear();
+                builder.environment().putAll(executionEnvironment);
+            }
+            Process process = builder.start();
+            boolean exited = process.waitFor(5, TimeUnit.SECONDS);
+            if (!exited) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0;
+        } catch (IOException exception) {
+            return false;
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            return false;
         }
-        return results;
     }
 
-    private static ExecuteCodeResult copyResult(
-            com.openjiuwen.core.sys_operation.result.ExecuteCodeResult source) {
-        ExecuteCodeResult target = new ExecuteCodeResult();
-        target.setCode(source.getCode());
-        target.setMessage(source.getMessage());
-        target.setData(copyData(source.getData()));
-        return target;
+    private int getDefaultCommandLimit() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+                ? WINDOWS_CMD_LIMIT
+                : UNIX_CMD_LIMIT;
     }
 
-    private static ExecuteCodeStreamResult copyStreamResult(
-            com.openjiuwen.core.sys_operation.result.ExecuteCodeStreamResult source) {
-        ExecuteCodeStreamResult target = new ExecuteCodeStreamResult();
-        target.setCode(source.getCode());
-        target.setMessage(source.getMessage());
-        target.setData(copyChunkData(source.getData()));
-        return target;
-    }
-
-    private static ExecuteCodeData copyData(
-            com.openjiuwen.core.sys_operation.result.ExecuteCodeData source) {
-        if (source == null) {
-            return null;
+    private boolean requiresFileTransport(String code) {
+        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+            return false;
         }
-        ExecuteCodeData target = new ExecuteCodeData();
-        target.setCodeContent(source.getCodeContent());
-        target.setLanguage(source.getLanguage());
-        target.setExitCode(source.getExitCode());
-        target.setStdout(source.getStdout());
-        target.setStderr(source.getStderr());
-        return target;
+        return code.indexOf('"') >= 0 || code.chars().anyMatch(character -> character > 127);
     }
 
-    private static ExecuteCodeChunkData copyChunkData(
-            com.openjiuwen.core.sys_operation.result.ExecuteCodeChunkData source) {
-        if (source == null) {
-            return null;
+    private boolean booleanOption(Map<String, Object> options, String key, boolean defaultValue) {
+        if (options == null || !options.containsKey(key)) {
+            return defaultValue;
         }
-        ExecuteCodeChunkData target = new ExecuteCodeChunkData();
-        target.setText(source.getText());
-        target.setType(source.getType());
-        target.setChunkIndex(source.getChunkIndex());
-        target.setExitCode(source.getExitCode());
-        target.setMetadata(source.getMetadata());
-        return target;
+        Object value = options.get(key);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private int intOption(Map<String, Object> options, String key, int defaultValue) {
+        if (options == null || !options.containsKey(key)) {
+            return defaultValue;
+        }
+        return Integer.parseInt(String.valueOf(options.get(key)));
+    }
+
+    private String stringOption(Map<String, Object> options, String key, String defaultValue) {
+        if (options == null || !options.containsKey(key)) {
+            return defaultValue;
+        }
+        return String.valueOf(options.get(key));
+    }
+
+    private String languageValue(CodeLanguage language) {
+        return (language == null ? CodeLanguage.PYTHON : language).value();
+    }
+
+    private String normalizeLanguage(String language) {
+        if (language == null || language.isBlank()) {
+            return CodeLanguage.PYTHON.value();
+        }
+        return language.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void deleteTempFile(CommandSpec commandSpec) {
+        if (commandSpec != null && commandSpec.tempPath() != null) {
+            OperationUtils.deleteTmpFile(commandSpec.tempPath()).join();
+        }
+    }
+
+    private String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
+    private static <T, R extends BaseResult<T>> R successResult(Class<R> resultClass, String message, T data) {
+        try {
+            R result = resultClass.getDeclaredConstructor().newInstance();
+            result.setCode(StatusCode.SUCCESS.getCode());
+            result.setMessage(message);
+            result.setData(data);
+            return result;
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Cannot create result " + resultClass.getName(), exception);
+        }
+    }
+
+    private static <T, R> R codeError(String execution, String message, Class<R> resultClass, T data) {
+        return BaseResult.buildOperationErrorResult(
+                StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR,
+                Map.of("execution", execution, "error_msg", message == null ? "" : message),
+                resultClass,
+                data);
+    }
+
+    private static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
+        return subscriber -> {
+            SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
+            publisher.subscribe(subscriber);
+            CompletableFuture.runAsync(() -> {
+                try {
+                    emitter.accept(publisher);
+                    publisher.close();
+                } catch (RuntimeException exception) {
+                    publisher.closeExceptionally(exception);
+                }
+            });
+        };
+    }
+
+    private record CommandSpec(List<String> command, String tempPath) {
+    }
+
+    private record LanguageConfig(
+            String fileSuffix,
+            java.util.function.Function<String, List<String>> cliCommandFactory,
+            java.util.function.Function<String, List<String>> fileCommandFactory) {
+
+        private List<String> cliCommand(String code) {
+            return new ArrayList<>(cliCommandFactory.apply(code));
+        }
+
+        private List<String> fileCommand(String path) {
+            return new ArrayList<>(fileCommandFactory.apply(path));
+        }
     }
 }

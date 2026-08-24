@@ -6,9 +6,9 @@ package com.openjiuwen.unit_tests.harness.rails;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openjiuwen.core.context_engine.ContextStats;
-import com.openjiuwen.core.context_engine.ContextWindow;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextStats;
+import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;

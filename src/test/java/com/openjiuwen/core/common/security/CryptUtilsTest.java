@@ -280,9 +280,14 @@ class CryptUtilsTest {
     void decryptRejectsTamperedCiphertext() {
         AesGcmCrypt crypt = AesGcmCrypt.getInstance();
         String encrypted = crypt.encrypt(VALID_KEY, "hello world");
-        String tampered = encrypted.substring(0, encrypted.length() - 2) + "aa";
+        // Flip one nibble inside the GCM tag (after 12-byte nonce hex) so AEAD must fail.
+        // Appending/replacing the last ciphertext chars can be a no-op when they already match.
+        int tagNibble = AesGcmCrypt.NONCE_LENGTH * 2;
+        StringBuilder tampered = new StringBuilder(encrypted);
+        char original = tampered.charAt(tagNibble);
+        tampered.setCharAt(tagNibble, original == '0' ? '1' : '0');
 
-        BaseError error = assertThrows(BaseError.class, () -> crypt.decrypt(VALID_KEY, tampered));
+        BaseError error = assertThrows(BaseError.class, () -> crypt.decrypt(VALID_KEY, tampered.toString()));
 
         assertEquals(StatusCode.COMMON_DECRYPTION_ERROR, error.getStatus());
     }

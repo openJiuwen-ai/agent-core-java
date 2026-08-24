@@ -17,7 +17,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.VerifyReportArtifact
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -313,7 +313,7 @@ class VerifyExtPythonParityTest {
         private final List<String> promptKinds = new ArrayList<>();
 
         @Override
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs, AgentSessionApi session) {
+        public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session) {
             String query = String.valueOf(inputs.getOrDefault("query", ""));
             prompts.add(query);
             if (query.contains("测试文件必须写入: ")) {
@@ -334,7 +334,8 @@ class VerifyExtPythonParityTest {
             } else if (query.contains("verify_ext 验收测试失败")) {
                 promptKinds.add("fix");
             }
-            return List.of(Map.of("type", "message", "payload", Map.of("content", "ok"))).iterator();
+            return (Iterator<Object>) (Iterator<?>) List.of(
+                    Map.of("type", "message", "payload", Map.of("content", "ok"))).iterator();
         }
     }
 
@@ -342,7 +343,7 @@ class VerifyExtPythonParityTest {
         private final List<String> seenSessions = new ArrayList<>();
 
         @Override
-        public Iterator<Map<String, Object>> stream(Map<String, Object> inputs, AgentSessionApi session) {
+        public Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session) {
             assertThat(inputs.get("query")).isEqualTo("write tests");
             assertThat(session).isNotNull();
             assertThat(session).isInstanceOf(AgentSession.class);
@@ -350,7 +351,7 @@ class VerifyExtPythonParityTest {
             assertThat(agentSession.getInner().streamWriterManager().streamEmitter().isClosed()).isFalse();
             seenSessions.add(session.getSessionId());
             Map<String, Object> chunk = Map.of("value", "chunk");
-            return List.of(chunk).iterator();
+            return (Iterator<Object>) (Iterator<?>) List.of(chunk).iterator();
         }
     }
 }

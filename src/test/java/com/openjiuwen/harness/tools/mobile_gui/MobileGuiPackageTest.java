@@ -6,41 +6,27 @@ package com.openjiuwen.harness.tools.mobile_gui;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Mirrors Python's package exports in
- * {@code openjiuwen/harness/tools/mobile_gui/__init__.py}.
+ * Covers {@link MobileGuiRailsFactory} helpers that used to be reached only
+ * through the deleted {@code MobileGuiPackage} export bridge.
  */
 class MobileGuiPackageTest {
 
     @Test
-    void exportsMatchPythonAllOrder() {
-        assertEquals(
-                List.of(
-                        MobileGuiRuntimeSettings.class,
-                        "build_mobile_gui_rails",
-                        "build_mobile_gui_tool_instances",
-                        "infer_model_display_name",
-                        "resolve_mobile_skill_root"
-                ),
-                MobileGuiPackage.exports()
-        );
-    }
-
-    @Test
-    void delegatesRailsFactoryHelpers() {
+    void railsFactoryHelpers() {
         MobileGuiRuntimeSettings settings = MobileGuiRuntimeSettings.fromEnvironment(
-                java.util.Map.of("MULTIMODAL_SKILL_CONSULT_MODE", "none")
+                Map.of("MULTIMODAL_SKILL_CONSULT_MODE", "none")
         );
 
-        assertFalse(MobileGuiPackage.buildMobileGuiRails(settings).isEmpty());
-        assertEquals("model-x", MobileGuiPackage.inferModelDisplayName("model-x"));
-        assertTrue(MobileGuiPackage.resolveMobileSkillRoot("workspace").replace('\\', '/')
+        assertFalse(MobileGuiRailsFactory.buildMobileGuiRails(settings).isEmpty());
+        assertEquals("model-x", MobileGuiRailsFactory.inferModelDisplayName("model-x"));
+        assertTrue(MobileGuiRailsFactory.resolveMobileSkillRoot("workspace").replace('\\', '/')
                 .endsWith("workspace/.skills"));
     }
 }

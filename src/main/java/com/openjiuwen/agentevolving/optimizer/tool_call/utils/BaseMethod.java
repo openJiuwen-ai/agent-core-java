@@ -18,9 +18,6 @@ import java.util.function.Function;
  */
 public class BaseMethod {
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected final Map<String, Object> config;
     protected final boolean verbose;
 
@@ -111,9 +108,6 @@ You must strictly follow the output format. You can begin your task now.""".form
         return verbose;
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected Object invokeRitsResponse(
             String modelId,
             String prompt,

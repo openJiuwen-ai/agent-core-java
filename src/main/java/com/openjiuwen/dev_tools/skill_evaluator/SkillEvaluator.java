@@ -12,9 +12,9 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.sys_operation.OperationMode;
-import com.openjiuwen.core.sys_operation.SysOperationCard;
-import com.openjiuwen.core.sys_operation.config.LocalWorkConfig;
+import com.openjiuwen.core.sysop.OperationMode;
+import com.openjiuwen.core.sysop.SysOperationCard;
+import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -48,6 +48,7 @@ public class SkillEvaluator {
     private final Map<String, String> environment;
     private ReActAgent agent;
     private List<ToolCard> tools = new ArrayList<>();
+    private Path targetSkillsRoot;
 
     public SkillEvaluator() {
         this(System.getenv());
@@ -59,6 +60,7 @@ public class SkillEvaluator {
 
     public CompletionStage<Void> createAgent() {
         Path skillsDir = expandUser(env("SKILLS_DIR", DEFAULT_SKILLS_DIR)).toAbsolutePath().normalize();
+        this.targetSkillsRoot = resolveTargetSkillsRoot(skillsDir);
         String filesBaseDir = env("FILES_BASE_DIR", expandUser(DEFAULT_FILES_BASE_DIR)
                 .toAbsolutePath()
                 .normalize()
@@ -122,13 +124,24 @@ public class SkillEvaluator {
         return evaluate(skillPath, requirement, null);
     }
 
+    /**
+     * Evaluates a skill package located under the configured {@code SKILLS_DIR}.
+     *
+     * <p>Both relative paths (resolved against {@code SKILLS_DIR}) and absolute paths are accepted
+     * when their canonical path remains inside the configured skills root. Paths containing {@code ..}
+     * or escaping via symlinks are rejected.</p>
+     */
     public CompletionStage<Map<String, Object>> evaluate(Path skillPath, String requirement, Path outputPath) {
         Objects.requireNonNull(skillPath, "skillPath");
         Path reportDir = outputPath != null ? outputPath : missingOutputDir();
         if (agent == null) {
             throw new IllegalStateException("SkillEvaluator.agent is not initialized. Call createAgent() first.");
         }
-        String query = buildEvaluationQuery(skillPath, requirement, reportDir);
+        if (targetSkillsRoot == null) {
+            throw new IllegalStateException("SkillEvaluator skills root is not initialized. Call createAgent() first.");
+        }
+        Path resolvedSkillPath = resolveTargetSkillPath(skillPath.toString(), targetSkillsRoot);
+        String query = buildEvaluationQuery(resolvedSkillPath, requirement, reportDir);
         Map<String, Object> inputs = new LinkedHashMap<>();
         inputs.put("query", query);
         inputs.put("conversation_id", "skill_eval_001");
@@ -207,6 +220,69 @@ public class SkillEvaluator {
 
     private static Path missingOutputDir() {
         throw new IllegalStateException("SkillEvaluator has no attribute '_output_dir'");
+    }
+
+    /**
+     * Resolves an evaluation target skill path against a trusted skills root.
+     *
+     * <p>Relative paths are resolved against {@code skillsRoot}. Absolute paths are accepted when
+     * their canonical path remains under {@code skillsRoot}. Path segments containing {@code ..}
+     * are always rejected.</p>
+     *
+     * @param skillPath requested skill path
+     * @param skillsRoot trusted skills root directory
+     * @return canonical skill directory containing {@code SKILL.md}
+     * @throws SecurityException if the path escapes the skills root
+     */
+    static Path resolveTargetSkillPath(String skillPath, Path skillsRoot) {
+        if (skillPath == null || skillPath.isBlank()) {
+            throw new IllegalArgumentException("Skill path must not be blank.");
+        }
+        if (skillsRoot == null) {
+            throw new IllegalArgumentException("Skills root must not be null.");
+        }
+        Path requestedPath = Path.of(skillPath);
+        for (Path segment : requestedPath) {
+            if ("..".equals(segment.toString())) {
+                throw new SecurityException("Skill path must not contain '..'.");
+            }
+        }
+
+        try {
+            Path realSkillsRoot = skillsRoot.toRealPath();
+            Path targetPath = requestedPath.isAbsolute()
+                    ? requestedPath.toAbsolutePath().normalize()
+                    : realSkillsRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(skillsRoot.toAbsolutePath().normalize())) {
+                throw new SecurityException("Skill path is outside SKILLS_DIR.");
+            }
+            Path realTargetPath = targetPath.toRealPath();
+            if (!realTargetPath.startsWith(realSkillsRoot)) {
+                throw new SecurityException("Skill path is outside SKILLS_DIR.");
+            }
+            if (!Files.isDirectory(realTargetPath)) {
+                throw new IllegalArgumentException("Skill path must identify a directory.");
+            }
+            if (!Files.isRegularFile(realTargetPath.resolve("SKILL.md"))
+                    && !Files.isRegularFile(realTargetPath.resolve("Skill.md"))) {
+                throw new IllegalArgumentException("Skill directory does not contain SKILL.md.");
+            }
+            return realTargetPath;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve skill path within SKILLS_DIR.", e);
+        }
+    }
+
+    private static Path resolveTargetSkillsRoot(Path configuredSkillsDir) {
+        try {
+            Path realPath = configuredSkillsDir.toRealPath();
+            if (!Files.isDirectory(realPath)) {
+                throw new IllegalStateException("Configured SKILLS_DIR is not a directory: " + realPath);
+            }
+            return realPath;
+        } catch (IOException e) {
+            throw new IllegalStateException("Configured SKILLS_DIR does not exist: " + configuredSkillsDir, e);
+        }
     }
 
     private static ReActAgentConfig copyConfig(ReActAgentConfig source) {

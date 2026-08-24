@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.result.SearchFilesData
+# com.openjiuwen.core.sysop.result.SearchFilesData
 
 ## 类 SearchFilesData
 

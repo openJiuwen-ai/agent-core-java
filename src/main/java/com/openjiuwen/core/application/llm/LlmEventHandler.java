@@ -11,8 +11,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.schema.Param;
-import com.openjiuwen.core.context_engine.ContextEngine;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ContextEngine;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.controller.modules.EventHandler;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.DataFrame;
@@ -214,6 +214,10 @@ public class LlmEventHandler extends EventHandler {
                 interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
 
                 int initialIteration = resumeStartIteration(resume.savedIteration);
+                Map<String, Object> exceeded = maxIterationExceededResult(initialIteration, session);
+                if (exceeded != null) {
+                    return exceeded;
+                }
                 return executeReactLoop(resume.remainingTasks, session, initialIteration,
                         resume.aiMessage, context);
             }
@@ -262,6 +266,10 @@ public class LlmEventHandler extends EventHandler {
                 interrupted.setStatus(TaskStatus.INPUT_REQUIRED);
 
                 int resumeIteration = resumeStartIteration(resume.savedIteration);
+                Map<String, Object> exceeded = maxIterationExceededResult(resumeIteration, session);
+                if (exceeded != null) {
+                    return exceeded;
+                }
                 return executeReactLoop(resume.remainingTasks, session, resumeIteration,
                         resume.aiMessage, context);
             }
@@ -800,7 +808,7 @@ public class LlmEventHandler extends EventHandler {
                 AssistantMessage aiMessage = reconstructAssistantMessage(aiMessageData);
                 List<Task> remainingTasks = deserializeTaskList(
                         (List<Map<String, Object>>) taskInfo.get("remaining_tasks"));
-                Integer savedIteration = (Integer) taskInfo.get("iteration");
+                Integer savedIteration = readIteration(taskInfo.get("iteration"));
 
                 return Optional.of(new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds));
             }
@@ -836,10 +844,17 @@ public class LlmEventHandler extends EventHandler {
         AssistantMessage aiMessage = reconstructAssistantMessage(aiMessageData);
         List<Task> remainingTasks = deserializeTaskList(
                 (List<Map<String, Object>>) taskInfo.get("remaining_tasks"));
-        Integer savedIteration = (Integer) taskInfo.get("iteration");
+        Integer savedIteration = readIteration(taskInfo.get("iteration"));
         List<String> componentIds = (List<String>) taskInfo.getOrDefault("component_ids", List.of());
 
         return Optional.of(new ResumeResult(aiMessage, remainingTasks, savedIteration, componentIds));
+    }
+
+    private static Integer readIteration(Object raw) {
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        return null;
     }
 
     // ==================== Stream Helpers ====================
@@ -1490,12 +1505,27 @@ public class LlmEventHandler extends EventHandler {
         return interactiveInput;
     }
 
+    /**
+     * Align with Python {@code llm_controller}: {@code initial = saved + 1} (no clamp to max).
+     * When {@code initial > max_iteration}, resume must return "Maximum iteration reached".
+     */
     private int resumeStartIteration(Integer savedIteration) {
         if (savedIteration == null) {
             return 1;
         }
+        return Math.max(1, savedIteration + 1);
+    }
+
+    private Map<String, Object> maxIterationExceededResult(int initialIteration, AgentSessionApi session) {
         int maxIteration = agentConfig.getConstrain().getMaxIteration();
-        return Math.max(1, Math.min(savedIteration + 1, maxIteration));
+        if (initialIteration <= maxIteration) {
+            return null;
+        }
+        Loggers.CONTROLLER.warning(
+                "Max iteration {} will be exceeded, stopping with final response",
+                maxIteration
+        );
+        return unwrapResult(sendFinalStream("Maximum iteration reached", session));
     }
 
     private static InteractiveInput withWorkflowInputAliases(InteractiveInput input) {

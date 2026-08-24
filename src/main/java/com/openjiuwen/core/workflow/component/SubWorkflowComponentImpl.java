@@ -5,7 +5,7 @@
 package com.openjiuwen.core.workflow.component;
 
 import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
@@ -28,6 +28,7 @@ import java.util.Map;
  */
 public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWorkflowComponent {
 
+    /** Matches Python {@code SUB_WORKFLOW_COMPONENT = "sub_workflow"}. */
     public static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
 
     private final Workflow subWorkflow;

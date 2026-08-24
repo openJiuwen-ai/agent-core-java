@@ -8,7 +8,7 @@ import com.openjiuwen.agent_teams.schema.TeamEvent;
 import com.openjiuwen.agent_teams.schema.WorkspaceArtifactEvent;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sysop.Cwd;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
-import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.WorkflowSession;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -75,8 +75,8 @@ class WorkflowSystemTest {
         }
     }
 
-    private static WorkflowSessionApi newSession() {
-        return new WorkflowSessionApi(null, UUID.randomUUID().toString(), Map.of());
+    private static WorkflowSession newSession() {
+        return new WorkflowSession(null, UUID.randomUUID().toString(), Map.of());
     }
 
     // ---- Tests ----

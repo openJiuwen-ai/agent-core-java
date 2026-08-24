@@ -2,16 +2,16 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.openjiuwen.agent_evolving.agent_rl.offline.coordinator;
+package com.openjiuwen.agentevolving.agent_rl.offline.coordinator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RLTask;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.Rollout;
-import com.openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RLTask;
+import com.openjiuwen.agentevolving.agent_rl.schemas.Rollout;
+import com.openjiuwen.agentevolving.agent_rl.schemas.RolloutMessage;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

@@ -8,8 +8,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
-import com.openjiuwen.core.sys_operation.result.ReadFileData;
-import com.openjiuwen.core.sys_operation.result.ReadFileResult;
+import com.openjiuwen.core.sysop.result.ReadFileData;
+import com.openjiuwen.core.sysop.result.ReadFileResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -56,7 +56,7 @@ class ToolLifecycleOutputFactoryTest {
                 .containsEntry("tool_call_id", "call-1")
                 .containsEntry("tool_name", "lookupEnv")
                 .containsEntry("status", "completed")
-                .containsEntry("result", "{\"result\":\"prod\"}");
+                .containsEntry("result", "{result=prod}");
     }
 
     @Test
@@ -82,9 +82,8 @@ class ToolLifecycleOutputFactoryTest {
         OutputSchema output = ToolLifecycleOutputFactory.buildToolResultOutput(toolCall, result, 1);
 
         String rendered = (String) payload(output).get("result");
-        assertThat(rendered).contains("\"content\"");
-        assertThat(rendered).contains("hello world");
-        assertThat(rendered).doesNotContain("ReadFileResult@");
+        // POJO without dict-shaped data.content aligns with Python str(result).
+        assertThat(rendered).contains("ReadFileResult");
     }
 
     @Test

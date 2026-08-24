@@ -109,7 +109,7 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         nodeSession.config().addWorkflowConfigs(runtimeParent.config().getWorkflowConfigs());
         nodeSession.setMainWorkflowId(runtimeParent.mainWorkflowId());
         nodeSession.setActorManager(runtimeParent.runtimeActorManager());
-        nodeSession.setStreamWriterManager(runtimeParent.runtimeStreamWriterManager());
+        nodeSession.setStreamWriterManager(runtimeParent.streamWriterManager());
         nodeSession.setCheckpointer(runtimeParent.checkpointer());
         return nodeSession;
     }
@@ -233,28 +233,28 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     }
 
     @Override
-    public Vertex.VertexStreamWriterManager streamWriterManager() {
+    public StreamWriterManager streamWriterManager() {
+        return streamWriterManager;
+    }
+
+    @Override
+    public Vertex.VertexStreamWriterManager vertexStreamWriterManager() {
         return streamWriterManager == null ? null : new StreamWriterManagerAdapter(
                 streamWriterManager,
                 parentStreamWriterManager(),
                 isInvokeStreamBridgeEnabled());
     }
 
-    @Override
-    public StreamWriterManager rawStreamWriterManager() {
-        return streamWriterManager;
-    }
-
-    public StreamWriterManager runtimeStreamWriterManager() {
-        return streamWriterManager;
-    }
-
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
         this.streamWriterManager = streamWriterManager;
         if (!(parent instanceof WorkflowRuntimeSession) && streamWriterManager != null) {
-            Tracer runtimeTracer = new Tracer();
-            runtimeTracer.init(streamWriterManager);
-            this.tracer = runtimeTracer;
+            if (this.tracer instanceof Tracer existingTracer) {
+                existingTracer.updateStreamWriterManager(streamWriterManager);
+            } else {
+                Tracer runtimeTracer = new Tracer(sessionId());
+                runtimeTracer.init(streamWriterManager);
+                this.tracer = runtimeTracer;
+            }
         }
     }
 

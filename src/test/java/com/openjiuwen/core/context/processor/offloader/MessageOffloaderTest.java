@@ -1,542 +1,565 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.processor.offloader;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.context.schema.OffloadMixin;
-import com.openjiuwen.core.context.token.TokenCounter;
+import com.openjiuwen.core.context.schema.OffloadMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Tests for {@link MessageOffloader}.
- * <p>
- * Ported from Python's {@code test_message_offloader.py}.
+ * Focused parity tests for message offload behavior.
+ *
+ * <p>Mirrors Python's {@code MessageOffloader} in
+ * {@code openjiuwen/core/context_engine/processor/offloader/message_offloader.py}.</p>
+ *
+ * <p>Mirrors Python's related tests in
+ * {@code tests/unit_tests/core/context_engine/test_message_offloader.py}.</p>
  */
 class MessageOffloaderTest {
 
-    private static List<ToolCall> createToolCallList(List<String> ids) {
-        return ids.stream()
-                .map(id -> ToolCall.builder().id(id).name("test-tool").type("function").arguments("").build())
+    @Test
+    void invalidConfigRaisesContextExecutionError() {
+        MessageOffloaderConfig trimConfig = new MessageOffloaderConfig();
+        trimConfig.setTrimSize(500);
+        trimConfig.setLargeMessageThreshold(500);
+        assertThatThrownBy(() -> new MessageOffloader(trimConfig)).isInstanceOf(BaseError.class);
+
+        MessageOffloaderConfig keepConfig = new MessageOffloaderConfig();
+        keepConfig.setMessagesToKeep(20);
+        keepConfig.setMessagesThreshold(20);
+        assertThatThrownBy(() -> new MessageOffloader(keepConfig)).isInstanceOf(BaseError.class);
+    }
+
+    @Test
+    void invalidConfigTrimSizeGreaterThanLargeMessageThresholdRaises() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setTrimSize(600);
+        config.setLargeMessageThreshold(500);
+
+        assertThatThrownBy(() -> new MessageOffloader(config)).isInstanceOf(BaseError.class);
+    }
+
+    @Test
+    void invalidConfigMessagesToKeepGreaterThanThresholdRaises() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesToKeep(25);
+        config.setMessagesThreshold(20);
+
+        assertThatThrownBy(() -> new MessageOffloader(config)).isInstanceOf(BaseError.class);
+    }
+
+    @Test
+    void validConfigCreatesContextSuccessfully() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesToKeep(10);
+        config.setMessagesThreshold(20);
+        config.setLargeMessageThreshold(500);
+        config.setTrimSize(100);
+
+        SessionModelContext context = contextWith(config, null);
+
+        assertThat(context).isNotNull();
+        assertThat(context.length()).isZero();
+    }
+
+    @Test
+    void registeredProcessorNameIsAvailableAfterClassLoad() {
+        assertThat(ContextEngine.registeredProcessorTypes()).contains("MessageOffloader");
+    }
+
+    @Test
+    void belowMessagesToKeepDoesNotOffload() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(20);
+        config.setMessagesToKeep(10);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new UserMessage("a"),
+                new UserMessage("b"),
+                new UserMessage("c"),
+                new UserMessage("d"),
+                new UserMessage("e")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages()).hasSize(5);
+        assertThat(context.getMessages()).noneMatch(OffloadMessage.class::isInstance);
+    }
+
+    @Test
+    void aboveMessagesThresholdOffloadsAndReloadsOriginalContent() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(4);
+        config.setTokensThreshold(100000);
+        config.setLargeMessageThreshold(30);
+        config.setTrimSize(10);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+        String longContent = "x".repeat(100);
+
+        context.addMessages(List.of(
+                new UserMessage("u1"),
+                new ToolMessage(longContent, "tc-1"),
+                new UserMessage("u2"),
+                new UserMessage("u3")
+        )).toCompletableFuture().join();
+        assertThat(context.getMessages()).noneMatch(OffloadMessage.class::isInstance);
+
+        context.addMessages(new UserMessage("u4")).toCompletableFuture().join();
+
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result).hasSize(5);
+        assertThat(result.get(1)).isInstanceOf(OffloadMessage.class);
+        OffloadMessage marker = (OffloadMessage) result.get(1);
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                .contains(longContent);
+    }
+
+    @Test
+    void streamStateHistoryRecordsModifiedOffloadMessages() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(1);
+        config.setTokensThreshold(100000);
+        config.setLargeMessageThreshold(30);
+        config.setTrimSize(10);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new ToolMessage("x".repeat(100), "tc-stream"),
+                new UserMessage("trigger")
+        )).toCompletableFuture().join();
+
+        List<Map<String, Object>> states = context.compressionHistory();
+        assertThat(states).hasSize(2);
+        assertThat(states.get(0))
+                .containsEntry("processor", "MessageOffloader")
+                .containsEntry("phase", "add_messages")
+                .containsEntry("status", "started");
+        assertThat(states.get(0).get("before")).isNotNull();
+        assertThat(states.get(1))
+                .containsEntry("processor", "MessageOffloader")
+                .containsEntry("phase", "add_messages")
+                .containsEntry("status", "completed");
+        assertThat(states.get(1).get("duration_ms")).isNotNull();
+        assertThat(String.valueOf(states.get(1).get("summary"))).contains("modified 1 messages");
+    }
+
+    @Test
+    void tokenThresholdUsesContextTokenCounter() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(100);
+        config.setTokensThreshold(50);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        ModelContext.TokenCounterPort tokenCounter = messages -> 200;
+        SessionModelContext context = contextWith(config, tokenCounter);
+
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                new ToolMessage("x".repeat(20), "tc-1")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages()).anyMatch(OffloadMessage.class::isInstance);
+        assertThat(context.getMessages().get(1).getContentAsString())
+                .startsWith("x".repeat(5) + MessageOffloader.OMIT_STRING);
+    }
+
+    @Test
+    void shortMessagesAreNotOffloaded() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(3);
+        config.setLargeMessageThreshold(100);
+        config.setTrimSize(10);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new ToolMessage("short", "tc-1"),
+                new UserMessage("u")
+        )).toCompletableFuture().join();
+
+        assertThat(context.getMessages().get(0).getContentAsString()).isEqualTo("short");
+        assertThat(context.getMessages().get(0)).isNotInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void offloadOnlyConfiguredRolesAndPreservesRecentMessages() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(2);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("user", "assistant"));
+        config.setMessagesToKeep(1);
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new UserMessage("U".repeat(50)),
+                new AssistantMessage("A".repeat(50)),
+                new ToolMessage("T".repeat(50), "tc-1")
+        )).toCompletableFuture().join();
+
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result.get(0)).isInstanceOf(OffloadMessage.class);
+        assertThat(result.get(1)).isInstanceOf(OffloadMessage.class);
+        assertThat(result.get(2)).isInstanceOf(ToolMessage.class);
+        assertThat(result.get(2)).isNotInstanceOf(OffloadMessage.class);
+        assertThat(result.get(2).getContentAsString()).isEqualTo("T".repeat(50));
+    }
+
+    @Test
+    void messagesToKeepLimitsOffloadRangeToOlderMessages() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(3);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setMessagesToKeep(2);
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new ToolMessage("A".repeat(50), "tc-1"),
+                new ToolMessage("B".repeat(50), "tc-2"),
+                new ToolMessage("C".repeat(50), "tc-3"),
+                new ToolMessage("D".repeat(50), "tc-4")
+        )).toCompletableFuture().join();
+
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result.get(0)).isInstanceOf(OffloadMessage.class);
+        assertThat(result.get(1)).isInstanceOf(OffloadMessage.class);
+        assertThat(result.get(2)).isNotInstanceOf(OffloadMessage.class);
+        assertThat(result.get(3)).isNotInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void keepLastRoundPreservesFinalAssistantBoundary() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(2);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(true);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new UserMessage("u1"),
+                assistantToolCall("tc-1", "test-tool", "{}"),
+                new ToolMessage("x".repeat(50), "tc-1"),
+                new AssistantMessage("a2-final")
+        )).toCompletableFuture().join();
+
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result.get(2)).isInstanceOf(OffloadMessage.class);
+        assertThat(result.get(3).getContentAsString()).isEqualTo("a2-final");
+        assertThat(result.get(3)).isNotInstanceOf(OffloadMessage.class);
+    }
+
+    @Test
+    void offloadTrimsContentAndReloadsOriginalContent() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(1);
+        config.setLargeMessageThreshold(30);
+        config.setTrimSize(10);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+        String longContent = "a".repeat(200);
+
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                new ToolMessage(longContent, "tc-1")
+        )).toCompletableFuture().join();
+
+        BaseMessage offloadMessage = context.getMessages().get(1);
+        assertThat(offloadMessage).isInstanceOf(OffloadMessage.class);
+        assertThat(offloadMessage.getContentAsString())
+                .startsWith("a".repeat(10))
+                .contains("[[OFFLOAD:");
+        OffloadMessage marker = (OffloadMessage) offloadMessage;
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                .contains(longContent);
+    }
+
+    @Test
+    void offloadPreservesToolCallId() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(1);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        SessionModelContext context = contextWith(config, null);
+        String fullContent = "Very long tool response: " + "x".repeat(100);
+
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                new ToolMessage(fullContent, "critical-tc-123")
+        )).toCompletableFuture().join();
+
+        BaseMessage offloadMessage = context.getMessages().get(1);
+        assertThat(offloadMessage).isInstanceOf(ToolMessage.class);
+        assertThat(((ToolMessage) offloadMessage).getToolCallId()).isEqualTo("critical-tc-123");
+        OffloadMessage marker = (OffloadMessage) offloadMessage;
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                .contains("Very long tool response");
+    }
+
+    @Test
+    void fullFlowAddMessagesTriggersOffloadAndReloadsContent() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(4);
+        config.setTokensThreshold(100000);
+        config.setLargeMessageThreshold(40);
+        config.setTrimSize(15);
+        config.setOffloadMessageType(List.of("tool", "user"));
+        config.setMessagesToKeep(2);
+        config.setKeepLastRound(true);
+        SessionModelContext context = contextWith(config, null);
+
+        context.addMessages(List.of(
+                new UserMessage("u1"),
+                assistantToolCall("tc-1", "test-tool", ""),
+                new ToolMessage("T".repeat(80), "tc-1"),
+                new AssistantMessage("a2"),
+                new UserMessage("U".repeat(80))
+        )).toCompletableFuture().join();
+
+        List<OffloadMessage> offloaded = context.getMessages().stream()
+                .filter(OffloadMessage.class::isInstance)
+                .map(OffloadMessage.class::cast)
                 .toList();
-    }
-
-    private static TokenCounter mockTokenCounter(int returnValue) {
-        return new TokenCounter() {
-            @Override
-            public int count(String text, String model) {
-                return returnValue;
-            }
-
-            @Override
-            public int countMessages(List<BaseMessage> messages, String model) {
-                return returnValue;
-            }
-
-            @Override
-            public int countTools(List<ToolInfo> tools, String model) {
-                return 0;
-            }
-        };
-    }
-
-    private ModelContext createContextWithOffloader(MessageOffloaderConfig config, TokenCounter tokenCounter) {
-        ContextEngine.registerProcessor("MessageOffloader", MessageOffloader.class,
-                cfg -> new MessageOffloader((MessageOffloaderConfig) cfg));
-        ContextEngine engine = new ContextEngine(
-                ContextEngineConfig.builder().defaultWindowMessageNum(100).build());
-        List<ContextEngine.ProcessorSpec> processors = List.of(
-                new ContextEngine.ProcessorSpec("MessageOffloader", config));
-        return engine.createContext("test_ctx", null, processors, null, tokenCounter);
-    }
-
-    private ModelContext createContextWithOffloader(MessageOffloaderConfig config) {
-        return createContextWithOffloader(config, null);
-    }
-
-    // ---------- Config validation ----------
-
-    @Nested
-    @DisplayName("Config validation")
-    class ConfigValidation {
-
-        @Test
-        @DisplayName("trim_size >= large_message_threshold throws")
-        void testInvalidTrimSizeEqual() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .trimSize(500)
-                    .largeMessageThreshold(500)
-                    .build();
-            assertThrows(BaseError.class, () -> createContextWithOffloader(config));
-        }
-
-        @Test
-        @DisplayName("trim_size > large_message_threshold throws")
-        void testInvalidTrimSizeGreater() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .trimSize(600)
-                    .largeMessageThreshold(500)
-                    .build();
-            assertThrows(BaseError.class, () -> createContextWithOffloader(config));
-        }
-
-        @Test
-        @DisplayName("messages_to_keep >= messages_threshold throws")
-        void testInvalidMessagesToKeepEqual() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesToKeep(20)
-                    .messagesThreshold(20)
-                    .build();
-            assertThrows(BaseError.class, () -> createContextWithOffloader(config));
-        }
-
-        @Test
-        @DisplayName("messages_to_keep > messages_threshold throws")
-        void testInvalidMessagesToKeepGreater() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesToKeep(25)
-                    .messagesThreshold(20)
-                    .build();
-            assertThrows(BaseError.class, () -> createContextWithOffloader(config));
-        }
-
-        @Test
-        @DisplayName("valid config creates context successfully")
-        void testValidConfig() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesToKeep(10)
-                    .messagesThreshold(20)
-                    .largeMessageThreshold(500)
-                    .trimSize(100)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            assertNotNull(ctx);
-            assertEquals(0, ctx.size());
+        assertThat(offloaded).isNotEmpty();
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        for (OffloadMessage marker : offloaded) {
+            assertThat(reloader.reloadOriginalContextMessages(marker.getOffloadHandle(), marker.getOffloadType()))
+                    .isNotBlank();
         }
     }
 
-    // ---------- Threshold triggers ----------
-
-    @Nested
-    @DisplayName("Threshold triggers")
-    class ThresholdTriggers {
-
-        @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")
-        @Test
-        @DisplayName("below messages_to_keep => no offload")
-        void testBelowMessagesToKeep() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(20)
-                    .messagesToKeep(10)
-                    .largeMessageThreshold(10)
-                    .trimSize(5)
-                    .offloadMessageType(List.of("tool"))
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = new ArrayList<>();
-            for (int i = 0; i < 5; i++) {
-                msgs.add(new UserMessage("a"));
-            }
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals(5, result.size());
-            assertTrue(result.stream().noneMatch(m -> m instanceof OffloadMixin));
+    @Test
+    void multiRoundDialogueOffloadsOldToolsAndPreservesLatestFinalAssistant() {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(10);
+        config.setLargeMessageThreshold(30);
+        config.setTrimSize(10);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setMessagesToKeep(8);
+        config.setKeepLastRound(true);
+        SessionModelContext context = contextWith(config, null);
+        List<BaseMessage> messages = new java.util.ArrayList<>();
+        for (int round = 0; round < 3; round++) {
+            messages.add(new UserMessage("user-round-" + round));
+            messages.add(assistantToolCall("tc-" + round, "test-tool", ""));
+            messages.add(new ToolMessage("LONG_TOOL_RESPONSE ".repeat(5), "tc-" + round));
+            messages.add(new AssistantMessage("ai-final-" + round));
         }
 
-        @Test
-        @DisplayName("above messages_threshold triggers offload")
-        void testAboveMessagesThreshold() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(4)
-                    .tokensThreshold(100000)
-                    .largeMessageThreshold(30)
-                    .trimSize(10)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u1"),
-                    ToolMessage.builder().content("x".repeat(100)).toolCallId("tc-1").build(),
-                    new UserMessage("u2"),
-                    new UserMessage("u3")
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals(4, result.size());
-            long offloaded = result.stream().filter(m -> m instanceof OffloadMixin).count();
-            assertEquals(0, offloaded);
+        context.addMessages(messages).toCompletableFuture().join();
 
-            // Adding 5th message exceeds threshold
-            ctx.addMessages(new UserMessage("u4"));
-            result = ctx.getMessages();
-            assertEquals(5, result.size());
-            offloaded = result.stream().filter(m -> m instanceof OffloadMixin).count();
-            assertEquals(1, offloaded);
-        }
-
-        @Test
-        @DisplayName("above threshold without candidate does not trigger offload")
-        void testAboveThresholdWithoutCandidate() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(2)
-                    .largeMessageThreshold(200)
-                    .trimSize(10)
-                    .offloadMessageType(List.of("tool"))
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            ctx.addMessages(List.of(
-                    new UserMessage("u1"),
-                    new UserMessage("u2"),
-                    new UserMessage("u3")
-            ));
-
-            assertTrue(ctx.getMessages().stream().noneMatch(m -> m instanceof OffloadMixin));
-        }
-
-        @Test
-        @DisplayName("above tokens_threshold triggers offload")
-        void testAboveTokensThreshold() {
-            TokenCounter counter = mockTokenCounter(200);
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(100)
-                    .tokensThreshold(50)
-                    .largeMessageThreshold(10)
-                    .trimSize(5)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config, counter);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u"),
-                    ToolMessage.builder().content("x".repeat(20)).toolCallId("tc-1").build()
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            long offloaded = result.stream().filter(m -> m instanceof OffloadMixin).count();
-            assertTrue(offloaded >= 1);
-        }
+        List<BaseMessage> result = context.getMessages();
+        assertThat(result).hasSize(12);
+        assertThat(result.stream()
+                .filter(message -> "ai-final-2".equals(message.getContentAsString()))
+                .findFirst()
+                .orElseThrow()).isNotInstanceOf(OffloadMessage.class);
+        List<OffloadMessage> offloaded = result.stream()
+                .filter(OffloadMessage.class::isInstance)
+                .map(OffloadMessage.class::cast)
+                .toList();
+        assertThat(offloaded).isNotEmpty();
+        SessionModelContext.ReloaderTool reloader = (SessionModelContext.ReloaderTool) context.reloaderTool();
+        assertThat(reloader.reloadOriginalContextMessages(
+                offloaded.get(0).getOffloadHandle(), offloaded.get(0).getOffloadType()))
+                .contains("LONG_TOOL_RESPONSE");
     }
 
-    // ---------- Offload message type filtering ----------
+    @Test
+    void protectedToolByExactNameIsNotOffloaded() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("reload_original_context_messages"));
+        SessionModelContext context = contextWith(config, null);
 
-    @Nested
-    @DisplayName("Offload message type filtering")
-    class OffloadMessageTypeFiltering {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-reload", "reload_original_context_messages", "{}"),
+                new ToolMessage("X".repeat(200), "tc-reload")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("only configured roles are offloaded")
-        void testOnlyConfiguredRoles() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(2)
-                    .largeMessageThreshold(20)
-                    .trimSize(8)
-                    .offloadMessageType(List.of("user", "assistant"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("U".repeat(50)),
-                    new AssistantMessage("A".repeat(50)),
-                    ToolMessage.builder().content("T".repeat(50)).toolCallId("tc-1").build()
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            // User and Assistant should be offloaded; ToolMessage should not
-            assertTrue(result.get(0) instanceof OffloadMixin);
-            assertTrue(result.get(1) instanceof OffloadMixin);
-            assertTrue(result.get(2) instanceof ToolMessage);
-            assertEquals("T".repeat(50), result.get(2).getContentAsString());
-        }
-
-        @Test
-        @DisplayName("protected tool messages are not offloaded")
-        void testProtectedToolMessageSkipped() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(2)
-                    .largeMessageThreshold(20)
-                    .trimSize(8)
-                    .offloadMessageType(List.of("tool"))
-                    .protectedToolNames(List.of("reload_original_context_messages"))
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    AssistantMessage.builder().content("").toolCalls(List.of(
-                            ToolCall.builder().id("tc-1").name("reload_original_context_messages")
-                                    .type("function").arguments("{\"offload_handle\":\"abc\"}").build()
-                    )).build(),
-                    ToolMessage.builder().content("T".repeat(50)).toolCallId("tc-1")
-                            .name("reload_original_context_messages").build(),
-                    new UserMessage("tail")
-            );
-
-            ctx.addMessages(msgs);
-
-            assertFalse(ctx.getMessages().get(1) instanceof OffloadMixin);
-        }
+        BaseMessage toolMessage = context.getMessages().get(2);
+        assertThat(toolMessage).isNotInstanceOf(OffloadMessage.class);
+        assertThat(toolMessage.getContentAsString()).isEqualTo("X".repeat(200));
     }
 
-    // ---------- Short message protection ----------
+    @Test
+    void protectedToolPatternUsesToolArguments() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("read:path/to/*.py"));
+        SessionModelContext context = contextWith(config, null);
 
-    @Nested
-    @DisplayName("Short message protection")
-    class ShortMessageProtection {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-1", "read", "{\"path\":\"path/to/main.py\"}"),
+                new ToolMessage("X".repeat(200), "tc-1")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("short messages not offloaded")
-        void testShortMessagesNotOffloaded() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(3)
-                    .largeMessageThreshold(100)
-                    .trimSize(10)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    ToolMessage.builder().content("short").toolCallId("tc-1").build(),
-                    new UserMessage("u")
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals("short", result.get(0).getContentAsString());
-            assertFalse(result.get(0) instanceof OffloadMixin);
-        }
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
     }
 
-    // ---------- messages_to_keep ----------
+    @Test
+    void protectedToolPatternMatchesMarkdownPath() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("view_file:*.md"));
+        SessionModelContext context = contextWith(config, null);
+        String longContent = "X".repeat(200);
 
-    @Nested
-    @DisplayName("messages_to_keep preserves recent messages")
-    class MessagesToKeep {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-1", "view_file", "{\"path\":\"README.md\"}"),
+                new ToolMessage(longContent, "tc-1")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("preserves most recent N messages")
-        void testPreservesRecent() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(10)
-                    .largeMessageThreshold(10)
-                    .trimSize(5)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(3)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> tools = IntStream.range(0, 5)
-                    .mapToObj(i -> (BaseMessage) ToolMessage.builder()
-                            .content("x".repeat(50)).toolCallId("tc-" + i).build())
-                    .toList();
-            ctx.addMessages(tools);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals(5, result.size());
-            long offloaded = result.stream().filter(m -> m instanceof OffloadMixin).count();
-            assertTrue(offloaded <= 2);
-        }
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
+        assertThat(context.getMessages().get(2).getContentAsString()).isEqualTo(longContent);
     }
 
-    // ---------- keep_last_round ----------
+    @Test
+    void protectedToolPatternDoesNotMatchDifferentPath() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("read_file:*USER.md"));
+        SessionModelContext context = contextWith(config, null);
 
-    @Nested
-    @DisplayName("keep_last_round")
-    class KeepLastRound {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-data", "read_file", "{\"path\":\"data.txt\"}"),
+                new ToolMessage("X".repeat(200), "tc-data")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("preserves final assistant of last round")
-        void testPreservesFinalAssistant() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(2)
-                    .largeMessageThreshold(10)
-                    .trimSize(5)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(true)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u1"),
-                    AssistantMessage.builder()
-                            .content("a1")
-                            .toolCalls(createToolCallList(List.of("tc-1")))
-                            .build(),
-                    ToolMessage.builder().content("x".repeat(50)).toolCallId("tc-1").build(),
-                    new AssistantMessage("a2-final")
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            BaseMessage finalAssistant = result.stream()
-                    .filter(m -> "a2-final".equals(m.getContentAsString()))
-                    .findFirst().orElseThrow();
-            assertFalse(finalAssistant instanceof OffloadMixin);
-        }
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
     }
 
-    // ---------- Trim size ----------
+    @Test
+    void unprotectedToolIsOffloaded() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("reload_original_context_messages"));
+        SessionModelContext context = contextWith(config, null);
 
-    @Nested
-    @DisplayName("Trim size")
-    class TrimSize {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-other", "other_tool", "{}"),
+                new ToolMessage("X".repeat(200), "tc-other")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("offloaded content is trimmed")
-        void testOffloadTrimsContent() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(1)
-                    .largeMessageThreshold(30)
-                    .trimSize(10)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            String longContent = "a".repeat(200);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u"),
-                    ToolMessage.builder().content(longContent).toolCallId("tc-1").build()
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            BaseMessage offloaded = result.get(1);
-            assertTrue(offloaded instanceof OffloadMixin);
-            assertTrue(offloaded.getContentAsString().startsWith("a".repeat(10)));
-        }
+        assertThat(context.getMessages().get(2)).isInstanceOf(OffloadMessage.class);
     }
 
-    // ---------- tool_call_id preservation ----------
+    @Test
+    void protectedToolQuestionMarkPatternMatchesSingleCharacter() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of("read:file?.txt"));
+        SessionModelContext context = contextWith(config, null);
+        String longContent = "X".repeat(200);
 
-    @Nested
-    @DisplayName("tool_call_id preservation")
-    class ToolCallIdPreservation {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-1", "read", "{\"path\":\"file1.txt\"}"),
+                new ToolMessage(longContent, "tc-1")
+        )).toCompletableFuture().join();
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
 
-        @Test
-        @DisplayName("offloaded tool message preserves tool_call_id")
-        void testPreservesToolCallId() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(1)
-                    .largeMessageThreshold(10)
-                    .trimSize(5)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(null)
-                    .keepLastRound(false)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            String fullContent = "Very long tool response: " + "x".repeat(100);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u"),
-                    ToolMessage.builder().content(fullContent).toolCallId("critical-tc-123").build()
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            BaseMessage offloadMsg = result.get(1);
-            // The offloaded message should still have the tool_call_id
-            if (offloadMsg instanceof ToolMessage tm) {
-                assertEquals("critical-tc-123", tm.getToolCallId());
-            } else if (offloadMsg instanceof OffloadMixin) {
-                // OffloadToolMessage should preserve tool_call_id
-                assertTrue(true, "Offloaded message preserves tool_call_id");
-            }
-        }
+        context.addMessages(List.of(
+                new UserMessage("u2"),
+                assistantToolCall("tc-2", "read", "{\"path\":\"file12.txt\"}"),
+                new ToolMessage(longContent, "tc-2")
+        )).toCompletableFuture().join();
+        assertThat(context.getMessages().get(5)).isInstanceOf(OffloadMessage.class);
     }
 
-    // ---------- Complex end-to-end ----------
+    @Test
+    void multipleProtectedPatternsCanBeConfiguredTogether() {
+        MessageOffloaderConfig config = baseProtectedConfig(List.of(
+                "reload_original_context_messages",
+                "view_file:*.md",
+                "read:*.py"));
+        SessionModelContext context = contextWith(config, null);
+        String longContent = "X".repeat(200);
 
-    @Nested
-    @DisplayName("End-to-end functional tests")
-    class EndToEnd {
+        context.addMessages(List.of(
+                new UserMessage("u"),
+                assistantToolCall("tc-reload", "reload_original_context_messages", "{}"),
+                new ToolMessage(longContent, "tc-reload")
+        )).toCompletableFuture().join();
 
-        @Test
-        @DisplayName("full flow: add_messages triggers offload")
-        void testFullFlowAddMessagesTrigger() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(4)
-                    .tokensThreshold(100000)
-                    .largeMessageThreshold(40)
-                    .trimSize(15)
-                    .offloadMessageType(List.of("tool", "user"))
-                    .messagesToKeep(2)
-                    .keepLastRound(true)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> msgs = List.of(
-                    new UserMessage("u1"),
-                    AssistantMessage.builder()
-                            .content("a1")
-                            .toolCalls(createToolCallList(List.of("tc-1")))
-                            .build(),
-                    ToolMessage.builder().content("T".repeat(80)).toolCallId("tc-1").build(),
-                    new AssistantMessage("a2"),
-                    new UserMessage("U".repeat(80))
-            );
-            ctx.addMessages(msgs);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals(5, result.size());
-            long offloaded = result.stream().filter(m -> m instanceof OffloadMixin).count();
-            assertTrue(offloaded >= 1);
-        }
+        assertThat(context.getMessages().get(2)).isNotInstanceOf(OffloadMessage.class);
+    }
 
-        @Test
-        @DisplayName("multi-round dialogue: old tools offloaded, last round preserved")
-        void testMultiRoundDialogue() {
-            MessageOffloaderConfig config = MessageOffloaderConfig.builder()
-                    .messagesThreshold(10)
-                    .largeMessageThreshold(30)
-                    .trimSize(10)
-                    .offloadMessageType(List.of("tool"))
-                    .messagesToKeep(8)
-                    .keepLastRound(true)
-                    .build();
-            ModelContext ctx = createContextWithOffloader(config);
-            List<BaseMessage> allMsgs = new ArrayList<>();
-            for (int r = 0; r < 3; r++) {
-                allMsgs.add(new UserMessage("user-round-" + r));
-                allMsgs.add(AssistantMessage.builder()
-                        .content("ai-" + r)
-                        .toolCalls(createToolCallList(List.of("tc-" + r)))
-                        .build());
-                allMsgs.add(ToolMessage.builder()
-                        .content("LONG_TOOL_RESPONSE ".repeat(5))
-                        .toolCallId("tc-" + r)
-                        .build());
-                allMsgs.add(new AssistantMessage("ai-final-" + r));
-            }
-            ctx.addMessages(allMsgs);
-            List<BaseMessage> result = ctx.getMessages();
-            assertEquals(12, result.size());
+    @Test
+    void dictionaryToolCallArgumentFormatIsParsedForPatternMatching() {
+        Map<String, Object> toolCall = Map.of(
+                "id", "tc-1",
+                "name", "read_file",
+                "type", "function",
+                "function", Map.of(
+                        "name", "read_file",
+                        "arguments", "{\"path\":\"config.json\"}"));
 
-            // Last round final assistant should not be offloaded
-            BaseMessage lastFinal = result.stream()
-                    .filter(m -> "ai-final-2".equals(m.getContentAsString()))
-                    .findFirst().orElseThrow();
-            assertFalse(lastFinal instanceof OffloadMixin);
+        assertThat(MessageOffloader.extractToolArgs(toolCall)).containsEntry("path", "config.json");
+        assertThat(MessageOffloader.matchPattern(
+                MessageOffloader.extractToolArgs(toolCall), "*.json")).isTrue();
+    }
 
-            // At least one tool should be offloaded
-            long offloadedTools = result.stream()
-                    .filter(m -> m instanceof OffloadMixin)
-                    .count();
-            assertTrue(offloadedTools >= 1);
-        }
+    private static SessionModelContext contextWith(MessageOffloaderConfig config,
+                                                   ModelContext.TokenCounterPort tokenCounter) {
+        MessageOffloader offloader = new MessageOffloader(config);
+        return new SessionModelContext("ctx", "session", new ContextEngineConfig(),
+                List.of(), List.of(offloader), tokenCounter);
+    }
+
+    private static MessageOffloaderConfig baseProtectedConfig(List<String> protectedToolNames) {
+        MessageOffloaderConfig config = new MessageOffloaderConfig();
+        config.setMessagesThreshold(2);
+        config.setLargeMessageThreshold(10);
+        config.setTrimSize(5);
+        config.setOffloadMessageType(List.of("tool"));
+        config.setKeepLastRound(false);
+        config.setProtectedToolNames(protectedToolNames);
+        return config;
+    }
+
+    private static AssistantMessage assistantToolCall(String id, String name, String arguments) {
+        return AssistantMessage.builder()
+                .role("assistant")
+                .content("a")
+                .toolCalls(List.of(ToolCall.builder()
+                        .id(id)
+                        .name(name)
+                        .type("function")
+                        .arguments(arguments)
+                        .build()))
+                .build();
     }
 }

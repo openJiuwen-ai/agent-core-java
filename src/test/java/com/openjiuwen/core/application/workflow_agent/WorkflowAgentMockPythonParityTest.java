@@ -19,7 +19,7 @@ import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.ResourceManagerBase;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -472,7 +472,7 @@ class WorkflowAgentMockPythonParityTest {
 
         @Override
         protected Iterator<?> runWorkflowStreaming(Object workflow, Object inputs, Object workflowSession,
-                                                   com.openjiuwen.core.context_engine.ModelContext context) {
+                                                   com.openjiuwen.core.context.ModelContext context) {
             return stream.iterator();
         }
 

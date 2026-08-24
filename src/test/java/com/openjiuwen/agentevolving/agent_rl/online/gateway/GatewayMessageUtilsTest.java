@@ -1,4 +1,4 @@
-package com.openjiuwen.agent_evolving.agent_rl.online.gateway;
+package com.openjiuwen.agentevolving.agent_rl.online.gateway;
 
 import org.junit.jupiter.api.Test;
 

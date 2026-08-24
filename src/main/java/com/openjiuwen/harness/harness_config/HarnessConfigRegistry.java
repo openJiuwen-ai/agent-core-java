@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.harness_config;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.harness.DeepAgent;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 
 import java.nio.file.Path;

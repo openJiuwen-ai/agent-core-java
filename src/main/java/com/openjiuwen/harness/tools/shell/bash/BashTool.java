@@ -4,9 +4,10 @@
 
 package com.openjiuwen.harness.tools.shell.bash;
 
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.sysop.Cwd;
 import com.openjiuwen.harness.tools.AbstractHarnessTool;
 import com.openjiuwen.harness.tools.ToolOutput;
-import com.openjiuwen.core.sys_operation.Cwd;
 
 import java.io.File;
 import java.io.IOException;
@@ -147,18 +148,23 @@ public class BashTool extends AbstractHarnessTool {
                 builder.directory(new File(cwd));
             }
             Process process = builder.start();
+            StreamCollector stdout = StreamCollector.start(process.getInputStream());
+            StreamCollector stderr = StreamCollector.start(process.getErrorStream());
             boolean finished = process.waitFor(Math.max(1, timeoutSeconds), TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+                stdout.joinQuietly();
+                stderr.joinQuietly();
                 return ToolOutput.failure("command timed out after " + timeoutSeconds + " seconds");
             }
-            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stdoutText = stdout.join();
+            String stderrText = stderr.join();
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("stdout", stdout);
-            data.put("stderr", stderr);
+            data.put("stdout", stdoutText);
+            data.put("stderr", stderrText);
             data.put("exit_code", process.exitValue());
-            return ToolOutput.of(process.exitValue() == 0, data, process.exitValue() == 0 ? null : stderr);
+            return ToolOutput.of(process.exitValue() == 0, data, process.exitValue() == 0 ? null : stderrText);
         } catch (Exception exception) {
             return ToolOutput.failure(exception.getMessage());
         }
@@ -200,25 +206,15 @@ public class BashTool extends AbstractHarnessTool {
                 builder.directory(new File(cwd));
             }
             Process process = builder.start();
+            StreamCollector stdout = StreamCollector.start(process.getInputStream());
+            StreamCollector stderr = StreamCollector.start(process.getErrorStream());
             boolean finished = process.waitFor(Math.max(1, timeoutSeconds), TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 process.waitFor(2, TimeUnit.SECONDS);
-                return new CommandExecution(
-                        readProcessStream(process.getInputStream()),
-                        readProcessStream(process.getErrorStream()),
-                        -1,
-                        true,
-                        null
-                );
+                return new CommandExecution(stdout.join(), stderr.join(), -1, true, null);
             }
-            return new CommandExecution(
-                    readProcessStream(process.getInputStream()),
-                    readProcessStream(process.getErrorStream()),
-                    process.exitValue(),
-                    false,
-                    null
-            );
+            return new CommandExecution(stdout.join(), stderr.join(), process.exitValue(), false, null);
         } catch (Exception exception) {
             return new CommandExecution("", "", -1, false, exception.getMessage());
         }
@@ -226,6 +222,53 @@ public class BashTool extends AbstractHarnessTool {
 
     private static String readProcessStream(java.io.InputStream stream) throws IOException {
         return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Drain a process stream on a helper thread so {@code waitFor} cannot deadlock
+     * when the OS pipe buffer fills.
+     */
+    private static final class StreamCollector {
+        private final Thread thread;
+        private volatile String text = "";
+        private volatile IOException failure;
+
+        private StreamCollector(java.io.InputStream stream) {
+            this.thread = new Thread(() -> {
+                try {
+                    text = readProcessStream(stream);
+                } catch (IOException exception) {
+                    failure = exception;
+                }
+            }, "bash-tool-stream");
+            this.thread.setUncaughtExceptionHandler((worker, error) ->
+                    Loggers.TOOL.error("bash-tool-stream uncaught: {}", error.toString()));
+            this.thread.setDaemon(true);
+        }
+
+        static StreamCollector start(java.io.InputStream stream) {
+            StreamCollector collector = new StreamCollector(stream);
+            collector.thread.start();
+            return collector;
+        }
+
+        String join() throws IOException, InterruptedException {
+            thread.join();
+            if (failure != null) {
+                throw failure;
+            }
+            return text == null ? "" : text;
+        }
+
+        void joinQuietly() {
+            try {
+                join();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } catch (IOException ignored) {
+                // Best-effort drain after timeout or kill.
+            }
+        }
     }
 
     private static List<String> commandLineFor(String command, String shellType) {

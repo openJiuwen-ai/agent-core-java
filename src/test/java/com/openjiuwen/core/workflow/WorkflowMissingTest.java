@@ -5,7 +5,7 @@
 package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.common.constants.Constant;
-import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.Graph;

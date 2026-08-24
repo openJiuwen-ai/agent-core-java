@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.openjiuwen.agent_evolving.ApplyResult;
-import com.openjiuwen.agent_evolving.UpdateValue;
+import com.openjiuwen.agentevolving.ApplyResult;
+import com.openjiuwen.agentevolving.UpdateValue;
 import com.openjiuwen.core.operator.TunableSpec;
 
 import java.util.LinkedHashMap;

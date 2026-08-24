@@ -1,4 +1,4 @@
-# com.openjiuwen.core.sys_operation.BaseFsOperation
+# com.openjiuwen.core.sysop.BaseFsOperation
 
 ## 类 BaseFsOperation
 

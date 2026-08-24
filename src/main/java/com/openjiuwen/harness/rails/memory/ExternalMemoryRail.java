@@ -7,6 +7,7 @@ package com.openjiuwen.harness.rails.memory;
 import com.openjiuwen.core.memory.external.MemoryProvider;
 import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.harness.prompts.sections.ExternalMemorySection;
+import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
@@ -58,7 +59,7 @@ public class ExternalMemoryRail extends DeepAgentRail {
     }
 
     @Override
-    public void init(com.openjiuwen.harness.DeepAgent agent) {
+    public void init(DeepAgent agent) {
         super.init(agent);
         if (provider != null) {
             initialized = true;
@@ -66,7 +67,7 @@ public class ExternalMemoryRail extends DeepAgentRail {
     }
 
     @Override
-    public void uninit(com.openjiuwen.harness.DeepAgent agent) {
+    public void uninit(DeepAgent agent) {
         ownedToolNames.clear();
         ownedToolIds.clear();
         initialized = false;
