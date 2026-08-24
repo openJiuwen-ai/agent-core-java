@@ -172,7 +172,8 @@ public class PermissionInterruptRail extends BaseInterruptRail {
             logger.info("[PermissionEngine] permission.persist.result tool={} persisted={} persist_allow={}",
                     toolName, isPersisted, response.isPersistAllow());
         }
-        if (shouldStoreSessionAutoConfirm(response.isApproved(), response.isAutoConfirm(), autoConfirmKey, isPersisted)) {
+        if (shouldStoreSessionAutoConfirm(response.isApproved(), response.isAutoConfirm(),
+                autoConfirmKey, isPersisted)) {
             sessionAutoConfirm.put(autoConfirmKey, Boolean.TRUE);
             logger.info("[PermissionEngine] permission.auto_confirm.store key={}", autoConfirmKey);
         }

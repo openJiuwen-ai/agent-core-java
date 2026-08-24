@@ -482,8 +482,6 @@ public final class PathAccessExtractor {
                 s = home;
             } else if (s.startsWith("~/")) {
                 s = home + s.substring(1);
-            } else {
-                // not a home reference; keep as-is
             }
         }
         return s;

@@ -77,36 +77,36 @@ final class ShellLexer {
         return tokens;
     }
 
-    private static int parseSingleQuote(String command, int i, int n, StringBuilder word) {
-        i++;
-        while (i < n && command.charAt(i) != '\'') {
-            word.append(command.charAt(i));
-            i++;
+    private static int parseSingleQuote(String command, int start, int n, StringBuilder word) {
+        int pos = start + 1;
+        while (pos < n && command.charAt(pos) != '\'') {
+            word.append(command.charAt(pos));
+            pos++;
         }
-        if (i >= n) {
+        if (pos >= n) {
             throw new IllegalArgumentException("unterminated single quote");
         }
-        return i + 1;
+        return pos + 1;
     }
 
-    private static int parseDoubleQuote(String command, int i, int n, StringBuilder word) {
-        i++;
-        while (i < n && command.charAt(i) != '"') {
-            char d = command.charAt(i);
-            if (d == '\\' && i + 1 < n) {
-                char next = command.charAt(i + 1);
+    private static int parseDoubleQuote(String command, int start, int n, StringBuilder word) {
+        int pos = start + 1;
+        while (pos < n && command.charAt(pos) != '"') {
+            char d = command.charAt(pos);
+            if (d == '\\' && pos + 1 < n) {
+                char next = command.charAt(pos + 1);
                 if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') {
                     word.append(next);
-                    i += 2;
+                    pos += 2;
                     continue;
                 }
             }
             word.append(d);
-            i++;
+            pos++;
         }
-        if (i >= n) {
+        if (pos >= n) {
             throw new IllegalArgumentException("unterminated double quote");
         }
-        return i + 1;
+        return pos + 1;
     }
 }

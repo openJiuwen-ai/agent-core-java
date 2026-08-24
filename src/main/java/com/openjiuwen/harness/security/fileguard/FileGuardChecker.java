@@ -164,8 +164,8 @@ public final class FileGuardChecker {
 
     private boolean matchesPrefix(FileGuardPathRule rule, String pathPosix, Path path) {
         String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
-        boolean pathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
-        if (!pathMatches) {
+        boolean isPathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
+        if (!isPathMatches) {
             return false;
         }
         return PathMatcher.containsPath(prefix, path.toString())
