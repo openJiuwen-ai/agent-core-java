@@ -103,6 +103,8 @@ public class Pregel {
             }
         } catch (CancellationException e) {
             throw e;
+        } finally {
+            loop.shutdown();
         }
     }
 

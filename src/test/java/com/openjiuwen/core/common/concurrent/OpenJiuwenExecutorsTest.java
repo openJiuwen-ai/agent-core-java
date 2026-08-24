@@ -25,7 +25,7 @@ class OpenJiuwenExecutorsTest {
         int expectedDefault = OpenJiuwenExecutors.defaultIoBoundMaxSize();
         assertThat(expectedDefault).isEqualTo(Math.max(32, Runtime.getRuntime().availableProcessors() * 8));
 
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", false);
         try {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
             ThreadPoolExecutor streamExecutor = (ThreadPoolExecutor) executor;
@@ -43,7 +43,7 @@ class OpenJiuwenExecutorsTest {
         }
 
         System.setProperty("openjiuwen.executor.deep-agent-stream.max-size", "5");
-        ExecutorService overridden = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+        ExecutorService overridden = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", false);
         try {
             assertThat(((ThreadPoolExecutor) overridden).getMaximumPoolSize()).isEqualTo(5);
         } finally {
@@ -57,7 +57,7 @@ class OpenJiuwenExecutorsTest {
     @DisplayName("有界模块池使用统一命名且最大线程数可配置")
     void boundedModulePoolUsesPrefixAndRespectsMaxSize() throws Exception {
         System.setProperty("openjiuwen.executor.executor-bounded-test.max-size", "2");
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("executor-bounded-test", 8, 16, true);
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("executor-bounded-test", 8, 16, false);
         try {
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("executor-bounded-test-");
@@ -73,7 +73,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("有界队列模块池 core=max，避免 core=0 单 worker 串行陷阱")
     void boundedQueueModulePoolUsesCoreEqualToMaxSize() throws Exception {
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", true);
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", false);
         try {
             ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
             int maxSize = pool.getMaximumPoolSize();
@@ -107,7 +107,7 @@ class OpenJiuwenExecutorsTest {
                 "task-manager-worker", "deep-agent-stream"
         };
         for (String prefix : modulePrefixes) {
-            ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(prefix, true);
+            ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool(prefix, false);
             try {
                 ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
                 assertThat(pool.getQueue())
