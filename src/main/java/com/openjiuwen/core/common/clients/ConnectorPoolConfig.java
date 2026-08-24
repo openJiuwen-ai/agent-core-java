@@ -200,7 +200,7 @@ public class ConnectorPoolConfig {
         normalized.put("ttl", ttl);
         normalized.put("max_idle_time", maxIdleTime);
         normalized.put("extend_params", new TreeMap<>(extendParams));
-        return md5Hex(normalized.toString());
+        return sha256Hex(normalized.toString());
     }
 
     /**
@@ -246,15 +246,15 @@ public class ConnectorPoolConfig {
     }
 
     /**
-     * md5Hex.
+     * sha256Hex.
      * 
      * @param value value
      * @return the result
      * @since 0.1.7
      */
-    protected static String md5Hex(String value) {
+    protected static String sha256Hex(String value) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder builder = new StringBuilder(bytes.length * 2);
             for (byte current : bytes) {
@@ -262,7 +262,7 @@ public class ConnectorPoolConfig {
             }
             return builder.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("MD5 not available", e);
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 }
