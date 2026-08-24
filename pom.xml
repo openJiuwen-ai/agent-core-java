@@ -21,7 +21,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mcp.sdk.version>1.1.1</mcp.sdk.version>
 
-        <jackson.version>2.18.8</jackson.version>
+        <!-- Third-party versions aligned with 730 (no known CVEs) -->
+        <jackson.version>2.21.5</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.5.37</logback.version>
@@ -37,9 +38,9 @@
         <jsonschema.version>4.38.0</jsonschema.version>
         <kotlin.version>2.4.10</kotlin.version>
         <jeromq.version>0.6.0</jeromq.version>
-        <jedis.version>5.2.0</jedis.version>
+        <jedis.version>7.0.0</jedis.version>
         <milvus.version>2.6.22</milvus.version>
-        <protobuf.version>3.25.9</protobuf.version>
+        <protobuf.version>4.33.2</protobuf.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.12</postgresql.version>
         <sqlite.jdbc.version>3.53.2.1</sqlite.jdbc.version>
@@ -48,14 +49,18 @@
         <pulsar.version>4.2.3</pulsar.version>
         <pdfbox.version>2.0.37</pdfbox.version>
         <poi.version>5.5.1</poi.version>
+        <reactor.version>3.8.6</reactor.version>
+        <h2.version>2.2.224</h2.version>
 
         <open-telemetry.version>1.64.0</open-telemetry.version>
 
-        <junit.version>5.10.2</junit.version>
+        <junit.version>6.0.3</junit.version>
         <mockito.version>5.14.2</mockito.version>
         <byte-buddy.version>1.15.11</byte-buddy.version>
         <assertj.version>3.27.7</assertj.version>
         <jacoco.version>0.8.11</jacoco.version>
+        <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <argLine></argLine>
         <surefire.groups></surefire.groups>
         <surefire.excludedGroups>system-test</surefire.excludedGroups>
@@ -305,12 +310,12 @@
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
-            <version>3.6.2</version>
+            <version>${reactor.version}</version>
         </dependency>
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-test</artifactId>
-            <version>3.6.2</version>
+            <version>${reactor.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -333,7 +338,7 @@
         <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
-            <version>1.10.2</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -362,7 +367,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>2.2.224</version>
+            <version>${h2.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -435,7 +440,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.12.1</version>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <release>${java.version}</release>
                     <parameters>true</parameters>
@@ -452,7 +457,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <argLine>@{argLine} -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
