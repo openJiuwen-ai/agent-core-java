@@ -137,9 +137,11 @@ public final class OpenJiuwenExecutors {
     /**
      * 创建实例专用的有界模块执行器，并纳入统一资源回收。
      *
-     * <p>最大线程数与队列容量可通过系统属性 {@code openjiuwen.executor.{模块名}.max-size} /
+     * <p>平台线程最大数与队列容量可通过系统属性 {@code openjiuwen.executor.{模块名}.max-size} /
      * {@code openjiuwen.executor.{模块名}.queue-size} 或对应环境变量覆盖。JDK 21 及以上的
-     * daemon 配置使用虚拟线程，同时保留最大并发数、排队容量和满载拒绝语义；
+     * daemon 配置使用虚拟线程，其最大并发数可通过
+     * {@code openjiuwen.executor.{模块名}.virtual-max-concurrency} 或对应环境变量覆盖；
+     * 默认沿用平台线程最大数，且不会超过原有最大接纳量。
      * 其余配置使用原有平台线程池。</p>
      *
      * @param threadNamePrefix 线程名称前缀（与模块名一致，如 {@code pregel-task}）
@@ -167,18 +169,22 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(defaultMaxSize, "defaultMaxSize");
         validatePositive(defaultQueueCapacity, "defaultQueueCapacity");
-        int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
+        int platformMaxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
         if (VirtualThreadSupport.isSupported() && isDaemon) {
-            int maximumOutstandingTasks = maximumOutstandingTasks(maxSize, queueCapacity);
-            return register(new ManagedVirtualThreadExecutor(threadNamePrefix, maxSize, maximumOutstandingTasks));
+            int maximumOutstandingTasks = maximumOutstandingTasks(platformMaxSize, queueCapacity);
+            int configuredVirtualMaxConcurrency = moduleIntSetting(
+                    threadNamePrefix, "virtual-max-concurrency", platformMaxSize, 1);
+            int virtualMaxConcurrency = Math.min(configuredVirtualMaxConcurrency, maximumOutstandingTasks);
+            return register(new ManagedVirtualThreadExecutor(
+                    threadNamePrefix, virtualMaxConcurrency, maximumOutstandingTasks));
         }
         // 统一排队语义：core=max 使所有线程常热，ArrayBlockingQueue 只做溢出缓冲。
         // JDK 陷阱：core < max + 有界队列时，超过 core 的线程仅在队列满后才创建，
         // 导致 max 永远达不到（长任务被串行化），因此 core 必须等于 max。
         BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(queueCapacity);
-        ThreadPoolExecutor executor = new ManagedThreadPoolExecutor(maxSize, maxSize,
+        ThreadPoolExecutor executor = new ManagedThreadPoolExecutor(platformMaxSize, platformMaxSize,
                 DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, workQueue,
                 namedThreadFactory(threadNamePrefix, isDaemon), defaults.rejectionHandler());
         executor.allowCoreThreadTimeOut(defaults.allowsCoreTimeout());
