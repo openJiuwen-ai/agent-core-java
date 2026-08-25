@@ -78,26 +78,21 @@ public final class PullRequestPublisher {
             if (!hasHeadSha(existing.get())) {
                 return PublishResult.failed("existing PR head SHA is not yet available", true);
             }
-            if (!sameHead(request, existing.get())) {
-                return PublishResult.failed("existing PR head SHA does not match verified commit", false);
+            if (sameHead(request, existing.get())) {
+                return notifyIssue(request.issueIid(), existing.get(), true);
             }
-            return notifyIssue(request.issueIid(), existing.get(), true);
+            return updateExistingPullRequest(request);
         }
 
-        ForkPushGateway.PushResult push = pushGateway.push(
-                request.worktree(), request.branch(), request.expectedHeadSha());
-        if (!push.success()) {
-            return PublishResult.failed("push failed: " + push.error(), true);
-        }
-        if (push.headSha() == null || !push.headSha().equalsIgnoreCase(request.expectedHeadSha())) {
-            return PublishResult.failed("push result did not preserve the verified commit SHA", false);
+        Optional<PublishResult> pushFailure = pushVerified(request);
+        if (pushFailure.isPresent()) {
+            return pushFailure.orElseThrow();
         }
 
-        boolean draft = profile.isHighImpact(request.changedFiles());
         GitCodePullRequest pullRequest;
         try {
             pullRequest = gitCode.createPullRequest(new CreatePullRequestRequest(
-                    request.issueIid(), request.title(), request.body(), request.branch(), draft, assignees));
+                    request.issueIid(), request.title(), request.body(), request.branch(), false, assignees));
         } catch (GitCodeApiException ex) {
             if (!ex.isUncertain()) {
                 return PublishResult.failed(ex.getMessage(), isRetryable(ex));
@@ -132,6 +127,36 @@ public final class PullRequestPublisher {
             return PublishResult.failed("created PR head SHA does not match verified commit", false);
         }
         return notifyIssue(request.issueIid(), pullRequest, false);
+    }
+
+    private PublishResult updateExistingPullRequest(PublishRequest request) {
+        Optional<PublishResult> pushFailure = pushVerified(request);
+        if (pushFailure.isPresent()) {
+            return pushFailure.orElseThrow();
+        }
+        try {
+            Optional<GitCodePullRequest> updated = gitCode.findOpenPullRequest(
+                    request.issueIid(), request.branch());
+            if (updated.isEmpty() || !sameHead(request, updated.get())) {
+                return PublishResult.failed("updated PR head is not yet visible", true);
+            }
+            return notifyIssue(request.issueIid(), updated.get(), true);
+        } catch (GitCodeApiException ex) {
+            return PublishResult.failed(ex.getMessage(), isRetryable(ex));
+        }
+    }
+
+    private Optional<PublishResult> pushVerified(PublishRequest request) {
+        ForkPushGateway.PushResult push = pushGateway.push(
+                request.worktree(), request.branch(), request.expectedHeadSha());
+        if (!push.success()) {
+            return Optional.of(PublishResult.failed("push failed: " + push.error(), true));
+        }
+        if (push.headSha() == null || !push.headSha().equalsIgnoreCase(request.expectedHeadSha())) {
+            return Optional.of(PublishResult.failed(
+                    "push result did not preserve the verified commit SHA", false));
+        }
+        return Optional.empty();
     }
 
     private PublishResult notifyIssue(long issueIid, GitCodePullRequest pullRequest, boolean reused) {
