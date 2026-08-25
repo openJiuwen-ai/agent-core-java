@@ -656,8 +656,8 @@ public class SkillUseRail extends DeepAgentRail {
                 return filtered;
             }
             String needle = query.toLowerCase(Locale.ROOT);
-            return filtered.stream().
-                    filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
+            return filtered.stream()
+                    .filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
                             || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
         }
         if (skillManager == null) {
@@ -907,8 +907,8 @@ public class SkillUseRail extends DeepAgentRail {
         dumped.put("name", value(skill.getName()));
         dumped.put("description", value(skill.getDescription()));
         dumped.put("directory", directory);
-        dumped.put("skill_md_path", directory.isBlank() ?
-                "SKILL.md" : Path.of(directory).resolve("SKILL.md").toString());
+        dumped.put("skill_md_path", directory.isBlank()
+                ? "SKILL.md" : Path.of(directory).resolve("SKILL.md").toString());
         return dumped;
     }
 
@@ -990,13 +990,13 @@ public class SkillUseRail extends DeepAgentRail {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : fallback;
     }
 
-    private static boolean booleanArg(Map<String, Object> inputs, String key, boolean fallback) {
+    private static boolean booleanArg(Map<String, Object> inputs, String key, boolean shouldFallback) {
         Object value = inputs != null ? inputs.get(key) : null;
         if (value instanceof Boolean bool) {
             return bool;
         }
         if (value == null || String.valueOf(value).isBlank()) {
-            return fallback;
+            return shouldFallback;
         }
         return Boolean.parseBoolean(String.valueOf(value));
     }
