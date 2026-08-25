@@ -24,7 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Locale;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -36,6 +36,8 @@ import javax.sql.DataSource;
  */
 public class SqlDbStore {
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    private static final Pattern SQL_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
     private final BaseDbStore<?> dbStore;
 
@@ -99,7 +101,11 @@ public class SqlDbStore {
         if (data == null || data.isEmpty()) {
             return false;
         }
-        List<String> columns = new ArrayList<>(data.keySet());
+        requireSqlIdentifier(table, "table");
+        List<String> columns = new ArrayList<>();
+        for (String column : data.keySet()) {
+            columns.add(requireSqlIdentifier(column, "column"));
+        }
         String placeholders = String.join(", ", Collections.nCopies(columns.size(), "?"));
         String columnNames = String.join(", ", columns);
         String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", table, columnNames, placeholders);
@@ -126,8 +132,16 @@ public class SqlDbStore {
      * @since 0.1.7
      */
     public Map<String, Object> get(String table, String recordId, List<String> columns) {
+        requireSqlIdentifier(table, "table");
+        String cols = "*";
+        if (columns != null && !columns.isEmpty()) {
+            List<String> safeColumns = new ArrayList<>(columns.size());
+            for (String column : columns) {
+                safeColumns.add(requireSqlIdentifier(column, "column"));
+            }
+            cols = String.join(", ", safeColumns);
+        }
         try (Connection conn = getConnection()) {
-            String cols = (columns == null || columns.isEmpty()) ? "*" : String.join(", ", columns);
             String sql = String.format("SELECT %s FROM %s WHERE id = ?", cols, table);
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, recordId);
@@ -158,6 +172,10 @@ public class SqlDbStore {
      */
     public List<Map<String, Object>> getWithSort(String table, Map<String, Object> filters, String sortBy, String order,
             int limit) {
+        requireSqlIdentifier(table, "table");
+        if (sortBy != null) {
+            requireSqlIdentifier(sortBy, "sortBy");
+        }
         try (Connection conn = getConnection()) {
             if (sortBy != null && !hasColumn(conn, table, sortBy)) {
                 throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "message",
@@ -169,7 +187,7 @@ public class SqlDbStore {
                 sql.append(" WHERE ");
                 List<String> clauses = new ArrayList<>();
                 for (Map.Entry<String, Object> entry : filters.entrySet()) {
-                    clauses.add(entry.getKey() + " = ?");
+                    clauses.add(requireSqlIdentifier(entry.getKey(), "filter") + " = ?");
                     params.add(entry.getValue());
                 }
                 sql.append(String.join(" AND ", clauses));
@@ -209,12 +227,13 @@ public class SqlDbStore {
      * @since 0.1.7
      */
     public boolean exist(String table, Map<String, Object> conditions) {
+        requireSqlIdentifier(table, "table");
         try (Connection conn = getConnection()) {
             StringBuilder sql = new StringBuilder("SELECT 1 FROM ").append(table).append(" WHERE ");
             List<Object> params = new ArrayList<>();
             List<String> clauses = new ArrayList<>();
             for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                clauses.add(entry.getKey() + " = ?");
+                clauses.add(requireSqlIdentifier(entry.getKey(), "condition") + " = ?");
                 params.add(entry.getValue());
             }
             sql.append(String.join(" AND ", clauses));
@@ -244,6 +263,7 @@ public class SqlDbStore {
      * @since 0.1.7
      */
     public List<Map<String, Object>> batchGet(String table, List<Map<String, Object>> conditionsList) {
+        requireSqlIdentifier(table, "table");
         try (Connection conn = getConnection()) {
             StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
             List<Object> params = new ArrayList<>();
@@ -256,7 +276,7 @@ public class SqlDbStore {
                     }
                     List<String> clauses = new ArrayList<>();
                     for (Map.Entry<String, Object> entry : conditions.entrySet()) {
-                        clauses.add(entry.getKey() + " = ?");
+                        clauses.add(requireSqlIdentifier(entry.getKey(), "condition") + " = ?");
                         params.add(entry.getValue());
                     }
                     groups.add("(" + String.join(" OR ", clauses) + ")");
@@ -293,8 +313,16 @@ public class SqlDbStore {
      */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> conditionGet(String table, Map<String, ?> conditions, List<String> columns) {
+        requireSqlIdentifier(table, "table");
+        String cols = "*";
+        if (columns != null && !columns.isEmpty()) {
+            List<String> safeColumns = new ArrayList<>(columns.size());
+            for (String column : columns) {
+                safeColumns.add(requireSqlIdentifier(column, "column"));
+            }
+            cols = String.join(", ", safeColumns);
+        }
         try (Connection conn = getConnection()) {
-            String cols = (columns == null || columns.isEmpty()) ? "*" : String.join(", ", columns);
             StringBuilder sql = new StringBuilder("SELECT ").append(cols).append(" FROM ").append(table);
             List<Object> params = new ArrayList<>();
 
@@ -302,6 +330,7 @@ public class SqlDbStore {
                 sql.append(" WHERE ");
                 List<String> clauses = new ArrayList<>();
                 for (Map.Entry<String, ?> entry : conditions.entrySet()) {
+                    String conditionKey = requireSqlIdentifier(entry.getKey(), "condition");
                     Object rawValues = entry.getValue();
                     if (!(rawValues instanceof List<?> rawList)) {
                         throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type",
@@ -312,7 +341,7 @@ public class SqlDbStore {
                         continue;
                     }
                     String placeholders = String.join(", ", Collections.nCopies(values.size(), "?"));
-                    clauses.add(entry.getKey() + " IN (" + placeholders + ")");
+                    clauses.add(conditionKey + " IN (" + placeholders + ")");
                     params.addAll(values);
                 }
                 if (!clauses.isEmpty()) {
@@ -369,24 +398,26 @@ public class SqlDbStore {
      */
     @SuppressWarnings("unchecked")
     public boolean update(String table, Map<String, Object> conditions, Map<String, Object> data) {
+        requireSqlIdentifier(table, "table");
         try (Connection conn = getConnection()) {
             List<Object> params = new ArrayList<>();
             List<String> setClauses = new ArrayList<>();
             for (Map.Entry<String, Object> entry : data.entrySet()) {
-                setClauses.add(entry.getKey() + " = ?");
+                setClauses.add(requireSqlIdentifier(entry.getKey(), "column") + " = ?");
                 params.add(entry.getValue());
             }
 
             List<String> whereClauses = new ArrayList<>();
             for (Map.Entry<String, Object> entry : conditions.entrySet()) {
+                String conditionKey = requireSqlIdentifier(entry.getKey(), "condition");
                 Object val = entry.getValue();
                 if (val instanceof List) {
                     List<Object> list = (List<Object>) val;
                     String placeholders = String.join(", ", Collections.nCopies(list.size(), "?"));
-                    whereClauses.add(entry.getKey() + " IN (" + placeholders + ")");
+                    whereClauses.add(conditionKey + " IN (" + placeholders + ")");
                     params.addAll(list);
                 } else {
-                    whereClauses.add(entry.getKey() + " = ?");
+                    whereClauses.add(conditionKey + " = ?");
                     params.add(val);
                 }
             }
@@ -418,18 +449,20 @@ public class SqlDbStore {
      */
     @SuppressWarnings("unchecked")
     public boolean delete(String table, Map<String, Object> conditions) {
+        requireSqlIdentifier(table, "table");
         try (Connection conn = getConnection()) {
             List<Object> params = new ArrayList<>();
             List<String> whereClauses = new ArrayList<>();
             for (Map.Entry<String, Object> entry : conditions.entrySet()) {
+                String conditionKey = requireSqlIdentifier(entry.getKey(), "condition");
                 Object val = entry.getValue();
                 if (val instanceof List) {
                     List<Object> list = (List<Object>) val;
                     String placeholders = String.join(", ", Collections.nCopies(list.size(), "?"));
-                    whereClauses.add(entry.getKey() + " IN (" + placeholders + ")");
+                    whereClauses.add(conditionKey + " IN (" + placeholders + ")");
                     params.addAll(list);
                 } else {
-                    whereClauses.add(entry.getKey() + " = ?");
+                    whereClauses.add(conditionKey + " = ?");
                     params.add(val);
                 }
             }
@@ -458,7 +491,7 @@ public class SqlDbStore {
      * @since 0.1.7
      */
     public boolean deleteTable(String tableName) {
-        String sql = "DROP TABLE IF EXISTS " + tableName;
+        String sql = "DROP TABLE IF EXISTS " + requireSqlIdentifier(tableName, "tableName");
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
@@ -467,6 +500,23 @@ public class SqlDbStore {
                     e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Validate that the value is a safe SQL identifier before it is concatenated into a SQL command.
+     * SQL identifiers (table/column names) cannot use JDBC ? placeholders, so a strict
+     * whitelist check is applied instead.
+     * 
+     * @param identifier identifier
+     * @param field field
+     * @return the validated identifier
+     * @since 0.1.7
+     */
+    private static String requireSqlIdentifier(String identifier, String field) {
+        if (identifier == null || !SQL_IDENTIFIER_PATTERN.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier for " + field + ": " + identifier);
+        }
+        return identifier;
     }
 
     /**
