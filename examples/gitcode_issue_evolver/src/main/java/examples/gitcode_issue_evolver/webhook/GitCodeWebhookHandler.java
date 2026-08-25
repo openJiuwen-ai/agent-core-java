@@ -41,6 +41,7 @@ public final class GitCodeWebhookHandler implements HttpHandler {
     private final EvolutionJobStore store;
     private final RepositoryProfile profile;
     private final WebhookAdmission admission;
+    private final boolean requireCiSuccess;
 
     /**
      * Create a webhook handler for one fixed repository profile.
@@ -50,7 +51,7 @@ public final class GitCodeWebhookHandler implements HttpHandler {
      * @param profile fixed repository policy
      */
     public GitCodeWebhookHandler(String secret, EvolutionJobStore store, RepositoryProfile profile) {
-        this(secret, store, profile, WebhookAdmission.disabled());
+        this(secret, store, profile, WebhookAdmission.disabled(), false);
     }
 
     /**
@@ -63,10 +64,17 @@ public final class GitCodeWebhookHandler implements HttpHandler {
      */
     public GitCodeWebhookHandler(String secret, EvolutionJobStore store, RepositoryProfile profile,
                                  WebhookAdmission admission) {
+        this(secret, store, profile, admission, false);
+    }
+
+    /** Create a handler that defers merged completion to CI-aware polling. */
+    public GitCodeWebhookHandler(String secret, EvolutionJobStore store, RepositoryProfile profile,
+                                 WebhookAdmission admission, boolean requireCiSuccess) {
         this.secret = secret == null ? "" : secret;
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
         this.admission = Objects.requireNonNull(admission, "admission must not be null");
+        this.requireCiSuccess = requireCiSuccess;
     }
 
     @Override
@@ -164,10 +172,15 @@ public final class GitCodeWebhookHandler implements HttpHandler {
         }
         Optional<EvolutionJobState> terminalState = event.terminalState();
         Optional<EvolutionJob> job = store.findByPullRequest(event.repository(), event.number());
-        if (terminalState.isPresent() && job.isPresent()) {
+        if (terminalState.isPresent() && job.isPresent()
+                && shouldApplyTerminal(terminalState.get())) {
             transitionTerminal(job.get(), terminalState.get());
         }
         respond(exchange, 202, job.isPresent() ? "updated" : "unknown_pr");
+    }
+
+    private boolean shouldApplyTerminal(EvolutionJobState state) {
+        return state != EvolutionJobState.MERGED || !requireCiSuccess;
     }
 
     private void transitionTerminal(EvolutionJob job, EvolutionJobState terminalState) {

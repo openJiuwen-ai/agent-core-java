@@ -10,6 +10,7 @@ import examples.gitcode_issue_evolver.gitcode.GitCodeClient;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssuePage;
 import examples.gitcode_issue_evolver.gitcode.GitCodePullRequest;
+import examples.gitcode_issue_evolver.gitcode.IssueLabelScanRequest;
 import examples.gitcode_issue_evolver.gitcode.IssueScanRequest;
 import examples.gitcode_issue_evolver.job.SqliteEvolutionJobStore;
 import examples.gitcode_issue_evolver.polling.IssuePollingCoordinator;
@@ -78,7 +79,7 @@ public final class ServiceTriggerModeDeterministicTest {
                 .dataDir(runtime.resolve("data"))
                 .worktreeRoot(runtime.resolve("worktrees").toAbsolutePath())
                 .localRepository(repository)
-                .codingStandardSkill(repository.resolve("resources/skills/coding-standard"))
+                .codingStandardSkill(repository.resolve(".claude/skills/coding-standard-full"))
                 .issueWorkerSkill(repository.resolve(
                         "examples/gitcode_issue_evolver/skills/gitcode-issue-evolver-worker"))
                 .webhookSecret(mode.usesWebhook() ? "0123456789abcdef0123456789abcdef" : "")
@@ -133,6 +134,11 @@ public final class ServiceTriggerModeDeterministicTest {
         @Override
         public GitCodeIssuePage listIssues(IssueScanRequest request) {
             throw new GitCodeApiException("deterministic polling failure", 503, false);
+        }
+
+        @Override
+        public GitCodeIssuePage listOpenIssuesByLabel(IssueLabelScanRequest request) {
+            throw new GitCodeApiException("deterministic full scan failure", 503, false);
         }
 
         @Override

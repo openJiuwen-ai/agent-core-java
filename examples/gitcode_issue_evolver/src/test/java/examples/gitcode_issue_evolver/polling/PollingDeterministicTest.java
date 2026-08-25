@@ -14,6 +14,7 @@ import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssuePage;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssueSummary;
 import examples.gitcode_issue_evolver.gitcode.GitCodePullRequest;
+import examples.gitcode_issue_evolver.gitcode.IssueLabelScanRequest;
 import examples.gitcode_issue_evolver.gitcode.IssueScanRequest;
 import examples.gitcode_issue_evolver.job.EnqueueResult;
 import examples.gitcode_issue_evolver.job.EvolutionJob;
@@ -56,6 +57,7 @@ public final class PollingDeterministicTest {
         testTriggerConfigurationAndExactWebhookLabel();
         testEligibilityAndLifetimeAdmission();
         testPageCheckpointAndFailureRetry();
+        testManualFullScanIgnoresRollingWindowAndPageLimit();
         testConcurrentAdmissionAndMigrationBackfill();
         testPullRequestReconciliation();
         System.out.println("PollingDeterministicTest: PASS");
@@ -77,6 +79,20 @@ public final class PollingDeterministicTest {
                 "webhook mode must require a Webhook Secret");
         require(both.readinessErrors().stream().anyMatch(error -> error.contains("webhookSecret")),
                 "both mode must require a Webhook Secret");
+        AutoEvolvingConfig exposedManual = polling.toBuilder()
+                .manualFullScanEnabled(true)
+                .bindHost("0.0.0.0")
+                .build();
+        require(exposedManual.readinessErrors().stream()
+                        .anyMatch(error -> error.contains("requires bindHost 127.0.0.1")),
+                "manual full scan must remain loopback-only");
+        AutoEvolvingConfig webhookManual = polling.toBuilder()
+                .manualFullScanEnabled(true)
+                .triggerMode(TriggerMode.WEBHOOK)
+                .build();
+        require(webhookManual.readinessErrors().stream()
+                        .anyMatch(error -> error.contains("requires polling or both")),
+                "manual full scan must require a polling coordinator");
 
         WebhookAdmission admission = new WebhookAdmission(true, List.of(REPOSITORY), "bug");
         GitCodeIssueEvent exact = webhookEvent(Set.of("bug"));
@@ -104,11 +120,12 @@ public final class PollingDeterministicTest {
             }
             EvolutionJob first = store.findByIssue(REPOSITORY, 1).orElseThrow();
             EvolutionJob terminal = store.transition(
-                    first.id(), first.version(), EvolutionJobState.FAILED_FINAL, "deterministic test");
+                    first.id(), first.version(), EvolutionJobState.FAILED_AUTOMATION, "deterministic test");
             coordinator.runOnce();
             EvolutionJob afterRepeat = store.findByIssue(REPOSITORY, 1).orElseThrow();
             require(afterRepeat.id().equals(terminal.id()), "terminal Issue must not create another job");
-            require(afterRepeat.state() == EvolutionJobState.FAILED_FINAL, "terminal state must remain unchanged");
+            require(afterRepeat.state() == EvolutionJobState.FAILED_AUTOMATION,
+                    "terminal state must remain unchanged");
             require(coordinator.status().result() == PollingStatusSnapshot.Result.SUCCESS,
                     "successful scan status was not recorded");
         }
@@ -159,6 +176,34 @@ public final class PollingDeterministicTest {
             require(checkpoint.nextPage() == 1, "failed page must not advance its checkpoint");
             require(coordinator.status().result() == PollingStatusSnapshot.Result.FAILURE,
                     "failed scan status was not recorded");
+        }
+    }
+
+    private static void testManualFullScanIgnoresRollingWindowAndPageLimit() throws Exception {
+        Path database = temporaryDatabase("full-scan");
+        FakeGitCodeClient client = new FakeGitCodeClient();
+        Instant oldCreation = NOW.minusSeconds(30L * 24L * 60L * 60L);
+        client.fullPage(1, new GitCodeIssuePage(
+                List.of(issue(90, "open", List.of("bug"), oldCreation)), 100));
+        client.fullPage(2, new GitCodeIssuePage(List.of(
+                issue(91, "opened", List.of("bug"), oldCreation),
+                issue(92, "closed", List.of("bug"), oldCreation),
+                issue(93, "open", List.of("Bug"), oldCreation)), 3));
+        try (SqliteEvolutionJobStore store = new SqliteEvolutionJobStore(database)) {
+            IssuePollingCoordinator coordinator = coordinator(config(1), store, client);
+            IssueFullScanResult first = coordinator.runFullScan();
+            require(first.pages() == 2, "full scan must continue past the rolling page limit");
+            require(first.inspected() == 4 && first.eligible() == 2,
+                    "full scan did not recheck open state and exact label");
+            require(first.created() == 2 && first.existing() == 0,
+                    "full scan did not admit all eligible Issues");
+            require(store.findByIssue(REPOSITORY, 90).isPresent(),
+                    "full scan incorrectly applied the rolling creation window");
+            IssueFullScanResult repeated = coordinator.runFullScan();
+            require(repeated.created() == 0 && repeated.existing() == 2,
+                    "full scan must preserve lifetime Issue admission");
+            require(store.loadIssueScanCheckpoint(REPOSITORY, "bug").isEmpty(),
+                    "full scan must not create or change a rolling checkpoint");
         }
     }
 
@@ -282,6 +327,7 @@ public final class PollingDeterministicTest {
 
     private static final class FakeGitCodeClient implements GitCodeClient {
         private final Map<Integer, GitCodeIssuePage> pages = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<Integer, GitCodeIssuePage> fullPages = new java.util.concurrent.ConcurrentHashMap<>();
         private final Map<Long, GitCodePullRequest> pullRequests = new java.util.concurrent.ConcurrentHashMap<>();
         private final List<IssueScanRequest> requests = new ArrayList<>();
         private boolean failLists;
@@ -292,6 +338,10 @@ public final class PollingDeterministicTest {
 
         private void pullRequest(GitCodePullRequest pullRequest) {
             pullRequests.put(pullRequest.number(), pullRequest);
+        }
+
+        private void fullPage(int page, GitCodeIssuePage result) {
+            fullPages.put(page, result);
         }
 
         private void failLists(boolean value) {
@@ -309,6 +359,14 @@ public final class PollingDeterministicTest {
                 throw new GitCodeApiException("deterministic failure", 503, false);
             }
             return pages.getOrDefault(request.page(), new GitCodeIssuePage(List.of(), 0));
+        }
+
+        @Override
+        public GitCodeIssuePage listOpenIssuesByLabel(IssueLabelScanRequest request) {
+            if (failLists) {
+                throw new GitCodeApiException("deterministic failure", 503, false);
+            }
+            return fullPages.getOrDefault(request.page(), new GitCodeIssuePage(List.of(), 0));
         }
 
         @Override
