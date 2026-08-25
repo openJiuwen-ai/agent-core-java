@@ -316,16 +316,20 @@ class GraphStoreTest {
         @Test
         @DisplayName("Java serializer persists an interrupted graph checkpoint")
         void testSerializeInterruptedCheckpoint() {
-            InteractionOutput output = new InteractionOutput("interactive", null);
+            InteractionOutput output = new InteractionOutput("interactive", Map.of("answer", "yes"));
             GraphInterrupt exception =
                 new GraphInterrupt(new Interrupt(Map.of("type", "__interaction__", "index", 0, "payload", output)));
-            GraphStoreState state = GraphStoreState.create("workflow", 2, Map.of(), List.of(),
+            Message pendingMessage = new Message("sender", "target", Map.of("event", "pending"));
+            GraphStoreState state = GraphStoreState.create("workflow", 2, Map.of("channel", "value"),
+                    List.of(pendingMessage),
                     Map.of("interactive", new PendingNode("interactive", "__interrupt__", List.of(exception))),
                     Map.of("start", 1));
 
             Serializer serializer = Serializer.create("java");
             GraphStoreState restored = (GraphStoreState) serializer.loadsTyped(serializer.dumpsTyped(state));
 
+            assertEquals("value", restored.getChannelValues().get("channel"));
+            assertEquals(Map.of("event", "pending"), restored.getPendingBuffer().get(0).getPayload());
             Exception restoredException = restored.getPendingNode().get("interactive").getExceptions().get(0);
             assertInstanceOf(GraphInterrupt.class, restoredException);
             GraphInterrupt restoredInterrupt = (GraphInterrupt) restoredException;

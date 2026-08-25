@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.interaction;
 
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
@@ -20,7 +22,7 @@ public class InteractionOutput implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private String id;
-    private transient Object value;
+    private Serializable value;
 
     /**
      * InteractionOutput.
@@ -39,7 +41,7 @@ public class InteractionOutput implements Serializable {
      */
     public InteractionOutput(String id, Object value) {
         this.id = id;
-        this.value = value;
+        this.value = SerializationUtils.requireSerializable(value, "value");
     }
 
     /**
@@ -79,7 +81,7 @@ public class InteractionOutput implements Serializable {
      * @since 0.1.7
      */
     public void setValue(Object value) {
-        this.value = value;
+        this.value = SerializationUtils.requireSerializable(value, "value");
     }
 
     /**
