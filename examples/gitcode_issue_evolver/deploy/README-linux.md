@@ -204,6 +204,11 @@ not probe the HTML page, issue HEAD requests, or send Cookie, CSRF, GitCode PAT,
 or model credentials. Treat the complete report URL as a sensitive capability
 link and keep it out of public logs.
 
+Set `codeCheckStandardOnlyOverride` to true when CodeCheck remediation must ignore
+Issue-authored repair suggestions and use only the complete coding standard, repository
+evidence, and Controller Gate. Stale reported source paths are then recoverable hints
+within `src/main/**` and `src/test/**`, not immediate terminal failures.
+
 The bugfix Agent shares the bounded-context/model reliability harness used by
 Feature Evolver. Each primary or diagnostic repair tier retains one
 conversation. The Agent may call only the zero-argument `runApprovedGate`;

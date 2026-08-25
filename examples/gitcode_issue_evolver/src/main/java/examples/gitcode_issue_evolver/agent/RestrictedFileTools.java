@@ -100,7 +100,7 @@ public final class RestrictedFileTools {
         ToolCard card = ToolCard.builder()
                 .id(toolPrefix + "writeFile")
                 .name("writeFile")
-                .description("Replace one UTF-8 Java source or test file inside the Worktree.")
+                .description("Replace one UTF-8 source, test, or runtime-resource file inside the Worktree.")
                 .inputParams(objectSchema(Map.of(
                         "path", Map.of("type", "string", "description", "Worktree-relative file path"),
                         "content", Map.of("type", "string", "description", "Complete UTF-8 file content")),
@@ -114,7 +114,7 @@ public final class RestrictedFileTools {
         ToolCard card = ToolCard.builder()
                 .id(toolPrefix + "replaceInFile")
                 .name("replaceInFile")
-                .description("Replace exactly one matching block in an in-scope UTF-8 Java file.")
+                .description("Replace exactly one matching block in an in-scope UTF-8 file.")
                 .inputParams(objectSchema(Map.of(
                         "path", Map.of("type", "string"),
                         "oldContent", Map.of("type", "string"),
@@ -295,8 +295,8 @@ public final class RestrictedFileTools {
     }
 
     private static void requireWriteScope(String relative) {
-        if (!relative.startsWith("src/main/java/") && !relative.startsWith("src/test/java/")) {
-            throw new IllegalArgumentException("Write path is outside the demo Java scope");
+        if (!relative.startsWith("src/main/") && !relative.startsWith("src/test/")) {
+            throw new IllegalArgumentException("Write path is outside the demo source and test scope");
         }
     }
 

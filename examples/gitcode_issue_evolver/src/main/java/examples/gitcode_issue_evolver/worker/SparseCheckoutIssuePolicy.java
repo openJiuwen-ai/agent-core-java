@@ -4,6 +4,7 @@
 
 package examples.gitcode_issue_evolver.worker;
 
+import examples.gitcode_issue_evolver.agent.CodeCheckRepairDirective;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
 
 import java.util.ArrayList;
@@ -22,8 +23,8 @@ import java.util.regex.Pattern;
 final class SparseCheckoutIssuePolicy {
     private static final int INTENT_CONTEXT_CHARS = 96;
     private static final Pattern EXCLUDED_PATH = Pattern.compile(
-            "(?i)(?:(?:documents|(?:src/main/java/)?examples|logs|target)/[^\\s`'\"),;:]*"
-                    + "|resources/skills(?:/[^\\s`'\"),;:]*)?)");
+            "(?i)(?<![A-Za-z0-9_./-])(?:(?:documents|(?:src/main/java/)?examples|logs|target|resources)"
+                    + "/[^\\s`'\"),;:]*)");
     private static final Pattern CHANGE_INTENT = Pattern.compile(
             "(?i)(?:\\b(?:modify|update|edit|change|add|create|delete|remove|rename|write|implement|fix)\\b"
                     + "|\\u4fee\\u6539|\\u66f4\\u65b0|\\u7f16\\u8f91|\\u65b0\\u589e"
@@ -46,17 +47,19 @@ final class SparseCheckoutIssuePolicy {
     static Validation validate(GitCodeIssue issue) {
         GitCodeIssue requiredIssue = Objects.requireNonNull(issue, "issue must not be null");
         Set<String> excludedPaths = new LinkedHashSet<>();
+        boolean codeCheck = CodeCheckRepairDirective.from(requiredIssue).isCodeCheck();
         List<String> sections = new ArrayList<>();
         sections.add(requiredIssue.title());
         sections.add(requiredIssue.description());
         sections.addAll(requiredIssue.comments());
         for (String section : sections) {
-            detectExcludedRequests(section, excludedPaths);
+            detectExcludedRequests(section, excludedPaths, codeCheck);
         }
         return new Validation(excludedPaths.isEmpty(), List.copyOf(excludedPaths));
     }
 
-    private static void detectExcludedRequests(String text, Set<String> excludedPaths) {
+    private static void detectExcludedRequests(String text, Set<String> excludedPaths,
+                                               boolean codeCheck) {
         if (text == null || text.isBlank()) {
             return;
         }
@@ -68,7 +71,8 @@ final class SparseCheckoutIssuePolicy {
                 int contextEnd = Math.min(clauseEnd(line, pathMatcher.end()),
                         pathMatcher.end() + INTENT_CONTEXT_CHARS);
                 String context = line.substring(contextStart, contextEnd);
-                if (CHANGE_INTENT.matcher(context).find() && !NEGATED_INTENT.matcher(context).find()) {
+                boolean hasChangeIntent = CHANGE_INTENT.matcher(context).find();
+                if ((codeCheck || hasChangeIntent) && !NEGATED_INTENT.matcher(context).find()) {
                     excludedPaths.add(TRAILING_SENTENCE_PUNCTUATION
                             .matcher(pathMatcher.group())
                             .replaceAll(""));

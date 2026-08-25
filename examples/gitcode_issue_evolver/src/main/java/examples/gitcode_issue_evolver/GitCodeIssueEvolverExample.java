@@ -60,6 +60,8 @@ public final class GitCodeIssueEvolverExample {
                     + config.getMaxPrimaryRepairRounds() + ", diagnostic="
                     + config.getMaxDiagnosticRepairRounds());
             System.out.println("Transient stage retries: " + config.getMaxTransientStageRetries());
+            System.out.println("CodeCheck standard-only override: "
+                    + config.isCodeCheckStandardOnlyOverride());
             if (config.isSmokeTestEnabled()) {
                 System.out.println("JiuwenTestJava smoke: enabled / selectors="
                         + String.join(",", config.getSmokeTestSelectors()));

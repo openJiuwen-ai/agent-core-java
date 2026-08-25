@@ -107,7 +107,8 @@ public final class HttpGitCodeClient implements GitCodeClient {
         requirePositive(issueIid, "issueIid");
         JsonNode issue = get(path(targetPath("issues/" + issueIid)));
         return new GitCodeIssue(issueIid, text(issue, "title"), text(issue, "body", "description"),
-                text(issue, "state"), text(issue, "html_url", "web_url"), listIssueComments(issueIid));
+                text(issue, "state"), text(issue, "html_url", "web_url"), listIssueComments(issueIid),
+                labelNames(issue.path("labels")));
     }
 
     @Override

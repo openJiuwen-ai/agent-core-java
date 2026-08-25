@@ -4,6 +4,10 @@ The Agent must explicitly load the complete staged `coding-standard-full` Skill 
 `.claude/skills/coding-standard-full`. The shorter `resources/skills/coding-standard` Skill is only a compatibility
 router. The demo service, not the Agent, first runs this trusted argument-list command in the Worktree:
 
+For a CodeCheck task, first load the complete category file named by the finding and inspect its reported source
+location. This targeted order replaces broad pre-edit diagnosis; it does not permit relying on a rule summary or
+skipping the Controller Gate.
+
 ```text
 mvn -B -ntp -DskipTests test-compile
 ```

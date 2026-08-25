@@ -18,6 +18,7 @@
   "maxIssueScanPages": 10,
   "manualFullScanEnabled": false,
   "codeCheckFeedbackEnabled": true,
+  "codeCheckStandardOnlyOverride": false,
   "codeCheckBotLogin": "openJiuwen-bot",
   "codeCheckSuccessLabel": "ci-successful",
   "openLibingBaseUrl": "https://www.openlibing.com",

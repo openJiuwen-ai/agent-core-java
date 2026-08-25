@@ -75,6 +75,9 @@ template. It contains no credentials.
 - `codeCheckFeedbackEnabled`: enables trusted robot comment inspection, controlled OpenLibing
   report extraction, same-PR repair, and the CI-success completion gate. It requires `polling` or
   `both`; existing configurations default to `false`.
+- `codeCheckStandardOnlyOverride`: when `true`, CodeCheck jobs ignore Issue-authored remediation
+  suggestions and comment-authored repair judgments. The complete rule text, repository evidence,
+  and fixed Controller Gate remain authoritative. The default is `false`.
 - `codeCheckBotLogin`: exact trusted GitCode robot login. The default is `openJiuwen-bot`.
 - `codeCheckSuccessLabel`: exact PR label required in addition to merge before the Job becomes
   `MERGED`. The default is `ci-successful`.
@@ -123,6 +126,7 @@ Use this sanitized structure and replace only the non-secret placeholders:
   "maxIssueScanPages": 10,
   "manualFullScanEnabled": false,
   "codeCheckFeedbackEnabled": true,
+  "codeCheckStandardOnlyOverride": false,
   "codeCheckBotLogin": "openJiuwen-bot",
   "codeCheckSuccessLabel": "ci-successful",
   "openLibingBaseUrl": "https://www.openlibing.com",

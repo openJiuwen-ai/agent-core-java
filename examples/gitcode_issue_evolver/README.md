@@ -11,7 +11,7 @@
 - 基线分支：`730`
 - 新示例触发方式：启动后立即扫描，此后每 15 分钟轮询一次
 - 轮询准入条件：扫描快照过去 24 小时内创建、状态为 open、精确带有 `bug` 标签
-- 修改范围：`src/main/java/**`、`src/test/java/**`
+- 修改范围：`src/main/**`、`src/test/**`；仓库根目录 `resources/**` 不在范围内
 - 第一段 Gate：`mvn -B -ntp -DskipTests test-compile`
 - 第二段 Gate：安装当前修复版本，并在独立 `jiuwen-test-java` 检出中运行 1～3 个配置锁定的精确 smoke 类
 
@@ -74,6 +74,12 @@ HTTP 202 表示全扫已异步排队，409 表示定时扫描或另一轮全扫�
 
 ### CodeCheck 云端反馈闭环
 
+`codeCheckStandardOnlyOverride` 默认关闭以保持兼容。开启后，CodeCheck 任务仍会从 Issue 正文和
+评论中提取规则编号与源码位置，但会从模型输入中删除“改进与修复建议”章节并省略历史评论正文；
+这些内容不再具有修复决策权。Agent 只能依据完整 `coding-standard-full`、报错位置、仓库合同和
+Controller Gate 证据实施最小修复。过时的 `src/main`/`src/test` 路径只作为定位提示，Controller
+允许 Agent 在同一受限源码范围内查找对应文件，而不会在创建 Agent 前直接终止任务。
+
 设置 `codeCheckFeedbackEnabled: true` 后，PR 对账只信任精确登录名
 `codeCheckBotLogin`（默认 `openJiuwen-bot`）的评论。评论报告 CodeCheck 失败且包含受支持的
 OpenLibing 报告链接时，服务通过固定 HTTPS 源、固定路径、禁止重定向和响应大小限制的只读
@@ -127,9 +133,12 @@ polling-only 无需公网入站地址或 GitCode Webhook。`webhook`/`both` 的 
 3. Worker 获取 Issue 和评论，确认 Issue 仍为 open，且不存在活动任务或未关闭 PR。
 4. Worktree Manager 从配置的基线创建短路径、`--no-checkout` sparse Worktree，只检出 `src/main` 和 `src/test`。
 5. ReAct Agent 显式加载从 `.claude/skills/coding-standard-full` 完整暂存的
-   `coding-standard-full` 与 `gitcode-issue-evolver-worker`。它必须先按
+   `coding-standard-full` 与 `gitcode-issue-evolver-worker`。普通 bugfix 先按
    `G.FMT → G.NAM → G.DCL → G.MET → G.CTL → G.EXP → G.ERR → G.CMT → G.OTH`
-   读取基线，再按代码场景的规定顺序读取完整分类文件；`resources/skills/coding-standard` 仅是兼容路由。
+   读取基线，再按代码场景的规定顺序读取完整分类文件。带 `codecheck` 或 `bug/codecheck` 标签的任务走
+   定向快速路径：Controller 提取 Issue 明示的规则编号、Java 文件和行号，Agent 先读取完整规则分类和
+   报错位置，直接做最小修复；除目标缺失、规则有歧义或 Gate 反馈要求外，不进行无关的全仓搜索和泛化分析。
+   `resources/skills/coding-standard` 仅是兼容路由。
    Agent 只使用分页、限流、跳过不可解析文件的受限文件工具。主修复最多 5 轮；仍失败时启动独立
    conversation 的诊断 Agent，最多 3 轮。
 6. Agent 可调用零参数 `runApprovedGate` 获取结构化反馈；Controller 按 HEAD、当前差异、固定命令、`pom.xml`、`.mvn`、smoke 测试仓内容和精确选择器计算指纹。编译通过后进入 `SMOKE_TESTING`，安装当前 Worktree 版本并运行配置的 JiuwenTestJava smoke；两段都通过才由受控 Committer 暂存精确文件。
