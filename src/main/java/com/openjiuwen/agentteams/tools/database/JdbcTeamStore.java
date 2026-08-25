@@ -314,7 +314,7 @@ final class JdbcTeamStore implements AutoCloseable {
                     updated_at BIGINT,
                     FOREIGN KEY (team_name) REFERENCES team_info(team_name) ON DELETE CASCADE
                 )
-                """.formatted(taskTable));
+                """.formatted(safeTableName(taskTable)));
     }
 
     private void createDependencyTable(Statement statement, String dependencyTable, String taskTable)
@@ -329,7 +329,7 @@ final class JdbcTeamStore implements AutoCloseable {
                     FOREIGN KEY (task_id) REFERENCES %s(task_id) ON DELETE CASCADE,
                     FOREIGN KEY (depends_on_task_id) REFERENCES %s(task_id) ON DELETE CASCADE
                 )
-                """.formatted(dependencyTable, taskTable, taskTable));
+                """.formatted(safeTableName(dependencyTable), safeTableName(taskTable), safeTableName(taskTable)));
     }
 
     private void createMessageTable(Statement statement, String messageTable) throws SQLException {
@@ -347,7 +347,7 @@ final class JdbcTeamStore implements AutoCloseable {
                     meta TEXT,
                     FOREIGN KEY (team_name) REFERENCES team_info(team_name) ON DELETE CASCADE
                 )
-                """.formatted(messageTable, quoteIdentifier("timestamp")));
+                """.formatted(safeTableName(messageTable), quoteIdentifier("timestamp")));
     }
 
     private void createReadStatusTable(Statement statement, String readStatusTable) throws SQLException {
@@ -359,19 +359,20 @@ final class JdbcTeamStore implements AutoCloseable {
                     PRIMARY KEY (member_name, team_name),
                     FOREIGN KEY (team_name) REFERENCES team_info(team_name) ON DELETE CASCADE
                 )
-                """.formatted(readStatusTable));
+                """.formatted(safeTableName(readStatusTable)));
     }
 
     private void ensureTaskColumns(Statement statement, String taskTable) throws SQLException {
+        String safeTaskTable = safeTableName(taskTable);
         if (!hasColumn(taskTable, "reviewer")) {
-            statement.executeUpdate("ALTER TABLE " + taskTable + " ADD COLUMN reviewer TEXT");
+            statement.executeUpdate("ALTER TABLE " + safeTaskTable + " ADD COLUMN reviewer TEXT");
         }
         if (!hasColumn(taskTable, "review_round")) {
-            statement.executeUpdate("ALTER TABLE " + taskTable
+            statement.executeUpdate("ALTER TABLE " + safeTaskTable
                     + " ADD COLUMN review_round INTEGER NOT NULL DEFAULT 0");
         }
         if (!hasColumn(taskTable, "max_review_rounds")) {
-            statement.executeUpdate("ALTER TABLE " + taskTable + " ADD COLUMN max_review_rounds INTEGER");
+            statement.executeUpdate("ALTER TABLE " + safeTaskTable + " ADD COLUMN max_review_rounds INTEGER");
         }
     }
 
@@ -379,20 +380,22 @@ final class JdbcTeamStore implements AutoCloseable {
         if (hasColumn(dependencyTable, "resolved")) {
             return;
         }
-        statement.executeUpdate("ALTER TABLE " + dependencyTable
+        String safeDependencyTable = safeTableName(dependencyTable);
+        statement.executeUpdate("ALTER TABLE " + safeDependencyTable
                 + " ADD COLUMN resolved BOOLEAN DEFAULT FALSE");
         if (hasColumn(dependencyTable, "isResolved")) {
-            statement.executeUpdate("UPDATE " + dependencyTable + " SET resolved = isResolved");
+            statement.executeUpdate("UPDATE " + safeDependencyTable + " SET resolved = isResolved");
         }
     }
 
     private void ensureMessageColumns(Statement statement, String messageTable) throws SQLException {
+        String safeMessageTable = safeTableName(messageTable);
         if (!hasColumn(messageTable, "protocol")) {
-            statement.executeUpdate("ALTER TABLE " + messageTable
+            statement.executeUpdate("ALTER TABLE " + safeMessageTable
                     + " ADD COLUMN protocol VARCHAR(64) NOT NULL DEFAULT 'plain'");
         }
         if (!hasColumn(messageTable, "meta")) {
-            statement.executeUpdate("ALTER TABLE " + messageTable + " ADD COLUMN meta TEXT");
+            statement.executeUpdate("ALTER TABLE " + safeMessageTable + " ADD COLUMN meta TEXT");
         }
     }
 
@@ -450,7 +453,7 @@ final class JdbcTeamStore implements AutoCloseable {
 
     private void loadTasks(String sessionId, Map<String, TaskRecord> tasks) throws SQLException {
         String sql = "SELECT task_id, team_name, title, content, status, assignee, updated_at FROM "
-                + taskTableName(sessionId);
+                + safeTableName(taskTableName(sessionId));
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(sql)) {
             while (result.next()) {
                 TaskRecord record = TaskRecord.builder()
@@ -468,7 +471,7 @@ final class JdbcTeamStore implements AutoCloseable {
     }
 
     private void loadDependencies(String sessionId, Map<String, TaskRecord> tasks) throws SQLException {
-        String sql = "SELECT task_id, depends_on_task_id FROM " + dependencyTableName(sessionId)
+        String sql = "SELECT task_id, depends_on_task_id FROM " + safeTableName(dependencyTableName(sessionId))
                 + " ORDER BY task_id, depends_on_task_id";
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(sql)) {
             while (result.next()) {
@@ -485,7 +488,7 @@ final class JdbcTeamStore implements AutoCloseable {
                 SELECT message_id, team_name, from_member_name, to_member_name, content,
                        %s AS message_timestamp, broadcast, is_read
                 FROM %s
-                """.formatted(quoteIdentifier("timestamp"), messageTableName(sessionId));
+                """.formatted(quoteIdentifier("timestamp"), safeTableName(messageTableName(sessionId)));
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(sql)) {
             while (result.next()) {
                 MessageRecord record = MessageRecord.builder()
@@ -504,7 +507,7 @@ final class JdbcTeamStore implements AutoCloseable {
     }
 
     private void loadReadStatuses(String sessionId, Map<String, Long> readStatuses) throws SQLException {
-        String sql = "SELECT member_name, team_name, read_at FROM " + readStatusTableName(sessionId);
+        String sql = "SELECT member_name, team_name, read_at FROM " + safeTableName(readStatusTableName(sessionId));
         try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(sql)) {
             while (result.next()) {
                 String key = result.getString("team_name") + "::" + result.getString("member_name");
@@ -695,15 +698,15 @@ final class JdbcTeamStore implements AutoCloseable {
 
     private void clearSessionRows(String sessionId) throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("DELETE FROM " + dependencyTableName(sessionId));
-            statement.executeUpdate("DELETE FROM " + taskTableName(sessionId));
-            statement.executeUpdate("DELETE FROM " + messageTableName(sessionId));
-            statement.executeUpdate("DELETE FROM " + readStatusTableName(sessionId));
+            statement.executeUpdate("DELETE FROM " + safeTableName(dependencyTableName(sessionId)));
+            statement.executeUpdate("DELETE FROM " + safeTableName(taskTableName(sessionId)));
+            statement.executeUpdate("DELETE FROM " + safeTableName(messageTableName(sessionId)));
+            statement.executeUpdate("DELETE FROM " + safeTableName(readStatusTableName(sessionId)));
         }
     }
 
     private void insertTasks(String sessionId, Collection<TaskRecord> tasks) throws SQLException {
-        String sql = "INSERT INTO " + taskTableName(sessionId)
+        String sql = "INSERT INTO " + safeTableName(taskTableName(sessionId))
                 + " (task_id, team_name, title, content, status, assignee, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (TaskRecord taskRecord : tasks) {
@@ -723,7 +726,7 @@ final class JdbcTeamStore implements AutoCloseable {
     private void insertDependencies(String sessionId, Collection<TaskRecord> tasks) throws SQLException {
         Map<String, TaskRecord> tasksById = tasks.stream()
                 .collect(java.util.stream.Collectors.toMap(TaskRecord::getTaskId, record -> record));
-        String sql = "INSERT INTO " + dependencyTableName(sessionId)
+        String sql = "INSERT INTO " + safeTableName(dependencyTableName(sessionId))
                 + " (task_id, depends_on_task_id, team_name, resolved) VALUES (?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (TaskRecord taskRecord : tasks) {
@@ -745,7 +748,7 @@ final class JdbcTeamStore implements AutoCloseable {
     }
 
     private void insertMessages(String sessionId, Collection<MessageRecord> messages) throws SQLException {
-        String sql = "INSERT INTO " + messageTableName(sessionId)
+        String sql = "INSERT INTO " + safeTableName(messageTableName(sessionId))
                 + " (message_id, team_name, from_member_name, to_member_name, content, "
                 + quoteIdentifier("timestamp") + ", broadcast, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -765,7 +768,7 @@ final class JdbcTeamStore implements AutoCloseable {
     }
 
     private void insertReadStatuses(String sessionId, Map<String, Long> readStatuses) throws SQLException {
-        String sql = "INSERT INTO " + readStatusTableName(sessionId)
+        String sql = "INSERT INTO " + safeTableName(readStatusTableName(sessionId))
                 + " (team_name, member_name, read_at) VALUES (?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (Map.Entry<String, Long> entry : readStatuses.entrySet()) {

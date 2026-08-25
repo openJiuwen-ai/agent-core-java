@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -40,9 +41,11 @@ import javax.sql.DataSource;
 public class SqlMigrator {
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
+    private static final Pattern SQL_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
     /**
      * supportedTables.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Set<String> SUPPORTED_TABLES = supportedTables();
@@ -71,6 +74,23 @@ public class SqlMigrator {
         if (!SUPPORTED_TABLES.contains(tableName)) {
             throw new IllegalArgumentException("Unsupported table name: " + tableName);
         }
+    }
+
+    /**
+     * Validate that a value is a safe SQL identifier before it is concatenated into a SQL command.
+     * SQL identifiers (table/column names) cannot use JDBC ? placeholders, so a strict
+     * whitelist check is applied instead.
+     *
+     * @param identifier identifier
+     * @param field field
+     * @return the validated identifier
+     * @since 0.1.7
+     */
+    private static String requireSqlIdentifier(String identifier, String field) {
+        if (identifier == null || !SQL_IDENTIFIER_PATTERN.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier for " + field + ": " + identifier);
+        }
+        return identifier;
     }
 
     /**
@@ -214,6 +234,7 @@ public class SqlMigrator {
      */
     private void executeAddColumn(Connection conn, AddColumnOperation op) throws SQLException {
         validateTable(op.getTable());
+        requireSqlIdentifier(op.getColumnName(), "columnName");
         StringBuilder sql = new StringBuilder("ALTER TABLE ").append(op.getTable()).append(" ADD COLUMN ")
                 .append(op.getColumnName()).append(" ").append(toSqlType(op.getColumnType()));
         if (!op.isNullable()) {
@@ -238,6 +259,8 @@ public class SqlMigrator {
      */
     private void executeRenameColumn(Connection conn, RenameColumnOperation op, String dialect) throws SQLException {
         validateTable(op.getTable());
+        requireSqlIdentifier(op.getOldColumnName(), "oldColumnName");
+        requireSqlIdentifier(op.getNewColumnName(), "newColumnName");
         if ("mysql".equals(dialect)) {
             ColumnDefinition column = getRequiredColumn(conn, op.getTable(), op.getOldColumnName());
             String sql = "ALTER TABLE " + op.getTable() + " CHANGE " + op.getOldColumnName() + " "
@@ -266,6 +289,7 @@ public class SqlMigrator {
     private void executeUpdateColumnType(Connection conn, UpdateColumnTypeOperation op, String dialect)
             throws SQLException {
         validateTable(op.getTable());
+        requireSqlIdentifier(op.getColumnName(), "columnName");
         if ("sqlite".equals(dialect)) {
             alterColumnTypeSqlite(conn, op.getTable(), op.getColumnName(), op.getNewColumnType());
             return;
