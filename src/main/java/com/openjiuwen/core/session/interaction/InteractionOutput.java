@@ -41,7 +41,11 @@ public class InteractionOutput implements Serializable {
      */
     public InteractionOutput(String id, Object value) {
         this.id = id;
-        this.value = SerializationUtils.requireSerializable(value, "value");
+        if (value == null) {
+            this.value = null;
+        } else {
+            this.value = SerializationUtils.requireSerializable(value, "value");
+        }
     }
 
     /**
@@ -81,7 +85,11 @@ public class InteractionOutput implements Serializable {
      * @since 0.1.7
      */
     public void setValue(Object value) {
-        this.value = SerializationUtils.requireSerializable(value, "value");
+        if (value == null) {
+            this.value = null;
+        } else {
+            this.value = SerializationUtils.requireSerializable(value, "value");
+        }
     }
 
     /**

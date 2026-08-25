@@ -46,7 +46,11 @@ public class Message implements Serializable {
     public Message(String sender, String target, Object payload) {
         this.sender = sender;
         this.target = target;
-        this.payload = SerializationUtils.requireSerializable(payload, "payload");
+        if (payload == null) {
+            this.payload = null;
+        } else {
+            this.payload = SerializationUtils.requireSerializable(payload, "payload");
+        }
     }
 
     /**

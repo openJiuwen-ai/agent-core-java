@@ -64,7 +64,11 @@ public class BaseMessage implements Serializable {
      */
     public BaseMessage(String role, Object content, String name, Map<String, Object> metadata) {
         this.role = role;
-        this.content = SerializationUtils.requireSerializable(content, "content");
+        if (content == null) {
+            this.content = null;
+        } else {
+            this.content = SerializationUtils.requireSerializable(content, "content");
+        }
         this.name = name;
         this.metadata = metadata == null ? null : new LinkedHashMap<>(metadata);
     }
@@ -131,7 +135,11 @@ public class BaseMessage implements Serializable {
      * @since 0.1.7
      */
     public void setContent(Object content) {
-        this.content = SerializationUtils.requireSerializable(content, "content");
+        if (content == null) {
+            this.content = null;
+        } else {
+            this.content = SerializationUtils.requireSerializable(content, "content");
+        }
     }
 
     /**
