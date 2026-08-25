@@ -4,13 +4,16 @@
 
 package com.openjiuwen.core.common.utils;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.graph.pregel.Message;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.singleagent.interrupt.ToolCallInterruptRequest;
 
@@ -58,6 +61,22 @@ class SerializationUtilsTest {
                 () -> new BaseMessage("user", nonSerializable, null, null));
         assertThrows(IllegalArgumentException.class, () -> new Message("sender", "target", nonSerializable));
         assertThrows(IllegalArgumentException.class, () -> new InteractionOutput("interaction", nonSerializable));
+    }
+
+    @Test
+    void nullablePayloadsPreserveExistingContracts() {
+        BaseError error = new BaseError(StatusCode.ERROR, "failed", null, null, Map.of());
+        BaseMessage baseMessage = new BaseMessage("user", null, null, null);
+        Message graphMessage = new Message("sender", "target");
+        InteractionOutput output = new InteractionOutput("interaction", null);
+        InteractiveInput input = new InteractiveInput();
+
+        assertDoesNotThrow(() -> input.setRawInputs(null));
+        assertNull(error.getDetails());
+        assertNull(baseMessage.getContent());
+        assertNull(graphMessage.getPayload());
+        assertNull(output.getValue());
+        assertNull(input.getRawInputs());
     }
 
     private static <T> T roundTrip(T value, Class<T> valueType) throws IOException, ClassNotFoundException {

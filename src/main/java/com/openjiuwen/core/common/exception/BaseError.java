@@ -63,7 +63,11 @@ public class BaseError extends RuntimeException {
         this.status = status;
         this.code = status.getCode();
         this.params = params != null ? new HashMap<>(params) : new HashMap<>();
-        this.details = SerializationUtils.requireSerializable(details, "details");
+        if (details == null) {
+            this.details = null;
+        } else {
+            this.details = SerializationUtils.requireSerializable(details, "details");
+        }
         this.templateMessage = renderMessage(status, params);
         this.message = msg != null ? msg : this.templateMessage;
         this.recoverable = defaultRecoverable();
