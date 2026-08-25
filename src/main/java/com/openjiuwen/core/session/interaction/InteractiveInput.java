@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.interaction;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.SerializationUtils;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -21,12 +22,12 @@ public class InteractiveInput implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Map<String, Object> userInputs;
+    private HashMap<String, Object> userInputs;
 
     /**
      * Raw input not bound to any ID, used for the first interaction.
      */
-    private Object rawInputs;
+    private Serializable rawInputs;
 
     /**
      * Create with no inputs.
@@ -49,7 +50,7 @@ public class InteractiveInput implements Serializable {
             throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID, "reason", "value of raw_inputs is none");
         }
         this.userInputs = new HashMap<>();
-        this.rawInputs = rawInputs;
+        this.rawInputs = SerializationUtils.requireSerializable(rawInputs, "rawInputs");
     }
 
     /**
@@ -69,7 +70,7 @@ public class InteractiveInput implements Serializable {
      * @since 0.1.7
      */
     public void setUserInputs(Map<String, Object> userInputs) {
-        this.userInputs = userInputs;
+        this.userInputs = userInputs == null ? null : new HashMap<>(userInputs);
     }
 
     /**
@@ -89,7 +90,7 @@ public class InteractiveInput implements Serializable {
      * @since 0.1.7
      */
     public void setRawInputs(Object rawInputs) {
-        this.rawInputs = rawInputs;
+        this.rawInputs = SerializationUtils.requireSerializable(rawInputs, "rawInputs");
     }
 
     /**
