@@ -28,6 +28,16 @@ import java.util.List;
  */
 public final class BuiltinRegistries {
     /**
+     * Trusted class prefix.
+     * <p>
+     * Dynamic class loading is restricted to classes within the application's own
+     * namespace so that untrusted classes cannot be loaded and executed.
+     * 
+     * @since 0.1.7
+     */
+    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
+
+    /**
      * BuiltinRegistries.
      * 
      * @since 0.1.7
@@ -154,6 +164,9 @@ public final class BuiltinRegistries {
         }
         String className = value.substring(0, split);
         String methodName = value.substring(split + 1);
+        if (!isTrustedClass(className)) {
+            throw new IllegalArgumentException("Registrar class is not trusted: " + value);
+        }
         try {
             Class<?> type = Class.forName(className);
             for (Method method : type.getDeclaredMethods()) {
@@ -166,6 +179,17 @@ public final class BuiltinRegistries {
         } catch (ClassNotFoundException ex) {
             throw new IllegalArgumentException("Registrar class not found: " + value, ex);
         }
+    }
+
+    /**
+     * isTrustedClass.
+     * 
+     * @param className className
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean isTrustedClass(String className) {
+        return className != null && className.startsWith(TRUSTED_CLASS_PREFIX);
     }
 
     /**
