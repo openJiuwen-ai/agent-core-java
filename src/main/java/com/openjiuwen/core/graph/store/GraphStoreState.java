@@ -27,7 +27,7 @@ public class GraphStoreState implements Serializable {
 
     private final String ns;
     private final int step;
-    private final Map<String, Object> channelValues;
+    private final transient Map<String, Object> channelValues;
     private final List<Message> pendingBuffer;
     private final Map<String, PendingNode> pendingNode;
     private final Map<String, Integer> nodeVersion;

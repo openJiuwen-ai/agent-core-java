@@ -30,8 +30,8 @@ import java.util.Map;
 public class BaseError extends RuntimeException {
     private final StatusCode status;
     private final int code;
-    private final Map<String, Object> params;
-    private final Object details;
+    private final transient Map<String, Object> params;
+    private final transient Object details;
     private final String templateMessage;
     private final String message;
 

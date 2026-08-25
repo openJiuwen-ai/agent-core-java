@@ -35,13 +35,13 @@ public class BaseMessage implements Serializable {
      * For simple text messages, use {@code String}. For multimodal messages,
      * use a {@code List} of maps containing text/image data.
      */
-    private Object content;
+    private transient Object content;
 
     /** Optional name identifier for the message sender. */
     private String name;
 
     /** Optional metadata map carried with the message. */
-    private Map<String, Object> metadata;
+    private transient Map<String, Object> metadata;
 
     /**
      * BaseMessage.

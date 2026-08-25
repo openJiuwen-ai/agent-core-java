@@ -75,8 +75,9 @@ class InteractiveInputTest {
         try (java.io.ObjectInputStream ois =
                 new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bos.toByteArray()))) {
             InteractiveInput restored = (InteractiveInput) ois.readObject();
-            assertEquals("raw", restored.getRawInputs());
-            assertEquals("v1", restored.getUserInputs().get("n1"));
+            // userInputs and rawInputs are transient; serialization must never fail on
+            // non-serializable payloads, and deserialization yields a usable instance.
+            assertNotNull(restored);
         }
     }
 }

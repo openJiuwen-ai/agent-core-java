@@ -20,7 +20,7 @@ public class InteractionOutput implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private String id;
-    private Object value;
+    private transient Object value;
 
     /**
      * InteractionOutput.

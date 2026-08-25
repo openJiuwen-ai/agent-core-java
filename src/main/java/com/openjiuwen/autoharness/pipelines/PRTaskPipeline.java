@@ -45,7 +45,7 @@ import java.util.concurrent.TimeoutException;
  */
 public class PRTaskPipeline extends BasePipeline {
     private static final class StopTaskPipeline extends RuntimeException {
-        private final List<Object> events;
+        private final transient List<Object> events;
 
         /**
          * StopTaskPipeline.

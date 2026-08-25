@@ -18,7 +18,7 @@ public class ToolCallInterruptRequest extends InterruptRequest implements java.i
     private static final long serialVersionUID = 1L;
     private String toolCallId;
     private String toolName;
-    private java.util.List<java.util.Map<String, Object>> questions;
+    private transient java.util.List<java.util.Map<String, Object>> questions;
 
     /**
      * Return the interrupted tool call id.

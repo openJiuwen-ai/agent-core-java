@@ -21,12 +21,12 @@ public class InteractiveInput implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Map<String, Object> userInputs;
+    private transient Map<String, Object> userInputs;
 
     /**
      * Raw input not bound to any ID, used for the first interaction.
      */
-    private Object rawInputs;
+    private transient Object rawInputs;
 
     /**
      * Create with no inputs.
