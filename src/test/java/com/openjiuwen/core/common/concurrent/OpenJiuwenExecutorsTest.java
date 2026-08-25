@@ -6,6 +6,7 @@ package com.openjiuwen.core.common.concurrent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("DeepAgent stream 模块池默认 max(32, CPU×8)、有界队列排队、AbortPolicy 且可配置")
     void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
+        assumePlatformThreadRuntime();
         int expectedDefault = OpenJiuwenExecutors.defaultIoBoundMaxSize();
         assertThat(expectedDefault).isEqualTo(Math.max(32, Runtime.getRuntime().availableProcessors() * 8));
 
@@ -56,6 +58,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("有界模块池使用统一命名且最大线程数可配置")
     void boundedModulePoolUsesPrefixAndRespectsMaxSize() throws Exception {
+        assumePlatformThreadRuntime();
         System.setProperty("openjiuwen.executor.executor-bounded-test.max-size", "2");
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("executor-bounded-test", 8, 16, false);
         try {
@@ -73,6 +76,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("有界队列模块池 core=max，避免 core=0 单 worker 串行陷阱")
     void boundedQueueModulePoolUsesCoreEqualToMaxSize() throws Exception {
+        assumePlatformThreadRuntime();
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", false);
         try {
             ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
@@ -101,6 +105,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("维度 I-C：所有模块池统一使用 ABQ + core=max + AbortPolicy，不再有 SynchronousQueue")
     void allModulePoolsUseArrayBlockingQueueWithCoreEqualsMax() {
+        assumePlatformThreadRuntime();
         String[] modulePrefixes = {
                 "pregel-task", "workflow-stream", "vertex-stream", "stream-actor",
                 "end-template-render", "callback-parallel", "mq-server-adapter",
@@ -147,8 +152,9 @@ class OpenJiuwenExecutorsTest {
     }
 
     @Test
-    @DisplayName("自定义线程池保留队列容量和拒绝策略")
+    @DisplayName("JDK 17 自定义线程池保留队列容量和拒绝策略")
     void customExecutorPreservesQueueAndRejectionPolicy() throws Exception {
+        assumePlatformThreadRuntime();
         CountDownLatch taskStarted = new CountDownLatch(1);
         CountDownLatch releaseTask = new CountDownLatch(1);
         ExecutorService executor = OpenJiuwenExecutors.newThreadPool("bounded-executor-test",
@@ -229,5 +235,9 @@ class OpenJiuwenExecutorsTest {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static void assumePlatformThreadRuntime() {
+        assumeFalse(VirtualThreadSupport.isSupported(), "This test verifies the JDK 17 platform fallback");
     }
 }

@@ -135,14 +135,13 @@ public final class OpenJiuwenExecutors {
     /**
      * 创建实例专用的有界模块执行器，并纳入统一资源回收。
      *
-     * <p>JDK 17 或非 daemon 配置使用有界平台线程池，最大线程数与队列容量可通过系统属性
+     * <p>JDK 17 使用有界平台线程池，最大线程数与队列容量可通过系统属性
      * {@code openjiuwen.executor.{模块名}.max-size} / {@code openjiuwen.executor.{模块名}.queue-size}
-     * 或对应环境变量覆盖。JDK 21 及以上的 daemon 配置使用不限制并发的
-     * 每任务虚拟线程。</p>
+     * 或对应环境变量覆盖。JDK 21 及以上使用不限制并发的每任务虚拟线程。</p>
      *
      * @param threadNamePrefix 线程名称前缀（与模块名一致，如 {@code pregel-task}）
-     * @param isDaemon 是否创建守护线程
-     * @return 有界执行器
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      * @since 0.1.14
      */
     public static ExecutorService newBoundedModulePool(String threadNamePrefix, boolean isDaemon) {
@@ -156,8 +155,8 @@ public final class OpenJiuwenExecutors {
      * @param threadNamePrefix 线程名称前缀
      * @param defaultMaxSize 默认最大线程数（可被系统属性/环境变量覆盖）
      * @param defaultQueueCapacity 默认队列容量（可被系统属性/环境变量覆盖）
-     * @param isDaemon 是否创建守护线程
-     * @return 有界执行器
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      * @since 0.1.14
      */
     public static ExecutorService newBoundedModulePool(String threadNamePrefix, int defaultMaxSize,
@@ -165,9 +164,14 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(defaultMaxSize, "defaultMaxSize");
         validatePositive(defaultQueueCapacity, "defaultQueueCapacity");
-        if (VirtualThreadSupport.isSupported() && isDaemon) {
+        if (VirtualThreadSupport.isSupported()) {
             return register(new ManagedVirtualThreadExecutor(threadNamePrefix));
         }
+        return register(newBoundedPlatformExecutor(threadNamePrefix, defaultMaxSize, defaultQueueCapacity, isDaemon));
+    }
+
+    private static ExecutorService newBoundedPlatformExecutor(String threadNamePrefix, int defaultMaxSize,
+            int defaultQueueCapacity, boolean isDaemon) {
         int platformMaxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
@@ -179,15 +183,15 @@ public final class OpenJiuwenExecutors {
                 DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, workQueue,
                 namedThreadFactory(threadNamePrefix, isDaemon), defaults.rejectionHandler());
         executor.allowCoreThreadTimeOut(defaults.allowsCoreTimeout());
-        return register(executor);
+        return executor;
     }
 
     /**
      * 创建实例专用的缓存线程池，并纳入统一资源回收。
      *
      * @param threadNamePrefix 线程名称前缀
-     * @param isDaemon 是否创建守护线程
-     * @return 有界模块线程池（自 0.1.14 起不再无界）
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      * @deprecated 请使用 {@link #newBoundedModulePool(String, boolean)}
      */
     @Deprecated(since = "0.1.14")
@@ -198,20 +202,20 @@ public final class OpenJiuwenExecutors {
     /**
      * 创建实例专用的固定并发执行器，并纳入统一资源回收。
      *
-     * <p>JDK 17 或非 daemon 配置使用原固定大小平台线程池；JDK 21 及以上的 daemon 配置使用
-     * 不限制并发的每任务虚拟线程，此时 {@code size} 仅用于参数合法性校验，
+     * <p>JDK 17 使用原固定大小平台线程池；JDK 21 及以上使用不限制并发的
+     * 每任务虚拟线程，此时 {@code size} 仅用于参数合法性校验，
      * 不限制任务并发。</p>
      *
      * @param threadNamePrefix 线程名称前缀
      * @param size 线程数
-     * @param isDaemon 是否创建守护线程
-     * @return 固定并发执行器
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      */
     public static ExecutorService newFixedThreadPool(String threadNamePrefix, int size, boolean isDaemon) {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(size, "size");
         ThreadPoolConfig config = fixedThreadPoolConfig(size, isDaemon);
-        return register(createExecutor(threadNamePrefix, config, true));
+        return newThreadPool(threadNamePrefix, config);
     }
 
     /**
@@ -258,11 +262,12 @@ public final class OpenJiuwenExecutors {
     /**
      * 创建参数可定制的实例专用执行器，并纳入统一资源回收。
      *
-     * <p>每任务 daemon 配置在 JDK 21 及以上使用虚拟线程，其余配置继续使用平台线程池。</p>
+     * <p>JDK 17 使用调用方配置的平台线程池；JDK 21 及以上使用不限制并发的
+     * 每任务虚拟线程，此时线程数、队列、daemon 和拒绝策略配置不生效。</p>
      *
      * @param threadNamePrefix 线程名称前缀
-     * @param config 线程池配置
-     * @return 执行器
+     * @param config JDK 17 平台线程池配置
+     * @return 自适应任务执行器
      */
     public static ExecutorService newThreadPool(String threadNamePrefix, ThreadPoolConfig config) {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
@@ -270,23 +275,10 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(config.unit, "unit");
         Objects.requireNonNull(config.workQueue, "workQueue");
         Objects.requireNonNull(config.rejectionHandler, "rejectionHandler");
-        return register(createExecutor(threadNamePrefix, config, false));
-    }
-
-    private static ExecutorService createExecutor(String threadNamePrefix, ThreadPoolConfig config,
-            boolean isFixedExecutor) {
-        if (VirtualThreadSupport.isSupported() && config.isDaemon) {
-            if (isFixedExecutor || isPerTaskConfig(config)) {
-                return new ManagedVirtualThreadExecutor(threadNamePrefix);
-            }
+        if (VirtualThreadSupport.isSupported()) {
+            return register(new ManagedVirtualThreadExecutor(threadNamePrefix));
         }
-        return newPlatformThreadPool(threadNamePrefix, config);
-    }
-
-    private static boolean isPerTaskConfig(ThreadPoolConfig config) {
-        return config.corePoolSize == 0
-                && config.maximumPoolSize == Integer.MAX_VALUE
-                && config.workQueue instanceof SynchronousQueue;
+        return register(newPlatformThreadPool(threadNamePrefix, config));
     }
 
     private static ThreadPoolConfig fixedThreadPoolConfig(int size, boolean isDaemon) {
@@ -307,9 +299,10 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 自定义线程池的创建配置。
+     * 自定义执行器的 JDK 17 平台线程池配置。
      *
-     * <p>使用构建器逐项设置，避免调用方依赖多个位置参数的顺序。</p>
+     * <p>使用构建器逐项设置，避免调用方依赖多个位置参数的顺序。
+     * JDK 21 及以上使用虚拟线程时不应用这些配置。</p>
      *
      * @since 0.1.13
      */
@@ -501,14 +494,14 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建可配置的共享业务线程池。
+     * 创建共享业务任务执行器。
      *
-     * @param maxSizeProperty 最大线程数的系统属性名
-     * @param maxSizeEnv 最大线程数的环境变量名
-     * @param keepAliveProperty 空闲线程保留时间的系统属性名
-     * @param keepAliveEnv 空闲线程保留时间的环境变量名
+     * @param maxSizeProperty JDK 17 平台线程最大数量的系统属性名
+     * @param maxSizeEnv JDK 17 平台线程最大数量的环境变量名
+     * @param keepAliveProperty JDK 17 平台线程空闲保留时间的系统属性名
+     * @param keepAliveEnv JDK 17 平台线程空闲保留时间的环境变量名
      * @param threadNamePrefix 线程名称前缀
-     * @return 配置完成的共享线程池
+     * @return 自适应共享任务执行器
      */
     private static ExecutorService buildSharedExecutor(String maxSizeProperty, String maxSizeEnv,
             String keepAliveProperty, String keepAliveEnv, String threadNamePrefix) {

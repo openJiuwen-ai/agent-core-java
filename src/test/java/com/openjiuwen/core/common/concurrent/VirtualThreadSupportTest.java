@@ -13,11 +13,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -33,33 +34,27 @@ class VirtualThreadSupportTest {
     }
 
     @Test
-    @DisplayName("每任务 daemon 配置在 JDK 17 使用平台线程，在 JDK 21 使用虚拟线程")
-    void perTaskDaemonExecutorUsesRuntimeAppropriateThread()
+    @DisplayName("共享普通业务任务在 JDK 17 使用平台线程，在 JDK 21 使用虚拟线程")
+    void sharedBusinessExecutorUsesRuntimeAppropriateThread()
             throws ExecutionException, InterruptedException, TimeoutException {
-        ExecutorService executor = newPerTaskExecutor("per-task-test", true);
-        try {
-            ThreadDetails details = executor.submit(VirtualThreadSupportTest::currentThreadDetails)
-                    .get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        ThreadDetails details = threadDetails(OpenJiuwenExecutors.backgroundExecutor());
 
-            assertThat(details.name()).startsWith("per-task-test-");
-            assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
-            assertThat(details.isDaemon()).isTrue();
-        } finally {
-            shutdown(executor);
-        }
+        assertThat(details.name()).startsWith("openjiuwen-background-");
+        assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
+        assertThat(details.isDaemon()).isTrue();
     }
 
     @Test
-    @DisplayName("固定大小 daemon 执行器在 JDK 21 使用不限制并发的虚拟线程")
-    void fixedDaemonExecutorUsesUnboundedVirtualConcurrency()
+    @DisplayName("固定大小普通任务不以 daemon 配置判断是否使用虚拟线程")
+    void fixedExecutorUsesRuntimeAppropriateThreadRegardlessOfDaemon()
             throws ExecutionException, InterruptedException, TimeoutException {
-        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("fixed-virtual-test", 2, true);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("fixed-virtual-test", 2, false);
         try {
             ThreadDetails details = executor.submit(VirtualThreadSupportTest::currentThreadDetails)
                     .get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             assertThat(details.name()).startsWith("fixed-virtual-test-");
             assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
-            assertThat(details.isDaemon()).isTrue();
+            assertThat(details.isDaemon()).isEqualTo(VirtualThreadSupport.isSupported());
 
             int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 2;
             verifyConcurrency(executor, 4, expectedConcurrency);
@@ -69,13 +64,14 @@ class VirtualThreadSupportTest {
     }
 
     @Test
-    @DisplayName("有界 daemon 执行器在 JDK 21 不保留平台线程并发和接纳限制")
-    void boundedDaemonExecutorUsesUnboundedVirtualConcurrency()
+    @DisplayName("有界普通任务不以 daemon 配置判断是否使用虚拟线程")
+    void boundedExecutorUsesRuntimeAppropriateThreadRegardlessOfDaemon()
             throws ExecutionException, InterruptedException, TimeoutException {
-        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("bounded-virtual-test", 2, 1, true);
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("bounded-virtual-test", 2, 1, false);
         try {
             ThreadDetails details = threadDetails(executor);
             assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
+            assertThat(details.isDaemon()).isEqualTo(VirtualThreadSupport.isSupported());
 
             int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 2;
             int taskCount = VirtualThreadSupport.isSupported() ? 4 : 2;
@@ -86,32 +82,35 @@ class VirtualThreadSupportTest {
     }
 
     @Test
-    @DisplayName("非 daemon 每任务配置始终保留平台线程池")
-    void nonDaemonPerTaskExecutorRemainsPlatformThread()
+    @DisplayName("自定义线程池在 JDK 17 保留配置，在 JDK 21 使用虚拟线程")
+    void customExecutorUsesRuntimeAppropriateThread()
             throws ExecutionException, InterruptedException, TimeoutException {
-        ExecutorService executor = newPerTaskExecutor("non-daemon-per-task-test", false);
+        ExecutorService executor = newCustomExecutor("custom-executor-test", true);
         try {
-            assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
             ThreadDetails details = threadDetails(executor);
-            assertThat(details.isVirtual()).isFalse();
-            assertThat(details.isDaemon()).isFalse();
+            assertThat(details.isVirtual()).isEqualTo(VirtualThreadSupport.isSupported());
+            assertThat(details.isDaemon()).isTrue();
+
+            int expectedConcurrency = VirtualThreadSupport.isSupported() ? 4 : 1;
+            verifyConcurrency(executor, expectedConcurrency, expectedConcurrency);
         } finally {
             shutdown(executor);
         }
     }
 
     @Test
-    @DisplayName("非 daemon 固定池和单线程执行器始终使用平台线程")
+    @DisplayName("单线程和定时执行器始终使用平台线程")
     void platformOnlyExecutorsRemainPlatformThreads()
             throws ExecutionException, InterruptedException, TimeoutException {
-        ExecutorService nonDaemonFixed = OpenJiuwenExecutors.newFixedThreadPool("non-daemon-fixed-test", 2, false);
         ExecutorService single = OpenJiuwenExecutors.newSingleThreadExecutor("single-thread-test", true);
+        ScheduledExecutorService scheduled = OpenJiuwenExecutors.newScheduledThreadPool(
+                "scheduled-thread-test", 1, true);
         try {
-            assertThat(threadDetails(nonDaemonFixed).isVirtual()).isFalse();
             assertThat(threadDetails(single).isVirtual()).isFalse();
+            assertThat(threadDetails(scheduled).isVirtual()).isFalse();
         } finally {
-            shutdown(nonDaemonFixed);
             shutdown(single);
+            shutdown(scheduled);
         }
     }
 
@@ -156,12 +155,12 @@ class VirtualThreadSupportTest {
                 .get(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    private static ExecutorService newPerTaskExecutor(String threadNamePrefix, boolean isDaemon) {
+    private static ExecutorService newCustomExecutor(String threadNamePrefix, boolean isDaemon) {
         return OpenJiuwenExecutors.newThreadPool(threadNamePrefix,
                 OpenJiuwenExecutors.ThreadPoolConfig.builder()
-                        .poolSize(0, Integer.MAX_VALUE)
+                        .poolSize(1, 1)
                         .keepAlive(0L, TimeUnit.MILLISECONDS)
-                        .workQueue(new SynchronousQueue<>())
+                        .workQueue(new ArrayBlockingQueue<>(1))
                         .isDaemon(isDaemon)
                         .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
                         .build());
