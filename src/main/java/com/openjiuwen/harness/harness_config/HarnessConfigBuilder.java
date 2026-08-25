@@ -557,7 +557,8 @@ public final class HarnessConfigBuilder {
         }
         return new SkillUseRail(skillDirs.stream().map(dir -> resolveRootPath(root, dir)).toList(),
                 stringValue(config.get("skill_mode"), "auto_list"), stringList(config.get("enabled_skills")),
-                stringList(config.get("disabled_skills")), remoteSkillSources(config));
+                stringList(config.get("disabled_skills")), remoteSkillSources(config), true,
+                booleanValue(firstPresent(config, new String[]{"include_tools", "includeTools"}), true));
     }
 
     /**
@@ -1207,6 +1208,7 @@ public final class HarnessConfigBuilder {
             putIfNotDefault(config, "skill_mode", skillUse.skillMode(), "auto_list");
             putIfNotEmpty(config, "enabled_skills", new ArrayList<>(skillUse.enabledSkills()));
             putIfNotEmpty(config, "disabled_skills", new ArrayList<>(skillUse.disabledSkills()));
+            putIfFalse(config, "include_tools", skillUse.includeTools());
             if (!skillUse.remoteSkillSources().isEmpty()) {
                 List<Map<String, Object>> remoteSkills = new ArrayList<>();
                 for (SkillUseRail.RemoteSkillSource source : skillUse.remoteSkillSources()) {

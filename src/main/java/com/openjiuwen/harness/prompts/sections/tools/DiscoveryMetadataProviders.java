@@ -58,8 +58,8 @@ final class DiscoveryMetadataProviders {
             return ToolSchemaSupport
                     .objectSchema(
                             ToolSchemaSupport.properties(new Object[]{"query",
-                                    ToolSchemaSupport.property("string", text(language, "可选。当前用户任务。为空时返回所有可用技能。",
-                                            "Optional. Current user task. If empty, return all available skills."))}),
+                                    ToolSchemaSupport.property("string", text(language, "可选。当前用户任务。为空或无匹配时返回所有可用技能。",
+                                            "Optional. Current user task. If empty or unmatched, return all available skills."))}),
                             List.of());
         }
     }

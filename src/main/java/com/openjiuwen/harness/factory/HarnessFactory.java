@@ -371,8 +371,10 @@ public final class HarnessFactory {
     private static void addSkillUseRailIfAbsent(List<Object> rails, DeepAgentConfig source) {
         boolean isExistingSkill = rails.stream().filter(Objects::nonNull).anyMatch(SkillUseRail.class::isInstance);
         if (!isExistingSkill) {
+            boolean includeTools = rails.stream().filter(Objects::nonNull).noneMatch(SysOperationRail.class::isInstance);
             rails.add(new SkillUseRail(source.getSkillDirectories() != null ? source.getSkillDirectories() : List.of(),
-                    source.getSkillMode(), source.getSkills() != null ? source.getSkills() : List.of(), List.of()));
+                    source.getSkillMode(), source.getSkills() != null ? source.getSkills() : List.of(), List.of(),
+                    List.of(), true, includeTools));
         }
     }
 
