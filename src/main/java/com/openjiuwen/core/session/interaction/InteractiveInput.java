@@ -90,7 +90,11 @@ public class InteractiveInput implements Serializable {
      * @since 0.1.7
      */
     public void setRawInputs(Object rawInputs) {
-        this.rawInputs = SerializationUtils.requireSerializable(rawInputs, "rawInputs");
+        if (rawInputs == null) {
+            this.rawInputs = null;
+        } else {
+            this.rawInputs = SerializationUtils.requireSerializable(rawInputs, "rawInputs");
+        }
     }
 
     /**
