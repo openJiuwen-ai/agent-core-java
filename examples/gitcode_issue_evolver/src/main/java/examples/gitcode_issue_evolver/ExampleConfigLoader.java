@@ -66,6 +66,8 @@ public final class ExampleConfigLoader {
                         ? 10 : settings.maxIssueScanPages())
                 .manualFullScanEnabled(Boolean.TRUE.equals(settings.manualFullScanEnabled()))
                 .codeCheckFeedbackEnabled(Boolean.TRUE.equals(settings.codeCheckFeedbackEnabled()))
+                .codeCheckStandardOnlyOverride(Boolean.TRUE.equals(
+                        settings.codeCheckStandardOnlyOverride()))
                 .codeCheckBotLogin(value(settings.codeCheckBotLogin(), "openJiuwen-bot"))
                 .codeCheckSuccessLabel(value(settings.codeCheckSuccessLabel(), "ci-successful"))
                 .openLibingBaseUrl(value(settings.openLibingBaseUrl(), ""))
@@ -146,6 +148,7 @@ public final class ExampleConfigLoader {
             Integer maxIssueScanPages,
             Boolean manualFullScanEnabled,
             Boolean codeCheckFeedbackEnabled,
+            Boolean codeCheckStandardOnlyOverride,
             String codeCheckBotLogin,
             String codeCheckSuccessLabel,
             String openLibingBaseUrl,

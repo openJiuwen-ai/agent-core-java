@@ -42,6 +42,12 @@ public final class HttpGitCodeClientDeterministicTest {
             if (path.endsWith("/pulls/9/comments")) {
                 response = pullRequestCommentsJson();
             }
+            if (path.endsWith("/issues/90")) {
+                response = issueJson();
+            }
+            if (path.endsWith("/issues/90/comments")) {
+                response = "[]";
+            }
             ResponseBody body = ResponseBody.create(response, MediaType.get("application/json"));
             return new Response.Builder()
                     .request(chain.request())
@@ -81,6 +87,9 @@ public final class HttpGitCodeClientDeterministicTest {
                 "full scan pagination parameters are missing");
         require(!fullScanQuery.contains("created_after=") && !fullScanQuery.contains("created_before="),
                 "full scan must not send rolling window parameters");
+        GitCodeIssue issue = client.getIssue(90L);
+        require(issue.labels().equals(List.of("bug/codecheck")),
+                "Issue detail labels were not retained for worker policy selection");
         GitCodePullRequest pullRequest = client.getPullRequest(9L);
         require(pullRequest.hasLabel("ci-successful"), "PR label was not parsed");
         List<GitCodePullRequestComment> comments = client.listPullRequestComments(9L);
@@ -93,6 +102,13 @@ public final class HttpGitCodeClientDeterministicTest {
                 {"number":9,"state":"open","html_url":"https://gitcode/pr/9",
                  "head":{"ref":"branch","sha":"0123456789012345678901234567890123456789"},
                  "labels":[{"name":"ci-successful"}],"draft":false}
+                """;
+    }
+
+    private static String issueJson() {
+        return """
+                {"number":90,"title":"CodeCheck G.OTH.01","body":"target:64","state":"open",
+                 "html_url":"https://gitcode/issues/90","labels":[{"name":"bug/codecheck"}]}
                 """;
     }
 

@@ -72,6 +72,8 @@ public final class AutoEvolvingConfig {
     @Builder.Default
     private final boolean codeCheckFeedbackEnabled = false;
     @Builder.Default
+    private final boolean codeCheckStandardOnlyOverride = false;
+    @Builder.Default
     private final String codeCheckBotLogin = "openJiuwen-bot";
     @Builder.Default
     private final String codeCheckSuccessLabel = "ci-successful";

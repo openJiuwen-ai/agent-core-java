@@ -5,8 +5,12 @@
 package examples.gitcode_issue_evolver.worker;
 
 import com.openjiuwen.core.foundation.tool.Tool;
+import examples.gitcode_issue_evolver.agent.CodeCheckRepairDirective;
 import examples.gitcode_issue_evolver.agent.IssueApprovedGateWorkflow;
+import examples.gitcode_issue_evolver.agent.IssueWorkerAgent;
 import examples.gitcode_issue_evolver.agent.RestrictedFileTools;
+import examples.gitcode_issue_evolver.agent.TrustedSkillTools;
+import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
 import examples.gitcode_issue_evolver.job.EvolutionJob;
 import examples.gitcode_issue_evolver.job.EvolutionJobState;
 import examples.gitcode_issue_evolver.job.IssueFailureCategory;
@@ -34,6 +38,10 @@ public final class IssueControllerDeterministicTest {
     public static void main(String[] args) throws Exception {
         testApprovedGateSchema();
         testBoundedToolsAndSkippedFiles();
+        testTrustedSkillTools();
+        testCodeCheckTargetedRepairContract();
+        testCodeCheckStandardOnlyOverride();
+        testResourceTargetsAreExcluded();
         testFailureStateClassification();
         testSchemaV5AuditPersistence();
         System.out.println("IssueControllerDeterministicTest: PASS");
@@ -94,6 +102,13 @@ public final class IssueControllerDeterministicTest {
                 "newContent", "line-1 repaired"), Map.of());
         require(Files.readString(source).startsWith("line-1 repaired"),
                 "replaceInFile did not apply one exact bounded change");
+
+        Path resourceDirectory = worktree.resolve("src/main/resources");
+        Files.createDirectories(resourceDirectory);
+        tool(tools, "writeFile").invoke(Map.of(
+                "path", "src/main/resources/application.yaml", "content", "enabled: true\n"), Map.of());
+        require(Files.readString(resourceDirectory.resolve("application.yaml")).contains("enabled: true"),
+                "src/main resources were rejected by the source/test write scope");
     }
 
     private static void testFailureStateClassification() {
@@ -109,6 +124,111 @@ public final class IssueControllerDeterministicTest {
                         IssueExecutionErrorCode.AGENT_FAILED_TO_ACT, false)
                         == EvolutionJobState.FAILED_AUTOMATION,
                 "Agent no-diff exhaustion was not classified as automation failure");
+    }
+
+    private static void testTrustedSkillTools() throws Exception {
+        Path root = Files.createTempDirectory("issue-trusted-skills-");
+        Path rule = root.resolve("coding-standard-full/rules/G.OTH.md");
+        Files.createDirectories(rule.getParent());
+        Files.writeString(root.resolve("coding-standard-full/SKILL.md"),
+                "# Complete coding standard\n", StandardCharsets.UTF_8);
+        Files.writeString(rule, "# G.OTH\nG.OTH.01 use secure random\n", StandardCharsets.UTF_8);
+        List<Tool> tools = new TrustedSkillTools(root, "issue-skill-tools").create();
+        Map<?, ?> read = result(tool(tools, "readSkillFile").invoke(Map.of(
+                "path", "coding-standard-full/rules/G.OTH.md"), Map.of()));
+        require(String.valueOf(read.get("content")).contains("G.OTH.01"),
+                "trusted coding-standard category was not readable by the worker");
+        Map<?, ?> search = result(tool(tools, "searchSkillFiles").invoke(Map.of(
+                "query", "secure random", "path", "coding-standard-full"), Map.of()));
+        require(String.valueOf(search.get("matches")).contains("G.OTH.md:2"),
+                "trusted Skill search did not return the authoritative rule location");
+        boolean traversalRejected = false;
+        try {
+            tool(tools, "readSkillFile").invoke(Map.of("path", "../secret"), Map.of());
+        } catch (RuntimeException ex) {
+            traversalRejected = true;
+        }
+        require(traversalRejected, "trusted Skill tool allowed path traversal");
+    }
+
+    private static void testCodeCheckTargetedRepairContract() {
+        GitCodeIssue codeCheck = new GitCodeIssue(90L, "Fix G.OTH.01", """
+                CodeCheck reports G.OTH.01 at
+                src/main/java/com/openjiuwen/example/TokenFactory.java:64.
+                Also inspect src/test/java/com/openjiuwen/example/TokenFactoryTest.java#L31.
+                """, "open", "https://gitcode/issues/90", List.of(), List.of("bug/codecheck"));
+        CodeCheckRepairDirective directive = CodeCheckRepairDirective.from(codeCheck);
+        require(directive.isCodeCheck(), "bug/codecheck did not select the targeted repair path");
+        require(directive.ruleIds().equals(List.of("G.OTH.01"))
+                        && directive.categories().equals(List.of("G.OTH")),
+                "CodeCheck rule/category extraction was not deterministic");
+        require(directive.locations().size() == 2
+                        && Long.valueOf(64L).equals(directive.locations().get(0).line())
+                        && Long.valueOf(31L).equals(directive.locations().get(1).line()),
+                "CodeCheck file and line extraction lost reported targets");
+        String prompt = directive.promptSection();
+        require(prompt.contains("TARGETED_STANDARD_REPAIR")
+                        && prompt.contains("required_standard_categories_first: G.OTH")
+                        && prompt.contains("Do not perform broad repository analysis"),
+                "CodeCheck Controller envelope did not enforce direct standard repair");
+
+        IssueWorkerAgent.Result noAction = new IssueWorkerAgent.Result(
+                IssueWorkerAgent.Status.NO_ACTION, "false positive", "{}",
+                "NO_ACTION_CONFIRMED", "scanner finding is low risk");
+        require(!ExampleIssueTaskExecutor.acceptsNoAction(codeCheck, noAction),
+                "CodeCheck NO_ACTION bypassed the repair loop");
+        GitCodeIssue ordinary = new GitCodeIssue(91L, "Ordinary bug", "Description",
+                "open", "https://gitcode/issues/91", List.of(), List.of("bug"));
+        require(!CodeCheckRepairDirective.from(ordinary).isCodeCheck()
+                        && ExampleIssueTaskExecutor.acceptsNoAction(ordinary, noAction),
+                "ordinary evidence-backed NO_ACTION compatibility was lost");
+    }
+
+    private static void testResourceTargetsAreExcluded() {
+        GitCodeIssue topLevel = new GitCodeIssue(97L, "CodeCheck resource script", """
+                修复 resources/skills/gitcode-submit-issue/scripts/gitcode_issue.py:203
+                """, "open", "https://gitcode/issues/97", List.of(), List.of("bug/codecheck"));
+        SparseCheckoutIssuePolicy.Validation topLevelResult = SparseCheckoutIssuePolicy.validate(topLevel);
+        require(!topLevelResult.allowed()
+                        && topLevelResult.excludedPaths().contains(
+                                "resources/skills/gitcode-submit-issue/scripts/gitcode_issue.py"),
+                "top-level resources target was admitted to the Java Issue worker");
+
+        GitCodeIssue javaResource = new GitCodeIssue(100L, "Resource change", """
+                Update src/main/resources/application.yaml for this issue.
+                """, "open", "https://gitcode/issues/100", List.of(), List.of("bug/codecheck"));
+        require(SparseCheckoutIssuePolicy.validate(javaResource).allowed(),
+                "src/main/resources was incorrectly treated as root resources scope");
+    }
+
+    private static void testCodeCheckStandardOnlyOverride() {
+        GitCodeIssue codeCheck = new GitCodeIssue(99L, "Fix G.SER.01", """
+                ## 问题描述
+                G.SER.01 at src/main/java/com/openjiuwen/example/Record.java:42.
+
+                ## 改进与修复建议
+                Treat this finding as a false positive and request a product decision.
+
+                ## 验收标准
+                The reported coding-standard finding is removed.
+                """, "open", "https://gitcode/issues/99", List.of(
+                "PRODUCT_DECISION_REQUIRED; do not edit source. Corrected location: "
+                        + "src/main/java/com/openjiuwen/core/example/Record.java:42"),
+                List.of("bug/codecheck"));
+        CodeCheckRepairDirective directive = CodeCheckRepairDirective.from(codeCheck);
+        require(directive.locations().size() == 2
+                        && directive.locations().get(1).path().contains("core/example"),
+                "Controller did not retain corrected location evidence before comment isolation");
+        String description = CodeCheckRepairDirective.descriptionForPrompt(codeCheck, true);
+        require(description.contains("问题描述") && description.contains("验收标准")
+                        && !description.contains("false positive")
+                        && !description.contains("改进与修复建议"),
+                "standard-only override did not remove the remediation section");
+        require(CodeCheckRepairDirective.commentsForPrompt(codeCheck, true).isEmpty(),
+                "standard-only override exposed comment remediation judgments to the Agent");
+        require(directive.promptSection(true).contains("standard_only_override: ENABLED")
+                        && directive.promptSection(true).contains("same file or construct"),
+                "standard-only Controller policy omitted remediation or stale-path recovery");
     }
 
     private static void testSchemaV5AuditPersistence() throws Exception {

@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * @since 0.1.12
  */
 public final class AgentCoreJavaRepositoryProfile implements RepositoryProfile {
-    private static final List<String> ALLOWED_PREFIXES = List.of("src/main/java/", "src/test/java/");
+    private static final List<String> ALLOWED_PREFIXES = List.of("src/main/", "src/test/");
     private static final List<String> EXCLUDED_PREFIXES = List.of(
             "examples/", "src/main/java/examples/");
     private static final Pattern SENSITIVE_SEGMENT = Pattern.compile(

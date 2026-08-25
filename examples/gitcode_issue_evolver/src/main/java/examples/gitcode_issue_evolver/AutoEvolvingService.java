@@ -60,6 +60,7 @@ public final class AutoEvolvingService implements AutoCloseable {
     private final TriggerMode triggerMode;
     private final boolean manualFullScanEnabled;
     private final boolean codeCheckFeedbackEnabled;
+    private final boolean codeCheckStandardOnlyOverride;
     private final String codeCheckBotLogin;
     private final String codeCheckSuccessLabel;
     private final int maxPrimaryRepairRounds;
@@ -113,6 +114,7 @@ public final class AutoEvolvingService implements AutoCloseable {
         this.triggerMode = requiredConfig.getTriggerMode();
         this.manualFullScanEnabled = requiredConfig.isManualFullScanEnabled();
         this.codeCheckFeedbackEnabled = requiredConfig.isCodeCheckFeedbackEnabled();
+        this.codeCheckStandardOnlyOverride = requiredConfig.isCodeCheckStandardOnlyOverride();
         this.codeCheckBotLogin = requiredConfig.getCodeCheckBotLogin();
         this.codeCheckSuccessLabel = requiredConfig.getCodeCheckSuccessLabel();
         this.maxPrimaryRepairRounds = requiredConfig.getMaxPrimaryRepairRounds();
@@ -350,6 +352,7 @@ public final class AutoEvolvingService implements AutoCloseable {
         String bodyText = "{\"status\":\"" + escape(text) + "\",\"triggerMode\":\""
                 + mode + "\",\"manualFullScanEnabled\":" + manualFullScanEnabled
                 + ",\"codeCheck\":{\"enabled\":" + codeCheckFeedbackEnabled
+                + ",\"standardOnlyOverride\":" + codeCheckStandardOnlyOverride
                 + ",\"trustedBot\":\"" + escape(codeCheckBotLogin) + "\""
                 + ",\"successLabel\":\"" + escape(codeCheckSuccessLabel) + "\""
                 + ",\"codingStandardCurator\":" + curationService.isPresent() + "}"

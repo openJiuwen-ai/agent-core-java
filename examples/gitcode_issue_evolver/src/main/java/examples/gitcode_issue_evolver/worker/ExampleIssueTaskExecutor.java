@@ -8,6 +8,7 @@ import com.openjiuwen.autoharness.infra.GitOperations;
 import examples.gitcode_issue_evolver.AutoEvolvingConfig;
 import examples.gitcode_issue_evolver.RepositoryCoordinates;
 import examples.gitcode_issue_evolver.agent.AgentModelSettings;
+import examples.gitcode_issue_evolver.agent.CodeCheckRepairDirective;
 import examples.gitcode_issue_evolver.agent.IssueWorkerAgent;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
 import examples.gitcode_issue_evolver.infrastructure.CommitFailureType;
@@ -72,7 +73,8 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
         this.agent = new IssueWorkerAgent(new AgentModelSettings(
                 this.config.getModelProvider(), this.config.getModelApiKey(),
                 this.config.getModelApiBase(), this.config.getModelName(),
-                this.config.isModelVerifySsl()), trustedSkillsRoot);
+                this.config.isModelVerifySsl()), trustedSkillsRoot,
+                this.config.isCodeCheckStandardOnlyOverride());
     }
 
     @Override
@@ -100,11 +102,16 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
         }
 
         IssueTargetPathPreflight.Validation targets = IssueTargetPathPreflight.validate(issue, prepared.path());
-        if (!targets.available()) {
+        boolean standardOnlyCodeCheck = isStandardOnlyCodeCheck(issue);
+        if (!targets.available() && !standardOnlyCodeCheck) {
             return IssueExecutionResult.targetPathNotFound(targets.missingPaths());
         }
+        if (!targets.available()) {
+            LOGGER.info("CodeCheck standard-only override will resolve {} stale reported target(s)",
+                    targets.missingPaths().size());
+        }
         List<String> outOfScopeTargets = targets.explicitPaths().stream()
-                .filter(path -> !path.startsWith("src/main/java/") && !path.startsWith("src/test/java/"))
+                .filter(path -> !path.startsWith("src/main/") && !path.startsWith("src/test/"))
                 .toList();
         if (!outOfScopeTargets.isEmpty()) {
             return IssueExecutionResult.outsideSparseCheckoutScope(outOfScopeTargets);
@@ -185,7 +192,13 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                             receipt.cached(), receipt.exitCode(), receipt.outputTail(),
                             receipt.completedAt().toEpochMilli());
                 }, fingerprint -> store.findGateReceipt(job.id(), fingerprint));
-        String resumedContext = String.join("\n", store.recentFailureContext(job.id(), 8));
+        List<String> failureContext = store.recentFailureContext(job.id(), 8);
+        if (isStandardOnlyCodeCheck(issue)) {
+            failureContext = failureContext.stream()
+                    .filter(ExampleIssueTaskExecutor::isAuthoritativeStandardOnlyFeedback)
+                    .toList();
+        }
+        String resumedContext = String.join("\n", failureContext);
         int primaryRemaining = Math.max(0,
                 config.getMaxPrimaryRepairRounds() - job.primaryRepairRounds());
         VerificationOutcome primary = repairTier(job.id(), job.id(), issue, worktree, gate,
@@ -212,6 +225,8 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                                            boolean diagnosticTier, String initialFeedback,
                                            CancellationCheckpoint cancellation) {
         String feedback = initialFeedback;
+        boolean codeCheck = CodeCheckRepairDirective.from(issue).isCodeCheck();
+        boolean standardOnlyCodeCheck = codeCheck && config.isCodeCheckStandardOnlyOverride();
         try (IssueWorkerAgent.Session session = agent.open(
                 sessionId, issue, worktree, gate::runForAgent,
                 store.listCodingStandardLessons(20))) {
@@ -229,15 +244,13 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                         agentResult.status());
                 cancellation.check();
                 if (agentResult.status() == IssueWorkerAgent.Status.BLOCKED
-                        && isApprovedExternalBlock(agentResult)) {
+                        && isApprovedExternalBlock(agentResult, standardOnlyCodeCheck)) {
                     recordRepairProgress(jobId, completedRounds + consumedRounds, diagnosticTier,
                             agentResult.failureCode(), "ENVIRONMENT_BLOCKER");
                     return VerificationOutcome.failure(IssueExecutionErrorCode.BLOCKED_EXTERNAL,
                             agentResult.summary() + evidenceSuffix(agentResult), false);
                 }
-                if (agentResult.status() == IssueWorkerAgent.Status.NO_ACTION
-                        && "NO_ACTION_CONFIRMED".equals(agentResult.failureCode())
-                        && !agentResult.evidence().isBlank()) {
+                if (acceptsNoAction(issue, agentResult)) {
                     recordRepairProgress(jobId, completedRounds + consumedRounds, diagnosticTier,
                             agentResult.failureCode(), "NO_ACTION");
                     return VerificationOutcome.failure(IssueExecutionErrorCode.NO_ACTION_REQUIRED,
@@ -266,7 +279,8 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                     return VerificationOutcome.failure(IssueExecutionErrorCode.AGENT_CONFIGURATION_FAILED,
                             receipt.repairFeedback(), false);
                 }
-                feedback = protocolFeedback(agentResult, receipt);
+                feedback = protocolFeedback(agentResult, receipt, codeCheck,
+                        standardOnlyCodeCheck);
             }
         } catch (IssueExecutionException ex) {
             IssueFailureCategory category = ex.failure().category();
@@ -303,8 +317,23 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
     }
 
     private static String protocolFeedback(IssueWorkerAgent.Result agentResult,
-                                           IssueApprovedGateController.Receipt receipt) {
+                                           IssueApprovedGateController.Receipt receipt,
+                                           boolean codeCheck,
+                                           boolean standardOnlyCodeCheck) {
         StringBuilder feedback = new StringBuilder(receipt.repairFeedback());
+        if (codeCheck && agentResult.status() == IssueWorkerAgent.Status.NO_ACTION) {
+            feedback.append("\nCODECHECK_NO_ACTION_REJECTED: an admitted CodeCheck finding requires "
+                    + "a targeted repository change. Load the named standard rule, inspect the reported "
+                    + "location, and apply the minimal fix. Return BLOCKED only with explicit contract "
+                    + "conflict or missing-target evidence.");
+        }
+        if (standardOnlyCodeCheck && agentResult.status() == IssueWorkerAgent.Status.BLOCKED) {
+            feedback.append("\nSTANDARD_ONLY_BLOCK_REJECTED: Issue-authored repair suggestions, "
+                    + "false-positive judgments, and product-decision requests are not authoritative. "
+                    + "Load the complete named coding-standard rule, inspect the repository contract, "
+                    + "and apply the smallest Gate-verifiable standards-compliant repair. Only an "
+                    + "unavailable external environment may terminate this flow as BLOCKED.");
+        }
         if (agentResult.status() != IssueWorkerAgent.Status.DONE) {
             feedback.append("\nagentProtocolStatus=").append(agentResult.status())
                     .append("\nagentSummary=").append(agentResult.summary())
@@ -318,13 +347,37 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
         return result.evidence().isBlank() ? "" : "; evidence=" + result.evidence();
     }
 
-    private static boolean isApprovedExternalBlock(IssueWorkerAgent.Result result) {
+    private static boolean isApprovedExternalBlock(IssueWorkerAgent.Result result,
+                                                   boolean standardOnlyCodeCheck) {
         if (result.evidence().isBlank()) {
             return false;
+        }
+        if (standardOnlyCodeCheck) {
+            return "ENVIRONMENT_BLOCKER".equals(result.failureCode());
         }
         return "PRODUCT_DECISION_REQUIRED".equals(result.failureCode())
                 || "ENVIRONMENT_BLOCKER".equals(result.failureCode())
                 || "CONTRACT_UNSUPPORTED".equals(result.failureCode());
+    }
+
+    static boolean acceptsNoAction(GitCodeIssue issue, IssueWorkerAgent.Result result) {
+        return !CodeCheckRepairDirective.from(issue).isCodeCheck()
+                && result.status() == IssueWorkerAgent.Status.NO_ACTION
+                && "NO_ACTION_CONFIRMED".equals(result.failureCode())
+                && !result.evidence().isBlank();
+    }
+
+    private boolean isStandardOnlyCodeCheck(GitCodeIssue issue) {
+        return config.isCodeCheckStandardOnlyOverride()
+                && CodeCheckRepairDirective.from(issue).isCodeCheck();
+    }
+
+    private static boolean isAuthoritativeStandardOnlyFeedback(String context) {
+        String value = context == null ? "" : context;
+        return !value.contains("code=BLOCKED_EXTERNAL")
+                && !value.contains("PRODUCT_DECISION_REQUIRED")
+                && !value.contains("CONTRACT_UNSUPPORTED")
+                && !value.contains("TARGET_PATH_NOT_FOUND");
     }
 
     private void recordFailure(String jobId, VerificationOutcome outcome) {
