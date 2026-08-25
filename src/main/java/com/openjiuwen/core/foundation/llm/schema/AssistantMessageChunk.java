@@ -213,11 +213,11 @@ public class AssistantMessageChunk extends AssistantMessage {
         if (tc == null) {
             return false;
         }
-        boolean hasNoId = tc.getId() == null || tc.getId().isEmpty();
-        boolean hasNoName = tc.getName() == null || tc.getName().isEmpty();
-        boolean hasNoIndex = tc.getIndex() == null;
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
         boolean hasArgs = tc.getArguments() != null && !tc.getArguments().isEmpty();
-        return hasNoId && hasNoName && hasNoIndex && hasArgs;
+        return noId && noName && noIndex && hasArgs;
     }
 
     /**
@@ -232,11 +232,11 @@ public class AssistantMessageChunk extends AssistantMessage {
         if (tc == null) {
             return true;
         }
-        boolean hasNoId = tc.getId() == null || tc.getId().isEmpty();
-        boolean hasNoName = tc.getName() == null || tc.getName().isEmpty();
-        boolean hasNoIndex = tc.getIndex() == null;
-        boolean hasNoArgs = tc.getArguments() == null || tc.getArguments().isEmpty();
-        return hasNoId && hasNoName && hasNoIndex && hasNoArgs;
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
+        boolean noArgs = tc.getArguments() == null || tc.getArguments().isEmpty();
+        return noId && noName && noIndex && noArgs;
     }
 
     /**
