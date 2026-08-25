@@ -340,7 +340,7 @@ class HarnessRailsCompatibilityTest {
                 Workspace.builder().rootPath(tempDir.toString()).language("en").build());
         agent.ensureInitialized();
 
-        assertThat(rail.includeTools()).isFalse();
+        assertThat(rail.hasTools()).isFalse();
         assertThat(rail.registeredToolNames()).containsExactlyInAnyOrder("list_skill", "skill_tool")
                 .doesNotContain("read_file", "code", "bash");
     }

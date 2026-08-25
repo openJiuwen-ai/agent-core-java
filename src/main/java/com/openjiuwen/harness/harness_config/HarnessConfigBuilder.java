@@ -1208,7 +1208,7 @@ public final class HarnessConfigBuilder {
             putIfNotDefault(config, "skill_mode", skillUse.skillMode(), "auto_list");
             putIfNotEmpty(config, "enabled_skills", new ArrayList<>(skillUse.enabledSkills()));
             putIfNotEmpty(config, "disabled_skills", new ArrayList<>(skillUse.disabledSkills()));
-            putIfFalse(config, "include_tools", skillUse.includeTools());
+            putIfFalse(config, "include_tools", skillUse.hasTools());
             if (!skillUse.remoteSkillSources().isEmpty()) {
                 List<Map<String, Object>> remoteSkills = new ArrayList<>();
                 for (SkillUseRail.RemoteSkillSource source : skillUse.remoteSkillSources()) {
