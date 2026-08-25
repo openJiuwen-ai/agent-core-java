@@ -6,12 +6,11 @@ package com.openjiuwen.dev_tools.tune.dataset;
 
 import com.openjiuwen.dev_tools.tune.Case;
 
-import java.nio.ByteBuffer;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.SplittableRandom;
 
 /**
  * Case data loader for tuning.
@@ -82,8 +81,7 @@ public class CaseLoader implements Iterable<Case> {
      * @since 0.1.7
      */
     public void shuffle(int randomSeed) {
-        byte[] seedBytes = ByteBuffer.allocate(Integer.BYTES).putInt(randomSeed).array();
-        Collections.shuffle(cases, new SecureRandom(seedBytes));
+        shuffleDeterministically(randomSeed);
         assignCaseId();
     }
 
@@ -147,6 +145,18 @@ public class CaseLoader implements Iterable<Case> {
     private void assignCaseId() {
         for (int i = 0; i < cases.size(); i++) {
             cases.get(i).setCaseId(CASE_ID_PREFIX + i);
+        }
+    }
+
+    /**
+     * Applies a reproducible, non-security shuffle for dataset ordering.
+     *
+     * @param randomSeed the random seed
+     */
+    private void shuffleDeterministically(int randomSeed) {
+        SplittableRandom random = new SplittableRandom(randomSeed);
+        for (int index = cases.size() - 1; index > 0; index--) {
+            Collections.swap(cases, index, random.nextInt(index + 1));
         }
     }
 
