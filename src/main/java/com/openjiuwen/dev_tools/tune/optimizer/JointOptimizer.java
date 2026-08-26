@@ -16,7 +16,7 @@ import com.openjiuwen.dev_tools.tune.TuneUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Joint optimizer combining instruction and example optimization.
@@ -206,7 +206,7 @@ public class JointOptimizer extends BaseOptimizer {
      */
     private void selectOptimizeStrategy() {
         boolean needOptimizeExample = exampleOptimizer.getNumExamples() > 0;
-        optimizeInstruction = !needOptimizeExample || new Random().nextBoolean();
+        optimizeInstruction = !needOptimizeExample || ThreadLocalRandom.current().nextBoolean();
     }
 
     /**

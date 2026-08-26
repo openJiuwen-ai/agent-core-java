@@ -27,7 +27,7 @@ public class GraphStoreState implements Serializable {
 
     private final String ns;
     private final int step;
-    private final Map<String, Object> channelValues;
+    private final HashMap<String, Object> channelValues;
     private final List<Message> pendingBuffer;
     private final Map<String, PendingNode> pendingNode;
     private final Map<String, Integer> nodeVersion;
@@ -47,7 +47,7 @@ public class GraphStoreState implements Serializable {
             Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion) {
         this.ns = ns;
         this.step = step;
-        this.channelValues = channelValues != null ? channelValues : new HashMap<>();
+        this.channelValues = channelValues != null ? new HashMap<>(channelValues) : new HashMap<>();
         this.pendingBuffer = pendingBuffer != null ? pendingBuffer : Collections.emptyList();
         this.pendingNode = pendingNode != null ? pendingNode : new HashMap<>();
         this.nodeVersion = nodeVersion != null ? nodeVersion : new HashMap<>();

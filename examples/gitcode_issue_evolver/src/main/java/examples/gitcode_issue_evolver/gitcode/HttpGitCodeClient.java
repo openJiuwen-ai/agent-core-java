@@ -76,7 +76,24 @@ public final class HttpGitCodeClient implements GitCodeClient {
                 .addQueryParameter("page", Integer.toString(requiredRequest.page()))
                 .addQueryParameter("per_page", Integer.toString(requiredRequest.perPage()))
                 .build();
-        JsonNode response = get(url);
+        return issuePage(get(url));
+    }
+
+    @Override
+    public GitCodeIssuePage listOpenIssuesByLabel(IssueLabelScanRequest request) {
+        IssueLabelScanRequest requiredRequest = Objects.requireNonNull(request, "request must not be null");
+        HttpUrl url = path(targetPath("issues")).newBuilder()
+                .addQueryParameter("state", "open")
+                .addQueryParameter("labels", requiredRequest.label())
+                .addQueryParameter("sort", "created")
+                .addQueryParameter("direction", "asc")
+                .addQueryParameter("page", Integer.toString(requiredRequest.page()))
+                .addQueryParameter("per_page", Integer.toString(requiredRequest.perPage()))
+                .build();
+        return issuePage(get(url));
+    }
+
+    private GitCodeIssuePage issuePage(JsonNode response) {
         if (!response.isArray()) {
             throw new GitCodeApiException("GitCode Issue list response was not an array", 0, false);
         }
@@ -90,7 +107,8 @@ public final class HttpGitCodeClient implements GitCodeClient {
         requirePositive(issueIid, "issueIid");
         JsonNode issue = get(path(targetPath("issues/" + issueIid)));
         return new GitCodeIssue(issueIid, text(issue, "title"), text(issue, "body", "description"),
-                text(issue, "state"), text(issue, "html_url", "web_url"), listIssueComments(issueIid));
+                text(issue, "state"), text(issue, "html_url", "web_url"), listIssueComments(issueIid),
+                labelNames(issue.path("labels")));
     }
 
     @Override
@@ -171,6 +189,28 @@ public final class HttpGitCodeClient implements GitCodeClient {
         return pullRequest(get(path(targetPath("pulls/" + number))));
     }
 
+    @Override
+    public List<GitCodePullRequestComment> listPullRequestComments(long number) {
+        requirePositive(number, "pull request number");
+        List<GitCodePullRequestComment> comments = new ArrayList<>();
+        for (int page = 1; page <= 10; page++) {
+            HttpUrl url = path(targetPath("pulls/" + number + "/comments")).newBuilder()
+                    .addQueryParameter("page", Integer.toString(page))
+                    .addQueryParameter("per_page", "100")
+                    .addQueryParameter("direction", "asc")
+                    .build();
+            JsonNode response = get(url);
+            if (!response.isArray()) {
+                throw new GitCodeApiException("GitCode PR comments response was not an array", 0, false);
+            }
+            response.forEach(node -> pullRequestComment(node).ifPresent(comments::add));
+            if (response.size() < 100) {
+                break;
+            }
+        }
+        return List.copyOf(comments);
+    }
+
     private boolean matchesHead(JsonNode node, GitCodePullRequest pullRequest, String branch) {
         String label = node.path("head").path("label").asText("");
         String expectedLabel = coordinates.publishOwner() + ":" + branch;
@@ -243,7 +283,27 @@ public final class HttpGitCodeClient implements GitCodeClient {
         return new GitCodePullRequest(node.path("number").asLong(node.path("iid").asLong(-1)),
                 text(node, "html_url", "web_url"), text(node, "state"),
                 text(head, "ref", "label"), text(head, "sha"),
-                node.path("draft").asBoolean(node.path("work_in_progress").asBoolean(false)));
+                node.path("draft").asBoolean(node.path("work_in_progress").asBoolean(false)),
+                labelNames(node.path("labels")));
+    }
+
+    private static Optional<GitCodePullRequestComment> pullRequestComment(JsonNode node) {
+        try {
+            String id = text(node, "id");
+            String body = text(node, "body", "note");
+            String author = text(node.path("user"), "login", "username", "name");
+            Instant createdAt = Instant.parse(text(node, "created_at"));
+            String updated = text(node, "updated_at");
+            Instant updatedAt = updated.isBlank() ? createdAt : Instant.parse(updated);
+            if (id.isBlank() || body.isBlank() || author.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(new GitCodePullRequestComment(id, body, author,
+                    text(node, "comment_type", "type"), createdAt, updatedAt));
+        } catch (DateTimeParseException ex) {
+            LOGGER.warn("Skipped a GitCode PR comment with an invalid timestamp");
+            return Optional.empty();
+        }
     }
 
     private static Optional<GitCodeIssueSummary> issueSummary(JsonNode node) {

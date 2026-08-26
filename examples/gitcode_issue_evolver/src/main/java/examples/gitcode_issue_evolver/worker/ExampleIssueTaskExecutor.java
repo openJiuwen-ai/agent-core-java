@@ -8,17 +8,18 @@ import com.openjiuwen.autoharness.infra.GitOperations;
 import examples.gitcode_issue_evolver.AutoEvolvingConfig;
 import examples.gitcode_issue_evolver.RepositoryCoordinates;
 import examples.gitcode_issue_evolver.agent.AgentModelSettings;
+import examples.gitcode_issue_evolver.agent.CodeCheckRepairDirective;
 import examples.gitcode_issue_evolver.agent.IssueWorkerAgent;
 import examples.gitcode_issue_evolver.gitcode.GitCodeIssue;
-import examples.gitcode_issue_evolver.infrastructure.CIGateResult;
-import examples.gitcode_issue_evolver.infrastructure.CIGateRunner;
 import examples.gitcode_issue_evolver.infrastructure.CommitFailureType;
 import examples.gitcode_issue_evolver.infrastructure.ControlledCommitter;
 import examples.gitcode_issue_evolver.infrastructure.ExampleWorktreeManager;
-import examples.gitcode_issue_evolver.infrastructure.VerificationFailureType;
 import examples.gitcode_issue_evolver.infrastructure.WorktreePreparationException;
 import examples.gitcode_issue_evolver.job.EvolutionJob;
 import examples.gitcode_issue_evolver.job.EvolutionJobState;
+import examples.gitcode_issue_evolver.job.EvolutionJobStore;
+import examples.gitcode_issue_evolver.job.IssueExecutionException;
+import examples.gitcode_issue_evolver.job.IssueFailureCategory;
 import examples.gitcode_issue_evolver.profile.ChangeValidation;
 import examples.gitcode_issue_evolver.profile.RepositoryProfile;
 import examples.gitcode_issue_evolver.profile.VerificationPlan;
@@ -31,7 +32,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -48,6 +49,8 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
     private final PullRequestPublisher publisher;
     private final ExampleWorktreeManager worktreeManager;
     private final IssueWorkerAgent agent;
+    private final EvolutionJobStore store;
+    private final IssueSmokeTestRunner smoke;
 
     /**
      * Create the Example-owned Issue execution pipeline.
@@ -58,16 +61,20 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
      * @param trustedSkillsRoot single trusted Skill root
      */
     public ExampleIssueTaskExecutor(AutoEvolvingConfig config, RepositoryProfile profile,
-                                    PullRequestPublisher publisher, Path trustedSkillsRoot) {
+                                    PullRequestPublisher publisher, Path trustedSkillsRoot,
+                                    EvolutionJobStore store) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.coordinates = this.config.repositoryCoordinates();
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
         this.publisher = Objects.requireNonNull(publisher, "publisher must not be null");
         this.worktreeManager = new ExampleWorktreeManager(this.config);
+        this.store = Objects.requireNonNull(store, "store must not be null");
+        this.smoke = new IssueSmokeTestRunner(this.config);
         this.agent = new IssueWorkerAgent(new AgentModelSettings(
                 this.config.getModelProvider(), this.config.getModelApiKey(),
                 this.config.getModelApiBase(), this.config.getModelName(),
-                this.config.isModelVerifySsl()), trustedSkillsRoot);
+                this.config.isModelVerifySsl()), trustedSkillsRoot,
+                this.config.isCodeCheckStandardOnlyOverride());
     }
 
     @Override
@@ -95,11 +102,16 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
         }
 
         IssueTargetPathPreflight.Validation targets = IssueTargetPathPreflight.validate(issue, prepared.path());
-        if (!targets.available()) {
+        boolean standardOnlyCodeCheck = isStandardOnlyCodeCheck(issue);
+        if (!targets.available() && !standardOnlyCodeCheck) {
             return IssueExecutionResult.targetPathNotFound(targets.missingPaths());
         }
+        if (!targets.available()) {
+            LOGGER.info("CodeCheck standard-only override will resolve {} stale reported target(s)",
+                    targets.missingPaths().size());
+        }
         List<String> outOfScopeTargets = targets.explicitPaths().stream()
-                .filter(path -> !path.startsWith("src/main/java/") && !path.startsWith("src/test/java/"))
+                .filter(path -> !path.startsWith("src/main/") && !path.startsWith("src/test/"))
                 .toList();
         if (!outOfScopeTargets.isEmpty()) {
             return IssueExecutionResult.outsideSparseCheckoutScope(outOfScopeTargets);
@@ -159,36 +171,235 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                                                     CancellationCheckpoint cancellation,
                                                     Consumer<EvolutionJobState> progress) {
         VerificationPlan plan = profile.verificationPlan();
-        String feedback = "";
-        int totalAttempts = Math.max(1, plan.maxFixAttempts() + 1);
-        for (int attempt = 1; attempt <= totalAttempts; attempt++) {
-            cancellation.check();
-            try {
-                Object result = agent.execute(job.id(), issue, worktree, attempt, feedback);
-                LOGGER.info("Issue worker Agent completed attempt {} with result type {}", attempt,
-                        result == null ? "null" : result.getClass().getSimpleName());
-            } catch (RuntimeException ex) {
-                LOGGER.warn("Issue worker Agent failed before verification", ex);
-                return VerificationOutcome.failure(IssueExecutionErrorCode.AGENT_INFRASTRUCTURE_FAILED,
-                        "Issue worker Agent invocation failed", true);
-            }
-            cancellation.check();
-            if (attempt == 1) {
-                progress.accept(EvolutionJobState.VERIFYING);
-            }
-            CIGateResult gate = new CIGateRunner(worktree.toString(), plan.commands(), plan.timeout()).run();
-            if (gate.isPassed()) {
-                return VerificationOutcome.success();
-            }
-            VerificationFailureType failureType = gate.resolvedFailureType();
-            if (failureType.isInfrastructureFailure()) {
-                return VerificationOutcome.failure(IssueExecutionErrorCode.CI_INFRASTRUCTURE_FAILED,
-                        safeGateError(gate), true);
-            }
-            feedback = safeGateError(gate);
+        AtomicBoolean verificationReported = new AtomicBoolean();
+        AtomicBoolean smokeReported = new AtomicBoolean();
+        IssueApprovedGateController gate = new IssueApprovedGateController(
+                worktree, localGit(worktree), profile, plan, smoke,
+                () -> {
+                    if (verificationReported.compareAndSet(false, true)) {
+                        progress.accept(EvolutionJobState.VERIFYING);
+                    }
+                    if (smokeReported.compareAndSet(false, true)) {
+                        progress.accept(EvolutionJobState.SMOKE_TESTING);
+                    }
+                },
+                receipt -> {
+                    if (verificationReported.compareAndSet(false, true)) {
+                        progress.accept(EvolutionJobState.VERIFYING);
+                    }
+                    store.recordGateReceipt(job.id(), receipt.fingerprint(),
+                            receipt.status().name(), gateProfile(), receipt.code(), receipt.category(),
+                            receipt.cached(), receipt.exitCode(), receipt.outputTail(),
+                            receipt.completedAt().toEpochMilli());
+                }, fingerprint -> store.findGateReceipt(job.id(), fingerprint));
+        List<String> failureContext = store.recentFailureContext(job.id(), 8);
+        if (isStandardOnlyCodeCheck(issue)) {
+            failureContext = failureContext.stream()
+                    .filter(ExampleIssueTaskExecutor::isAuthoritativeStandardOnlyFeedback)
+                    .toList();
         }
-        return VerificationOutcome.failure(IssueExecutionErrorCode.VERIFICATION_FAILED,
-                feedback.isBlank() ? "Java compilation did not pass" : feedback, false);
+        String resumedContext = String.join("\n", failureContext);
+        int primaryRemaining = Math.max(0,
+                config.getMaxPrimaryRepairRounds() - job.primaryRepairRounds());
+        VerificationOutcome primary = repairTier(job.id(), job.id(), issue, worktree, gate,
+                primaryRemaining, job.primaryRepairRounds(), false, resumedContext, cancellation);
+        if (primary.passed() || primary.retryable()
+                || primary.errorCode() == IssueExecutionErrorCode.BLOCKED_EXTERNAL) {
+            recordFailure(job.id(), primary);
+            return primary;
+        }
+        String diagnostic = "Independent diagnostic tier. Previous repair exhausted: "
+                + primary.error();
+        int diagnosticRemaining = Math.max(0,
+                config.getMaxDiagnosticRepairRounds() - job.diagnosticRepairRounds());
+        VerificationOutcome diagnosed = repairTier(job.id(), job.id() + "diagnostic",
+                issue, worktree, gate, diagnosticRemaining, job.diagnosticRepairRounds(),
+                true, diagnostic, cancellation);
+        recordFailure(job.id(), diagnosed);
+        return diagnosed;
+    }
+
+    private VerificationOutcome repairTier(String jobId, String sessionId, GitCodeIssue issue,
+                                           Path worktree, IssueApprovedGateController gate,
+                                           int maximumRounds, int completedRounds,
+                                           boolean diagnosticTier, String initialFeedback,
+                                           CancellationCheckpoint cancellation) {
+        String feedback = initialFeedback;
+        boolean codeCheck = CodeCheckRepairDirective.from(issue).isCodeCheck();
+        boolean standardOnlyCodeCheck = codeCheck && config.isCodeCheckStandardOnlyOverride();
+        try (IssueWorkerAgent.Session session = agent.open(
+                sessionId, issue, worktree, gate::runForAgent,
+                store.listCodingStandardLessons(20))) {
+            int consumedRounds = 0;
+            int noProgressRounds = 0;
+            int invocation = 0;
+            String previousFingerprint = gate.latest() == null
+                    ? "" : gate.latest().fingerprint();
+            while (consumedRounds < maximumRounds && noProgressRounds < 3) {
+                invocation++;
+                cancellation.check();
+                IssueWorkerAgent.Result agentResult = session.run(feedback);
+                LOGGER.info("Issue Agent repair round completed: tier={}, round={}, status={}",
+                        diagnosticTier ? "diagnostic" : "primary", invocation,
+                        agentResult.status());
+                cancellation.check();
+                if (agentResult.status() == IssueWorkerAgent.Status.BLOCKED
+                        && isApprovedExternalBlock(agentResult, standardOnlyCodeCheck)) {
+                    recordRepairProgress(jobId, completedRounds + consumedRounds, diagnosticTier,
+                            agentResult.failureCode(), "ENVIRONMENT_BLOCKER");
+                    return VerificationOutcome.failure(IssueExecutionErrorCode.BLOCKED_EXTERNAL,
+                            agentResult.summary() + evidenceSuffix(agentResult), false);
+                }
+                if (acceptsNoAction(issue, agentResult)) {
+                    recordRepairProgress(jobId, completedRounds + consumedRounds, diagnosticTier,
+                            agentResult.failureCode(), "NO_ACTION");
+                    return VerificationOutcome.failure(IssueExecutionErrorCode.NO_ACTION_REQUIRED,
+                            "Agent reported NO_ACTION: " + agentResult.summary()
+                                    + evidenceSuffix(agentResult), false);
+                }
+                IssueApprovedGateController.Receipt receipt = gate.run();
+                if (!receipt.fingerprint().equals(previousFingerprint)) {
+                    consumedRounds++;
+                    noProgressRounds = 0;
+                    previousFingerprint = receipt.fingerprint();
+                } else {
+                    noProgressRounds++;
+                }
+                recordRepairProgress(jobId, completedRounds + consumedRounds, diagnosticTier,
+                        receipt.code(), receipt.category());
+                if (agentResult.status() == IssueWorkerAgent.Status.DONE
+                        && receipt.status() == IssueApprovedGateController.Status.PASSED) {
+                    return VerificationOutcome.success();
+                }
+                if (receipt.status() == IssueApprovedGateController.Status.TRANSIENT) {
+                    return VerificationOutcome.failure(IssueExecutionErrorCode.CI_INFRASTRUCTURE_FAILED,
+                            receipt.repairFeedback(), true);
+                }
+                if ("CONFIGURATION".equals(receipt.category())) {
+                    return VerificationOutcome.failure(IssueExecutionErrorCode.AGENT_CONFIGURATION_FAILED,
+                            receipt.repairFeedback(), false);
+                }
+                feedback = protocolFeedback(agentResult, receipt, codeCheck,
+                        standardOnlyCodeCheck);
+            }
+        } catch (IssueExecutionException ex) {
+            IssueFailureCategory category = ex.failure().category();
+            boolean retryable = category == IssueFailureCategory.TRANSIENT_MODEL
+                    || category == IssueFailureCategory.TRANSIENT_INFRASTRUCTURE;
+            IssueExecutionErrorCode code = category == IssueFailureCategory.CONFIGURATION
+                    ? IssueExecutionErrorCode.AGENT_CONFIGURATION_FAILED
+                    : IssueExecutionErrorCode.AGENT_INFRASTRUCTURE_FAILED;
+            LOGGER.warn("Issue worker Agent failed with category {} and code {}",
+                    category, ex.failure().code());
+            return VerificationOutcome.failure(code, ex.failure().summary(), retryable);
+        } catch (RuntimeException ex) {
+            LOGGER.warn("Issue worker Agent failed during repair", ex);
+            return VerificationOutcome.failure(IssueExecutionErrorCode.AGENT_INFRASTRUCTURE_FAILED,
+                    "Issue worker Agent invocation failed", true);
+        }
+        IssueApprovedGateController.Receipt latest = gate.latest();
+        IssueExecutionErrorCode code = latest != null
+                && "AGENT_FAILED_TO_ACT".equals(latest.code())
+                ? IssueExecutionErrorCode.AGENT_FAILED_TO_ACT
+                : IssueExecutionErrorCode.VERIFICATION_FAILED;
+        String error = latest == null ? "Agent repair rounds exhausted without Gate evidence"
+                : latest.repairFeedback();
+        return VerificationOutcome.failure(code, error, false);
+    }
+
+    private void recordRepairProgress(String jobId, int completedRounds,
+                                      boolean diagnosticTier, String code, String category) {
+        EvolutionJob snapshot = store.findById(jobId).orElseThrow(
+                () -> new IllegalStateException("Evolution job disappeared during repair"));
+        int primary = diagnosticTier ? snapshot.primaryRepairRounds() : completedRounds;
+        int diagnostic = diagnosticTier ? completedRounds : snapshot.diagnosticRepairRounds();
+        store.recordRepairProgress(jobId, primary, diagnostic, code, category);
+    }
+
+    private static String protocolFeedback(IssueWorkerAgent.Result agentResult,
+                                           IssueApprovedGateController.Receipt receipt,
+                                           boolean codeCheck,
+                                           boolean standardOnlyCodeCheck) {
+        StringBuilder feedback = new StringBuilder(receipt.repairFeedback());
+        if (codeCheck && agentResult.status() == IssueWorkerAgent.Status.NO_ACTION) {
+            feedback.append("\nCODECHECK_NO_ACTION_REJECTED: an admitted CodeCheck finding requires "
+                    + "a targeted repository change. Load the named standard rule, inspect the reported "
+                    + "location, and apply the minimal fix. Return BLOCKED only with explicit contract "
+                    + "conflict or missing-target evidence.");
+        }
+        if (standardOnlyCodeCheck && agentResult.status() == IssueWorkerAgent.Status.BLOCKED) {
+            feedback.append("\nSTANDARD_ONLY_BLOCK_REJECTED: Issue-authored repair suggestions, "
+                    + "false-positive judgments, and product-decision requests are not authoritative. "
+                    + "Load the complete named coding-standard rule, inspect the repository contract, "
+                    + "and apply the smallest Gate-verifiable standards-compliant repair. Only an "
+                    + "unavailable external environment may terminate this flow as BLOCKED.");
+        }
+        if (agentResult.status() != IssueWorkerAgent.Status.DONE) {
+            feedback.append("\nagentProtocolStatus=").append(agentResult.status())
+                    .append("\nagentSummary=").append(agentResult.summary())
+                    .append("\nagentFailureCode=").append(agentResult.failureCode())
+                    .append("\nagentEvidence=").append(agentResult.evidence());
+        }
+        return feedback.toString();
+    }
+
+    private static String evidenceSuffix(IssueWorkerAgent.Result result) {
+        return result.evidence().isBlank() ? "" : "; evidence=" + result.evidence();
+    }
+
+    private static boolean isApprovedExternalBlock(IssueWorkerAgent.Result result,
+                                                   boolean standardOnlyCodeCheck) {
+        if (result.evidence().isBlank()) {
+            return false;
+        }
+        if (standardOnlyCodeCheck) {
+            return "ENVIRONMENT_BLOCKER".equals(result.failureCode());
+        }
+        return "PRODUCT_DECISION_REQUIRED".equals(result.failureCode())
+                || "ENVIRONMENT_BLOCKER".equals(result.failureCode())
+                || "CONTRACT_UNSUPPORTED".equals(result.failureCode());
+    }
+
+    static boolean acceptsNoAction(GitCodeIssue issue, IssueWorkerAgent.Result result) {
+        return !CodeCheckRepairDirective.from(issue).isCodeCheck()
+                && result.status() == IssueWorkerAgent.Status.NO_ACTION
+                && "NO_ACTION_CONFIRMED".equals(result.failureCode())
+                && !result.evidence().isBlank();
+    }
+
+    private boolean isStandardOnlyCodeCheck(GitCodeIssue issue) {
+        return config.isCodeCheckStandardOnlyOverride()
+                && CodeCheckRepairDirective.from(issue).isCodeCheck();
+    }
+
+    private static boolean isAuthoritativeStandardOnlyFeedback(String context) {
+        String value = context == null ? "" : context;
+        return !value.contains("code=BLOCKED_EXTERNAL")
+                && !value.contains("PRODUCT_DECISION_REQUIRED")
+                && !value.contains("CONTRACT_UNSUPPORTED")
+                && !value.contains("TARGET_PATH_NOT_FOUND");
+    }
+
+    private void recordFailure(String jobId, VerificationOutcome outcome) {
+        if (outcome.passed()) {
+            return;
+        }
+        IssueFailureCategory category = switch (outcome.errorCode()) {
+            case NO_ACTION_REQUIRED -> IssueFailureCategory.AGENT_CORRECTABLE;
+            case BLOCKED_EXTERNAL, TARGET_PATH_NOT_FOUND, EARLY_E2E_TEST_TARGET_REQUIRED ->
+                    IssueFailureCategory.ENVIRONMENT_BLOCKER;
+            case OUTSIDE_SPARSE_CHECKOUT_SCOPE, COMMIT_VALIDATION_FAILED ->
+                    IssueFailureCategory.POLICY_VIOLATION;
+            case AGENT_CONFIGURATION_FAILED ->
+                    IssueFailureCategory.CONFIGURATION;
+            case AGENT_INFRASTRUCTURE_FAILED, CI_INFRASTRUCTURE_FAILED ->
+                    outcome.retryable()
+                            ? IssueFailureCategory.TRANSIENT_INFRASTRUCTURE
+                            : IssueFailureCategory.INTERNAL;
+            default -> IssueFailureCategory.AGENT_CORRECTABLE;
+        };
+        store.recordFailureEvent(jobId, "BUGFIX", outcome.errorCode().name(),
+                category, outcome.errorCode().format("Issue execution failed"), outcome.error());
     }
 
     private GitOperations localGit(Path worktree) {
@@ -205,6 +416,10 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
                 config.getGitUserEmail());
     }
 
+    private String gateProfile() {
+        return smoke.isEnabled() ? "TARGETED_SMOKE" : "TARGETED";
+    }
+
     private String pullRequestTitle(GitCodeIssue issue) {
         String title = issue.title() == null ? "" : issue.title().replace('\r', ' ').replace('\n', ' ').strip();
         String value = "[Auto-Evolving Demo] Resolve issue #" + issue.iid() + ": " + title;
@@ -212,19 +427,14 @@ public final class ExampleIssueTaskExecutor implements IssueTaskExecutor {
     }
 
     private String pullRequestBody(GitCodeIssue issue) {
+        String verification = smoke.isEnabled()
+                ? "`mvn -B -ntp -DskipTests test-compile` and JiuwenTestJava smoke `"
+                        + String.join(",", smoke.selectors()) + "`"
+                : "`mvn -B -ntp -DskipTests test-compile` (tests were not executed)";
         return "Automated demo change for " + coordinates.targetRepository() + "#" + issue.iid() + "\n\n"
                 + "Source Issue: " + issue.url() + "\n\n"
-                + "Verification: `mvn -B -ntp -DskipTests test-compile` (tests were not executed).\n\n"
+                + "Verification: " + verification + ".\n\n"
                 + "This PR was created by the gitcode-issue-evolver example and requires human review and merge.";
-    }
-
-    private static String safeGateError(CIGateResult gate) {
-        String error = gate.getErrors();
-        if (error == null || error.isBlank()) {
-            error = String.join("\n", Optional.ofNullable(gate.getGateOutputs()).orElse(List.of()));
-        }
-        String normalized = error == null ? "" : error.strip();
-        return normalized.substring(0, Math.min(normalized.length(), 6000));
     }
 
     private record VerificationOutcome(boolean passed, boolean retryable,

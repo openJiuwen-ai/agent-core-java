@@ -14,14 +14,14 @@ public final class CommitScope {
     }
 
     /**
-     * Return whether a normalized path is inside the Java demo edit scope.
+     * Return whether a normalized path is inside the source or test edit scope.
      *
      * @param path repository-relative path
      * @return whether the path may be committed
      */
     public static boolean isAllowedRepoEditPath(String path) {
         String normalized = normalizePath(path);
-        return normalized.startsWith("src/main/java/") || normalized.startsWith("src/test/java/");
+        return normalized.startsWith("src/main/") || normalized.startsWith("src/test/");
     }
 
     static String normalizePath(String path) {

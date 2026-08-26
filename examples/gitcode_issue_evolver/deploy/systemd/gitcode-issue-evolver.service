@@ -18,6 +18,7 @@ ExecStart=/usr/bin/bash /opt/gitcode-issue-evolver/repo/examples/gitcode_issue_e
 
 Restart=on-failure
 RestartSec=5s
+SuccessExitStatus=143 SIGTERM
 KillSignal=SIGTERM
 KillMode=control-group
 TimeoutStopSec=30s

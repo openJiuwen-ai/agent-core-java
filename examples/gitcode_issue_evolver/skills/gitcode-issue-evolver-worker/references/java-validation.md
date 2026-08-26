@@ -1,9 +1,17 @@
 # Java validation
 
-The Agent must follow the staged `coding-standard` Skill. The demo service, not the Agent, runs this trusted argument-list command in the Worktree:
+The Agent must explicitly load the complete staged `coding-standard-full` Skill copied from
+`.claude/skills/coding-standard-full`. The shorter `resources/skills/coding-standard` Skill is only a compatibility
+router. The demo service, not the Agent, first runs this trusted argument-list command in the Worktree:
+
+For a CodeCheck task, first load the complete category file named by the finding and inspect its reported source
+location. This targeted order replaces broad pre-edit diagnosis; it does not permit relying on a rule summary or
+skipping the Controller Gate.
 
 ```text
 mvn -B -ntp -DskipTests test-compile
 ```
 
-This compiles main and test sources but does not execute tests. A deterministic compiler failure may be returned to the Agent for a small repair attempt. Tool, Skill, process-start, and Maven-launch failures are infrastructure errors and remain retryable.
+This compiles main and test sources but does not execute source-repository tests. When smoke is enabled, the Controller then installs the current Worktree version with source tests skipped and runs only the 1–3 exact JiuwenTestJava smoke classes from service configuration. The Agent cannot change the test repository, selectors, Maven arguments, or timeout.
+
+A deterministic compiler or smoke assertion failure may be returned to the Agent for a bounded repair. Dependency resolution, process-start, and Maven-launch failures are infrastructure errors and remain retryable. Both stages must pass for the current combined fingerprint before commit and publication.

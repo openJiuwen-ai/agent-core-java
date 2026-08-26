@@ -51,7 +51,7 @@ public class ReasoningBankMemory {
         metadata.put("memory", memory.stream().map(ReasoningBankMemoryItem::toMap).toList());
         metadata.put("label", label);
         metadata.put("workspace_id", workspaceId);
-        return new VectorNode("reasoning_bank_" + workspaceId + "_" + SchemaUtils.md5Hex(query + "|" + title), query,
+        return new VectorNode("reasoning_bank_" + workspaceId + "_" + SchemaUtils.sha256Hex(query + "|" + title), query,
                 null, metadata);
     }
 

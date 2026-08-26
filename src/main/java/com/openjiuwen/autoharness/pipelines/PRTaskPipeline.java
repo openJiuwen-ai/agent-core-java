@@ -26,6 +26,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +46,10 @@ import java.util.concurrent.TimeoutException;
  */
 public class PRTaskPipeline extends BasePipeline {
     private static final class StopTaskPipeline extends RuntimeException {
-        private final List<Object> events;
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        private final ArrayList<Object> events;
 
         /**
          * StopTaskPipeline.
@@ -54,7 +58,7 @@ public class PRTaskPipeline extends BasePipeline {
          * @since 0.1.7
          */
         private StopTaskPipeline(List<Object> events) {
-            this.events = events == null ? List.of() : events;
+            this.events = events == null ? new ArrayList<>() : new ArrayList<>(events);
         }
     }
 

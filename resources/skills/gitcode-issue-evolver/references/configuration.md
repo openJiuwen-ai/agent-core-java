@@ -69,6 +69,37 @@ template. It contains no credentials.
 - `pollIntervalMinutes`: fixed delay after one polling cycle finishes. The default is `15`.
 - `maxIssueScanPages`: maximum 100-item pages processed in one cycle before persisting a resume
   checkpoint. The default is `10`.
+- `manualFullScanEnabled`: when `true`, registers a loopback-only administrative endpoint that
+  scans all open Issues carrying the exact trigger label without a creation-time window. It
+  requires `bindHost` `127.0.0.1` and `polling` or `both`; the default is `false`.
+- `codeCheckFeedbackEnabled`: enables trusted robot comment inspection, controlled OpenLibing
+  report extraction, same-PR repair, and the CI-success completion gate. It requires `polling` or
+  `both`; existing configurations default to `false`.
+- `codeCheckStandardOnlyOverride`: when `true`, CodeCheck jobs ignore Issue-authored remediation
+  suggestions and comment-authored repair judgments. The complete rule text, repository evidence,
+  and fixed Controller Gate remain authoritative. The default is `false`.
+- `codeCheckBotLogin`: exact trusted GitCode robot login. The default is `openJiuwen-bot`.
+- `codeCheckSuccessLabel`: exact PR label required in addition to merge before the Job becomes
+  `MERGED`. The default is `ci-successful`.
+- `openLibingBaseUrl`: plain HTTPS origin allowed by the controlled report reader. Do not include a
+  path, query, credentials, or fragment.
+- `openLibingTimeoutSeconds`: bounded report request timeout, from 5 through 300 seconds.
+- `openLibingMaxFindings`: maximum structured findings admitted to repair context, from 1 through
+  200.
+- `maxPrimaryRepairRounds`: maximum same-conversation Controller repair rounds before independent
+  diagnosis. The default is `5`.
+- `maxDiagnosticRepairRounds`: maximum independent diagnostic repair rounds. The default is `3`.
+- `maxTransientStageRetries`: maximum scheduled retries for classified transient model, GitCode,
+  or infrastructure failures. The default is `5`.
+- `smokeTestEnabled`: enables the immutable JiuwenTestJava smoke Gate before commit and PR
+  publication. Existing configurations default to `false`; the new template enables it.
+- `smokeTestRepository`: isolated local Git checkout of JiuwenTestJava. It must contain `pom.xml`
+  and `src/test/java`, remain outside the source repository, Worktree root, and Skill directories,
+  and be writable only as needed for Maven `target/` output. Stop the service before updating it.
+- `smokeTestSelectors`: between one and three exact fully qualified Java test class names. The
+  Controller runs only these selectors; the worker Agent cannot modify the list.
+- `smokeTestTimeoutMinutes`: total timeout for installing the current repaired source version with
+  tests skipped and running the exact smoke selection. The default is `30`.
 - `gitUserName`: non-secret Git author name used by the controlled committer.
 - `gitUserEmail`: non-secret Git author email used by the controlled committer.
 
@@ -93,6 +124,21 @@ Use this sanitized structure and replace only the non-secret placeholders:
   "issueScanWindowHours": 24,
   "pollIntervalMinutes": 15,
   "maxIssueScanPages": 10,
+  "manualFullScanEnabled": false,
+  "codeCheckFeedbackEnabled": true,
+  "codeCheckStandardOnlyOverride": false,
+  "codeCheckBotLogin": "openJiuwen-bot",
+  "codeCheckSuccessLabel": "ci-successful",
+  "openLibingBaseUrl": "https://www.openlibing.com",
+  "openLibingTimeoutSeconds": 60,
+  "openLibingMaxFindings": 100,
+  "maxPrimaryRepairRounds": 5,
+  "maxDiagnosticRepairRounds": 3,
+  "maxTransientStageRetries": 5,
+  "smokeTestEnabled": true,
+  "smokeTestRepository": "../jiuwen-test-java",
+  "smokeTestSelectors": ["com.openjiuwen.test.cases.workflow_drawable.WorkflowDraw001Test"],
+  "smokeTestTimeoutMinutes": 30,
   "gitUserName": "gitcode-issue-evolver",
   "gitUserEmail": "gitcode-issue-evolver@localhost"
 }
@@ -109,6 +155,11 @@ template and edit it manually outside the Agent interaction.
   administration capability. This is separate from any personal PAT used to submit an Issue.
 - `webhookSecret`: for `webhook` or `both`, use a random shared secret with at least 32 UTF-8 bytes
   that exactly matches the Secret entered manually in GitCode. Leave it empty for polling-only.
+
+OpenLibing report reads use the opaque identifiers in the trusted robot's report URL and require no
+Cookie, CSRF token, GitCode PAT, or OAuth browser session. Treat the complete report URL as a
+sensitive capability link. The adapter uses only bounded anonymous POST requests to the exact
+`openLibingBaseUrl` and never probes the HTML page with GET or HEAD.
 
 Show only this placeholder structure. Do not generate, request, validate, or echo the real values:
 

@@ -15,6 +15,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -316,22 +318,40 @@ class GraphStoreTest {
         @Test
         @DisplayName("Java serializer persists an interrupted graph checkpoint")
         void testSerializeInterruptedCheckpoint() {
-            InteractionOutput output = new InteractionOutput("interactive", null);
+            InteractionOutput output = new InteractionOutput("interactive", Map.of("answer", "yes"));
             GraphInterrupt exception =
                 new GraphInterrupt(new Interrupt(Map.of("type", "__interaction__", "index", 0, "payload", output)));
-            GraphStoreState state = GraphStoreState.create("workflow", 2, Map.of(), List.of(),
+            Message pendingMessage = new Message("sender", "target", Map.of("event", "pending"));
+            GraphStoreState state = GraphStoreState.create("workflow", 2, Map.of("channel", "value"),
+                    List.of(pendingMessage),
                     Map.of("interactive", new PendingNode("interactive", "__interrupt__", List.of(exception))),
                     Map.of("start", 1));
 
             Serializer serializer = Serializer.create("java");
             GraphStoreState restored = (GraphStoreState) serializer.loadsTyped(serializer.dumpsTyped(state));
 
+            assertEquals("value", restored.getChannelValues().get("channel"));
+            assertEquals(Map.of("event", "pending"), restored.getPendingBuffer().get(0).getPayload());
             Exception restoredException = restored.getPendingNode().get("interactive").getExceptions().get(0);
             assertInstanceOf(GraphInterrupt.class, restoredException);
             GraphInterrupt restoredInterrupt = (GraphInterrupt) restoredException;
             @SuppressWarnings("unchecked")
             Map<String, Object> restoredValue = (Map<String, Object>) restoredInterrupt.getValue().getValue();
             assertEquals(output, restoredValue.get("payload"));
+        }
+
+        @Test
+        @DisplayName("Java serializer rejects classes outside the deserialization allowlist")
+        void testRejectsClassOutsideAllowlist() throws Exception {
+            Serializer serializer = Serializer.create("java");
+            byte[] bytes;
+            try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                oos.writeObject(new java.net.URL("https://example.com"));
+                bytes = bos.toByteArray();
+            }
+            Serializer.TypedBytes data = new Serializer.TypedBytes("java", bytes);
+            assertThrows(Serializer.SerializationException.class, () -> serializer.loadsTyped(data));
         }
 
         @Test
