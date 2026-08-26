@@ -270,7 +270,7 @@ public final class UserPreferenceRail extends AgentRail {
 
     public UserPreferenceRail(Map<String, String> preferences) {
         this.preferences = preferences;
-        setPriority(20);  // 数字越小越先执行
+        setPriority(20);  // 数字越大越先执行
     }
 
     @Override

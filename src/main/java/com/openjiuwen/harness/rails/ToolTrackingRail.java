@@ -24,14 +24,16 @@ public class ToolTrackingRail extends AgentRail {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * getPriority.
-     * 
-     * @return the result
+     * High priority so the {@code tool_call} chunk is emitted before any
+     * interrupt rail (priority 90) can abort the callback chain, fixing
+     * issue #131 (tool_call event missing before interruption).
+     *
+     * @return the priority
      * @since 0.1.7
      */
     @Override
     public int getPriority() {
-        return 5;
+        return 100;
     }
 
     /**
