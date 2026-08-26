@@ -58,12 +58,21 @@ public class AssistantMessageChunk extends AssistantMessage {
         LinkedHashMap<Object, ToolCall> bucket = new LinkedHashMap<>();
         if (this.getToolCalls() != null) {
             for (ToolCall tc : this.getToolCalls()) {
+                if (isVacuousFragment(tc)) {
+                    continue;
+                }
                 bucket.put(keyOf(tc), cloneOf(tc));
             }
         }
 
         if (other.getToolCalls() != null) {
             for (ToolCall incoming : other.getToolCalls()) {
+                // Empty placeholder objects (no id/name/index/args) must not create a
+                // ghost call, otherwise a later pure-arguments fragment may attach to it.
+                if (isVacuousFragment(incoming)) {
+                    logMerge("skip-empty", keyOf(incoming), null, incoming);
+                    continue;
+                }
                 Object key = keyOf(incoming);
                 ToolCall exist = bucket.get(key);
                 if (exist != null) {
@@ -209,6 +218,25 @@ public class AssistantMessageChunk extends AssistantMessage {
         boolean noIndex = tc.getIndex() == null;
         boolean hasArgs = tc.getArguments() != null && !tc.getArguments().isEmpty();
         return noId && noName && noIndex && hasArgs;
+    }
+
+    /**
+     * True when the fragment carries no identity and no payload.
+     * Providers sometimes emit empty {@code tool_calls} objects between real deltas.
+     *
+     * @param tc tool-call fragment
+     * @return whether the fragment should be ignored
+     * @since 0.1.15
+     */
+    private static boolean isVacuousFragment(ToolCall tc) {
+        if (tc == null) {
+            return true;
+        }
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
+        boolean noArgs = tc.getArguments() == null || tc.getArguments().isEmpty();
+        return noId && noName && noIndex && noArgs;
     }
 
     /**
