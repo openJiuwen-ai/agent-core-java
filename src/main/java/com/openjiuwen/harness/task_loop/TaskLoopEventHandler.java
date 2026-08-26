@@ -545,6 +545,10 @@ public class TaskLoopEventHandler extends EventHandler {
                 return textDataFrame.text();
             }
             if (frame instanceof DataFrame.JsonDataFrame jsonDataFrame && jsonDataFrame.data() != null) {
+                if ("__interaction__".equals(String.valueOf(jsonDataFrame.data().get("type")))
+                        || "interrupt".equals(String.valueOf(jsonDataFrame.data().get("result_type")))) {
+                    continue;
+                }
                 Object message = jsonDataFrame.data().get("message");
                 if (message != null) {
                     return String.valueOf(message);
