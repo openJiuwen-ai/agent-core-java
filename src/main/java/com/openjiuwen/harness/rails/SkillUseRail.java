@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.rails;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -19,7 +20,9 @@ import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.core.singleagent.skills.SkillManager;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
-import com.openjiuwen.harness.tools.ListSkillTool;
+import com.openjiuwen.harness.tools.BashTool;
+import com.openjiuwen.harness.tools.CodeTool;
+import com.openjiuwen.harness.tools.FilesystemTool;
 import com.openjiuwen.harness.tools.OverlaySkillManager;
 import com.openjiuwen.harness.tools.SkillTool;
 import com.openjiuwen.harness.tools.ToolOutput;
@@ -29,7 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -46,32 +49,65 @@ import java.util.Set;
  * @since 0.1.7
  */
 public class SkillUseRail extends DeepAgentRail {
+    public static final String SKILL_MODE_ALL = "all";
+    public static final String SKILL_MODE_AUTO_LIST = "auto_list";
+
     private static final String SKILL_SECTION = "skills";
+    private static final String SKILL_RAIL_ALL_MODE_HEADER_CN =
+        "# 技能\n\n执行前先用 read_file 阅读相关 SKILL.md。\n\n可用技能：\n";
+    private static final String SKILL_RAIL_ALL_MODE_HEADER_EN =
+        "# Skills\n\nRead the relevant SKILL.md using read_file before execution.\n\nAvailable skills:\n";
+    private static final String SKILL_RAIL_ALL_MODE_INSTRUCTION_CN = "\n选择最相关的技能，先阅读其 SKILL.md 再执行。";
+    private static final String SKILL_RAIL_ALL_MODE_INSTRUCTION_EN =
+        "\nSelect the most relevant skill by reading its SKILL.md first.";
+    private static final String SKILL_RAIL_AUTO_LIST_MODE_PROMPT_CN = """
+            # 技能
+
+            需要时先调用 list_skill 查看可用技能，再用 read_file 读取相关 SKILL.md 后执行。
+            需要时使用 code 执行 Python 或 JavaScript；执行 shell 命令时，根据运行环境信息选择合适的 shell
+            （Windows 按 Git Bash/PowerShell 可用性选择，Linux/macOS 通常使用 bash/sh）。
+            """;
+    private static final String SKILL_RAIL_AUTO_LIST_MODE_PROMPT_EN = """
+            # Skills
+
+            When needed, call list_skill first to see available skills,
+            then read the relevant SKILL.md with read_file before execution.
+            Use code for Python or JavaScript snippets when needed.
+            For shell commands, choose the shell according to the runtime environment information
+            (Windows depends on Git Bash/PowerShell availability; Linux/macOS usually use bash/sh).
+            """;
+    private static final String SKILL_RAIL_NO_SKILL_PROMPT_CN = """
+            # 技能
+
+            当前任务没有选择任何技能。如有技能信息可用，请用 read_file 阅读相关 SKILL.md。
+            """;
+    private static final String SKILL_RAIL_NO_SKILL_PROMPT_EN = """
+            # Skills
+
+            No skill was selected for this task. When skill is available, read the relevant SKILL.md using read_file.
+            """;
     private static final int SKILL_SECTION_PRIORITY = 90;
 
     OverlaySkillManager overlaySkillManager;
     SkillManager tenantSkillManager;
     TenantWorkspaceResolver railWorkspaceResolver;
 
+    private boolean enableCache = true;
+    private final boolean hasTools;
+    private String skillMode = SKILL_MODE_ALL;
+    private Path skillsRoot;
     private DeepAgent owner;
     private SkillManager skillManager;
-    private ListSkillTool listSkillTool;
     private SkillTool skillTool;
-    private Path skillsRoot;
-    private String skillMode = "all";
+    private FilesystemTool filesystemTool;
+    private CodeTool codeTool;
+    private BashTool bashTool;
     private final List<String> configuredSkillDirectories;
     private final List<RemoteSkillSource> remoteSkillSources;
+    private final List<Tool> tools = new ArrayList<>();
+    private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
     private final Set<String> enabledSkills;
     private final Set<String> disabledSkills;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<Tool> tools = new ArrayList<>();
-    private boolean enableCache = true;
-    private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
 
     /**
      * SkillUseRail.
@@ -79,7 +115,7 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     public SkillUseRail() {
-        this(List.of(), "all", List.of(), List.of());
+        this(List.of(), SKILL_MODE_ALL, List.of(), List.of());
     }
 
     /**
@@ -89,7 +125,7 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     public SkillUseRail(String skillsDir) {
-        this(List.of(skillsDir), "auto_list", List.of(), List.of());
+        this(List.of(skillsDir), SKILL_MODE_AUTO_LIST, List.of(), List.of());
     }
 
     /**
@@ -145,12 +181,31 @@ public class SkillUseRail extends DeepAgentRail {
      */
     public SkillUseRail(List<String> skillDirectories, String skillMode, List<String> enabledSkills,
             List<String> disabledSkills, List<RemoteSkillSource> remoteSkillSources, boolean enableCache) {
+        this(skillDirectories, skillMode, enabledSkills, disabledSkills, remoteSkillSources, enableCache, true);
+    }
+
+    /**
+     * Full constructor with enableCache and hasTools.
+     *
+     * @param skillDirectories skillDirectories
+     * @param skillMode skillMode
+     * @param enabledSkills enabledSkills
+     * @param disabledSkills disabledSkills
+     * @param remoteSkillSources remoteSkillSources
+     * @param enableCache enableCache
+     * @param hasTools whether to register fallback read_file / code / bash
+     * @since 0.1.15
+     */
+    public SkillUseRail(List<String> skillDirectories, String skillMode, List<String> enabledSkills,
+            List<String> disabledSkills, List<RemoteSkillSource> remoteSkillSources, boolean enableCache,
+            boolean hasTools) {
         this.configuredSkillDirectories = normalizeStringList(skillDirectories);
         this.skillMode = normalizeMode(skillMode);
         this.enabledSkills = new LinkedHashSet<>(normalizeStringList(enabledSkills));
         this.disabledSkills = new LinkedHashSet<>(normalizeStringList(disabledSkills));
         this.remoteSkillSources = remoteSkillSources == null ? List.of() : List.copyOf(remoteSkillSources);
         this.enableCache = enableCache;
+        this.hasTools = hasTools;
     }
 
     /**
@@ -188,18 +243,25 @@ public class SkillUseRail extends DeepAgentRail {
                     TenantContext.builder().tenantId("_placeholder").build()).resolve(".overlay");
             overlaySkillManager = new OverlaySkillManager(tenantSkillManager, skillManager,
                 overlayDir, railWorkspaceResolver);
-            listSkillTool = new ListSkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
             skillTool = new SkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
         } else {
-            listSkillTool = new ListSkillTool(skillsRoot.toString());
             skillTool = new SkillTool(skillsRoot.toString());
         }
 
         String language = deepAgent.getWorkspace().getLanguage();
-        tools.add(new LocalFunction(card("list_skill", deepAgent, language), inputs -> listSkill(inputs)));
-        tools.add(new LocalFunction(card("skill_tool", deepAgent, language), inputs -> readSkill(inputs)));
-        for (Tool tool : tools) {
-            deepAgent.registerHarnessTool(tool);
+        registerOwnedTool(deepAgent, "skill_tool", language, inputs -> readSkill(inputs));
+        if (shouldRegisterFallbackTools(deepAgent)) {
+            filesystemTool = new FilesystemTool(deepAgent.getWorkspace().root().toString());
+            codeTool = new CodeTool();
+            bashTool = new BashTool();
+            registerOwnedTool(deepAgent, "read_file", language, this::readFile);
+            registerOwnedTool(deepAgent, "code", language, this::executeCode);
+            registerOwnedTool(deepAgent, "bash", language, this::executeBash);
+        }
+        // all mode already injects the full catalog into the prompt; list_skill is only
+        // useful when the model must search instead of reading a pre-expanded list.
+        if (SKILL_MODE_AUTO_LIST.equals(skillMode)) {
+            registerOwnedTool(deepAgent, "list_skill", language, this::listSkill);
         }
 
         syncRemoteSkills(deepAgent, skillsRoot);
@@ -221,8 +283,10 @@ public class SkillUseRail extends DeepAgentRail {
             deepAgent.getAgent().getPromptBuilder().removeSection(SKILL_SECTION);
         }
         tools.clear();
-        listSkillTool = null;
         skillTool = null;
+        filesystemTool = null;
+        codeTool = null;
+        bashTool = null;
         skillManager = null;
         overlaySkillManager = null;
         tenantSkillManager = null;
@@ -271,7 +335,7 @@ public class SkillUseRail extends DeepAgentRail {
      */
     @Override
     public void beforeModelCall(AgentCallbackContext ctx) {
-        if (owner == null || skillManager == null || skillManager.count() == 0 || "none".equals(skillMode)) {
+        if (owner == null || skillManager == null || "none".equals(skillMode)) {
             removePromptSection();
             return;
         }
@@ -327,6 +391,16 @@ public class SkillUseRail extends DeepAgentRail {
      */
     public String skillMode() {
         return skillMode;
+    }
+
+    /**
+     * hasTools.
+     *
+     * @return whether fallback read_file / code / bash registration is enabled
+     * @since 0.1.15
+     */
+    public boolean hasTools() {
+        return hasTools;
     }
 
     /**
@@ -507,7 +581,7 @@ public class SkillUseRail extends DeepAgentRail {
         if (ctx != null && ctx.getInputs() instanceof ModelCallInputs inputs && inputs.getMessages() != null) {
             boolean isPromptAlreadyInjected = inputs.getMessages().stream().filter(SystemMessage.class::isInstance)
                     .map(message -> String.valueOf(((SystemMessage) message).getContent()))
-                    .anyMatch(content -> content.contains("Skill name:") || content.contains("技能名称:"));
+                    .anyMatch(SkillUseRail::isSkillPrompt);
             if (!isPromptAlreadyInjected) {
                 inputs.getMessages().add(0, new SystemMessage(prompt));
             }
@@ -523,12 +597,23 @@ public class SkillUseRail extends DeepAgentRail {
      */
     private Object listSkill(Map<String, Object> inputs) {
         Object query = inputs != null ? inputs.get("query") : null;
-        List<Skill> skills = filterSkills(query != null ? String.valueOf(query) : null);
-        if (query == null || String.valueOf(query).isBlank()) {
-            return ToolOutput.builder().success(true).data(skills.stream().map(Skill::getName).toList()).build();
+        boolean hasQuery = query != null && !String.valueOf(query).isBlank();
+        List<Skill> skills = filterSkills(hasQuery ? String.valueOf(query) : null);
+        String mode = hasQuery ? "filtered" : "all";
+        // Substring match on the whole user task often yields nothing; fall back to the
+        // full catalog so auto_list can still discover skills (Python does the same when
+        // list_skill_model is not configured).
+        if (hasQuery && skills.isEmpty()) {
+            skills = filterSkills(null);
+            mode = "all";
         }
-        return skills.stream().map(skill -> Map.of("name", value(skill.getName()), "description",
-                value(skill.getDescription()), "directory", value(skill.getDirectory()))).toList();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("skills", dumpSkills(skills));
+        data.put("mode", mode);
+        if (hasQuery && "all".equals(mode)) {
+            data.put("message", "list_skill_model is not configured, fallback to all skills.");
+        }
+        return ToolOutput.builder().success(true).data(data).build();
     }
 
     /**
@@ -571,8 +656,9 @@ public class SkillUseRail extends DeepAgentRail {
                 return filtered;
             }
             String needle = query.toLowerCase(Locale.ROOT);
-            return filtered.stream().filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
-                    || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
+            return filtered.stream()
+                    .filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
+                            || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
         }
         if (skillManager == null) {
             return List.of();
@@ -662,6 +748,78 @@ public class SkillUseRail extends DeepAgentRail {
     }
 
     /**
+     * Register a tool only when this rail still owns the ability name.
+     *
+     * @param deepAgent deepAgent
+     * @param name tool name
+     * @param language language
+     * @param handler handler
+     * @since 0.1.15
+     */
+    private void registerOwnedTool(DeepAgent deepAgent, String name, String language,
+            java.util.function.Function<Map<String, Object>, Object> handler) {
+        if (deepAgent.getAgent() != null && deepAgent.getAgent().getAbilityManager().get(name) != null) {
+            Loggers.AGENT.debug("[SkillUseRail]ability '{}' is already registered by another owner; skip fallback",
+                    name);
+            return;
+        }
+        Tool tool = new LocalFunction(card(name, deepAgent, language), handler);
+        tools.add(tool);
+        deepAgent.registerHarnessTool(tool);
+    }
+
+    /**
+     * Fallback read_file / code / bash are only useful when no SysOperationRail owns them.
+     *
+     * @param deepAgent deepAgent
+     * @return true when this rail should register the fallback tools
+     * @since 0.1.15
+     */
+    private boolean shouldRegisterFallbackTools(DeepAgent deepAgent) {
+        if (!hasTools) {
+            return false;
+        }
+        List<Object> rails = deepAgent.getConfig() != null ? deepAgent.getConfig().getRails() : null;
+        if (rails == null) {
+            return true;
+        }
+        for (Object rail : rails) {
+            if (rail instanceof SysOperationRail) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Object readFile(Map<String, Object> inputs) {
+        if (filesystemTool == null) {
+            return ToolOutput.builder().success(false).error("read_file is not initialized").build();
+        }
+        String filePath = stringArg(inputs, "file_path", stringArg(inputs, "path", ""));
+        return filesystemTool.readFile(filePath);
+    }
+
+    private Object executeCode(Map<String, Object> inputs) {
+        if (codeTool == null) {
+            return ToolOutput.builder().success(false).error("code is not initialized").build();
+        }
+        return codeTool.invoke(stringArg(inputs, "code", ""),
+                stringArg(inputs, "language", "python"));
+    }
+
+    private Object executeBash(Map<String, Object> inputs) {
+        if (bashTool == null) {
+            return ToolOutput.builder().success(false).error("bash is not initialized").build();
+        }
+        String workdir = stringArg(inputs, "workdir",
+                owner != null ? owner.getWorkspace().root().toString() : null);
+        return bashTool.invoke(stringArg(inputs, "command", ""),
+                workdir,
+                booleanArg(inputs, "run_in_background", false),
+                integerArg(inputs, "max_output_chars"));
+    }
+
+    /**
      * buildEnglishPrompt.
      * 
      * @param mode mode
@@ -670,17 +828,14 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     private static String buildEnglishPrompt(String mode, List<Skill> skills) {
-        StringBuilder out = new StringBuilder();
-        out.append("You are equipped with task skills.\n");
-        if ("auto_list".equals(mode)) {
-            out.append("Call list_skill when you need to discover the most relevant skill, "
-                    + "then call skill_tool to read SKILL.md before using it.\n");
-        } else {
-            out.append("Before attempting a task that matches a listed skill, "
-                    + "call skill_tool and follow the skill workflow.\n");
+        if (SKILL_MODE_AUTO_LIST.equals(mode)) {
+            return SKILL_RAIL_AUTO_LIST_MODE_PROMPT_EN;
         }
-        appendSkillLines(out, skills, false);
-        return out.toString().trim();
+        String skillLines = renderSkillLines(skills);
+        if (skillLines.isEmpty()) {
+            return SKILL_RAIL_NO_SKILL_PROMPT_EN;
+        }
+        return SKILL_RAIL_ALL_MODE_HEADER_EN + skillLines + SKILL_RAIL_ALL_MODE_INSTRUCTION_EN;
     }
 
     /**
@@ -692,40 +847,69 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     private static String buildChinesePrompt(String mode, List<Skill> skills) {
-        StringBuilder out = new StringBuilder();
-        out.append("你已配备任务技能。\n");
-        if ("auto_list".equals(mode)) {
-            out.append("当需要判断当前任务适合哪个技能时，先调用 list_skill；选定后调用 skill_tool 阅读 SKILL.md 再执行。\n");
-        } else {
-            out.append("当当前任务匹配下列技能时，先调用 skill_tool 阅读技能说明并遵循其中流程。\n");
+        if (SKILL_MODE_AUTO_LIST.equals(mode)) {
+            return SKILL_RAIL_AUTO_LIST_MODE_PROMPT_CN;
         }
-        appendSkillLines(out, skills, true);
-        return out.toString().trim();
+        String skillLines = renderSkillLines(skills);
+        if (skillLines.isEmpty()) {
+            return SKILL_RAIL_NO_SKILL_PROMPT_CN;
+        }
+        return SKILL_RAIL_ALL_MODE_HEADER_CN + skillLines + SKILL_RAIL_ALL_MODE_INSTRUCTION_CN;
     }
 
     /**
-     * appendSkillLines.
-     * 
-     * @param out out
+     * renderSkillLines.
+     *
      * @param skills skills
-     * @param isChinese isChinese
-     * @since 0.1.7
+     * @return the result
+     * @since 0.1.15
      */
-    private static void appendSkillLines(StringBuilder out, List<Skill> skills, boolean isChinese) {
-        List<Skill> ordered = skills != null
-                ? skills.stream().sorted(Comparator.comparing(skill -> value(skill.getName()))).toList()
-                : List.of();
-        for (int i = 0; i < ordered.size(); i++) {
-            Skill skill = ordered.get(i);
-            if (isChinese) {
-                out.append('\n').append(i).append(". 技能名称: ").append(value(skill.getName())).append("; 描述: ")
-                        .append(value(skill.getDescription())).append("; 目录: ").append(value(skill.getDirectory()));
-            } else {
-                out.append('\n').append(i).append(". Skill name: ").append(value(skill.getName()))
-                        .append("; Skill description: ").append(value(skill.getDescription()))
-                        .append("; Skill directory file path: ").append(value(skill.getDirectory()));
-            }
+    private static String renderSkillLines(List<Skill> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return "";
         }
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < skills.size(); i++) {
+            Skill skill = skills.get(i);
+            lines.add(i + ". " + value(skill.getName()) + ": " + value(skill.getDescription()));
+        }
+        return String.join("\n\n", lines);
+    }
+
+    /**
+     * dumpSkills.
+     *
+     * @param skills skills
+     * @return serializable skill maps
+     * @since 0.1.15
+     */
+    private static List<Map<String, Object>> dumpSkills(List<Skill> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> dumped = new ArrayList<>();
+        for (Skill skill : skills) {
+            dumped.add(dumpSkill(skill));
+        }
+        return dumped;
+    }
+
+    /**
+     * dumpSkill.
+     *
+     * @param skill skill
+     * @return serializable skill map
+     * @since 0.1.15
+     */
+    private static Map<String, Object> dumpSkill(Skill skill) {
+        String directory = value(skill.getDirectory());
+        Map<String, Object> dumped = new LinkedHashMap<>();
+        dumped.put("name", value(skill.getName()));
+        dumped.put("description", value(skill.getDescription()));
+        dumped.put("directory", directory);
+        dumped.put("skill_md_path", directory.isBlank()
+                ? "SKILL.md" : Path.of(directory).resolve("SKILL.md").toString());
+        return dumped;
     }
 
     /**
@@ -747,7 +931,7 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     private static String normalizeMode(String mode) {
-        return mode == null || mode.isBlank() ? "all" : mode.trim().toLowerCase(Locale.ROOT);
+        return mode == null || mode.isBlank() ? SKILL_MODE_ALL : mode.trim().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -806,6 +990,32 @@ public class SkillUseRail extends DeepAgentRail {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : fallback;
     }
 
+    private static boolean booleanArg(Map<String, Object> inputs, String key, boolean shouldFallback) {
+        Object value = inputs != null ? inputs.get(key) : null;
+        if (value instanceof Boolean isBool) {
+            return isBool;
+        }
+        if (value == null || String.valueOf(value).isBlank()) {
+            return shouldFallback;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static Integer integerArg(Map<String, Object> inputs, String key) {
+        Object value = inputs != null ? inputs.get(key) : null;
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null || String.valueOf(value).isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     /**
      * value.
      * 
@@ -815,6 +1025,21 @@ public class SkillUseRail extends DeepAgentRail {
      */
     private static String value(String value) {
         return value != null ? value : "";
+    }
+
+    /**
+     * isSkillPrompt.
+     *
+     * @param content content
+     * @return the result
+     * @since 0.1.15
+     */
+    private static boolean isSkillPrompt(String content) {
+        if (content == null) {
+            return false;
+        }
+        boolean hasSkillHeader = content.contains("# Skills") || content.contains("# 技能");
+        return hasSkillHeader && (content.contains("SKILL.md") || content.contains("list_skill"));
     }
 
     /**

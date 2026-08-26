@@ -135,6 +135,26 @@ class LLMSchemaSystemTest {
     @DisplayName("AssistantMessageChunk Merge Tests")
     class ChunkMergeTests {
         @Test
+        @DisplayName("Parallel tool calls with null ids and different indexes stay separate")
+        void testMergeParallelNullIdsByIndex() {
+            AssistantMessageChunk first = AssistantMessageChunk.builder()
+                    .toolCalls(List.of(ToolCall.builder()
+                            .index(0).type("function").name("a").arguments("{").build()))
+                    .build();
+            AssistantMessageChunk second = AssistantMessageChunk.builder()
+                    .toolCalls(List.of(ToolCall.builder()
+                            .index(1).type("function").name("b").arguments("}").build()))
+                    .build();
+
+            AssistantMessageChunk merged = first.merge(second);
+            assertEquals(2, merged.getToolCalls().size());
+            assertEquals("a", merged.getToolCalls().get(0).getName());
+            assertEquals("b", merged.getToolCalls().get(1).getName());
+            assertEquals("{", merged.getToolCalls().get(0).getArguments());
+            assertEquals("}", merged.getToolCalls().get(1).getArguments());
+        }
+
+        @Test
         @DisplayName("Merge two text chunks concatenates content")
         void testMergeTextChunks() {
             AssistantMessageChunk chunk1 = AssistantMessageChunk.builder().content("Hello, ").build();
@@ -226,6 +246,43 @@ class LLMSchemaSystemTest {
             assertEquals("{\"remoteInput\":\"明天从上海到北京出差3天，住宿2晚\"}",
                     merged.getToolCalls().get(0).getArguments());
             assertEquals("tool_calls", merged.getFinishReason());
+        }
+
+        @Test
+        @DisplayName("Empty tool_call objects do not create ghost calls or steal later arguments")
+        void testMergeSkipsVacuousToolCallObjects() {
+            AssistantMessageChunk first = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("call_1")
+                            .name("run_command")
+                            .arguments("{\"command\":\"")
+                            .build()))
+                    .build();
+            AssistantMessageChunk ghost = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .name("")
+                            .type("function")
+                            .arguments("")
+                            .build()))
+                    .build();
+            AssistantMessageChunk last = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .name("")
+                            .arguments("pwd\"}")
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk merged = first.merge(ghost).merge(last);
+            assertNotNull(merged.getToolCalls());
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_1", merged.getToolCalls().get(0).getId());
+            assertEquals("run_command", merged.getToolCalls().get(0).getName());
+            assertEquals("{\"command\":\"pwd\"}", merged.getToolCalls().get(0).getArguments());
         }
 
         @Test
