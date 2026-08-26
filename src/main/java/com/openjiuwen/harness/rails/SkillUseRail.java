@@ -992,8 +992,8 @@ public class SkillUseRail extends DeepAgentRail {
 
     private static boolean booleanArg(Map<String, Object> inputs, String key, boolean shouldFallback) {
         Object value = inputs != null ? inputs.get(key) : null;
-        if (value instanceof Boolean bool) {
-            return bool;
+        if (value instanceof Boolean isBool) {
+            return isBool;
         }
         if (value == null || String.valueOf(value).isBlank()) {
             return shouldFallback;
