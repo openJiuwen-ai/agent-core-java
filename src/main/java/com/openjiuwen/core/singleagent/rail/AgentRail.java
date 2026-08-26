@@ -21,7 +21,7 @@ import java.util.function.Consumer;
  * <ul>
  * <li>State management across callback invocations</li>
  * <li>Tools that are auto-registered on the agent</li>
- * <li>Priority-based execution ordering (lower = runs first)</li>
+ * <li>Priority-based execution ordering (higher value runs first)</li>
  * </ul>
  * <p>
  * Example:
