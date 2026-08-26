@@ -66,7 +66,7 @@ public class AgentCallbackManager {
      * 
      * @param event the agent callback event
      * @param callback the callback consumer
-     * @param priority execution priority (lower = runs first)
+     * @param priority execution priority (higher value runs first)
      * @since 0.1.7
      */
     public void registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority) {
