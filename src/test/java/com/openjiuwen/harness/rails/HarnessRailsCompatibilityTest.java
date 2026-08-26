@@ -32,6 +32,7 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.skills.Skill;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.rails.evolution.EvolutionPatch;
@@ -198,24 +199,34 @@ class HarnessRailsCompatibilityTest {
                     Workspace.builder().rootPath(tempDir.toString()).language("en").build());
         agent.ensureInitialized();
 
-        assertThat(rail.registeredToolNames()).containsExactlyInAnyOrder("list_skill", "skill_tool");
+        assertThat(rail.registeredToolNames()).containsExactlyInAnyOrder("list_skill", "skill_tool", "read_file", "code",
+                "bash");
         assertThat(rail.registeredSkillNames()).containsExactly("migration");
         assertThat(findTool(agent, "list_skill").invoke(Map.of("query", "rails")).toString()).contains("migration")
-                .contains("Python behavior");
+                .contains("Python behavior").contains("directory");
+        assertThat(findTool(agent, "list_skill").invoke(Map.of()).toString()).contains("migration")
+                .contains("Python behavior").contains("directory").contains("skill_md_path");
+        assertThat(findTool(agent, "list_skill").invoke(Map.of("query", "unrelated user task about weather")).toString())
+                .contains("migration").contains("Python behavior").contains("directory");
         assertThat(findTool(agent, "skill_tool").invoke(Map.of("skill_name", "migration")).toString())
                 .contains("Read migration reports");
+        Files.writeString(tempDir.resolve("notes.txt"), "fallback read");
+        assertThat(findTool(agent, "read_file").invoke(Map.of("file_path", "notes.txt")).toString())
+                .contains("fallback read");
 
         ModelCallInputs modelInputs = ModelCallInputs.builder().messages(new java.util.ArrayList<>()).build();
         rail.beforeModelCall(
                 AgentCallbackContext.builder().inputs(modelInputs).extra(new java.util.LinkedHashMap<>()).build());
 
         assertThat(rail.hasSkillPromptSection()).isTrue();
-        assertThat(agent.getAgent().getPromptBuilder().build()).contains("list_skill")
-                .contains("Skill name: migration");
+        String prompt = agent.getAgent().getPromptBuilder().build();
+        assertThat(prompt).contains("list_skill").contains("read_file").contains("code")
+                .doesNotContain("migration")
+                .doesNotContain("Skill directory file path");
         assertThat(modelInputs.getMessages().stream()
                 .map(message -> String
                         .valueOf(((com.openjiuwen.core.foundation.llm.schema.BaseMessage) message).getContent())))
-                .anyMatch(content -> content.contains("Skill name: migration"));
+                .anyMatch(content -> content.contains("list_skill") && !content.contains("migration"));
 
         rail.uninit(agent);
         assertThat(rail.registeredToolNames()).isEmpty();
@@ -248,13 +259,19 @@ class HarnessRailsCompatibilityTest {
         assertThat(rail.enabledSkills()).containsExactlyInAnyOrder("alpha", "beta");
         assertThat(rail.disabledSkills()).containsExactly("beta");
         assertThat(rail.registeredSkillNames()).containsExactly("alpha");
-        assertThat(findTool(agent, "list_skill").invoke(Map.of()).toString()).contains("alpha").doesNotContain("beta")
-                .doesNotContain("ignored");
-        assertThat(findTool(agent, "list_skill").invoke(Map.of("query", "skill")).toString()).contains("alpha")
-                .doesNotContain("beta").doesNotContain("ignored");
+        assertThat(rail.registeredToolNames()).contains("skill_tool", "read_file", "code", "bash")
+                .doesNotContain("list_skill");
         assertThat(findTool(agent, "skill_tool").invoke(Map.of("skill_name", "alpha")).toString()).contains("Alpha");
         assertThat(findTool(agent, "skill_tool").invoke(Map.of("skill_name", "beta")).toString())
                 .contains("skill is not available");
+
+        ModelCallInputs modelInputs = ModelCallInputs.builder().messages(new java.util.ArrayList<>()).build();
+        rail.beforeModelCall(
+                AgentCallbackContext.builder().inputs(modelInputs).extra(new java.util.LinkedHashMap<>()).build());
+        String prompt = agent.getAgent().getPromptBuilder().build();
+        assertThat(prompt).contains("# Skills").contains("0. alpha: Alpha skill")
+                .doesNotContain("beta").doesNotContain("Skill directory file path")
+                .doesNotContain("list_skill");
     }
 
     @Test
@@ -271,9 +288,61 @@ class HarnessRailsCompatibilityTest {
 
         assertThat(rail.syncedSources).containsExactly(source);
         assertThat(rail.registeredSkillNames()).containsExactly("remote-migration");
-        assertThat(findTool(agent, "list_skill").invoke(Map.of()).toString()).contains("remote-migration");
+        assertThat(rail.registeredToolNames()).contains("skill_tool", "read_file", "code", "bash")
+                .doesNotContain("list_skill");
         assertThat(findTool(agent, "skill_tool").invoke(Map.of("skill_name", "remote-migration")).toString())
                 .contains("Remote workflow");
+    }
+
+    @Test
+    void skillUseRailAllModePromptOmitsDirectoryAndAutoListDoesNotDumpCatalog() {
+        Skill skill = Skill.builder().name("migration").description("Helps migrate rails")
+                .directory("D:/tmp/skills/migration").build();
+        SkillUseRail rail = new SkillUseRail();
+
+        String allPrompt = rail.buildSkillPrompt("en", SkillUseRail.SKILL_MODE_ALL, List.of(skill));
+        assertThat(allPrompt).contains("# Skills").contains("read_file").contains("0. migration: Helps migrate rails")
+                .doesNotContain("list_skill").doesNotContain("Skill directory").doesNotContain("D:/tmp/skills/migration");
+
+        String autoListPrompt = rail.buildSkillPrompt("en", SkillUseRail.SKILL_MODE_AUTO_LIST, List.of(skill));
+        assertThat(autoListPrompt).contains("list_skill").contains("read_file").contains("code")
+                .doesNotContain("migration").doesNotContain("D:/tmp/skills/migration");
+
+        String allCn = rail.buildSkillPrompt("cn", SkillUseRail.SKILL_MODE_ALL, List.of(skill));
+        assertThat(allCn).contains("# 技能").contains("0. migration: Helps migrate rails").doesNotContain("目录:");
+
+        assertThat(rail.buildSkillPrompt("en", SkillUseRail.SKILL_MODE_ALL, List.of()))
+                .contains("No skill was selected for this task");
+    }
+
+    @Test
+    void skillUseRailDoesNotRegisterFallbackToolsWhenSysOperationRailPresent() throws Exception {
+        SkillUseRail rail = new SkillUseRail();
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                AgentCard.builder().name("sysop-skill-agent").description("Skill agent").build(),
+                DeepAgentConfig.builder().rails(List.of(new SysOperationRail(), rail))
+                        .skillDirectories(List.of("skills")).skillMode("auto_list").build(),
+                Workspace.builder().rootPath(tempDir.toString()).language("en").build());
+        agent.ensureInitialized();
+
+        assertThat(rail.registeredToolNames()).containsExactlyInAnyOrder("list_skill", "skill_tool")
+                .doesNotContain("read_file", "code", "bash");
+    }
+
+    @Test
+    void skillUseRailCanDisableFallbackTools() throws Exception {
+        SkillUseRail rail = new SkillUseRail(List.of("skills"), "auto_list", List.of(), List.of(), List.of(), true,
+                false);
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                AgentCard.builder().name("no-fallback-skill-agent").description("Skill agent").build(),
+                DeepAgentConfig.builder().rails(List.of(rail)).skillDirectories(List.of("skills"))
+                        .skillMode("auto_list").build(),
+                Workspace.builder().rootPath(tempDir.toString()).language("en").build());
+        agent.ensureInitialized();
+
+        assertThat(rail.hasTools()).isFalse();
+        assertThat(rail.registeredToolNames()).containsExactlyInAnyOrder("list_skill", "skill_tool")
+                .doesNotContain("read_file", "code", "bash");
     }
 
     @Test
