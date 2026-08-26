@@ -33,11 +33,10 @@ public class SysOperationMgr {
             throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "add", "error_msg",
                     "sys_operation_id can not be none");
         }
-        if (sysOperations.containsKey(sysOperationId)) {
+        if (sysOperations.putIfAbsent(sysOperationId, sysOperationInstance) != null) {
             throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "add", "error_msg",
                     "already exists sys_operation_card " + sysOperationId);
         }
-        sysOperations.put(sysOperationId, sysOperationInstance);
     }
 
     /**
