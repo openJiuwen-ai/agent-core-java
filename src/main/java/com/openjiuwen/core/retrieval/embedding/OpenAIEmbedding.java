@@ -155,8 +155,8 @@ public class OpenAIEmbedding extends APIEmbedding {
     private static EmbeddingConfig normalizeConfig(EmbeddingConfig config) {
         String baseUrl = config.getBaseUrl() == null ? "" : config.getBaseUrl();
         String normalized = baseUrl.replaceAll("/+$", "");
-        if (normalized.endsWith("/embeddings")) {
-            normalized = normalized.substring(0, normalized.length() - "/embeddings".length());
+        if (!normalized.endsWith("/embeddings")) {
+            normalized = normalized + "/embeddings";
         }
         EmbeddingConfig normalizedConfig = new EmbeddingConfig(config.getModelName(), normalized, config.getApiKey());
         normalizedConfig.setVerifySsl(config.isVerifySsl());

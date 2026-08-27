@@ -8,13 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,12 +28,26 @@ import java.util.List;
 
 class OpenAIEmbeddingTest {
     @Test
-    void initNormalizesEmbeddingsEndpoint() {
+    void initKeepsCompleteEmbeddingsEndpoint() {
         OpenAIEmbedding model =
             new OpenAIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"),
                     60, 3, null, 8, 50, null, mock(HttpClient.class));
 
-        assertEquals("https://api.example.com/v1", model.apiUrl);
+        assertEquals("https://api.example.com/v1/embeddings", model.apiUrl);
+    }
+
+    @Test
+    void embedQueryAppendsEmbeddingsPathToBaseUrl() throws Exception {
+        URI requestUri = captureEmbeddingRequestUri("https://api.example.com/v1");
+
+        assertEquals(URI.create("https://api.example.com/v1/embeddings"), requestUri);
+    }
+
+    @Test
+    void embedQueryDoesNotDuplicateCompleteEndpoint() throws Exception {
+        URI requestUri = captureEmbeddingRequestUri("https://api.example.com/v1/embeddings");
+
+        assertEquals(URI.create("https://api.example.com/v1/embeddings"), requestUri);
     }
 
     @Test
@@ -72,5 +89,28 @@ class OpenAIEmbeddingTest {
             new OpenAIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"));
 
         assertThrows(BaseError.class, () -> model.embedDocuments(List.of("text", "   "), 1));
+    }
+
+    private static URI captureEmbeddingRequestUri(String baseUrl) throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn("{\"data\":[{\"index\":0,\"embedding\":[0.1]}]}");
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+
+        OpenAIEmbedding model = new OpenAIEmbedding(
+                new EmbeddingConfig("test-model", baseUrl, "test-key"),
+                60,
+                3,
+                null,
+                8,
+                50,
+                null,
+                httpClient);
+        model.embedQuery("test query");
+
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(httpClient).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+        return requestCaptor.getValue().uri();
     }
 }
