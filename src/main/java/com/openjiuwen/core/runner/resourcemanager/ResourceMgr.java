@@ -36,11 +36,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -68,11 +68,11 @@ public class ResourceMgr {
     private final TagMgr tagMgr = new TagMgr();
 
     /**
-     * HashMap<>.
+     * ConcurrentHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, BaseCard> idToCard = new HashMap<>();
+    private final Map<String, BaseCard> idToCard = new ConcurrentHashMap<>();
 
     // ========== Agent Group ==========
 
