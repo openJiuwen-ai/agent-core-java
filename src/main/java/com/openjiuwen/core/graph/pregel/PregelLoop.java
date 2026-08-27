@@ -110,6 +110,21 @@ public class PregelLoop {
     }
 
     /**
+     * Shut down the internal task executor, releasing the worker threads held by this loop.
+     * <p>
+     * Safe to call once after the loop has finished (whether normally or exceptionally).
+     * Idempotent: subsequent calls are no-ops.
+     *
+     * @since 0.1.14
+     */
+    public void shutdown() {
+        if (executor != null) {
+            executor.shutdown();
+            executor = null;
+        }
+    }
+
+    /**
      * Execute one super-step of the Pregel computation.
      * 
      * @return true if more steps should follow, false if done
