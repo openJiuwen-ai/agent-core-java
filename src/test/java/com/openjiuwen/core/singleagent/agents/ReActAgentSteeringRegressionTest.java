@@ -258,7 +258,7 @@ class ReActAgentSteeringRegressionTest {
                 appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
             assertThat(messages)
                 .as("pushSteering must warn when no steering queue is bound")
-                .anyMatch(message -> message.contains("orphan steering"));
+                .anyMatch(message -> message.contains("no steering queue bound"));
         } finally {
             agentLogger.detachAppender(appender);
             appender.stop();
