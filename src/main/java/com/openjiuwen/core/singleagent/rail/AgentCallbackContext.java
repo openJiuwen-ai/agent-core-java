@@ -148,7 +148,7 @@ public class AgentCallbackContext {
         if (steeringQueue != null) {
             steeringQueue.pushSteering(message);
         } else {
-            Loggers.AGENT.warning("pushSteering dropped (no steering queue bound): " + message);
+            Loggers.AGENT.warning("pushSteering dropped (no steering queue bound)");
         }
     }
 
