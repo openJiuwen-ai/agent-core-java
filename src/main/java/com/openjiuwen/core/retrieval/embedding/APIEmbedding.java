@@ -42,7 +42,7 @@ import java.util.concurrent.TimeUnit;
  * 
  * @since 0.1.7
  */
-public class APIEmbedding implements Embedding, AutoCloseable {
+public class APIEmbedding implements Embedding {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**

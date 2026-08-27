@@ -12,7 +12,7 @@ import java.util.Map;
  * 
  * @since 0.1.7
  */
-public interface Embedding {
+public interface Embedding extends AutoCloseable {
     /**
      * embedQuery.
      * 
@@ -73,5 +73,16 @@ public interface Embedding {
      */
     default int getMaxBatchSize() {
         return 256;
+    }
+
+    /**
+     * Release resources held by this embedding model (e.g. thread pools).
+     * Default implementation does nothing; subclasses that hold resources
+     * should override this method.
+     *
+     * @since 0.1.15
+     */
+    @Override
+    default void close() {
     }
 }
