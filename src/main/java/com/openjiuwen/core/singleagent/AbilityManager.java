@@ -45,6 +45,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 
 /**
  * Agent Ability Manager.
@@ -61,6 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class AbilityManager implements ToolRegistry {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int DEFAULT_MAX_PARALLEL_TOOL_CALLS = 3;
 
     /**
      * ConcurrentHashMap<>.
@@ -73,7 +75,7 @@ public class AbilityManager implements ToolRegistry {
      * Per-session tool overrides keyed by session id then tool name, used for tools such
      * as the context reloader that share a stable name across concurrent sessions.
      *
-     * @since 0.1.15
+     * @since 0.1.14
      */
     private final Map<String, Map<String, Tool>> sessionTools = new ConcurrentHashMap<>();
 
@@ -194,7 +196,7 @@ public class AbilityManager implements ToolRegistry {
      *
      * @param sessionId session id owning the tool
      * @param tool tool instance to register for the calling session
-     * @since 0.1.15
+     * @since 0.1.14
      */
     public void registerSessionTool(String sessionId, Tool tool) {
         if (sessionId == null || tool == null || tool.getCard() == null) {
@@ -213,7 +215,7 @@ public class AbilityManager implements ToolRegistry {
      * @param toolName tool name requested by the model
      * @param session current session
      * @return session-scoped tool instance, or empty when no override is registered
-     * @since 0.1.15
+     * @since 0.1.14
      */
     private Optional<Tool> resolveSessionTool(String toolName, Session session) {
         if (session == null) {
@@ -407,27 +409,8 @@ public class AbilityManager implements ToolRegistry {
             Session session,
             String tag
     ) {
-        List<AgentCallbackContext> toolContexts = new ArrayList<>();
-        List<CompletableFuture<ToolExecutionEntry>> futures = new ArrayList<>();
-        for (ToolCall singleToolCall : toolCalls) {
-            AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
-            toolContexts.add(toolCtx);
-            CompletableFuture<ToolExecutionEntry> future = OpenJiuwenExecutors.withToolCallTimeout(
-                    OpenJiuwenExecutors.supplyToolCallAsync(
-                            () -> executePreparedToolCall(toolCtx, singleToolCall, session, tag)
-                    )
-            );
-            futures.add(future);
-        }
-
-        List<ToolExecutionEntry> finalResults = new ArrayList<>();
-        for (int i = 0; i < futures.size(); i++) {
-            finalResults.add(joinToolExecution(toolCalls.get(i), futures.get(i)));
-        }
-        for (AgentCallbackContext toolCtx : toolContexts) {
-            mergeToolContext(ctx, toolCtx);
-        }
-        return finalResults;
+        return runGatedParallelToolCalls(ctx, toolCalls, session,
+                (toolCtx, toolCall, ignored) -> executePreparedToolCall(toolCtx, toolCall, session, tag));
     }
 
     private ToolExecutionEntry executeOneToolCall(
@@ -646,21 +629,26 @@ public class AbilityManager implements ToolRegistry {
         try {
             return future.join();
         } catch (CancellationException e) {
-            String errorMsg = "Ability execution cancelled";
-            Loggers.AGENT.warning("{} for tool {}", errorMsg, toolCall != null ? toolCall.getName() : null);
-            return new ToolExecutionEntry(null, ToolMessage.builder()
-                    .content(errorMsg)
-                    .toolCallId(toolCall != null ? toolCall.getId() : null)
-                    .build());
+            return cancelledToolExecution(toolCall);
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            String errorMsg = "Ability execution error: " + cause.getMessage();
+            String causeText = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+            String errorMsg = "Ability execution error: " + causeText;
             Loggers.AGENT.error(errorMsg);
             return new ToolExecutionEntry(null, ToolMessage.builder()
                     .content(errorMsg)
                     .toolCallId(toolCall != null ? toolCall.getId() : null)
                     .build());
         }
+    }
+
+    static ToolExecutionEntry cancelledToolExecution(ToolCall toolCall) {
+        String errorMsg = "Ability execution cancelled";
+        Loggers.AGENT.warning("{} for tool {}", errorMsg, toolCall != null ? toolCall.getName() : null);
+        return new ToolExecutionEntry(null, ToolMessage.builder()
+                .content(errorMsg)
+                .toolCallId(toolCall != null ? toolCall.getId() : null)
+                .build());
     }
 
     /**
@@ -1127,8 +1115,8 @@ public class AbilityManager implements ToolRegistry {
      * @param session       session
      * @param tag           optional routing tag
      * @param agentSession  stream writer; {@code null} disables streaming forwarding
-     * @return tool execution entries, same as {@link #execute(...)}
-     * @since 0.1.15
+     * @return tool execution entries
+     * @since 0.1.14
      */
     public List<ToolExecutionEntry> executeStream(
             AgentCallbackContext ctx,
@@ -1157,29 +1145,182 @@ public class AbilityManager implements ToolRegistry {
             String tag,
             AgentSessionApi agentSession
     ) {
-        List<AgentCallbackContext> toolContexts = new ArrayList<>();
-        List<CompletableFuture<ToolExecutionEntry>> futures = new ArrayList<>();
+        return runGatedParallelToolCalls(ctx, toolCalls, session, (toolCtx, toolCall, index) -> {
+            int toolIndex = toolCall.getIndex() != null ? toolCall.getIndex() : index;
+            return executePreparedToolCallWithStreaming(
+                    toolCtx, toolCall, session, tag, agentSession, toolIndex);
+        });
+    }
+
+    /**
+     * Submit tool calls with a per-request concurrency cap so one model turn cannot
+     * occupy every slot in the shared tool-call pool.
+     *
+     * <p>Acquire is interruptible: an interrupt stops further submits and fills
+     * remaining entries as cancelled. The submit permit is released when the
+     * timeout-wrapped future completes, so a timed-out tool does not block later
+     * submits from the same turn.</p>
+     *
+     * @param ctx shared callback context
+     * @param toolCalls tool calls from one model turn
+     * @param session session instance
+     * @param action tool execution body
+     * @return execution entries in the same order as {@code toolCalls}
+     * @since 0.1.14
+     */
+    private List<ToolExecutionEntry> runGatedParallelToolCalls(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            Session session,
+            ParallelToolCallAction action
+    ) {
+        int maxParallel = resolveMaxParallelToolCalls(ctx);
+        GatedParallelSubmit submit = new GatedParallelSubmit(maxParallel, toolCalls.size());
+        submitGatedToolCalls(ctx, toolCalls, session, action, submit);
+        List<ToolExecutionEntry> results = joinSubmittedToolCalls(toolCalls, submit.futures);
+        appendCancelledToolCalls(results, toolCalls, submit.futures.size());
+        mergeGatedToolContexts(ctx, submit.toolContexts);
+        return results;
+    }
+
+    private void submitGatedToolCalls(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            Session session,
+            ParallelToolCallAction action,
+            GatedParallelSubmit submit
+    ) {
         for (int i = 0; i < toolCalls.size(); i++) {
-            ToolCall tc = toolCalls.get(i);
-            final int toolIndex = tc.getIndex() != null ? tc.getIndex() : i;
-            AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, tc, session);
-            toolContexts.add(toolCtx);
-            CompletableFuture<ToolExecutionEntry> future = OpenJiuwenExecutors.withToolCallTimeout(
-                    OpenJiuwenExecutors.supplyToolCallAsync(
-                            () -> executePreparedToolCallWithStreaming(
-                                toolCtx, tc, session, tag, agentSession, toolIndex)
-                    )
-            );
-            futures.add(future);
+            ToolCall singleToolCall = toolCalls.get(i);
+            AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
+            submit.toolContexts.add(toolCtx);
+            if (!tryAcquireSubmitPermit(submit.permits)) {
+                return;
+            }
+            submitOneGatedToolCall(submit, toolCtx, singleToolCall, i, action);
         }
-        List<ToolExecutionEntry> finalResults = new ArrayList<>();
+    }
+
+    private static boolean tryAcquireSubmitPermit(Semaphore permits) {
+        try {
+            permits.acquire();
+            return true;
+        } catch (InterruptedException ex) {
+            restoreCurrentThreadInterrupt();
+            Loggers.AGENT.warning("Stopped submitting remaining parallel tool calls after interrupt");
+            return false;
+        }
+    }
+
+    /**
+     * Restore this thread's interrupt status after catching {@link InterruptedException}.
+     * This does not interrupt any other thread.
+     */
+    private static void restoreCurrentThreadInterrupt() {
+        Thread.currentThread().interrupt();
+    }
+
+    private static void submitOneGatedToolCall(
+            GatedParallelSubmit submit,
+            AgentCallbackContext toolCtx,
+            ToolCall toolCall,
+            int index,
+            ParallelToolCallAction action
+    ) {
+        boolean isPermitHeld = true;
+        try {
+            CompletableFuture<ToolExecutionEntry> execution = OpenJiuwenExecutors.supplyToolCallAsync(
+                    () -> action.run(toolCtx, toolCall, index));
+            CompletableFuture<ToolExecutionEntry> timed = OpenJiuwenExecutors.withToolCallTimeout(execution);
+            timed.whenComplete((result, error) -> submit.permits.release());
+            isPermitHeld = false;
+            submit.futures.add(timed);
+        } finally {
+            if (isPermitHeld) {
+                submit.permits.release();
+            }
+        }
+    }
+
+    private static List<ToolExecutionEntry> joinSubmittedToolCalls(
+            List<ToolCall> toolCalls,
+            List<CompletableFuture<ToolExecutionEntry>> futures
+    ) {
+        List<ToolExecutionEntry> results = new ArrayList<>(toolCalls.size());
         for (int i = 0; i < futures.size(); i++) {
-            finalResults.add(joinToolExecution(toolCalls.get(i), futures.get(i)));
+            results.add(joinToolExecution(toolCalls.get(i), futures.get(i)));
         }
+        return results;
+    }
+
+    private static void appendCancelledToolCalls(
+            List<ToolExecutionEntry> results,
+            List<ToolCall> toolCalls,
+            int submittedCount
+    ) {
+        for (int i = submittedCount; i < toolCalls.size(); i++) {
+            results.add(cancelledToolExecution(toolCalls.get(i)));
+        }
+    }
+
+    private void mergeGatedToolContexts(AgentCallbackContext ctx, List<AgentCallbackContext> toolContexts) {
         for (AgentCallbackContext toolCtx : toolContexts) {
             mergeToolContext(ctx, toolCtx);
         }
-        return finalResults;
+    }
+
+    private static final class GatedParallelSubmit {
+        private final Semaphore permits;
+        private final List<AgentCallbackContext> toolContexts;
+        private final List<CompletableFuture<ToolExecutionEntry>> futures;
+
+        private GatedParallelSubmit(int maxParallel, int toolCount) {
+            this.permits = new Semaphore(maxParallel);
+            this.toolContexts = new ArrayList<>(toolCount);
+            this.futures = new ArrayList<>(toolCount);
+        }
+    }
+
+    /**
+     * Resolve the per-request parallel tool-call cap from {@link ReActAgentConfig}.
+     * Missing or non-positive values fall back to {@value #DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
+     *
+     * @param ctx tool execution callback context; may be null
+     * @return positive max parallel count
+     * @since 0.1.14
+     */
+    static int resolveMaxParallelToolCalls(AgentCallbackContext ctx) {
+        Integer configured = readAgentMaxParallelToolCalls(ctx);
+        if (configured != null && configured > 0) {
+            return configured;
+        }
+        return DEFAULT_MAX_PARALLEL_TOOL_CALLS;
+    }
+
+    private static Integer readAgentMaxParallelToolCalls(AgentCallbackContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        Object config = ctx.getConfig();
+        if (config instanceof ReActAgentConfig reactConfig) {
+            return reactConfig.getMaxParallelToolCalls();
+        }
+        Object agent = ctx.getAgent();
+        if (agent instanceof BaseAgent baseAgent) {
+            Object agentConfig = baseAgent.getConfig();
+            if (agentConfig instanceof ReActAgentConfig reactConfig) {
+                return reactConfig.getMaxParallelToolCalls();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Executes one already-prepared tool call inside the gated parallel runner.
+     */
+    @FunctionalInterface
+    private interface ParallelToolCallAction {
+        ToolExecutionEntry run(AgentCallbackContext toolCtx, ToolCall toolCall, int index);
     }
 
     private ToolExecutionEntry executeOneToolCallWithStreaming(

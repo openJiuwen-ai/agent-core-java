@@ -20,6 +20,7 @@ public class ReActAgentConfig
 | `promptTemplateName` | `String` | `""` | 预设提示模板名称。 |
 | `promptTemplate` | `List<Map<String, String>>` | `new ArrayList<>()` | 系统提示模板列表。 |
 | `maxIterations` | `int` | `5` | ReAct 最大迭代次数。 |
+| `maxParallelToolCalls` | `int` | `3` | 同一轮模型输出中允许同时执行的 tool 数量上限；非正数时回退到默认值 `3`。 |
 | `modelClientConfig` | `ModelClientConfig` | `-` | 显式模型客户端配置。 |
 | `modelConfigObj` | `ModelRequestConfig` | `-` | 模型请求配置对象。 |
 | `sysOperationId` | `String` | `-` | 供技能能力初始化使用的 SysOp 标识。 |
@@ -37,10 +38,11 @@ public class ReActAgentConfig
 | `public ReActAgentConfig configureContextEngine( Integer maxContextMessageNum, Integer defaultWindowRoundNum, boolean enableReload )` | 依据窗口大小与 reload 开关构造 `ContextEngineConfig`。 |
 | `public ReActAgentConfig configureMemScope(String memScopeId)` | 设置长期记忆作用域 ID。 |
 | `public ReActAgentConfig configureMaxIterations(int maxIterations)` | 设置最大迭代次数。 |
+| `public ReActAgentConfig configureMaxParallelToolCalls(int maxParallelToolCalls)` | 设置同一轮并行 tool 数量上限；非正数时回退到默认值 `3`。 |
 | `public ReActAgentConfig configureModelClient( String provider, String apiKey, String apiBase, String modelName, boolean verifySsl )` | 一次性设置 `ModelClientConfig`、模型名和请求配置。 |
 | `public ReActAgentConfig configureContextProcessors(List<Object> processors)` | 设置上下文处理器列表。 |
 
 ## 说明
 
 - 相关测试：`ReActAgentConfigTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`。
-- 该类型使用 Lombok 生成 builder / getter / setter；默认 `modelProvider` 为 `openai`，默认 `maxIterations` 为 `5`。
+- 该类型使用 Lombok 生成 builder / getter / setter；默认 `modelProvider` 为 `openai`，默认 `maxIterations` 为 `5`，默认 `maxParallelToolCalls` 为 `3`。

@@ -50,6 +50,8 @@ DeepAgent agent = HarnessFactory.createDeepAgent(
                 .systemPrompt("你是编码助手。")
                 .model(model)  // 见 apiconfig.json
                 .workspacePath("./workspace")
+                .maxIterations(15)
+                .maxParallelToolCalls(3)
                 .build(),
         Workspace.builder().rootPath("./workspace").language("cn").build()
 );

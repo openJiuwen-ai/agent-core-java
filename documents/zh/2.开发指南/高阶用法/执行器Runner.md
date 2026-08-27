@@ -68,7 +68,7 @@ Runner.start();
 
 OpenJiuwen 通过 `OpenJiuwenExecutors` 统一创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用**共享线程池**；Workflow、Pregel、DeepAgent stream 等模块使用**模块有界线程池**（`newBoundedModulePool`），由同一入口管理，统一使用 `core=max + ArrayBlockingQueue` 排队语义与 `AbortPolicy` 拒绝策略。
 
-AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
+AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。同一轮提交到线程池的并发 tool 数量默认上限为 **3**。DeepAgent 创建时通过 `DeepAgentConfig.maxParallelToolCalls` 配置（用法与 `maxIterations` 相同）；直接使用 ReAct 时可通过 `ReActAgentConfig.maxParallelToolCalls` 调整，避免一次规划出的大量 tool call 把共享线程池打满。
 
 ### 配置读取规则
 
@@ -107,6 +107,7 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 默认值设计说明：
 
 - 工具调用和普通后台两个共享线程池的最大线程数默认 `max(8, CPU 核数 * 2)`，兼顾低核机器并发能力和资源上限。
+- 同一轮模型输出中并行提交的 tool 数量默认上限为 `3`。该限制按请求轮次生效，在提交到共享线程池之前截流。DeepAgent 通过创建参数 `DeepAgentConfig.maxParallelToolCalls` 配置；直接使用 ReAct 时通过 `ReActAgentConfig.maxParallelToolCalls` 配置。未配置或非正数时回退到默认值 `3`。提交许可在超时包装后的 Future 完成时释放；等待许可时若当前线程被中断，会停止后续 submit，未提交的 tool 记为 cancelled。
 - 两个共享线程池的空闲线程保留时间默认 `60s`，用于覆盖短时突发，同时空闲后可回收线程。
 - 单次工具调用超时默认 `0`，表示不启用统一超时，以保持历史兼容性。超时后当前轮不再等待结果并记录失败，但不会中断底层已开始执行的工具；工具自身仍需负责超时或取消。
 - 共享池使用 `SynchronousQueue` + `CallerRunsPolicy`：饱和时由提交线程执行，形成背压。
