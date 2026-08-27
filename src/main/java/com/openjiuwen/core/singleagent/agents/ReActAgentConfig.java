@@ -58,7 +58,7 @@ public class ReActAgentConfig {
     private int maxIterations = 5;
 
     @Builder.Default
-    private boolean shouldFailTaskOnToolError = false;
+    private boolean shouldFailTaskOnToolError = true;
 
     // 流式失败重试次数（不含首次调用）
     @Builder.Default

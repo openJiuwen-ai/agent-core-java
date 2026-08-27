@@ -488,6 +488,7 @@ agent.invoke(inputs, session);
 6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
 7. **Stream 并发**：高并发 stream 场景见 [Stream 并发与线程池](#stream-并发与线程池)；与 `invoke` 默认不走同一线程池，勿仅调 LLM 配额而忽略 `deep-agent-stream`。
 8. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
+9. **工具异常终态配置**：`shouldFailTaskOnToolError` 默认 `true`，工具执行抛出异常时将任务推进到 `FAILED` 终态（触发「失败释放额度」）；需让 LLM 从工具错误中恢复、继续对话时显式设为 `false`。
 
 ---
 
