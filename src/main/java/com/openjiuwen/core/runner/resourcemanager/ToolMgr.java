@@ -18,10 +18,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manager for Tool instances, MCP servers, and SysOperation-related tools.
@@ -44,25 +44,29 @@ public class ToolMgr {
     private final ConcurrentHashMap<String, Tool> tools = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
-     * 
+     * ConcurrentHashMap with CopyOnWriteArrayList values: the
+     * inner list is appended/removed by concurrent server register/remove
+     * paths, so both the bucket structure and the value list must be
+     * thread-safe; writes are rare relative to reads.
+     *
      * @since 0.1.7
      */
-    private final Map<String, List<String>> mcpServerNameToIds = new HashMap<>();
+    private final ConcurrentHashMap<String, CopyOnWriteArrayList<String>> mcpServerNameToIds =
+            new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
-     * 
+     * ConcurrentHashMap.
+     *
      * @since 0.1.7
      */
-    private final Map<String, McpServerResource> mcpServerResources = new HashMap<>();
+    private final ConcurrentHashMap<String, McpServerResource> mcpServerResources = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
-     * 
+     * ConcurrentHashMap.
+     *
      * @since 0.1.7
      */
-    private final Map<String, SysOpToolResource> sysOpResources = new HashMap<>();
+    private final ConcurrentHashMap<String, SysOpToolResource> sysOpResources = new ConcurrentHashMap<>();
 
     /**
      * Registers a tool with the given identifier.
@@ -72,10 +76,13 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public void addTool(String toolId, Tool tool) {
-        if (tools.containsKey(toolId)) {
+        // Atomic check-and-insert: the former
+        // containsKey + put compound let two concurrent registrations of the
+        // same toolId both pass the guard, the second put silently replacing
+        // the first — the same concurrent-write-loss class fixed elsewhere.
+        if (tools.putIfAbsent(toolId, tool) != null) {
             throw new IllegalArgumentException("already exist tool " + toolId);
         }
-        tools.put(toolId, tool);
     }
 
     /**
@@ -98,12 +105,9 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public Tool getMcpTool(String toolName, String serverId) {
-        McpServerResource resource = mcpServerResources.get(serverId);
-        if (resource != null) {
-            String toolId = generateMcpToolId(serverId, resource.config().getServerName(), toolName);
-            return getTool(toolId);
-        }
-        return null;
+        return findMcpServerResource(serverId)
+                .map(resource -> getTool(generateMcpToolId(serverId, resource.config().getServerName(), toolName)))
+                .orElse(null);
     }
 
     /**
@@ -114,18 +118,16 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<Tool> getMcpTools(String serverId) {
-        McpServerResource resource = mcpServerResources.get(serverId);
-        if (resource != null) {
-            List<Tool> results = new ArrayList<>();
+        List<Tool> results = new ArrayList<>();
+        findMcpServerResource(serverId).ifPresent(resource -> {
             for (String toolId : resource.toolIds()) {
                 Tool tool = getTool(toolId);
                 if (tool != null) {
                     results.add(tool);
                 }
             }
-            return results;
-        }
-        return java.util.Collections.emptyList();
+        });
+        return results;
     }
 
     /**
@@ -137,10 +139,8 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<Object> listMcpResources(String serverId) throws Exception {
-        McpServerResource resource = mcpServerResources.get(serverId);
-        if (resource == null) {
-            throw new IllegalArgumentException("MCP server not found: " + serverId);
-        }
+        McpServerResource resource = findMcpServerResource(serverId)
+                .orElseThrow(() -> new IllegalArgumentException("MCP server not found: " + serverId));
         return resource.client().listResources();
     }
 
@@ -154,10 +154,8 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<Object> readMcpResource(String serverId, String uri) throws Exception {
-        McpServerResource resource = mcpServerResources.get(serverId);
-        if (resource == null) {
-            throw new IllegalArgumentException("MCP server not found: " + serverId);
-        }
+        McpServerResource resource = findMcpServerResource(serverId)
+                .orElseThrow(() -> new IllegalArgumentException("MCP server not found: " + serverId));
         return resource.client().readResource(uri);
     }
 
@@ -172,14 +170,15 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public Object getMcpToolId(String serverId, String toolName) {
-        McpServerResource resource = mcpServerResources.get(serverId);
-        if (resource != null) {
+        return findMcpServerResource(serverId).<Object>map(resource -> {
             if (toolName == null) {
-                return resource.toolIds();
+                // Snapshot — callers must not observe (or mutate)
+                // the resource's live id list, consistent with
+                // getMcpServerIds/getSysOperationToolIds.
+                return new ArrayList<>(resource.toolIds());
             }
             return generateMcpToolId(serverId, resource.config().getServerName(), toolName);
-        }
-        return null;
+        }).orElse(null);
     }
 
     /**
@@ -217,6 +216,11 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<McpToolCard> addToolServer(McpServerConfig serverConfig, Double expiryTime) throws Exception {
+        // ConcurrentHashMap rejects null keys; normalizeServerId() fills a
+        // blank server_id from server_name (or a UUID) exactly like the
+        // ResourceMgr/DeepAgent entry points already do, so a config that
+        // skipped normalization stays registerable.
+        serverConfig.normalizeServerId();
         if (mcpServerResources.containsKey(serverConfig.getServerId())) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
                     String.valueOf(serverConfig), "reason", "server_id is already exist");
@@ -232,8 +236,14 @@ public class ToolMgr {
                         String.valueOf(serverConfig), "reason", "");
             }
             List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
-            mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), k -> new ArrayList<>())
-                    .add(serverConfig.getServerId());
+            // A config without server_name (possible from user YAML) keeps the
+            // legacy HashMap-era behavior: registration succeeds, the server
+            // is addressable by server_id, and the name index simply does not
+            // track it — ConcurrentHashMap rejects null keys, so guard here.
+            if (serverConfig.getServerName() != null) {
+                mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), k -> new CopyOnWriteArrayList<>())
+                        .add(serverConfig.getServerId());
+            }
             return results;
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
@@ -242,14 +252,61 @@ public class ToolMgr {
     }
 
     /**
-     * createClient.
-     * 
+     * createClient. Protected for testability: tests substitute a mock
+     * client to exercise server register/remove paths without a live
+     * MCP endpoint.
+     *
      * @param config config
      * @return the result
      * @since 0.1.7
      */
-    private McpClient createClient(McpServerConfig config) {
+    protected McpClient createClient(McpServerConfig config) {
         return McpClientFactory.create(config);
+    }
+
+    /**
+     * Null-tolerant MCP server lookup preserving the former HashMap
+     * semantics: a {@code null} serverId means "not found" instead of a
+     * {@code ConcurrentHashMap} NullPointerException.
+     *
+     * @param serverId the MCP server identifier
+     * @return the registered resource, or {@link Optional#empty()} when absent or the id is {@code null}
+     */
+    private Optional<McpServerResource> findMcpServerResource(String serverId) {
+        return serverId == null ? Optional.empty() : Optional.ofNullable(mcpServerResources.get(serverId));
+    }
+
+    /**
+     * Null-tolerant MCP server removal: a {@code null} serverId removes
+     * nothing, matching the "server is not exist" branch of the callers.
+     *
+     * @param serverId the MCP server identifier
+     * @return the removed resource, or {@link Optional#empty()} when absent or the id is {@code null}
+     */
+    private Optional<McpServerResource> removeMcpServerResource(String serverId) {
+        return serverId == null ? Optional.empty() : Optional.ofNullable(mcpServerResources.remove(serverId));
+    }
+
+    /**
+     * Null-tolerant system-operation lookup: a {@code null} sysOpId means
+     * "not found" instead of a {@code ConcurrentHashMap} NullPointerException.
+     *
+     * @param sysOpId the system operation identifier
+     * @return the registered resource, or {@link Optional#empty()} when absent or the id is {@code null}
+     */
+    private Optional<SysOpToolResource> findSysOpResource(String sysOpId) {
+        return sysOpId == null ? Optional.empty() : Optional.ofNullable(sysOpResources.get(sysOpId));
+    }
+
+    /**
+     * Null-tolerant system-operation removal: a {@code null} sysOpId removes
+     * nothing and reports "not found" to the caller.
+     *
+     * @param sysOpId the system operation identifier
+     * @return the removed resource, or {@link Optional#empty()} when absent or the id is {@code null}
+     */
+    private Optional<SysOpToolResource> removeSysOpResource(String sysOpId) {
+        return sysOpId == null ? Optional.empty() : Optional.ofNullable(sysOpResources.remove(sysOpId));
     }
 
     /**
@@ -260,7 +317,16 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<String> getMcpServerIds(String serverName) {
-        return mcpServerNameToIds.getOrDefault(serverName, Collections.emptyList());
+        // ConcurrentHashMap rejects null keys; a null lookup returns empty,
+        // matching the former HashMap behavior for unindexed names.
+        if (serverName == null) {
+            return Collections.emptyList();
+        }
+        // Return a snapshot — the internal value is a live
+        // CopyOnWriteArrayList that concurrent register/remove paths mutate,
+        // and callers must not observe (or mutate) internal state.
+        List<String> ids = mcpServerNameToIds.get(serverName);
+        return ids != null ? new ArrayList<>(ids) : Collections.emptyList();
     }
 
     /**
@@ -274,8 +340,7 @@ public class ToolMgr {
         if (serverId == null || serverId.isBlank()) {
             return null;
         }
-        McpServerResource resource = mcpServerResources.get(serverId);
-        return resource == null ? null : resource.config();
+        return findMcpServerResource(serverId).map(McpServerResource::config).orElse(null);
     }
 
     /**
@@ -298,29 +363,54 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<String> removeToolServer(String serverId, boolean ignoreNotExist) throws Exception {
-        McpServerResource resource = mcpServerResources.remove(serverId);
-        if (resource == null) {
+        Optional<McpServerResource> removed = removeMcpServerResource(serverId);
+        if (removed.isEmpty()) {
             if (!ignoreNotExist) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_REMOVE_ERROR, "server_id", serverId,
                         "reason", "server is not exist");
             }
             return Collections.emptyList();
         }
+        McpServerResource resource = removed.get();
         try {
             resource.client().disconnect();
         } catch (Exception e) {
             logger.warn("remove tool server disconnect {}, server_id={}", e.getMessage(), serverId);
         } finally {
             innerRemoveMcpTools(resource.toolIds());
-            List<String> ids = mcpServerNameToIds.get(resource.config().getServerName());
-            if (ids != null) {
-                ids.remove(serverId);
-                if (ids.isEmpty()) {
-                    mcpServerNameToIds.remove(resource.config().getServerName());
-                }
-            }
+            removeServerIdFromNameIndex(resource, serverId);
         }
-        return resource.toolIds();
+        // Snapshot for consistency with the other list-returning
+        // accessors; the resource is already detached from the registry.
+        return new ArrayList<>(resource.toolIds());
+    }
+
+    /**
+     * Drops the server id from the name index. The former
+     * get -> remove -> isEmpty -> remove(key) sequence was a non-atomic
+     * compound over a plain HashMap; this update is atomic per server name,
+     * so concurrent unregister calls serialize instead of racing. Servers
+     * registered without a name are not tracked by the index.
+     *
+     * @param resource the removed MCP server resource
+     * @param serverId the removed MCP server identifier
+     */
+    private void removeServerIdFromNameIndex(McpServerResource resource, String serverId) {
+        String serverName = resource.config().getServerName();
+        if (serverName == null) {
+            return;
+        }
+        List<String> ids = mcpServerNameToIds.get(serverName);
+        if (ids == null) {
+            return;
+        }
+        // COW list mutation under the CHM bin lock held by the compute:
+        // concurrent removers of the same name serialize here, and the key
+        // is dropped exactly once when the id list drains.
+        mcpServerNameToIds.computeIfPresent(serverName, (name, currentIds) -> {
+            currentIds.remove(serverId);
+            return currentIds.isEmpty() ? null : currentIds;
+        });
     }
 
     /**
@@ -358,8 +448,12 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<String> removeSysOperationTools(String sysOpId) {
-        SysOpToolResource resource = sysOpResources.remove(sysOpId);
-        return resource != null ? resource.toolIds() : Collections.emptyList();
+        // Snapshot for consistency with the other list-returning
+        // accessors, even though the resource is already detached from the
+        // registry at this point.
+        return removeSysOpResource(sysOpId)
+                .<List<String>>map(resource -> new ArrayList<>(resource.toolIds()))
+                .orElseGet(Collections::emptyList);
     }
 
     /**
@@ -370,8 +464,11 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<String> getSysOperationToolIds(String sysOpId) {
-        SysOpToolResource resource = sysOpResources.get(sysOpId);
-        return resource != null ? resource.toolIds() : Collections.emptyList();
+        // Return a snapshot of the resource's id list so callers
+        // never hold a reference to mutable internal state.
+        return findSysOpResource(sysOpId)
+                .<List<String>>map(resource -> new ArrayList<>(resource.toolIds()))
+                .orElseGet(Collections::emptyList);
     }
 
     /**
@@ -385,14 +482,15 @@ public class ToolMgr {
      * @since 0.1.7
      */
     public List<McpToolCard> refreshToolServer(String serverId, boolean skipNotExist, boolean force) throws Exception {
-        McpServerResource mcpResource = mcpServerResources.get(serverId);
-        if (mcpResource == null) {
+        Optional<McpServerResource> resource = findMcpServerResource(serverId);
+        if (resource.isEmpty()) {
             if (!skipNotExist) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_REFRESH_ERROR, "server_id", serverId,
                         "reason", "server is not exist");
             }
             return Collections.emptyList();
         }
+        McpServerResource mcpResource = resource.get();
         boolean needRefresh = force;
         if (!force && mcpResource.expiryTime() != null) {
             if (System.currentTimeMillis() - mcpResource.lastUpdateTime() >= mcpResource.expiryTime()) {

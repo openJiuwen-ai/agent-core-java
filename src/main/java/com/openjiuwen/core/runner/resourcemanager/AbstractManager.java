@@ -30,10 +30,12 @@ public abstract class AbstractManager<T> {
      * @since 0.1.7
      */
     protected void registerResourceProvider(String resourceId, Supplier<? extends T> resource) {
-        if (providers.containsKey(resourceId)) {
+        // Atomic check-and-insert: the former
+        // containsKey + put compound allowed a concurrent duplicate
+        // registration to silently overwrite the first provider.
+        if (providers.putIfAbsent(resourceId, resource) != null) {
             throw new IllegalArgumentException("add resource failed, " + resourceId + " is already exist");
         }
-        providers.put(resourceId, resource);
     }
 
     /**
