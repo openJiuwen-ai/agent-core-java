@@ -18,10 +18,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Manager for Tool instances, MCP servers, and SysOperation-related tools.
@@ -44,25 +44,25 @@ public class ToolMgr {
     private final ConcurrentHashMap<String, Tool> tools = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
+     * ConcurrentHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, List<String>> mcpServerNameToIds = new HashMap<>();
+    private final Map<String, List<String>> mcpServerNameToIds = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
+     * ConcurrentHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, McpServerResource> mcpServerResources = new HashMap<>();
+    private final Map<String, McpServerResource> mcpServerResources = new ConcurrentHashMap<>();
 
     /**
-     * HashMap<>.
+     * ConcurrentHashMap<>.
      * 
      * @since 0.1.7
      */
-    private final Map<String, SysOpToolResource> sysOpResources = new HashMap<>();
+    private final Map<String, SysOpToolResource> sysOpResources = new ConcurrentHashMap<>();
 
     /**
      * Registers a tool with the given identifier.
@@ -232,8 +232,16 @@ public class ToolMgr {
                         String.valueOf(serverConfig), "reason", "");
             }
             List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
-            mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), k -> new ArrayList<>())
-                    .add(serverConfig.getServerId());
+            mcpServerNameToIds.compute(serverConfig.getServerName(), (k, serverIds) -> {
+                List<String> ids;
+                if (serverIds != null) {
+                    ids = serverIds;
+                } else {
+                    ids = new CopyOnWriteArrayList<>();
+                }
+                ids.add(serverConfig.getServerId());
+                return ids;
+            });
             return results;
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, "server_config",
@@ -312,13 +320,13 @@ public class ToolMgr {
             logger.warn("remove tool server disconnect {}, server_id={}", e.getMessage(), serverId);
         } finally {
             innerRemoveMcpTools(resource.toolIds());
-            List<String> ids = mcpServerNameToIds.get(resource.config().getServerName());
-            if (ids != null) {
+            mcpServerNameToIds.computeIfPresent(resource.config().getServerName(), (k, ids) -> {
                 ids.remove(serverId);
                 if (ids.isEmpty()) {
-                    mcpServerNameToIds.remove(resource.config().getServerName());
+                    return null;
                 }
-            }
+                return ids;
+            });
         }
         return resource.toolIds();
     }
