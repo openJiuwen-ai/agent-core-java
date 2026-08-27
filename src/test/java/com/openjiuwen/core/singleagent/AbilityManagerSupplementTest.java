@@ -29,6 +29,7 @@ import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,7 +37,10 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Supplementary tests for {@link AbilityManager} — execute, WorkflowCard, McpServerConfig.
@@ -341,6 +345,118 @@ class AbilityManagerSupplementTest {
         } finally {
             removeTool(firstToolId);
             removeTool(secondToolId);
+        }
+    }
+
+    // 验证同一轮 tool call 的并行提交数量受默认上限（3）约束。
+    @Test
+    void testExecuteCapsParallelToolCallsToDefaultLimit() {
+        assertCappedParallelExecution(null, 4, 3, false);
+    }
+
+    // 验证 ReActAgentConfig.maxParallelToolCalls 生效。
+    @Test
+    void testExecuteCapsParallelToolCallsUsingAgentConfig() {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        assertCappedParallelExecution(ctx, 4, 1, false);
+    }
+
+    // 验证流式并行路径同样遵守 ReActAgentConfig 并行上限。
+    @Test
+    void testExecuteStreamCapsParallelToolCallsToConfiguredLimit() {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(2).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        assertCappedParallelExecution(ctx, 5, 2, true);
+    }
+
+    // 验证提交循环在等待许可时响应中断：停止后续 submit，已提交的仍会 join。
+    @Test
+    void testExecuteStopsSubmittingRemainingToolsWhenInterrupted() throws Exception {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        AtomicInteger startedCount = new AtomicInteger();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch firstMayFinish = new CountDownLatch(1);
+        List<String> toolIds = new ArrayList<>();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            String toolId = "interrupt-gate-" + i + "-" + UUID.randomUUID();
+            toolIds.add(toolId);
+            LocalFunction tool = interruptibleGateTool(toolId, startedCount, firstStarted, firstMayFinish);
+            Runner.resourceMgr().addTool(tool, null);
+            manager.add(tool.getCard());
+            toolCalls.add(ToolCall.builder().id("tc-int-" + i).name(toolId).arguments("{}").build());
+        }
+
+        AtomicReference<List<AbilityManager.ToolExecutionEntry>> resultsRef = new AtomicReference<>();
+        AtomicBoolean isInterruptedAfterExecute = new AtomicBoolean();
+        Thread executeThread = new Thread(() -> {
+            resultsRef.set(manager.execute(ctx, toolCalls, null, null));
+            isInterruptedAfterExecute.set(Thread.currentThread().isInterrupted());
+        }, "gated-submit-interrupt-test");
+        try {
+            executeThread.start();
+            assertThat(firstStarted.await(3, TimeUnit.SECONDS)).isTrue();
+            executeThread.interrupt();
+            firstMayFinish.countDown();
+            executeThread.join(5_000L);
+            assertThat(executeThread.isAlive()).isFalse();
+
+            List<AbilityManager.ToolExecutionEntry> results = resultsRef.get();
+            assertThat(results).isNotNull().hasSize(3);
+            assertThat(startedCount.get()).isEqualTo(1);
+            assertThat(String.valueOf(results.get(0).result())).isEqualTo(toolIds.get(0));
+            assertThat(String.valueOf(results.get(1).toolMessage().getContent())).contains("cancelled");
+            assertThat(String.valueOf(results.get(2).toolMessage().getContent())).contains("cancelled");
+            assertThat(isInterruptedAfterExecute.get()).isTrue();
+        } finally {
+            firstMayFinish.countDown();
+            toolIds.forEach(AbilityManagerSupplementTest::removeTool);
+        }
+    }
+
+    // 验证 tool-call 超时完成 Future 后会释放提交许可，后续 tool 不必等挂起的 worker 结束。
+    @Test
+    void testExecuteTimeoutReleasesGatePermitBeforeWorkerFinishes() throws Exception {
+        System.setProperty("openjiuwen.executor.tool-call.timeout-millis", "200");
+        ReActAgentConfig config = ReActAgentConfig.builder().maxParallelToolCalls(1).build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().config(config).build();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch secondStarted = new CountDownLatch(1);
+        AtomicLong firstFinishedAt = new AtomicLong(-1L);
+        AtomicLong secondStartedAt = new AtomicLong(-1L);
+        String firstId = "timeout-gate-first-" + UUID.randomUUID();
+        String secondId = "timeout-gate-second-" + UUID.randomUUID();
+        LocalFunction firstTool = hangingGateTool(firstId, firstStarted, firstFinishedAt, 2_000L);
+        LocalFunction secondTool = startSignalTool(secondId, secondStarted, secondStartedAt);
+        Runner.resourceMgr().addTool(firstTool, null);
+        Runner.resourceMgr().addTool(secondTool, null);
+        manager.add(List.of(firstTool.getCard(), secondTool.getCard()));
+        try {
+            long start = System.nanoTime();
+            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
+                    ctx,
+                    List.of(
+                            ToolCall.builder().id("tc-timeout-1").name(firstId).arguments("{}").build(),
+                            ToolCall.builder().id("tc-timeout-2").name(secondId).arguments("{}").build()
+                    ),
+                    null,
+                    null
+            );
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+            assertThat(results).hasSize(2);
+            assertThat(String.valueOf(results.get(0).toolMessage().getContent())).contains("error");
+            assertThat(results.get(1).result()).isEqualTo(secondId);
+            assertThat(secondStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(elapsedMillis).isLessThan(1_500L);
+            assertThat(secondStartedAt.get()).isPositive();
+            assertThat(firstFinishedAt.get()).isEqualTo(-1L);
+        } finally {
+            System.clearProperty("openjiuwen.executor.tool-call.timeout-millis");
+            removeTool(firstId);
+            removeTool(secondId);
         }
     }
 
@@ -877,6 +993,119 @@ class AbilityManagerSupplementTest {
         AbilityManager.ToolExecutionEntry entry = new AbilityManager.ToolExecutionEntry(null, null);
         assertThat(entry.result()).isNull();
         assertThat(entry.toolMessage()).isNull();
+    }
+
+    private void assertCappedParallelExecution(
+            AgentCallbackContext ctx,
+            int toolCount,
+            int expectedMaxInFlight,
+            boolean stream
+    ) {
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger maxInFlight = new AtomicInteger();
+        List<String> toolIds = new ArrayList<>();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (int i = 0; i < toolCount; i++) {
+            String toolId = "capped-" + expectedMaxInFlight + "-" + i + "-" + UUID.randomUUID();
+            toolIds.add(toolId);
+            LocalFunction tool = cappedConcurrencyTool(toolId, inFlight, maxInFlight);
+            Runner.resourceMgr().addTool(tool, null);
+            manager.add(tool.getCard());
+            toolCalls.add(ToolCall.builder().id("tc-capped-" + i).name(toolId).arguments("{}").build());
+        }
+
+        AgentCallbackContext callbackContext = ctx != null ? ctx : AgentCallbackContext.builder().build();
+        try {
+            List<AbilityManager.ToolExecutionEntry> results = stream
+                    ? manager.executeStream(callbackContext, toolCalls, null, null, null)
+                    : manager.execute(callbackContext, toolCalls, null, null);
+
+            assertThat(results).hasSize(toolCount);
+            for (int i = 0; i < toolCount; i++) {
+                assertThat(String.valueOf(results.get(i).result())).isEqualTo(toolIds.get(i));
+            }
+            assertThat(maxInFlight.get()).isEqualTo(expectedMaxInFlight);
+        } finally {
+            toolIds.forEach(AbilityManagerSupplementTest::removeTool);
+        }
+    }
+
+    private static LocalFunction interruptibleGateTool(
+            String toolId,
+            AtomicInteger startedCount,
+            CountDownLatch firstStarted,
+            CountDownLatch firstMayFinish
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("interrupt gate").build(),
+                inputs -> {
+                    int started = startedCount.incrementAndGet();
+                    if (started == 1) {
+                        firstStarted.countDown();
+                        await(firstMayFinish, 5, TimeUnit.SECONDS);
+                    }
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction hangingGateTool(
+            String toolId,
+            CountDownLatch started,
+            AtomicLong finishedAt,
+            long hangMillis
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("hanging gate").build(),
+                inputs -> {
+                    started.countDown();
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(hangMillis);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        finishedAt.set(System.nanoTime());
+                    }
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction startSignalTool(
+            String toolId,
+            CountDownLatch started,
+            AtomicLong startedAt
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("start signal").build(),
+                inputs -> {
+                    startedAt.set(System.nanoTime());
+                    started.countDown();
+                    return toolId;
+                }
+        );
+    }
+
+    private static LocalFunction cappedConcurrencyTool(
+            String toolId,
+            AtomicInteger inFlight,
+            AtomicInteger maxInFlight
+    ) {
+        return new LocalFunction(
+                ToolCard.builder().id(toolId).name(toolId).description("capped parallel").build(),
+                inputs -> {
+                    int current = inFlight.incrementAndGet();
+                    maxInFlight.accumulateAndGet(current, Math::max);
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(80L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        inFlight.decrementAndGet();
+                    }
+                    return toolId;
+                }
+        );
     }
 
     private static LocalFunction blockingTool(

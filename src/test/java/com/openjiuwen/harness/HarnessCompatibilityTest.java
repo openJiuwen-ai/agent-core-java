@@ -35,6 +35,7 @@ import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -884,6 +885,19 @@ class HarnessCompatibilityTest {
         assertThat(child.getConfig().getMaxIterations()).isEqualTo(5);
         assertThat(child.getWorkspace().root().toString()).contains("parent-workspace");
         assertThat(child.getWorkspace().root().toString()).contains("child-session");
+    }
+
+    @Test
+    void factoryShouldPropagateMaxParallelToolCallsToReActAgent() {
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").maxParallelToolCalls(8)
+                        .addGeneralPurposeAgent(true).build());
+
+        assertThat(agent.getConfig().getMaxParallelToolCalls()).isEqualTo(8);
+        ReActAgentConfig reactConfig = (ReActAgentConfig) agent.getAgent().getConfig();
+        assertThat(reactConfig.getMaxParallelToolCalls()).isEqualTo(8);
+        SubAgentConfig generalPurpose = (SubAgentConfig) agent.getConfig().getSubagents().get(0);
+        assertThat(generalPurpose.getMaxParallelToolCalls()).isEqualTo(8);
     }
 
     private static String chunkToSearchText(Object chunk) {

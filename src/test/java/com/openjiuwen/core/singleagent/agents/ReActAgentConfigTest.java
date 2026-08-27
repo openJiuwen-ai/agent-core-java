@@ -29,6 +29,7 @@ class ReActAgentConfigTest {
         assertThat(config.getPromptTemplate()).isNotNull().isEmpty();
         assertThat(config.getCustomHeaders()).isNull();
         assertThat(config.getMaxIterations()).isEqualTo(5);
+        assertThat(config.getMaxParallelToolCalls()).isEqualTo(3);
         assertThat(config.getModelClientConfig()).isNull();
         assertThat(config.getModelConfigObj()).isNull();
         assertThat(config.getSysOperationId()).isNull();
@@ -92,6 +93,13 @@ class ReActAgentConfigTest {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
         config.configureMaxIterations(10);
         assertThat(config.getMaxIterations()).isEqualTo(10);
+    }
+
+    @Test
+    void testConfigureMaxParallelToolCalls() {
+        ReActAgentConfig config = ReActAgentConfig.builder().build();
+        config.configureMaxParallelToolCalls(8);
+        assertThat(config.getMaxParallelToolCalls()).isEqualTo(8);
     }
 
     @Test
@@ -163,7 +171,8 @@ class ReActAgentConfigTest {
     @Test
     void testChainingReturnsSelf() {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
-        ReActAgentConfig result = config.configureModel("x").configureMemScope("s").configureMaxIterations(3);
+        ReActAgentConfig result = config.configureModel("x").configureMemScope("s").configureMaxIterations(3)
+                .configureMaxParallelToolCalls(4);
         assertThat(result).isSameAs(config);
     }
 }
