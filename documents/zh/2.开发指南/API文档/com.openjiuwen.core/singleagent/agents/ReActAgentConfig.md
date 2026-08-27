@@ -20,6 +20,7 @@ public class ReActAgentConfig
 | `promptTemplateName` | `String` | `""` | 预设提示模板名称。 |
 | `promptTemplate` | `List<Map<String, String>>` | `new ArrayList<>()` | 系统提示模板列表。 |
 | `maxIterations` | `int` | `5` | ReAct 最大迭代次数。 |
+| `shouldFailTaskOnToolError` | `boolean` | `true` | 工具执行抛出异常时是否将任务推进到 FAILED 终态。 |
 | `modelClientConfig` | `ModelClientConfig` | `-` | 显式模型客户端配置。 |
 | `modelConfigObj` | `ModelRequestConfig` | `-` | 模型请求配置对象。 |
 | `sysOperationId` | `String` | `-` | 供技能能力初始化使用的 SysOp 标识。 |

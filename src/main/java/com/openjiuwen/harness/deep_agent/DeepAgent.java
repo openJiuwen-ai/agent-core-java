@@ -216,7 +216,10 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     private ReActAgentConfig buildReActAgentConfig() {
-        ReActAgentConfig runtimeConfig = ReActAgentConfig.builder().promptMode(this.config.getPromptMode()).build()
+        ReActAgentConfig runtimeConfig = ReActAgentConfig.builder()
+                .promptMode(this.config.getPromptMode())
+                .shouldFailTaskOnToolError(this.config.isShouldFailTaskOnToolError())
+                .build()
                 .configurePromptTemplate(
                         java.util.List.of(java.util.Map.of("role", "system", "content", this.config.getSystemPrompt())))
                 .configureMaxIterations(this.config.getMaxIterations());
