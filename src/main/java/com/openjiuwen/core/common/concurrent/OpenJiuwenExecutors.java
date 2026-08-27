@@ -421,6 +421,21 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 关闭单个登记过的线程池并从登记表中移除。
+     *
+     * <p>实例级线程池（如每个 DeepAgent 的 task-scheduler）生命周期结束时必须
+     * 调用本方法：仅 {@code shutdown()} 会让已关闭的池对象永久驻留在
+     * {@code MANAGED_EXECUTORS} 静态集合中，随实例创建次数线性累积。</p>
+     *
+     * @param executor 待关闭的线程池
+     */
+    public static void shutdown(ExecutorService executor) {
+        Objects.requireNonNull(executor, "executor");
+        MANAGED_EXECUTORS.remove(executor);
+        shutdownExecutors(List.of(executor), SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
      * 关闭指定线程池，并在超时后中断仍在执行的任务。
      *
      * @param executors 待关闭的线程池
