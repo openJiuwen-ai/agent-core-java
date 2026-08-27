@@ -60,6 +60,9 @@ public class ReActAgentConfig {
     @Builder.Default
     private boolean shouldFailTaskOnToolError = false;
 
+    @Builder.Default
+    private int maxParallelToolCalls = 3;
+
     // 流式失败重试次数（不含首次调用）
     @Builder.Default
     private int streamMaxRetries = 2;
@@ -176,6 +179,19 @@ public class ReActAgentConfig {
      */
     public ReActAgentConfig configureMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
+        return this;
+    }
+
+    /**
+     * Set the max number of tool calls from one model turn that may run in parallel.
+     * Non-positive values fall back to the default of {@code 3}.
+     *
+     * @param maxParallelToolCalls maximum in-flight tool calls per request
+     * @return this config
+     * @since 0.1.15
+     */
+    public ReActAgentConfig configureMaxParallelToolCalls(int maxParallelToolCalls) {
+        this.maxParallelToolCalls = maxParallelToolCalls;
         return this;
     }
 

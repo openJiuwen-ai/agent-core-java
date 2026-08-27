@@ -182,6 +182,7 @@ public final class HarnessFactory {
         }
 
         return DeepAgentConfig.builder().systemPrompt(source.getSystemPrompt()).maxIterations(source.getMaxIterations())
+                .maxParallelToolCalls(source.getMaxParallelToolCalls())
                 .isTaskLoopEnabled(source.isTaskLoopEnabled()).isTaskPlanningEnabled(source.isTaskPlanningEnabled())
                 .language(language).defaultMode(source.getDefaultMode())
                 .workspacePath(effectiveWorkspace.root().toString()).completionTimeout(source.getCompletionTimeout())
@@ -315,7 +316,9 @@ public final class HarnessFactory {
                 SubAgentConfig.builder()
                         .agentCard(AgentCard.builder().name(GENERAL_PURPOSE_NAME).description(description).build())
                         .systemPrompt(source.getSystemPrompt()).language(resolvedLanguage)
-                        .maxIterations(source.getMaxIterations()).isTaskLoopEnabled(source.isTaskLoopEnabled())
+                        .maxIterations(source.getMaxIterations())
+                        .maxParallelToolCalls(source.getMaxParallelToolCalls())
+                        .isTaskLoopEnabled(source.isTaskLoopEnabled())
                         .tools(new ArrayList<>(tools)).rails(subagentRails)
                         .mcps(new ArrayList<>(source.getMcps() != null ? source.getMcps() : List.of()))
                         .skillDirectories(new ArrayList<>(

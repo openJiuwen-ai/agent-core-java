@@ -28,3 +28,4 @@ public class AbilityManager implements ToolRegistry
 
 - 相关测试：`AbilityManagerSupplementTest`、`AbilityManagerTest`。
 - 该类型负责保存能力元数据、提供增删查接口、输出 `ToolInfo`，并在执行阶段委托 `Runner` / `resourceMgr` 解析具体实例。
+- 同一轮多个 tool call 会并行执行，但同时提交到工具调用线程池的数量默认不超过 `3`。DeepAgent 通过创建参数 `DeepAgentConfig.maxParallelToolCalls`（类似 `maxIterations`）配置；直接使用 ReAct 时通过 `ReActAgentConfig.maxParallelToolCalls` 调整。未配置或非正数时回退到默认值 `3`。提交许可在超时包装后的 Future 完成时释放（超时不会让后续 submit 一直等到底层 worker 结束）；等待许可时若当前线程被中断，会停止后续 submit，未提交的 tool 记为 cancelled，并恢复当前线程的中断状态。
