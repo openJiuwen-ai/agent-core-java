@@ -48,6 +48,7 @@ import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.SteeringQueue;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.task_loop.LoopQueues;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -949,6 +950,9 @@ public class ReActAgent extends BaseAgent {
                     return finishAfterModel.getResult();
                 }
                 if (aiMessage == null) {
+                    if (ctx.hasPendingSteering()) {
+                        continue;
+                    }
                     Map<String, Object> result = buildErrorResult("Model call skipped without terminal result");
                     invokeInputs.setResult(result);
                     return result;
@@ -984,6 +988,9 @@ public class ReActAgent extends BaseAgent {
                         return interruptResult;
                     }
                 } else {
+                    if (ctx.hasPendingSteering()) {
+                        continue;
+                    }
                     contextEngine.saveContexts(session, null);
                     Map<String, Object> result = new HashMap<String, Object>();
                     result.put("output", aiMessage.getContent());
@@ -1033,6 +1040,10 @@ public class ReActAgent extends BaseAgent {
         Object queues = ctx.getExtra().get("loop_queues");
         if (queues instanceof SteeringQueue steeringQueue) {
             ctx.bindSteeringQueue(steeringQueue);
+        } else {
+            SteeringQueue autoQueue = new LoopQueues();
+            ctx.getExtra().put("loop_queues", autoQueue);
+            ctx.bindSteeringQueue(autoQueue);
         }
     }
 

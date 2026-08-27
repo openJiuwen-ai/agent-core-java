@@ -83,8 +83,19 @@ public class LoopQueues implements SteeringQueue {
     }
 
     /**
+     * Whether at least one steering instruction is pending without consuming it.
+     *
+     * @return the result
+     * @since 0.1.15
+     */
+    @Override
+    public boolean hasPending() {
+        return !steering.isEmpty();
+    }
+
+    /**
      * hasFollowUp.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
