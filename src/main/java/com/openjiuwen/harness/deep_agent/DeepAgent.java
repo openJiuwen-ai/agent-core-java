@@ -122,10 +122,18 @@ public class DeepAgent implements AutoCloseable {
 
     /**
      * CopyOnWriteArrayList<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
+
+    /**
+     * Guards one-shot semantics of {@link #destroy()}.
+     *
+     * @since 0.1.15
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean destroyed =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
     private SessionToolkit sessionToolkit;
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
@@ -2178,18 +2186,95 @@ public class DeepAgent implements AutoCloseable {
 
     /**
      * destroy.
-     * 
+     *
+     * <p>Per-task agents MUST fully release every process-global
+     * registration they made. Before this fix destroy() only stopped the
+     * tmp-file cleaner and cleared session maps, which leaked, per created
+     * agent: one CallbackInfo set in the global
+     * {@code Runner.callbackFramework()} per rail callback, one
+     * task-scheduler thread plus its ManagedScheduledThreadPoolExecutor
+     * entry, and the TaskLoopController SessionStates.</p>
+     *
+     * <p>Terminal one-shot: safe to call from any thread and idempotent,
+     * but the agent MUST NOT be used afterwards. Destroy must only run
+     * after all in-flight invocations completed — it stops the task loop
+     * runtime, which would interrupt a concurrently running task.</p>
+     *
      * @since 0.1.7
      */
     public void destroy() {
+        if (!destroyed.compareAndSet(false, true)) {
+            return;
+        }
         if (tmpFileCleaner != null) {
             tmpFileCleaner.stop();
             tmpFileCleaner = null;
         }
+        destroyRails();
+        destroyTools();
+        destroyTaskLoopRuntime();
         // Release all per-session state eagerly to prevent retention in long-running scenarios.
         sessionLoopCoordinators.clear();
         if (taskManager != null) {
             taskManager.clearState();
+        }
+    }
+
+    /**
+     * Unregister every rail so the global callback framework stops retaining
+     * this agent's callbacks. Covers both rails registered through
+     * DeepAgent.ensureInitialized and business rails registered directly on
+     * the inner BaseAgent.
+     *
+     * @since 0.1.15
+     */
+    private void destroyRails() {
+        // Snapshot first: unregisterRail mutates the underlying collections.
+        for (Object rail : List.of(registeredRails.toArray())) {
+            if (rail instanceof DeepAgentRail deepAgentRail) {
+                deepAgentRail.uninit(this);
+            }
+        }
+        registeredRails.clear();
+        if (agent != null) {
+            agent.getAgentCallbackManager().unregisterAllRails(agent);
+        }
+    }
+
+    /**
+     * Unregister harness tools from the global ResourceMgr so repeated
+     * create/destroy cycles do not accumulate card entries.
+     *
+     * @since 0.1.15
+     */
+    private void destroyTools() {
+        // Snapshot first: unregisterHarnessTool mutates the underlying collection.
+        for (Object tool : List.of(registeredTools.toArray())) {
+            if (tool instanceof Tool toolInstance) {
+                unregisterHarnessTool(toolInstance);
+            }
+        }
+        registeredTools.clear();
+        registeredMcps.clear();
+    }
+
+    /**
+     * Stop the per-agent task loop runtime: scheduler thread pool, event
+     * queue, and loop controller session states.
+     *
+     * @since 0.1.15
+     */
+    private void destroyTaskLoopRuntime() {
+        if (taskScheduler != null) {
+            taskScheduler.stop();
+            taskScheduler = null;
+        }
+        if (eventQueue != null) {
+            eventQueue.stop();
+            eventQueue = null;
+        }
+        if (loopController != null) {
+            loopController.clearAllSessions();
         }
     }
 

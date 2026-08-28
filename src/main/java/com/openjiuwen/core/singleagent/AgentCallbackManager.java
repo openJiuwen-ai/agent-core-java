@@ -152,6 +152,25 @@ public class AgentCallbackManager {
     }
 
     /**
+     * Unregister every rail registered on this manager.
+     *
+     * <p>Per-task DeepAgent instances register business rails on their inner
+     * BaseAgent; until the rails are unregistered, the process-global
+     * {@code Runner.callbackFramework()} keeps one CallbackInfo per rail
+     * callback alive, pinning the whole agent object graph. This snapshot
+     * based bulk unregister releases all of them.</p>
+     *
+     * @param agent the BaseAgent instance (for tool removal)
+     * @since 0.1.15
+     */
+    public void unregisterAllRails(Object agent) {
+        List<AgentRail> rails = new ArrayList<>(railRegistrations.keySet());
+        for (AgentRail rail : rails) {
+            unregisterRail(rail, agent);
+        }
+    }
+
+    /**
      * Unregister a callback from an event.
      * 
      * @param event the event
