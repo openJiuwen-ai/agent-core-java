@@ -177,6 +177,9 @@ public class LongTermMemory {
      */
     public static void resetInstance() {
         synchronized (LongTermMemory.class) {
+            if (instance != null) {
+                instance.closeAllScopeEmbeddings();
+            }
             instance = null;
         }
     }
@@ -296,7 +299,7 @@ public class LongTermMemory {
             String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
             kvStore.set(configKey, encryptedJson);
 
-            scopeEmbedding.remove(scopeId);
+            closeAndRemoveScopeEmbedding(scopeId);
             return true;
         } catch (JsonProcessingException e) {
             MEMORY_LOGGER.error("[{}] Failed to set scope config: {}", LogEventType.MEMORY_STORE, e.getMessage());
@@ -350,7 +353,7 @@ public class LongTermMemory {
             String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
             kvStore.delete(configKey);
             scopeConfig.remove(scopeId);
-            scopeEmbedding.remove(scopeId);
+            closeAndRemoveScopeEmbedding(scopeId);
             deletedScopeConfigs.add(scopeId);
             return true;
         } catch (Exception e) {
@@ -918,6 +921,33 @@ public class LongTermMemory {
         }
         MEMORY_LOGGER.error("[{}] No embedding model available for scope: {}", LogEventType.MEMORY_RETRIEVE, scopeId);
         return null;
+    }
+
+    /**
+     * Close the cached embedding model for the given scope (if any) and remove it from the cache.
+     *
+     * @param scopeId scope id whose cached embedding model should be released
+     * @since 0.1.15
+     */
+    private void closeAndRemoveScopeEmbedding(String scopeId) {
+        Embedding removed = scopeEmbedding.remove(scopeId);
+        if (removed != null) {
+            try {
+                removed.close();
+            } catch (Exception e) {
+                MEMORY_LOGGER.warn("[{}] Failed to close scope embedding model for scope {}",
+                        LogEventType.MEMORY_STORE, scopeId, e);
+            }
+        }
+    }
+
+    /**
+     * Close all cached scope embedding models and clear the cache.
+     */
+    private void closeAllScopeEmbeddings() {
+        for (String scopeId : scopeEmbedding.keySet()) {
+            closeAndRemoveScopeEmbedding(scopeId);
+        }
     }
 
     /**
