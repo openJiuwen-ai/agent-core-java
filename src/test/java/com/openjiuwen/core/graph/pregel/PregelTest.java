@@ -6,16 +6,25 @@ package com.openjiuwen.core.graph.pregel;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.InMemoryStore;
+import com.openjiuwen.core.graph.store.PendingNode;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -563,6 +572,30 @@ class PregelTest {
         }
 
         @Test
+        @DisplayName("GraphInterrupt is not logged as super-step ERROR")
+        void testGraphInterruptDoesNotLogSuperStepError() throws Exception {
+            InMemoryStore store = new InMemoryStore();
+            Pregel graph = interruptWorkerGraph(store);
+            Logger graphLogger = (Logger) LoggerFactory.getLogger("graph");
+            ListAppender<ILoggingEvent> appender = startGraphLogCapture(graphLogger);
+            try {
+                Map<String, Object> result = graph.run(new PregelConfig("test_interrupt", "ns_int", 100));
+                Interrupt interrupt = (Interrupt) result.get(PregelConstants.TASK_STATUS_INTERRUPT);
+                assertNotNull(interrupt);
+                assertEquals("hitl-pause", interrupt.getValue());
+                assertFalse(hasSuperStepError(appender), "GraphInterrupt must not be logged as a super-step failure");
+                Optional<GraphStoreState> saved = store.get("test_interrupt", "ns_int");
+                assertTrue(saved.isPresent());
+                PendingNode pending = saved.get().getPendingNode().get("worker");
+                assertNotNull(pending);
+                assertEquals(PregelConstants.TASK_STATUS_INTERRUPT, pending.getStatus());
+            } finally {
+                graphLogger.detachAppender(appender);
+                appender.stop();
+            }
+        }
+
+        @Test
         @DisplayName("Interrupt toString")
         void testInterruptToString() {
             Interrupt interrupt = new Interrupt("hello");
@@ -580,6 +613,35 @@ class PregelTest {
             assertEquals("ns", PregelConstants.NS);
             assertEquals("parent_ns", PregelConstants.PARENT_NS);
             assertEquals("session_id", PregelConstants.SESSION_ID);
+        }
+
+        private static Pregel interruptWorkerGraph(InMemoryStore store) {
+            Callable<Object> interruptFn = () -> {
+                throw new GraphInterrupt(new Interrupt("hitl-pause"));
+            };
+            Runnable fnPass = () -> {
+            };
+            List<Channel> channels = new ArrayList<>(
+                    List.of(new TriggerChannel("start"), new TriggerChannel("worker"), new TriggerChannel("end")));
+            Map<String, PregelNode> nodes = new LinkedHashMap<>();
+            nodes.put("start",
+                    new PregelNode("start", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of("worker"))))));
+            nodes.put("worker",
+                    new PregelNode("worker", interruptFn, new ArrayList<>(List.of(new StaticRouter(List.of("end"))))));
+            nodes.put("end", new PregelNode("end", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            return new Pregel(nodes, channels, "start", store, null);
+        }
+
+        private static ListAppender<ILoggingEvent> startGraphLogCapture(Logger graphLogger) {
+            ListAppender<ILoggingEvent> appender = new ListAppender<>();
+            appender.start();
+            graphLogger.addAppender(appender);
+            return appender;
+        }
+
+        private static boolean hasSuperStepError(ListAppender<ILoggingEvent> appender) {
+            return appender.list.stream().anyMatch(event -> event.getLevel() == Level.ERROR
+                    && event.getFormattedMessage().contains("Failed to run graph super-step"));
         }
     }
 
