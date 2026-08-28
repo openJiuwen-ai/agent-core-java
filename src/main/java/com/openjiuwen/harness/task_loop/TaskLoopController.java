@@ -424,6 +424,19 @@ public class TaskLoopController {
     }
 
     /**
+     * Drop every session state except the default one.
+     *
+     * <p>Per-task DeepAgent instances accumulate one SessionState (queues,
+     * round counters, last results) per session; without this cleanup the
+     * states pin the agent graph after destroy.</p>
+     *
+     * @since 0.1.15
+     */
+    public void clearAllSessions() {
+        sessionStates.keySet().removeIf(sessionId -> !DEFAULT_SESSION_ID.equals(sessionId));
+    }
+
+    /**
      * state.
      * 
      * @param sessionId sessionId
