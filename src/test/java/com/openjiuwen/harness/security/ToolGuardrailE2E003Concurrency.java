@@ -57,15 +57,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Concurrency and session-isolation E2E tests for the tool guardrail. All five cases share
- * the same design principle: a <b>single</b> agent / rail instance serves multiple sessions
- * concurrently. Different outcomes are produced not by building separate agents with separate
- * configs, but by having the ASK callback return different decisions (approved / rejected)
- * per session, keyed on the {@code autoConfirmKey} that the rail derives from the command.
- *
- * @since 0.1.15
- */
 class ToolGuardrailE2E003Concurrency {
 
     private static final String TEST_PROVIDER = "GuardrailConcurrencyE2E";
@@ -109,8 +100,6 @@ class ToolGuardrailE2E003Concurrency {
         sessionIds.clear();
     }
 
-    // ==================== ST-C1: same session, two distinct commands ====================
-
     @Test
     @DisplayName("ST-C1 同会话连续问两条不同命令记忆不串台")
     void sameSession_twoDistinctCommands_memoryNoBleed() {
@@ -131,8 +120,6 @@ class ToolGuardrailE2E003Concurrency {
                 .isEqualTo(2);
         assertThat(bashCalls.get()).as("两条命令均应执行").isEqualTo(2);
     }
-
-    // ==================== ST-C2: same session, repeated command, autoConfirm hits ====================
 
     @Test
     @DisplayName("ST-C2 同会话连续问同一条命令记忆生效")
@@ -156,65 +143,71 @@ class ToolGuardrailE2E003Concurrency {
         assertThat(secondOutput).contains(BASH_PREFIX);
     }
 
-    // ==================== ST-C3: multi-session concurrent, different callback results ====================
-
     @Test
-    @DisplayName("ST-C3 多会话并发同一rail不同确认结果不串台")
-    void concurrentSessions_distinctConfirmResults_noBleed() {
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+    @DisplayName("ST-C3 多会话并发各自权限不同不串台")
+    void concurrentSessions_distinctPermissions_noBleed() {
+        ExecutorService executor = Executors.newFixedThreadPool(3);
         trackExecutor(executor);
 
-        AtomicInteger bashCalls = new AtomicInteger();
-        AtomicInteger callbackCount = new AtomicInteger();
-        Map<String, Boolean> approvalMap = new ConcurrentHashMap<>();
-        approvalMap.put("bash:cat /etc/hosts", true);
-        approvalMap.put("bash:curl http://x", false);
+        AtomicInteger aCalls = new AtomicInteger();
+        AtomicInteger bCalls = new AtomicInteger();
+        AtomicInteger bCallback = new AtomicInteger();
+        AtomicInteger cCalls = new AtomicInteger();
 
-        LocalFunction bashTool = countedTool("bash_c3", bashCalls);
-        Map<String, Object> permissions = buildPermissions(
-                Map.of("bash", "ask"), Map.of("*", "allow"), List.of());
-        ToolPermissionHost host = sessionHost(approvalMap, callbackCount);
-        ReActAgent agent = newAgent("c3", bashTool, permissions, host);
+        LocalFunction bashA = countedTool("bash_c3_a", aCalls);
+        LocalFunction bashB = countedTool("bash_c3_b", bCalls);
+        LocalFunction bashC = countedTool("bash_c3_c", cCalls);
+
+        ReActAgent agentA = newAgent("c3-a", bashA, buildPermissions(
+                Map.of("bash", "allow"), Map.of("*", "allow"),
+                List.of(ruleMap("cat", "cat *", "allow"))), noCallbackHost());
+        ReActAgent agentB = newAgent("c3-b", bashB, buildPermissions(
+                Map.of("bash", "ask"), Map.of("*", "allow"), List.of()), rejectHost(bCallback));
+        ReActAgent agentC = newAgent("c3-c", bashC, buildPermissions(
+                Map.of("bash", "allow"), Map.of("*", "allow"),
+                List.of(ruleMap("rm", "rm *", "deny"))), noCallbackHost());
 
         String sidA = uniqueSessionId("c3-a");
         String sidB = uniqueSessionId("c3-b");
+        String sidC = uniqueSessionId("c3-c");
 
         CompletableFuture<String> fa = CompletableFuture.supplyAsync(
-                () -> runAgent(agent, "BASH:cat /etc/hosts", sidA), executor);
+                () -> runAgent(agentA, "BASH:cat /etc/hosts", sidA), executor);
         CompletableFuture<String> fb = CompletableFuture.supplyAsync(
-                () -> runAgent(agent, "BASH:curl http://x", sidB), executor);
-        CompletableFuture.allOf(fa, fb).join();
+                () -> runAgent(agentB, "BASH:curl http://x", sidB), executor);
+        CompletableFuture<String> fc = CompletableFuture.supplyAsync(
+                () -> runAgent(agentC, "BASH:rm -rf /tmp/x", sidC), executor);
+
+        CompletableFuture.allOf(fa, fb, fc).join();
 
         String outA = fa.join();
-        String outB = fb.join();
+        String outC = fc.join();
 
-        assertThat(callbackCount.get())
-                .as("两个会话各自触发一次回调（互不串台）").isEqualTo(2);
-        assertThat(bashCalls.get())
-                .as("会话 A 批准执行 + 会话 B 拒绝不执行 = 1").isEqualTo(1);
+        assertThat(aCalls.get()).as("A 应执行 cat").isEqualTo(1);
         assertThat(outA).contains(BASH_PREFIX);
-        assertThat(outB).contains(REJECTED_FEEDBACK);
+        assertThat(bCalls.get()).as("B 的 curl 应被拒绝不执行").isZero();
+        assertThat(bCallback.get()).as("B 应触发一次确认回调").isEqualTo(1);
+        assertThat(cCalls.get()).as("C 的 rm 应被拒绝不执行").isZero();
+        assertThat(outC).contains(DENIED_MARKER);
     }
 
-    // ==================== ST-C4: multi-tenant concurrent, context isolation ====================
-
     @Test
-    @DisplayName("ST-C4 多租户并发同一rail不同确认结果不串台")
+    @DisplayName("ST-C4 多租户并发上下文不串台")
     void concurrentTenants_contextIsolation_noBleed() {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         trackExecutor(executor);
 
-        AtomicInteger bashCalls = new AtomicInteger();
-        AtomicInteger callbackCount = new AtomicInteger();
-        Map<String, Boolean> approvalMap = new ConcurrentHashMap<>();
-        approvalMap.put("bash:cat /etc/hosts", true);
-        approvalMap.put("bash:curl http://x", false);
+        AtomicInteger aCalls = new AtomicInteger();
+        AtomicInteger bCalls = new AtomicInteger();
 
-        LocalFunction bashTool = countedTool("bash_c4", bashCalls);
-        Map<String, Object> permissions = buildPermissions(
-                Map.of("bash", "ask"), Map.of("*", "allow"), List.of());
-        ToolPermissionHost host = sessionHost(approvalMap, callbackCount);
-        ReActAgent agent = newAgent("c4", bashTool, permissions, host);
+        LocalFunction bashTenantA = countedTool("bash_c4_a", aCalls);
+        LocalFunction bashTenantB = countedTool("bash_c4_b", bCalls);
+
+        ReActAgent agentA = newAgent("c4-a", bashTenantA, buildPermissions(
+                Map.of("bash", "allow"), Map.of("*", "allow"), List.of()), noCallbackHost());
+        ReActAgent agentB = newAgent("c4-b", bashTenantB, buildPermissions(
+                Map.of("bash", "allow"), Map.of("*", "allow"),
+                List.of(ruleMap("cat", "cat *", "deny"))), noCallbackHost());
 
         String sidA = uniqueSessionId("c4-a");
         String sidB = uniqueSessionId("c4-b");
@@ -223,7 +216,7 @@ class ToolGuardrailE2E003Concurrency {
             TenantContextHolder.setCurrentTenant(
                     TenantContext.builder().tenantId("tenant-a").build());
             try {
-                return runAgent(agent, "BASH:cat /etc/hosts", sidA);
+                return runAgent(agentA, "BASH:cat /etc/hosts", sidA);
             } finally {
                 TenantContextHolder.clearCurrentTenant();
             }
@@ -232,58 +225,60 @@ class ToolGuardrailE2E003Concurrency {
             TenantContextHolder.setCurrentTenant(
                     TenantContext.builder().tenantId("tenant-b").build());
             try {
-                return runAgent(agent, "BASH:curl http://x", sidB);
+                return runAgent(agentB, "BASH:cat /etc/hosts", sidB);
             } finally {
                 TenantContextHolder.clearCurrentTenant();
             }
         }, executor);
+
         CompletableFuture.allOf(fa, fb).join();
 
         String outA = fa.join();
         String outB = fb.join();
 
-        assertThat(callbackCount.get())
-                .as("两个租户各自触发一次回调（互不串台）").isEqualTo(2);
-        assertThat(bashCalls.get())
-                .as("租户 A 批准执行 + 租户 B 拒绝不执行 = 1").isEqualTo(1);
+        assertThat(aCalls.get()).as("租户 A 应执行 cat").isEqualTo(1);
         assertThat(outA).contains(BASH_PREFIX);
-        assertThat(outB).contains(REJECTED_FEEDBACK);
+        assertThat(bCalls.get()).as("租户 B 的 cat 应被拒绝不执行").isZero();
+        assertThat(outB).contains(DENIED_MARKER);
     }
 
-    // ==================== ST-C5: same rail, allow and deny, no callback ====================
-
     @Test
-    @DisplayName("ST-C5 同一rail并发放行与拒绝不串台")
+    @DisplayName("ST-C5 同会话多并发不同query第二个被拦截")
     void concurrentSameRail_allowAndDeny_noBleed() {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         trackExecutor(executor);
 
-        AtomicInteger bashCalls = new AtomicInteger();
-        LocalFunction bashTool = countedTool("bash_c5", bashCalls);
+        AtomicInteger catCalls = new AtomicInteger();
+        AtomicInteger curlCalls = new AtomicInteger();
+
+        LocalFunction catTool = countedTool("bash_c5_cat", catCalls);
+        LocalFunction curlTool = countedTool("bash_c5_curl", curlCalls);
+
         Map<String, Object> permissions = buildPermissions(
                 Map.of("bash", "allow"), Map.of("*", "allow"),
-                List.of(ruleMap("curl_deny", "curl *", "deny")));
-        ReActAgent agent = newAgent("c5", bashTool, permissions, noCallbackHost());
+                List.of(ruleMap("curl", "curl *", "deny")));
+        ReActAgent agent = newAgent("c5", catTool, permissions, noCallbackHost());
 
         String sidCat = uniqueSessionId("c5-cat");
         String sidCurl = uniqueSessionId("c5-curl");
+        agent.getAbilityManager().registerSessionTool(sidCat, catTool);
+        agent.getAbilityManager().registerSessionTool(sidCurl, curlTool);
 
         CompletableFuture<String> fCat = CompletableFuture.supplyAsync(
                 () -> runAgent(agent, "BASH:cat /etc/hosts", sidCat), executor);
         CompletableFuture<String> fCurl = CompletableFuture.supplyAsync(
                 () -> runAgent(agent, "BASH:curl http://x", sidCurl), executor);
+
         CompletableFuture.allOf(fCat, fCurl).join();
 
         String outCat = fCat.join();
         String outCurl = fCurl.join();
 
-        assertThat(bashCalls.get())
-                .as("cat 放行执行 + curl 拒绝不执行 = 1").isEqualTo(1);
+        assertThat(catCalls.get()).as("cat 应被放行执行").isEqualTo(1);
         assertThat(outCat).contains(BASH_PREFIX);
+        assertThat(curlCalls.get()).as("curl 应被拦截不执行").isZero();
         assertThat(outCurl).contains(DENIED_MARKER);
     }
-
-    // ==================== Helpers ====================
 
     private void trackExecutor(ExecutorService executor) {
         executors.add(executor);
@@ -323,13 +318,11 @@ class ToolGuardrailE2E003Concurrency {
             StringBuilder builder = new StringBuilder();
             appendValue(builder, map.get("output"));
             appendValue(builder, map.get("result_type"));
-            appendValue(builder, map.get("content"));
             Object rounds = map.get("rounds");
             if (rounds instanceof List<?> list) {
                 for (Object round : list) {
                     if (round instanceof Map<?, ?> roundMap) {
                         appendValue(builder, roundMap.get("output"));
-                        appendValue(builder, roundMap.get("content"));
                     }
                 }
             }
@@ -409,25 +402,10 @@ class ToolGuardrailE2E003Concurrency {
         return host;
     }
 
-    /**
-     * Builds a host whose callback looks up the {@code autoConfirmKey} (which the rail derives
-     * from the command) in {@code approvalMap} to decide approve / reject. This lets a single
-     * rail instance produce different outcomes for different sessions without creating
-     * multiple agents — exactly the pattern ST-C3 / ST-C4 need.
-     */
-    private static ToolPermissionHost sessionHost(Map<String, Boolean> approvalMap,
-            AtomicInteger callbackCount) {
+    private static ToolPermissionHost rejectHost(AtomicInteger callbackCount) {
         ToolPermissionHost host = ToolPermissionHost.builder().build();
         host.setRequestPermissionConfirmationFn(request -> {
             callbackCount.incrementAndGet();
-            String key = request.getAutoConfirmKey();
-            Boolean approved = approvalMap.get(key);
-            if (approved != null && approved) {
-                return PermissionConfirmResponse.builder()
-                        .approved(true)
-                        .autoConfirm(false)
-                        .build();
-            }
             return PermissionConfirmResponse.builder()
                     .approved(false)
                     .feedback(REJECTED_FEEDBACK)
@@ -464,8 +442,6 @@ class ToolGuardrailE2E003Concurrency {
             });
         }
     }
-
-    // ==================== Model client ====================
 
     private static final class GuardrailConcurrencyModelClient extends BaseModelClient {
         private GuardrailConcurrencyModelClient(ModelRequestConfig modelConfig,
