@@ -136,6 +136,9 @@ public class PregelLoop {
             return doRunStep();
         } catch (CancellationException e) {
             throw e;
+        } catch (GraphInterrupt e) {
+            saveStateOnError(e);
+            throw e;
         } catch (Exception e) {
             logger.error("Failed to run graph super-step[{}], ns={}, sessionId={}", step, config.getNs(),
                     config.getSessionId(), e);

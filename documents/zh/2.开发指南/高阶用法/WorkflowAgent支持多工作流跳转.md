@@ -251,7 +251,7 @@ Runner / WorkflowAgent
 - 这里讨论的是 **`WorkflowAgent` 管理多条顶层 workflow**，不是单条 workflow 内部的任意节点跳转。
 - `examples/workflow_agent` 的命令行界面重点展示“多 workflow 注册 + 单轮补问恢复”主线；更细粒度的多中断并存行为主要由 `WorkflowEventHandler` 的状态管理逻辑保证。
 - Java 当前流式路径里，交互回放存在边界：`stream` 路径只保证当前需要展示的交互能返回给调用方，不应把它理解成复杂中断集合一定能够完整重放。
-- `QuestionerComponent` 触发时底层可能打印 `GraphInterrupt` 的 `ERROR` 日志；按照示例 README，这属于正常等待输入行为，不代表示例失败。
+- `QuestionerComponent` 触发时底层会以 INFO 记录 `GraphInterrupt` 中断；这属于正常等待输入，不代表示例失败。
 
 ## 参考入口
 

@@ -114,7 +114,7 @@ assistant> 我目前只支持转账、理财和余额查询三类 worker，请�
 
 其中有两类日志尤其需要注意：
 
-1. `GraphInterrupt` 相关日志通常表示 `QuestionerComponent` 正常中断并等待用户补充输入，不代表示例失败。
+1. `GraphInterrupt` 相关的 INFO 日志通常表示 `QuestionerComponent` 正常中断并等待用户补充输入，不代表示例失败。
 2. 如果模型服务返回 `HTTP 403`、额度不足或鉴权失败，这会是真正的外部依赖错误，示例会输出一条简化后的失败信息后结束。
 
 ## 当前实现边界

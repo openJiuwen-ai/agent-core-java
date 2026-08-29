@@ -60,7 +60,7 @@ $runtimeClasspath = "target/classes;examples;examples/workflow_agent;examples/wo
 
 ## 日志说明
 
-`QuestionerComponent` 在等待用户补充信息时，底层图执行器会打印 `GraphInterrupt` 的 `ERROR` 日志。当前这是预期中的中断恢复行为，不是运行失败；只要后续出现 `assistant>` 的追问和完成结果，就说明示例正常。
+`QuestionerComponent` 在等待用户补充信息时，底层图执行器会以 INFO 记录中断。这是正常的中断恢复行为，不是运行失败；只要后续出现 `assistant>` 的追问和完成结果，就说明示例正常。
 
 ## 兼容入口
 
