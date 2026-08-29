@@ -133,8 +133,9 @@ public class TaskLoopController {
      */
     public Map<String, Object> waitRoundCompletion(String sessionId) {
         SessionState state = state(sessionId);
-        if (!state.isRoundActive && state.lastResult != null) {
-            return state.lastResult;
+        Map<String, Object> lastResult = state.lastResult;
+        if (!state.isRoundActive && lastResult != null && !isSubmissionAck(lastResult)) {
+            return lastResult;
         }
         if (!state.isRoundActive) {
             return Map.of("error", "no active round");
@@ -169,8 +170,8 @@ public class TaskLoopController {
         if (completedRound != currentRound) {
             return Map.of("status", "stale", "round", completedRound, "current_round", currentRound);
         }
-        state.isRoundActive = false;
         state.lastResult = result == null ? Map.of("status", "completed") : Map.copyOf(result);
+        state.isRoundActive = false;
         return state.lastResult;
     }
 
@@ -185,8 +186,8 @@ public class TaskLoopController {
     }
 
     /**
-     * recordSubmission.
-     * 
+     * Record the handle_input submit ack for {@link #getLastResult()}.
+     *
      * @param sessionId sessionId
      * @param result result
      * @since 0.1.7
@@ -196,6 +197,10 @@ public class TaskLoopController {
             return;
         }
         SessionState state = state(sessionId);
+        Map<String, Object> current = state.lastResult;
+        if (current != null && !isSubmissionAck(current)) {
+            return;
+        }
         state.lastResult = Map.copyOf(result);
     }
 
@@ -218,8 +223,8 @@ public class TaskLoopController {
      */
     public void abort(String sessionId, String reason) {
         SessionState state = state(sessionId);
-        state.isRoundActive = false;
         state.lastResult = Map.of("status", "aborted", "reason", reason == null ? "abort" : reason);
+        state.isRoundActive = false;
     }
 
     /**
@@ -458,6 +463,10 @@ public class TaskLoopController {
      */
     private String normalizeSessionId(String sessionId) {
         return sessionId == null || sessionId.isBlank() ? DEFAULT_SESSION_ID : sessionId;
+    }
+
+    private static boolean isSubmissionAck(Map<String, Object> result) {
+        return "submitted".equals(result.get("status"));
     }
 
     private static final class SessionState {
