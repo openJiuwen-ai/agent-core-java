@@ -1443,9 +1443,11 @@ public class AbilityManager implements ToolRegistry {
     ) {
         String toolName = toolCall.getName();
 
-        // --- Tool branch ---
+        Optional<Tool> sessionTool = resolveSessionTool(toolName, session);
         Tool tool = null;
-        if (tools.containsKey(toolName)) {
+        if (sessionTool.isPresent()) {
+            tool = sessionTool.get();
+        } else if (tools.containsKey(toolName)) {
             ToolCard toolCard = tools.get(toolName);
             String toolId = toolCard.getId() != null ? toolCard.getId() : toolCard.getName();
             tool = getToolFromResourceMgr(toolId, tag);

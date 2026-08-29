@@ -455,6 +455,8 @@ public class ReActAgentEvolve extends BaseAgent {
         Tool contextReloader = context.reloaderTool();
         if (config.getContextEngineConfig().isEnableReload()) {
             getAbilityManager().add(contextReloader.getCard());
+            getAbilityManager().registerSessionTool(
+                    session != null ? session.getSessionId() : null, contextReloader);
             String agentTag = getCard() != null ? getCard().getId() : null;
             Object existing = agentTag != null && !agentTag.isBlank()
                     ? Runner.resourceMgr().getTool(contextReloader.getCard().getId(), agentTag, TagMatchStrategy.ALL)
