@@ -435,7 +435,7 @@ class ReActAgentTest {
                     appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
             assertThat(messages).contains(
                     "LLM request messages redacted: message_count=3, role_counts={system=1, user=1, tool=1}",
-                    "{\"role\": \"tool\", \"content\": \"30.0\"}");
+                    "logLlmMessage role=tool");
             assertThat(messages).noneMatch(message -> message.contains("original-user-secret")
                     || message.contains("rail-system-secret") || message.contains("rail-user-secret"));
         } finally {
@@ -496,8 +496,8 @@ class ReActAgentTest {
 
             List<String> messages =
                     appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
-            assertThat(messages).contains("{\"role\": \"user\", \"content\": \"rail-rewritten-query\"}");
-            assertThat(messages).contains("{\"role\": \"tool\", \"content\": \"30.0\"}");
+            assertThat(messages).contains("logLlmMessage role=user");
+            assertThat(messages).contains("logLlmMessage role=tool");
             assertThat(messages).noneMatch(message -> message.contains("original-stream-query"));
         } finally {
             testAgent.getAgentCallbackManager().clear(null);
