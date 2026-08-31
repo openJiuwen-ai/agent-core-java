@@ -717,7 +717,6 @@ public class AbilityManager implements ToolRegistry {
         if (sessionTool.isPresent()) {
             try {
                 result = invokeTool(sessionTool.get(), toolArgs, session);
-                logToolResult(result);
             } catch (Exception e) {
                 String errorMsg =
                     "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
@@ -734,7 +733,6 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = invokeTool(tool, toolArgs, session);
-                logToolResult(result);
             } catch (Exception e) {
                 String errorMsg =
                     "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
@@ -780,7 +778,6 @@ public class AbilityManager implements ToolRegistry {
             if (tool != null) {
                 try {
                     result = invokeTool(tool, toolArgs, session);
-                    logToolResult(result);
                 } catch (Exception e) {
                     String errorMsg =
                         "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
@@ -798,7 +795,6 @@ public class AbilityManager implements ToolRegistry {
                 }
                 try {
                     result = invokeTool(fallbackTool, toolArgs, session);
-                    logToolResult(result);
                 } catch (Exception e) {
                     String errorMsg =
                         "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
@@ -816,7 +812,6 @@ public class AbilityManager implements ToolRegistry {
             }
             try {
                 result = invokeTool(tool, toolArgs, session);
-                logToolResult(result);
             } catch (Exception e) {
                 String errorMsg =
                     "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
@@ -888,70 +883,6 @@ public class AbilityManager implements ToolRegistry {
         text = text.replace("None", "null").replace("True", "true").replace("False", "false");
         text = text.replace('\'', '"');
         return text;
-    }
-
-    /**
-     * logToolResult.
-     * 
-     * @param result result
-     * @since 0.1.7
-     */
-    private static void logToolResult(Object result) {
-        String content = String.valueOf(result);
-        Loggers.TOOL.info("Tool result: " + content);
-        if (result instanceof Map<?, ?> || result instanceof List<?>) {
-            Loggers.TOOL.info(toPythonLiteral(result));
-        }
-    }
-
-    /**
-     * toPythonLiteral.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String toPythonLiteral(Object value) {
-        if (value == null) {
-            return "None";
-        }
-        if (value instanceof String text) {
-            String normalized = text.replace("℃- ", "℃ - ");
-            return "'" + normalized.replace("'", "\\'") + "'";
-        }
-        if (value instanceof Boolean b) {
-            return b ? "True" : "False";
-        }
-        if (value instanceof Number) {
-            return String.valueOf(value);
-        }
-        if (value instanceof Map<?, ?> map) {
-            StringBuilder sb = new StringBuilder("{");
-            boolean first = true;
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (!first) {
-                    sb.append(", ");
-                }
-                first = false;
-                sb.append(toPythonLiteral(String.valueOf(entry.getKey())));
-                sb.append(": ");
-                sb.append(toPythonLiteral(entry.getValue()));
-            }
-            sb.append("}");
-            return sb.toString();
-        }
-        if (value instanceof List<?> list) {
-            StringBuilder sb = new StringBuilder("[");
-            for (int i = 0; i < list.size(); i++) {
-                if (i > 0) {
-                    sb.append(", ");
-                }
-                sb.append(toPythonLiteral(list.get(i)));
-            }
-            sb.append("]");
-            return sb.toString();
-        }
-        return String.valueOf(value);
     }
 
     /**
@@ -1469,7 +1400,6 @@ public class AbilityManager implements ToolRegistry {
                 }
                 // 非流式或 agentSession 为 null：走原 invoke 路径
                 Object result = invokeTool(tool, toolArgs, session);
-                logToolResult(result);
                 if (agentSession != null) {
                     agentSession.writeStream(buildToolOutputChunk(
                             resolveTaskId(session), toolCall,
@@ -1531,7 +1461,6 @@ public class AbilityManager implements ToolRegistry {
         }
 
         Object merged = mergeStreamChunks(accumulated);
-        logToolResult(merged);
 
         ToolMessage toolMsg = ToolMessage.builder()
                 .content(merged == null ? "" : merged.toString())
