@@ -896,13 +896,9 @@ public class DeepAgent implements AutoCloseable {
             if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
                 effectiveSession.withTenantContext(effectiveCtx);
             }
-            // preRun 前：把 Runner 的 runState（PRE_DONE）拷到 effectiveSession，
-            // effectiveSession.preRun 被 CAS 跳过（省 1 次 checkpoint 读）。
-            // copySessionState 保持在 preRun 之后，维持原始时序（Runner 最新状态覆盖 recover 结果）。
-            // postRun 后：把 effectiveSession 的 runState（PRE_DONE | POST_DONE）拷回 Runner session，
-            // Runner.postRun 也被 CAS 跳过（省 1 次 checkpoint 写）。
+            // preRun 前只拷 PRE_DONE（不拷 POST_DONE），postRun 后 copyRunState 拷回完整状态。
             if (session != null) {
-                effectiveSession.copyRunState(session);
+                effectiveSession.copyPreRunState(session);
             }
             effectiveSession.preRun(normalized);
             if (session != null) {
@@ -1028,11 +1024,9 @@ public class DeepAgent implements AutoCloseable {
         ensureInitialized();
         Map<String, Object> normalized = normalizeStreamInputs(inputs);
         AgentSessionApi effectiveSession = buildEffectiveStreamSession(normalized, session, streamModes);
-        // copyRunState 在 preRun 前拷 PRE_DONE，preRun 被 CAS 跳过（省 1 读）。
-        // copySessionState 保持在 preRun 之后，维持原始时序。
-        // postRun 后（在 streamTaskLoop/streamInvokeOnce 的 finally 里）：拷回 POST_DONE，Runner.postRun 也跳过（省 1 写）。
+        // preRun 前只拷 PRE_DONE（不拷 POST_DONE），postRun 后 copyRunState 拷回完整状态。
         if (session != null) {
-            effectiveSession.copyRunState(session);
+            effectiveSession.copyPreRunState(session);
         }
         effectiveSession.preRun(normalized);
         if (session != null) {
