@@ -416,7 +416,7 @@ public class ReActAgentEvolve extends BaseAgent {
 
         for (Object tc : toolCalls) {
             if (tc instanceof ToolCall toolCall) {
-                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName());
             } else {
                 Loggers.AGENT.info("Executing tool: " + tc);
             }

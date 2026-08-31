@@ -441,11 +441,11 @@ public class ReActAgent extends BaseAgent {
         }
         String content = toText(aiMessage.getContent());
         if (content != null && !content.isEmpty()) {
-            Loggers.AGENT.info("[LLM] <<< response: content=" + content);
+            Loggers.AGENT.info("[LLM] <<< response");
         }
         if (aiMessage.getToolCalls() != null) {
             for (ToolCall tc : aiMessage.getToolCalls()) {
-                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName() + "(" + tc.getArguments() + ")");
+                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName());
             }
         }
     }
@@ -487,10 +487,7 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         String role = extractMessageRole(message);
-        String content = String.valueOf(extractMessageContent(message));
-        String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
-        String logMessage = "{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}";
-        Loggers.AGENT.info("{}", logMessage);
+        Loggers.AGENT.info("logLlmMessage role={}", role);
     }
 
     /**
@@ -665,7 +662,7 @@ public class ReActAgent extends BaseAgent {
 
         for (Object tc : toolCalls) {
             if (tc instanceof ToolCall toolCall) {
-                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName());
             } else {
                 Loggers.AGENT.info("Executing tool: " + tc);
             }
@@ -731,7 +728,7 @@ public class ReActAgent extends BaseAgent {
 
         for (Object tc : toolCalls) {
             if (tc instanceof ToolCall toolCall) {
-                Loggers.AGENT.info("Executing tool: " + toolCall.getName() + " with args: " + toolCall.getArguments());
+                Loggers.AGENT.info("Executing tool: " + toolCall.getName());
             } else {
                 Loggers.AGENT.info("Executing tool: " + tc);
             }
