@@ -362,17 +362,27 @@ public class AgentSessionApi implements Session {
     }
 
     /**
+     * Copy only the PRE_DONE bit from the given session, leaving any already-set
+     * POST_DONE bit untouched. Called before preRun on a downstream/effective
+     * session so its preRun CAS guard is skipped (avoids a redundant checkpoint
+     * read) without accidentally importing a stale POST_DONE from a reused
+     * upstream session.
+     *
+     * @param source the session whose PRE_DONE bit to copy
+     * @since 0.1.15
+     */
+    public void copyPreRunState(AgentSessionApi source) {
+        if (source != null && (source.runState.get() & PRE_DONE) != 0) {
+            runState.getAndUpdate(s -> s | PRE_DONE);
+        }
+    }
+
+    /**
      * Copy the full run-state bitmask from the given session.
-     * Used to propagate CAS guards between paired sessions (e.g. a runner
-     * session and a downstream agent's effective session):
-     * <ul>
-     *   <li>Before preRun: copy upstream's PRE_DONE so downstream preRun is
-     *       skipped (avoids redundant checkpoint read).</li>
-     *   <li>After postRun: copy downstream's PRE_DONE | POST_DONE back to
-     *       upstream so upstream postRun is also skipped (checkpoint was
-     *       already saved by the downstream session).</li>
-     * </ul>
-     * 
+     * Used after postRun to propagate downstream's PRE_DONE | POST_DONE back to
+     * the upstream session so upstream postRun is also skipped (checkpoint was
+     * already saved by the downstream session).
+     *
      * @param source the session whose run-state to copy
      * @since 0.1.15
      */
