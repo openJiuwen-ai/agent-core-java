@@ -180,6 +180,84 @@ sessionId + ":"
 
 这个前缀做整体删除。因此从语义上看，`release(...)` 代表“清掉该 session 的所有 agent / workflow / graph checkpoint”。
 
+## 按需自定义检查点数据（选择性序列化与脱敏）
+
+敏感字段的定义取决于具体业务。Core 不预设通用的字段识别和脱敏规则；有相关要求时，可以通过自定义 `Checkpointer` 将数据治理
+放在持久化边界。
+
+这里要区分两个角色：
+
+- `CheckpointerProvider` 负责把类型名和配置转换成一个 `Checkpointer` 实例；
+- 自定义 `Checkpointer` 负责在保存、恢复和释放生命周期中决定实际保存什么，以及如何序列化和处理数据。
+
+### 1. 实现 Checkpointer 和 Provider
+
+自定义实现需要继承 `Checkpointer`，实现 agent、workflow 和 graph 的完整生命周期。一个最小的 Provider 如下：
+
+```java
+public final class SanitizedProvider implements CheckpointerProvider {
+    @Override
+    public String typeName() {
+        return "sanitized";
+    }
+
+    @Override
+    public Checkpointer create(Map<String, Object> conf) {
+        BaseKVStore kvStore = (BaseKVStore) conf.get("kv_store");
+        return new SanitizedCheckpointer(kvStore, conf);
+    }
+}
+```
+
+Provider 可以通过 `CheckpointerFactory.register("sanitized", new SanitizedProvider())` 注册，也可以放入扩展 JAR 的
+`META-INF/services/com.openjiuwen.core.session.checkpointer.CheckpointerProvider`，由 `ServiceLoader` 自动发现。
+
+### 2. 在保存边界选择性序列化
+
+`SanitizedCheckpointer` 的保存入口可以参考下面的处理流程：
+
+1. 在 `interruptAgentExecute`、`postAgentExecute` 或 workflow 保存入口获取 `session.state().getState()`。
+2. 复制状态并递归处理嵌套的 `Map`、`List` 等结构，仅保留恢复所必需的字段。
+3. 按客户的数据分类规则，对用户消息、Tool 返回值、模型响应等内容进行过滤、替换、哈希、摘要或截断。
+4. 序列化前校验单个 checkpoint 的字节数和会话累计量；超出限制时按业务策略拒绝、裁剪或转存到其他存储。
+5. 将处理后的结果写入业务方提供的 `BaseKVStore`、Redis 或对象存储。
+
+恢复时，在 `preAgentExecute`、`preWorkflowExecute` 中读取并反序列化，按自定义存储格式完成必要的格式转换，再调用
+`session.state().setState(...)` 写回运行态。单向哈希、删除等不可逆处理不应被设计为可还原数据。`graphStore()` 还必须提供 workflow 图恢复所需的 `Store`；workflow updates 和 graph state
+也应纳入同一套筛选和大小控制策略，否则中断恢复可能不完整。
+
+内置 `PersistenceCheckpointer` 的序列化器是实现内部固定配置，不能仅通过 Provider 配置替换过滤器。需要改变保存内容或序列化方式时，
+应完整实现自定义 `Checkpointer`，并按需复用底层 `BaseKVStore`。
+
+### 3. 在 Runner 中启用自定义类型
+
+注册 Provider 后，可以把类型和业务配置交给 `Runner`：
+
+```java
+import java.util.Map;
+import java.util.Set;
+
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.RunnerConfig;
+
+// kvStore 为业务方创建并注入的 BaseKVStore 实例
+RunnerConfig config = RunnerConfig.builder()
+        .distributedMode(false)
+        .checkpointerConfig(Map.of(
+                "type", "sanitized",
+                "conf", Map.of(
+                        "kv_store", kvStore,
+                        "max_checkpoint_bytes", 1_000_000,
+                        "allowed_fields", Set.of("global_state", "agent_state"))))
+        .build();
+
+Runner.setConfig(config);
+Runner.start();
+```
+
+`Runner.start()` 会读取 `type` 和 `conf`，调用 `CheckpointerFactory.create(...)` 创建实例并设置为默认 checkpointer。具体配置项由
+自定义 Provider 解释，例如允许保留的字段、脱敏规则标识和大小限制等。
+
 ## 如何通过 `Runner` 配置 checkpointer
 
 最推荐的入口不是在业务代码里到处手动 new checkpointer，而是在 `Runner` 启动前统一配置：
