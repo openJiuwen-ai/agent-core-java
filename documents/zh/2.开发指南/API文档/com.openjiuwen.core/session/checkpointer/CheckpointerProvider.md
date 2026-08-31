@@ -65,12 +65,7 @@ CheckpointerFactory.register("sanitized", new SanitizedProvider());
 内置 `PersistenceCheckpointer` 的序列化器是实现内部固定配置，不能仅通过继承或 Provider 配置注入过滤器。需要改变保存内容或
 序列化方式时，应完整实现自定义 `Checkpointer`（可以复用底层 `BaseKVStore`）。
 
-## Redis 数据加密
-
-Redis 连接使用 TLS 只能保护传输链路。如果要求 Redis 服务端及其持久化文件中不出现 checkpoint 明文，应在自定义
-`Checkpointer` 中先筛选并序列化状态，再使用业务方密钥服务提供的密钥执行 AES-GCM、ChaCha20-Poly1305 等认证加密，最后将包含
-格式版本、算法、`key_id`、随机 nonce 和密文的数据包写入 Redis。恢复时根据 `key_id` 取密钥，先校验并解密，再反序列化。
-
-该处理必须同时覆盖 agent state、workflow state、workflow updates 和 `graphStore()` 保存的 graph state。原始密钥不能放入
-Provider 配置、Redis 或日志；配置中只传密钥别名、`key_id` 或密钥服务客户端。内置 `RedisCheckpointer` 没有加密器注入点，
-需要通过自定义 Provider 创建完整的自定义 `Checkpointer`，并按需复用 `RedisStore`。
+例如需要对 Redis 中的 checkpoint 数据加密时，可以通过自定义 Provider 创建完整的自定义 `Checkpointer`，并按需复用
+`RedisStore`。自定义实现应在保存时完成“序列化、调用业务方加密服务、写入 Redis”，在恢复时完成“读取 Redis、调用业务方
+加密服务解密、反序列化、恢复状态”。该处理需要覆盖 agent state、workflow state、workflow updates 和 `graphStore()` 保存的
+graph state。内置 `RedisCheckpointer` 当前没有加密器注入点，不能仅通过 Provider 配置改变其保存行为。

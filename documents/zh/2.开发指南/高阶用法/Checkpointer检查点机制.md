@@ -229,18 +229,9 @@ Provider 可以通过 `CheckpointerFactory.register("sanitized", new SanitizedPr
 内置 `PersistenceCheckpointer` 的序列化器是实现内部固定配置，不能仅通过 Provider 配置替换过滤器。需要改变保存内容或序列化方式时，
 应完整实现自定义 `Checkpointer`，并按需复用底层 `BaseKVStore`。
 
-### 3. 对 Redis 中的 checkpoint 数据加密
-
-`rediss://` 或 Redis 客户端的 TLS 配置只能保护传输链路。如果要求 Redis 服务端、持久化文件或备份中不出现 checkpoint 明文，
-还需要在应用侧加密后再写入 Redis。
-
-当前内置 `RedisCheckpointer` 会使用固定的 Java serializer 生成字节并直接交给 `RedisStore`，没有用于注入加密器的配置项。因此，
-不能只给内置 `redis` Provider 增加一个密钥配置，也不建议通过继承 `RedisCheckpointer` 替换部分逻辑。有此要求时，应注册自定义
-Provider，并由它创建完整的自定义 `Checkpointer`；自定义实现可以继续复用 `RedisStore` 作为底层存储。
-
-Provider 可以按下面的方式接收已初始化的 Redis store 和业务方加密服务。`CheckpointEncryptionService`、
-`EncryptedRedisCheckpointer` 均为业务方实现；配置中传入的是服务对象和密钥别名，不是原始密钥。这是编程式配置示例，
-不适用于直接从 JSON 或 YAML 反序列化；如果扩展通过配置文件加载，Provider 应根据 Redis URL、密钥别名等配置自行创建所需客户端。
+例如，业务方需要对 Redis 中的 checkpoint 数据加密时，可以让自定义 Provider 接收 `RedisStore` 和业务方加密服务，并创建
+`EncryptedRedisCheckpointer`。内置 `RedisCheckpointer` 的 serializer 和 agent、workflow、graph storage 均由实现内部创建，
+当前没有加密器注入点，因此不能只给内置 `redis` 类型增加一个配置项来启用加密。
 
 ```java
 public final class EncryptedRedisProvider implements CheckpointerProvider {
@@ -254,68 +245,19 @@ public final class EncryptedRedisProvider implements CheckpointerProvider {
         RedisStore redisStore = (RedisStore) conf.get("redis_store");
         CheckpointEncryptionService encryptionService =
                 (CheckpointEncryptionService) conf.get("encryption_service");
-        String keyAlias = (String) conf.get("key_alias");
-        return new EncryptedRedisCheckpointer(redisStore, encryptionService, keyAlias, conf);
+        return new EncryptedRedisCheckpointer(redisStore, encryptionService, conf);
     }
 }
 
 CheckpointerFactory.register("encrypted_redis", new EncryptedRedisProvider());
 ```
 
-注册必须在 `Runner.start()` 之前完成。随后在 `RunnerConfig.checkpointerConfig` 中将 `type` 设为 `encrypted_redis`，并在 `conf` 中传入 `redis_store`、
-`encryption_service` 和 `key_alias`。自定义 Provider 读取这些配置后创建对应的 checkpointer。
+`EncryptedRedisCheckpointer` 应在保存方法中先序列化，再调用业务方加密服务，最后通过 `RedisStore` 写入；在
+`preAgentExecute`、`preWorkflowExecute` 和自定义 graph store 的读取方法中，先从 Redis 读取并调用业务方加密服务解密，
+再反序列化和恢复状态。该处理应同时覆盖 agent state、workflow state、workflow updates 和 graph state，并保证
+`sessionExists`、`release` 与自定义的 Redis key 结构一致。具体加密规则由业务方实现，Core 只负责提供上述扩展和生命周期入口。
 
-自定义实现的写入顺序如下：
-
-1. 按前述规则复制、筛选和脱敏运行态数据。
-2. 使用业务方选定的受控序列化方案将处理后的对象转换为字节；建议使用显式 schema 或受限类型映射，并为格式升级设计版本迁移，
-   不能因为后续会加密就放宽反序列化安全限制。
-3. 从业务方的 KMS 或密钥管理组件获取数据加密密钥，使用 AES-GCM 或 ChaCha20-Poly1305 等带完整性校验的加密算法加密字节。
-4. 每次加密生成唯一的随机 nonce，并将格式版本、算法、`key_id`、nonce、认证标签和密文封装为一个加密数据包；
-   Redis value 中只写入该数据包，密文之外的元数据也必须纳入认证范围。
-5. 在加密后校验 checkpoint 大小，再通过 `RedisStore` 或其 pipeline 写入，并按业务要求设置 TTL。
-
-读取和恢复时执行相反流程：从 Redis 读取加密数据包，根据 `key_id` 从密钥管理组件取得对应密钥，校验并解密，然后按数据包中的
-格式版本反序列化，最后恢复到 session 或 graph store。核心顺序可以表示为：
-
-```java
-// serializer、下列类型和 encode/decode 方法由业务方实现
-Serializer.TypedBytes serialized = serializer.dumpsTyped(filteredState);
-SerializedCheckpoint payload = new SerializedCheckpoint(
-        serialized.type(), serialized.data());
-EncryptedCheckpoint encrypted = encryptionService.encrypt(
-        payload.encode(),
-        associatedData(tenantId, sessionId, namespace, entityId));
-redisStore.pipeline()
-        .set(blobKey, encrypted.encode(), ttlSeconds)
-        .execute();
-
-EncryptedCheckpoint stored = EncryptedCheckpoint.decode(encryptedBlob);
-byte[] plaintext = encryptionService.decrypt(
-        stored,
-        associatedData(tenantId, sessionId, namespace, entityId));
-SerializedCheckpoint restored = SerializedCheckpoint.decode(plaintext);
-Object state = serializer.loadsTyped(
-        new Serializer.TypedBytes(restored.type(), restored.data()));
-```
-
-示例中的关联数据（associated data）不写入密文，但会参与完整性校验，可用于绑定 tenant、session、namespace、entity 和数据版本，
-防止不同 checkpoint 之间替换密文。关联数据只能使用保存与恢复时都能稳定重建的字段，两端必须使用完全一致的值。
-
-实现时还应满足以下要求：
-
-- agent state、workflow state、workflow updates 和 graph state 使用同一套加密策略，避免只加密部分 Redis value；
-- 原始密钥不放入 `checkpointerConfig`、Redis、代码仓库或日志，配置中只传密钥别名、`key_id` 或密钥服务客户端；
-- 新写入数据使用当前密钥，读取时依据 `key_id` 兼容旧密钥，以支持轮换；需要时可在读取成功后重新加密旧数据；
-- 解密或认证失败应终止恢复并返回明确错误，不能回退为按明文反序列化；日志中不得记录明文、密钥或完整加密数据包；
-- 加密包已经包含 serializer type 时可以只保存一个 value；如果继续拆分 type 和 blob，必须以原子方式写入并保持相同 TTL，
-  防止恢复时读取到不完整的数据；
-- 自定义 `sessionExists`、`release` 和 `graphStore()` 必须使用与保存逻辑一致的 key 和租户命名空间；如果复用外部共享的
-  `RedisStore`，还应明确资源所有权，避免 `close()` 关闭其他组件仍在使用的 Redis 客户端；
-- 如果 Redis key 本身包含的 session ID、tenant ID 等也属于敏感信息，还需要使用 HMAC 等方式生成确定性的不可逆 key，
-  并为 `sessionExists`、`release` 和按前缀清理设计相应索引；仅加密 value 不会隐藏 key。
-
-### 4. 在 Runner 中启用自定义类型
+### 3. 在 Runner 中启用自定义类型
 
 注册 Provider 后，可以把类型和业务配置交给 `Runner`：
 
