@@ -611,27 +611,35 @@ public class ReActAgent extends BaseAgent {
                             null, config.getModelName(), null, null, null, null, extraKwargs);
                     AssistantMessageChunk merged = null;
                     int chunkIndex = 0;
-                    while (stream != null && stream.hasNext()) {
-                        // Early-exit if the downstream emitter has been closed (e.g.
-                        // the session was finalized mid-stream). Continuing to pull
-                        // chunks from the upstream LLM Iterator would only produce
-                        // discarded writes and log flooding. We cannot always
-                        // cancel the underlying HTTP stream, but we can stop
-                        // forwarding chunks as soon as we observe the close.
-                        if (agentSession != null && agentSession.isStreamClosed()) {
-                            Loggers.AGENT.info(
-                                    "ReActAgent stream loop aborting early: "
-                                            + "downstream emitter closed at chunkIndex={}",
-                                    chunkIndex);
-                            break;
+                    try {
+                        while (stream != null && stream.hasNext()) {
+                            // Early-exit if the downstream emitter has been closed (e.g.
+                            // the session was finalized mid-stream). Continuing to pull
+                            // chunks from the upstream LLM Iterator would only produce
+                            // discarded writes and log flooding.
+                            if (agentSession != null && agentSession.isStreamClosed()) {
+                                Loggers.AGENT.info(
+                                        "ReActAgent stream loop aborting early: "
+                                                + "downstream emitter closed at chunkIndex={}",
+                                        chunkIndex);
+                                break;
+                            }
+                            AssistantMessageChunk chunk = stream.next();
+                            if (chunk == null) {
+                                continue;
+                            }
+                            merged = merged == null ? chunk : merged.merge(chunk);
+                            inputs.setResponse(merged);
+                            writeAssistantStreamChunk(agentSession, chunk, chunkIndex++);
                         }
-                        AssistantMessageChunk chunk = stream.next();
-                        if (chunk == null) {
-                            continue;
+                    } finally {
+                        if (stream instanceof AutoCloseable closeable) {
+                            try {
+                                closeable.close();
+                            } catch (Exception ignored) {
+                                // Ignore.
+                            }
                         }
-                        merged = merged == null ? chunk : merged.merge(chunk);
-                        inputs.setResponse(merged);
-                        writeAssistantStreamChunk(agentSession, chunk, chunkIndex++);
                     }
                     if (merged == null) {
                         return null;
