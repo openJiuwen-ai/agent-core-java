@@ -1,0 +1,3 @@
+com.openjiuwen.core.retrieval.provider.document.PdfParserProvider
+com.openjiuwen.core.retrieval.provider.document.WordParserProvider
+com.openjiuwen.core.retrieval.provider.document.ExcelParserProvider
