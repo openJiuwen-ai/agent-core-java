@@ -1,0 +1,2 @@
+com.openjiuwen.core.retrieval.provider.http.OpenAIEmbeddingProvider
+com.openjiuwen.core.retrieval.provider.http.VllmEmbeddingProvider

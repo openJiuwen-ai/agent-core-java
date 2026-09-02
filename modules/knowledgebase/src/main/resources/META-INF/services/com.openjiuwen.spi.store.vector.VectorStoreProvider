@@ -1,0 +1,2 @@
+com.openjiuwen.spi.store.vector.provider.ChromaVectorStoreProvider
+com.openjiuwen.spi.store.vector.provider.ElasticsearchVectorStoreProvider
