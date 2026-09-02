@@ -625,12 +625,7 @@ public class APIEmbedding implements Embedding {
      */
     @Override
     public void close() {
-        executor.shutdownNow();
-        try {
-            executor.awaitTermination(100, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        OpenJiuwenExecutors.shutdown(executor);
     }
 
     /**

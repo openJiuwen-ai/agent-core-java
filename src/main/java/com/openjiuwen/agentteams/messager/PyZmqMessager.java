@@ -857,7 +857,7 @@ public class PyZmqMessager implements Messager {
                 startFuture.completeExceptionally(new IllegalStateException("PyZmq transport failed to start"));
             }
             if (completedExecutor != null) {
-                completedExecutor.shutdown();
+                OpenJiuwenExecutors.shutdown(completedExecutor);
             }
             stopFuture.complete(null);
         }

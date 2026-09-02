@@ -66,7 +66,7 @@ public class CodeTool {
                 String stderr = stderrFuture.join();
                 return buildCodeResult(exitCode, stdout, stderr);
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(processIoExecutor);
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();

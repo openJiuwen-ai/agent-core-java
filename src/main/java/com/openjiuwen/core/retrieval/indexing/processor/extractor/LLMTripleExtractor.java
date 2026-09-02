@@ -120,15 +120,7 @@ public class LLMTripleExtractor extends Extractor {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                     "triple extraction execution failed: " + ex.getMessage());
         } finally {
-            executor.shutdown();
-            try {
-                if (!executor.awaitTermination(1, TimeUnit.MINUTES)) {
-                    executor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                executor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+            OpenJiuwenExecutors.shutdown(executor);
         }
 
         List<Triple> triples = new ArrayList<>();

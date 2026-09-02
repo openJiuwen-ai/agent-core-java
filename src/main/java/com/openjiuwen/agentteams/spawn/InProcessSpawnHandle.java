@@ -135,7 +135,7 @@ public class InProcessSpawnHandle implements SpawnHandle {
         ScheduledExecutorService executor = healthCheckExecutor;
         healthCheckExecutor = null;
         if (executor != null) {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

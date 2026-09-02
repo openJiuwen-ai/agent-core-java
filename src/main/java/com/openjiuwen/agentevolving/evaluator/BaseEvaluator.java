@@ -84,7 +84,7 @@ public abstract class BaseEvaluator {
             }
             return results;
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 
