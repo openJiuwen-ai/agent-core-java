@@ -588,9 +588,9 @@ public class TaskScheduler {
                 lock.lock();
                 try {
                     int maxConcurrent = config.getMaxConcurrentTasks();
-                    boolean boundedByPlatformPool = maxConcurrent > 0
+                    boolean isBoundedByPlatformPool = maxConcurrent > 0
                             && !OpenJiuwenExecutors.isVirtualThreadSupported();
-                    if (boundedByPlatformPool && runningTasks.size() >= maxConcurrent) {
+                    if (isBoundedByPlatformPool && runningTasks.size() >= maxConcurrent) {
                         Loggers.CONTROLLER.warning("Reached max concurrent tasks limit ({}), waiting for next schedule",
                                 maxConcurrent);
                         break;

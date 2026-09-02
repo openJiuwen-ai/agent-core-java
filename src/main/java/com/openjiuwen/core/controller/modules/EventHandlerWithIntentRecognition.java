@@ -7,7 +7,6 @@ package com.openjiuwen.core.controller.modules;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Intent;
 import com.openjiuwen.core.controller.schema.IntentType;

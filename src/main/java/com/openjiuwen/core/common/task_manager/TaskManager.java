@@ -588,8 +588,8 @@ public class TaskManager {
      * @since 0.1.7
      */
     private void shutdown() {
-        OpenJiuwenExecutors.shutdown(executor);
-        OpenJiuwenExecutors.shutdown(scheduler);
+        OpenJiuwenExecutors.shutdownNow(executor);
+        OpenJiuwenExecutors.shutdownNow(scheduler);
         registry.clear();
     }
 }
