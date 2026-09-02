@@ -473,6 +473,28 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 强制关闭单个登记过的线程池并从登记表中移除。
+     *
+     * <p>适用于承载 long-running I/O 循环（如 ZMQ poll）的线程池：
+     * 这些线程阻塞在 native I/O 上，{@link #shutdown(ExecutorService)} 的优雅停止
+     * 无法让它们及时退出，必须用 {@code shutdownNow()} 中断。</p>
+     *
+     * @param executor 待关闭的线程池
+     */
+    public static void shutdownNow(ExecutorService executor) {
+        Objects.requireNonNull(executor, "executor");
+        MANAGED_EXECUTORS.remove(executor);
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS)) {
+                Loggers.COMMON.warning("Executor did not terminate after {}s shutdownNow", SHUTDOWN_AWAIT_SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
      * 关闭指定线程池，并在超时后中断仍在执行的任务。
      *
      * @param executors 待关闭的线程池
