@@ -418,7 +418,7 @@ public class InMemoryGraphStore implements GraphStore {
      */
     @Override
     public void close() {
-        embedExecutor.shutdown();
+        OpenJiuwenExecutors.shutdown(embedExecutor);
         collections.clear();
     }
 }

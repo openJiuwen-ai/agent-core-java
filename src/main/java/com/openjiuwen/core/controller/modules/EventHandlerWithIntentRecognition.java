@@ -4,9 +4,9 @@
 
 package com.openjiuwen.core.controller.modules;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Intent;
 import com.openjiuwen.core.controller.schema.IntentType;
@@ -75,7 +75,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         List<Thread> threads = new ArrayList<>();
 
         for (Intent intent : intents) {
-            Thread t = new Thread((() -> {
+            Thread t = OpenJiuwenExecutors.newThread((() -> {
                 switch (intent.getIntentType()) {
                     case CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
                     case PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
@@ -86,9 +86,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
                     case MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
                     default -> processUnknownTaskIntent(intent, inputs.getSession());
                 }
-            }), "intent-handler-" + intent.getIntentType());
-            t.setUncaughtExceptionHandler((thread, e) -> Loggers.CONTROLLER
-                    .error("Uncaught exception in intent handler: " + thread.getName(), e));
+            }), "intent-handler-" + intent.getIntentType(), false);
             t.start();
             threads.add(t);
         }

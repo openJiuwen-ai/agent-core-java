@@ -175,7 +175,7 @@ public class FixLoopController {
             }
             throw new IllegalStateException(cause);
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

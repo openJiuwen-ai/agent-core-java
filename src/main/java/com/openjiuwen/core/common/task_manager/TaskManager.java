@@ -588,14 +588,8 @@ public class TaskManager {
      * @since 0.1.7
      */
     private void shutdown() {
-        executor.shutdownNow();
-        scheduler.shutdownNow();
-        try {
-            executor.awaitTermination(3, TimeUnit.SECONDS);
-            scheduler.awaitTermination(3, TimeUnit.SECONDS);
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-        }
+        OpenJiuwenExecutors.shutdownNow(executor);
+        OpenJiuwenExecutors.shutdownNow(scheduler);
         registry.clear();
     }
 }

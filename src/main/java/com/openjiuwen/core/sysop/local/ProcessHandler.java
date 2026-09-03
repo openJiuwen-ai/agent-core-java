@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.Loggers;
 
@@ -93,25 +94,21 @@ public class ProcessHandler {
         StringBuilder stdoutBuf = new StringBuilder();
         StringBuilder stderrBuf = new StringBuilder();
 
-        Thread stdoutThread = new Thread(() -> {
+        Thread stdoutThread = OpenJiuwenExecutors.newThread(() -> {
             try {
                 stdoutBuf.append(readStream(process.getInputStream()));
             } catch (Exception e) {
                 Loggers.SYS_OPERATION.error("Failed to read stdout", e);
             }
-        }, "invoke-stdout-reader");
-        stdoutThread.setUncaughtExceptionHandler(
-                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
+        }, "invoke-stdout-reader", true);
         stdoutThread.start();
-        Thread stderrThread = new Thread(() -> {
+        Thread stderrThread = OpenJiuwenExecutors.newThread(() -> {
             try {
                 stderrBuf.append(readStream(process.getErrorStream()));
             } catch (Exception e) {
                 Loggers.SYS_OPERATION.error("Failed to read stderr", e);
             }
-        }, "invoke-stderr-reader");
-        stderrThread.setUncaughtExceptionHandler(
-                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
+        }, "invoke-stderr-reader", true);
         stderrThread.start();
 
         try {
@@ -170,15 +167,11 @@ public class ProcessHandler {
         }
 
         // Start reader threads for stdout and stderr
-        Thread stdoutReader =
-            new Thread(() -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader");
-        stdoutReader.setUncaughtExceptionHandler(
-                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
+        Thread stdoutReader = OpenJiuwenExecutors.newThread(
+            () -> readerTask(process.getInputStream(), StreamEventType.STDOUT), "stdout-reader", true);
         stdoutReader.start();
-        Thread stderrReader =
-            new Thread(() -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader");
-        stderrReader.setUncaughtExceptionHandler(
-                (t, e) -> Loggers.SYS_OPERATION.error("Uncaught exception in " + t.getName(), e));
+        Thread stderrReader = OpenJiuwenExecutors.newThread(
+            () -> readerTask(process.getErrorStream(), StreamEventType.STDERR), "stderr-reader", true);
         stderrReader.start();
 
         return new StreamEventIterator(stdoutReader, stderrReader);

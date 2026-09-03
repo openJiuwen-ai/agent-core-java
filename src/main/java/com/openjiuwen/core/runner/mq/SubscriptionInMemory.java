@@ -90,7 +90,7 @@ public class SubscriptionInMemory extends SubscriptionBase {
         if (active) {
             active = false;
             if (consumerExecutor != null) {
-                consumerExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(consumerExecutor);
                 consumerExecutor = null;
             }
             queue = new LinkedBlockingQueue<>(queueMaxSize);

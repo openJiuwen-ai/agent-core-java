@@ -184,6 +184,34 @@ class VirtualThreadSupportTest {
         }
     }
 
+    @Test
+    @DisplayName("newThread 在 JDK 21 返回虚拟线程，在 JDK 17 返回平台线程")
+    void newThreadMatchesRuntimeCapability()
+            throws InterruptedException, TimeoutException, ExecutionException {
+        Thread thread = OpenJiuwenExecutors.newThread(() -> {
+        }, "new-thread-test", true);
+        try {
+            assertThat(thread.getName()).isEqualTo("new-thread-test");
+            assertThat(thread.isDaemon()).isEqualTo(VirtualThreadSupport.isSupported());
+            assertThat(isVirtual(thread)).isEqualTo(VirtualThreadSupport.isSupported());
+        } finally {
+            thread.start();
+            thread.join(TEST_TIMEOUT_SECONDS * 1000);
+        }
+    }
+
+    @Test
+    @DisplayName("newThread 返回的线程未启动，调用方需显式 start")
+    void newThreadReturnsUnstartedThread() {
+        Thread thread = OpenJiuwenExecutors.newThread(() -> {
+        }, "unstarted-thread-test", false);
+        try {
+            assertThat(thread.isAlive()).isFalse();
+        } finally {
+            thread.start();
+        }
+    }
+
     private static void shutdown(ExecutorService executor) throws InterruptedException {
         executor.shutdownNow();
         assertThat(executor.awaitTermination(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();

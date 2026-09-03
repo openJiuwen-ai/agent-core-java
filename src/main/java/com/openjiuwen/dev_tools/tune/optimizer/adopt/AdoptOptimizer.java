@@ -178,7 +178,7 @@ public class AdoptOptimizer extends BaseOptimizer {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             return gradientMap;
         } finally {
-            executor.shutdown();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 
@@ -248,7 +248,7 @@ public class AdoptOptimizer extends BaseOptimizer {
 
             return results;
         } finally {
-            executor.shutdown();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

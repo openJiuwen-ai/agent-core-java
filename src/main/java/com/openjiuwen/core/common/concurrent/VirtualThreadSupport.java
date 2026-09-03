@@ -47,6 +47,37 @@ final class VirtualThreadSupport {
         }
     }
 
+    /**
+     * 创建一个已配置但未启动的虚拟线程。
+     *
+     * <p>JDK 21 及以上返回虚拟线程，JDK 17 返回 {@code null}（调用方应回退到平台线程）。</p>
+     *
+     * @param runnable 任务
+     * @param threadName 线程名
+     * @param exceptionHandler 未捕获异常处理器
+     * @return 已配置但未启动的虚拟线程；当前运行时不支持虚拟线程时返回 {@code null}
+     */
+    static Thread newVirtualThread(Runnable runnable, String threadName,
+            Thread.UncaughtExceptionHandler exceptionHandler) {
+        Objects.requireNonNull(runnable, "runnable");
+        Objects.requireNonNull(threadName, "threadName");
+        Objects.requireNonNull(exceptionHandler, "exceptionHandler");
+        VirtualThreadMethods methods = VIRTUAL_THREAD_METHODS.orElse(null);
+        if (methods == null) {
+            return null;
+        }
+        try {
+            Object builder = methods.ofVirtual().invoke(null);
+            Object namedBuilder = methods.nameSingle().invoke(builder, threadName);
+            Object configuredBuilder = methods.uncaughtExceptionHandler().invoke(namedBuilder, exceptionHandler);
+            return Thread.class.cast(methods.unstarted().invoke(configuredBuilder, runnable));
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Failed to access JDK virtual thread interfaces", exception);
+        } catch (InvocationTargetException exception) {
+            throw new IllegalStateException("Failed to create virtual thread", exception.getTargetException());
+        }
+    }
+
     private static Optional<VirtualThreadMethods> resolveVirtualThreadMethods() {
         if (Runtime.version().feature() < MINIMUM_VIRTUAL_THREAD_VERSION) {
             return Optional.empty();
@@ -55,20 +86,23 @@ final class VirtualThreadSupport {
             Method ofVirtual = Thread.class.getMethod("ofVirtual");
             Class<?> builderClass = ofVirtual.getReturnType();
             Method name = builderClass.getMethod("name", String.class, long.class);
+            Method nameSingle = builderClass.getMethod("name", String.class);
             Method uncaughtExceptionHandler = builderClass.getMethod(
                     "uncaughtExceptionHandler", Thread.UncaughtExceptionHandler.class);
             Method factory = builderClass.getMethod("factory");
+            Method unstarted = builderClass.getMethod("unstarted", Runnable.class);
             Method newThreadPerTaskExecutor = Executors.class.getMethod(
                     "newThreadPerTaskExecutor", ThreadFactory.class);
-            return Optional.of(new VirtualThreadMethods(ofVirtual, name, uncaughtExceptionHandler, factory,
-                    newThreadPerTaskExecutor));
+            return Optional.of(new VirtualThreadMethods(ofVirtual, name, nameSingle, uncaughtExceptionHandler,
+                    factory, unstarted, newThreadPerTaskExecutor));
         } catch (NoSuchMethodException ignored) {
             // 当前运行时没有提供稳定的虚拟线程接口，统一执行器将继续使用平台线程。
             return Optional.empty();
         }
     }
 
-    private record VirtualThreadMethods(Method ofVirtual, Method name, Method uncaughtExceptionHandler,
-            Method factory, Method newThreadPerTaskExecutor) {
+    private record VirtualThreadMethods(Method ofVirtual, Method name, Method nameSingle,
+            Method uncaughtExceptionHandler, Method factory, Method unstarted,
+            Method newThreadPerTaskExecutor) {
     }
 }

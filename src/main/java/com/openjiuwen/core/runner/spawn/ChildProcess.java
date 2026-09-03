@@ -94,7 +94,7 @@ public final class ChildProcess {
                 }
             }
         } finally {
-            agentExecutor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(agentExecutor);
             Runner.stop();
         }
     }

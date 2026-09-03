@@ -85,7 +85,7 @@ public class MessageQueueInMemory extends MessageQueueBase {
         if (running) {
             running = false;
             if (consumerExecutor != null) {
-                consumerExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(consumerExecutor);
                 consumerExecutor = null;
             }
             queue = new LinkedBlockingQueue<>(queueMaxSize);

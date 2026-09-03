@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.controller;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.util.List;
 
 /**
@@ -18,8 +20,15 @@ import java.util.List;
  */
 public class ControllerConfig {
     // ==================== Task scheduling configuration ====================
-    /** Maximum number of concurrent tasks (0 means no limit). Default: 5 */
-    private int maxConcurrentTasks = 5;
+    /**
+     * Maximum number of concurrent tasks.
+     * <p>On JDK 17 this caps the in-flight task count to protect platform threads, and the
+     * default follows {@link OpenJiuwenExecutors#defaultTaskConcurrency()} ({@code max(40, CPU×8)})
+     * so the admission gate stays aligned with the underlying thread-pool capacity; on JDK 21+
+     * the cap is skipped because virtual threads carry negligible creation cost and concurrency
+     * is admission-controlled by the runtime layer (e.g. {@code TaskAdmissionGate}).</p>
+     */
+    private int maxConcurrentTasks = OpenJiuwenExecutors.defaultTaskConcurrency();
 
     /** Task scheduling interval in seconds. Default: 1.0 */
     private double scheduleInterval = 1.0;
