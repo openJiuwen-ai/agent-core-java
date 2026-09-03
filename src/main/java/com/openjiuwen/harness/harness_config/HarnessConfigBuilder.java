@@ -67,6 +67,18 @@ import java.util.function.Function;
  * @since 0.1.7
  */
 public final class HarnessConfigBuilder {
+    /**
+     * Trusted class prefix.
+     * <p>
+     * Package resources reference tool and rail implementation classes by name and
+     * load them reflectively. Loading is restricted to classes within the
+     * application's own namespace so that untrusted classes cannot be loaded and
+     * executed via static initializers.
+     * 
+     * @since 0.1.7
+     */
+    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
+
     private static final Map<String, Function<Path, List<Object>>> BUILTIN_TOOLS = new LinkedHashMap<>();
 
     /**
@@ -988,8 +1000,12 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     private static Object instantiateTool(String module, String className, Path workspaceRoot) {
+        String qualifiedName = module + "." + className;
+        if (!isTrustedClass(qualifiedName)) {
+            throw new IllegalArgumentException("Tool class is not trusted: " + qualifiedName);
+        }
         try {
-            Class<?> type = Class.forName(module + "." + className);
+            Class<?> type = Class.forName(qualifiedName);
             try {
                 Constructor<?> ctor = type.getConstructor(String.class);
                 return ctor.newInstance(workspaceRoot.toString());
@@ -997,7 +1013,7 @@ public final class HarnessConfigBuilder {
                 return instantiateNoArgs(module, className);
             }
         } catch (ReflectiveOperationException ex) {
-            throw new IllegalArgumentException("Cannot instantiate tool " + module + "." + className, ex);
+            throw new IllegalArgumentException("Cannot instantiate tool " + qualifiedName, ex);
         }
     }
 
@@ -1010,12 +1026,27 @@ public final class HarnessConfigBuilder {
      * @since 0.1.7
      */
     private static Object instantiateNoArgs(String module, String className) {
+        String qualifiedName = module + "." + className;
+        if (!isTrustedClass(qualifiedName)) {
+            throw new IllegalArgumentException("Class is not trusted: " + qualifiedName);
+        }
         try {
-            Class<?> type = Class.forName(module + "." + className);
+            Class<?> type = Class.forName(qualifiedName);
             return type.getDeclaredConstructor().newInstance();
         } catch (ReflectiveOperationException ex) {
-            throw new IllegalArgumentException("Cannot instantiate " + module + "." + className, ex);
+            throw new IllegalArgumentException("Cannot instantiate " + qualifiedName, ex);
         }
+    }
+
+    /**
+     * isTrustedClass.
+     * 
+     * @param qualifiedName qualifiedName
+     * @return the result
+     * @since 0.1.7
+     */
+    private static boolean isTrustedClass(String qualifiedName) {
+        return qualifiedName != null && qualifiedName.startsWith(TRUSTED_CLASS_PREFIX);
     }
 
     /**
