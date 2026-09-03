@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.foundation.tool.function;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -17,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for LocalFunction.
@@ -166,12 +171,43 @@ class LocalFunctionTest {
     @DisplayName("Stream tests")
     class StreamTests {
         @Test
-        @DisplayName("Stream rejects non-generator functions")
-        void testStreamSingleResult() {
+        @DisplayName("Stream wraps a non-generator result in one chunk and runs the function once")
+        void testStreamSingleResult() throws Exception {
+            // 回归 issue #124：普通返回值不再抛异常，否则调用方会降级到 invoke() 造成二次执行
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
+            AtomicInteger callCount = new AtomicInteger();
+
+            LocalFunction tool = new LocalFunction(card, inputs -> {
+                callCount.incrementAndGet();
+                return "single result";
+            });
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+
+            assertEquals(List.of("single result"), collected);
+            assertEquals(1, callCount.get());
+        }
+
+        @Test
+        @DisplayName("Stream emits one null chunk when the function returns null")
+        void testStreamNullResult() throws Exception {
+            // null 是合法的工具返回值，必须原样成为唯一分片，不能被吞掉或抛异常
             ToolCard card = ToolCard.builder().name("test").description("test").build();
 
-            LocalFunction tool = new LocalFunction(card, inputs -> "single result");
-            assertThrows(Throwable.class, () -> tool.stream(Map.of()));
+            LocalFunction tool = new LocalFunction(card, inputs -> null);
+
+            Iterator<Object> iter = tool.stream(Map.of());
+            List<Object> collected = new ArrayList<>();
+            while (iter.hasNext()) {
+                collected.add(iter.next());
+            }
+
+            assertEquals(1, collected.size());
+            assertNull(collected.get(0));
         }
 
         @Test

@@ -1101,11 +1101,10 @@ public class AbilityManager implements ToolRegistry {
      * <p>
      * When {@code agentSession} is non-null AND the tool supports streaming
      * (currently {@link LocalFunction}), each chunk yielded by
-     * {@link Tool#stream(Map, Map)} is forwarded as
-     * {@code OutputSchema("tool_stream_chunk", ...)}, and the method finally
-     * emits a {@code "tool_stream_end"} chunk. Non-streaming tools and
-     * non-tool branches (workflows, agents, MCP) fall back to the synchronous
-     * {@link #execute(AgentCallbackContext, Object, Session, String)} behaviour.
+     * {@link Tool#stream(Map, Map)} is forwarded as a {@code "tool_output"} chunk.
+     * Other tool types and non-tool branches (workflows, agents, MCP) take the
+     * synchronous {@link #execute(AgentCallbackContext, Object, Session, String)}
+     * behaviour. A tool is executed exactly once either way.
      * <p>
      * The returned {@code List<ToolExecutionEntry>} is identical to
      * {@code execute(...)} so the caller continues to work unchanged.
@@ -1525,23 +1524,6 @@ public class AbilityManager implements ToolRegistry {
                         taskId, toolCall, chunk, chunkIndex));
                 chunkIndex++;
             }
-        } catch (BaseError e) {
-            // If LocalFunction.stream() throws TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
-            // it means the underlying func is not streaming — fall back to tool.invoke().
-            if (e.getCode() == StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR.getCode()) {
-                Loggers.AGENT.debug("Tool '{}' does not support streaming, falling back to synchronous invoke",
-                        tool.getCard() != null ? tool.getCard().getId() : toolCall.getName());
-                Object result = invokeTool(tool, toolArgs, session);
-                logToolResult(result);
-                agentSession.writeStream(buildToolOutputChunk(
-                        taskId, toolCall, result == null ? "" : result, 0));
-                ToolMessage toolMsg = ToolMessage.builder()
-                        .content(result == null ? "" : result.toString())
-                        .toolCallId(toolCall.getId())
-                        .build();
-                return new ToolExecutionEntry(result, toolMsg);
-            }
-            throw e;
         } finally {
             SessionContextHolder.restoreCurrentSession(previousSession);
         }
@@ -1614,12 +1596,18 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Merge a list of tool stream chunks into a single result for ToolMessage.
-     * All-String chunks are joined as-is (a typical streaming tool case);
-     * otherwise the list is wrapped so the caller sees every chunk.
+     * A lone chunk is the complete result and is returned unchanged, so a
+     * non-streaming tool routed through the streaming path produces exactly
+     * the object its invoke() would have returned. Multiple all-String chunks
+     * are joined as-is (a typical streaming tool case); otherwise the list is
+     * wrapped so the caller sees every chunk.
      */
     private static Object mergeStreamChunks(List<Object> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return "";
+        }
+        if (chunks.size() == 1) {
+            return chunks.get(0);
         }
         boolean isAllStrings = chunks.stream().allMatch(c -> c instanceof String || c == null);
         if (isAllStrings) {
