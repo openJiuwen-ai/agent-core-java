@@ -310,7 +310,7 @@ public class MessageQueuePulsar extends MessageQueueBase {
         @Override
         public void deactivate() {
             if (active.compareAndSet(true, false)) {
-                executor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(executor);
                 consumer.close();
             }
         }

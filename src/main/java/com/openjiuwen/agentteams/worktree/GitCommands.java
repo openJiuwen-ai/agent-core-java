@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentteams.worktree;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.BufferedReader;
@@ -167,7 +168,7 @@ public final class GitCommands {
 
             StringBuilder stdoutBuf = new StringBuilder();
             StringBuilder stderrBuf = new StringBuilder();
-            Thread stdoutThread = new Thread(() -> {
+            Thread stdoutThread = OpenJiuwenExecutors.newThread(() -> {
                 try (InputStream inputStream = process.getInputStream();
                         BufferedReader reader =
                             new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
@@ -175,8 +176,8 @@ public final class GitCommands {
                 } catch (IOException e) {
                     Loggers.AGENT.error("Failed to read git stdout", e);
                 }
-            }, "git-stdout-reader");
-            Thread stderrThread = new Thread(() -> {
+            }, "git-stdout-reader", true);
+            Thread stderrThread = OpenJiuwenExecutors.newThread(() -> {
                 try (InputStream errorStream = process.getErrorStream();
                         BufferedReader reader =
                             new BufferedReader(new InputStreamReader(errorStream, StandardCharsets.UTF_8))) {
@@ -184,14 +185,7 @@ public final class GitCommands {
                 } catch (IOException e) {
                     Loggers.AGENT.error("Failed to read git stderr", e);
                 }
-            }, "git-stderr-reader");
-
-            // 设置未捕获异常处理器
-            Thread.UncaughtExceptionHandler handler = (thread, ex) -> {
-                Loggers.AGENT.error("Uncaught exception in thread " + thread.getName(), ex);
-            };
-            stdoutThread.setUncaughtExceptionHandler(handler);
-            stderrThread.setUncaughtExceptionHandler(handler);
+            }, "git-stderr-reader", true);
 
             stdoutThread.start();
             stderrThread.start();

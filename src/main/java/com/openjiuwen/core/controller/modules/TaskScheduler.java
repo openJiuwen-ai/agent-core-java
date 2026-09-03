@@ -204,7 +204,7 @@ public class TaskScheduler {
                     executeTask(taskId, session);
                 } finally {
                     timeout.cancel(false);
-                    watchdog.shutdown();
+                    OpenJiuwenExecutors.shutdown(watchdog);
                 }
             } else {
                 executeTask(taskId, session);
@@ -587,21 +587,22 @@ public class TaskScheduler {
 
                 lock.lock();
                 try {
-                    if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
+                    int maxConcurrent = config.getMaxConcurrentTasks();
+                    boolean isBoundedByPlatformPool = maxConcurrent > 0
+                            && !OpenJiuwenExecutors.isVirtualThreadSupported();
+                    if (isBoundedByPlatformPool && runningTasks.size() >= maxConcurrent) {
                         Loggers.CONTROLLER.warning("Reached max concurrent tasks limit ({}), waiting for next schedule",
-                                config.getMaxConcurrentTasks());
+                                maxConcurrent);
                         break;
                     }
                     if (runningTasks.containsKey(task.getTaskId())) {
                         continue;
                     }
 
-                    // Start task on regular thread
+                    // Start task on a virtual thread (JDK 21) or platform thread (JDK 17)
                     String taskId = task.getTaskId();
-                    Thread regularThread = new Thread(() -> executeTaskWrapper(taskId, session), "task-" + taskId);
-                    regularThread.setDaemon(true);
-                    regularThread.setUncaughtExceptionHandler(
-                            (t, e) -> Loggers.CONTROLLER.error("Uncaught exception in task thread: " + t.getName(), e));
+                    Thread regularThread = OpenJiuwenExecutors.newThread(
+                            () -> executeTaskWrapper(taskId, session), "task-" + taskId, true);
                     regularThread.start();
 
                     runningTasks.put(taskId, new RunningTaskEntry(null, regularThread));

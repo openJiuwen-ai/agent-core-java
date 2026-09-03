@@ -266,7 +266,7 @@ public class Trainer {
             }
             return new PredictionResult(predictions, sessions);
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

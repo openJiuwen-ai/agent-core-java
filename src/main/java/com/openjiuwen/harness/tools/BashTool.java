@@ -105,7 +105,7 @@ public class BashTool {
                 String stderr = stderrFuture.join();
                 return buildBashResult(command, exitCode, stdout, stderr, maxOutputChars);
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(processIoExecutor);
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();

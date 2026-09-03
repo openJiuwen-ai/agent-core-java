@@ -207,7 +207,7 @@ public class SpawnedProcessHandle {
             healthCheckTask = null;
         }
         if (healthCheckExecutor != null) {
-            healthCheckExecutor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(healthCheckExecutor);
             healthCheckExecutor = null;
         }
     }

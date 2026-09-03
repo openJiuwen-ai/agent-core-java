@@ -163,7 +163,7 @@ public class BeamSearch {
             }
             return newBeamList;
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

@@ -35,7 +35,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
@@ -625,12 +624,7 @@ public class APIEmbedding implements Embedding {
      */
     @Override
     public void close() {
-        executor.shutdownNow();
-        try {
-            executor.awaitTermination(100, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        OpenJiuwenExecutors.shutdown(executor);
     }
 
     /**

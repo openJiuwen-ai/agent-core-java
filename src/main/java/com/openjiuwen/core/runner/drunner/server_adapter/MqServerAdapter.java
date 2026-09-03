@@ -119,8 +119,8 @@ public class MqServerAdapter {
             cancelTask(entry.getKey(), true);
         }
         runningTasks.clear();
-        executor.shutdownNow();
-        scheduler.shutdownNow();
+        OpenJiuwenExecutors.shutdown(executor);
+        OpenJiuwenExecutors.shutdown(scheduler);
         logger.info("[{}] Adapter stopped", adapterId);
     }
 

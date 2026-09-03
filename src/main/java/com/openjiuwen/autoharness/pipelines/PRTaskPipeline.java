@@ -221,7 +221,7 @@ public class PRTaskPipeline extends BasePipeline {
             orchestrator.recordCycleResult(result);
             return List.of();
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 

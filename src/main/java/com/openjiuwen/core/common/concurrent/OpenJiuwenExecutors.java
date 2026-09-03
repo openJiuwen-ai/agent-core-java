@@ -473,6 +473,28 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 强制关闭单个登记过的线程池并从登记表中移除。
+     *
+     * <p>适用于承载 long-running I/O 循环（如 ZMQ poll）的线程池：
+     * 这些线程阻塞在 native I/O 上，{@link #shutdown(ExecutorService)} 的优雅停止
+     * 无法让它们及时退出，必须用 {@code shutdownNow()} 中断。</p>
+     *
+     * @param executor 待关闭的线程池
+     */
+    public static void shutdownNow(ExecutorService executor) {
+        Objects.requireNonNull(executor, "executor");
+        MANAGED_EXECUTORS.remove(executor);
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS)) {
+                Loggers.COMMON.warning("Executor did not terminate after {}s shutdownNow", SHUTDOWN_AWAIT_SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
      * 关闭指定线程池，并在超时后中断仍在执行的任务。
      *
      * @param executors 待关闭的线程池
@@ -555,8 +577,12 @@ public final class OpenJiuwenExecutors {
 
     /**
      * I/O 阻塞型流式池默认上限：线程 99% 时间在等 LLM/网络，CPU 占用近零，按
-     * {@code max(32, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
      * 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
+     *
+     * <p>下界 40 覆盖以 40 并发为基准的性能比拼场景（agent 侧 CPU 耗时 &lt;500ms，
+     * 总耗时由 LLM 响应决定，wait/compute 比极高，线程数受限于 I/O 等待而非 CPU）；
+     * 核数较多时随核数线性增长，避免高并发机器上成为瓶颈。</p>
      *
      * <p>适用于 deep-agent-stream / vertex-stream / stream-actor 等长驻流式会话池。</p>
      *
@@ -564,7 +590,7 @@ public final class OpenJiuwenExecutors {
      * @since 0.1.14
      */
     static int defaultIoBoundMaxSize() {
-        return Math.max(32, Runtime.getRuntime().availableProcessors() * 8);
+        return Math.max(40, Runtime.getRuntime().availableProcessors() * 8);
     }
 
     /**
@@ -590,6 +616,63 @@ public final class OpenJiuwenExecutors {
     private static Thread.UncaughtExceptionHandler virtualThreadExceptionHandler() {
         return (thread, error) ->
                 Loggers.COMMON.exception("Uncaught exception in virtual thread=" + thread.getName(), error);
+    }
+
+    /**
+     * 当前运行时是否支持虚拟线程。
+     *
+     * <p>JDK 21 及以上返回 {@code true}，JDK 17 返回 {@code false}。调用方可据此决定是否
+     * 跳过基于平台线程数量的并发限制——虚拟线程下线程创建开销可忽略，应由上层
+     * 准入控制（如 runtime 的 TaskAdmissionGate）统一管控并发，而非 core 层自限。</p>
+     *
+     * @return 虚拟线程可用时为 {@code true}
+     * @since 0.1.15
+     */
+    public static boolean isVirtualThreadSupported() {
+        return VirtualThreadSupport.isSupported();
+    }
+
+    /**
+     * 平台线程模式下 DeepAgent 任务并发的默认上限。
+     *
+     * <p>DeepAgent 任务线程 99% 时间在等待 LLM/网络响应，属于 I/O 阻塞型，按
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位，与流式池 {@link #defaultIoBoundMaxSize()}
+     * 对齐。仅在 JDK 17（不支持虚拟线程）时作为 {@code maxConcurrentTasks} 的默认值生效；
+     * JDK 21+ 并发闸已放开，此值不再参与 gate 判定。</p>
+     *
+     * @return 平台线程模式下的默认任务并发上限
+     * @since 0.1.15
+     */
+    public static int defaultTaskConcurrency() {
+        return defaultIoBoundMaxSize();
+    }
+
+    /**
+     * 创建一个已配置但未启动的线程。
+     *
+     * <p>JDK 21 及以上使用虚拟线程，JDK 17 使用平台线程。调用方负责 {@code Thread.start()}。
+     * 虚拟线程始终是守护线程，{@code isDaemon} 参数仅在 JDK 17 平台线程路径生效。</p>
+     *
+     * @param runnable 任务
+     * @param threadName 线程名（虚拟线程直接用此名称，平台线程也用此名称）
+     * @param isDaemon JDK 17 平台线程是否为守护线程
+     * @return 已配置但未启动的线程
+     * @since 0.1.15
+     */
+    public static Thread newThread(Runnable runnable, String threadName, boolean isDaemon) {
+        Objects.requireNonNull(runnable, "runnable");
+        Objects.requireNonNull(threadName, "threadName");
+        Thread.UncaughtExceptionHandler exceptionHandler = (thread, error) ->
+                Loggers.COMMON.error("Uncaught exception in {}: {}", thread.getName(), error.getMessage());
+        Thread virtualThread = VirtualThreadSupport.newVirtualThread(runnable, threadName, exceptionHandler);
+        if (virtualThread != null) {
+            return virtualThread;
+        }
+        Thread thread = Executors.defaultThreadFactory().newThread(runnable);
+        thread.setName(threadName);
+        thread.setDaemon(isDaemon);
+        thread.setUncaughtExceptionHandler(exceptionHandler);
+        return thread;
     }
 
     /**

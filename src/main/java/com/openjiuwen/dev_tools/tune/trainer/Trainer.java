@@ -272,7 +272,7 @@ public class Trainer {
                 results.add(future.join());
             }
         } finally {
-            executor.shutdown();
+            OpenJiuwenExecutors.shutdown(executor);
         }
 
         return results;

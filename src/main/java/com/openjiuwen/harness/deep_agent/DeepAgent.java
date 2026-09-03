@@ -1446,7 +1446,7 @@ public class DeepAgent implements AutoCloseable {
         }
         if (taskManager == null) {
             ControllerConfig controllerConfig = new ControllerConfig();
-            controllerConfig.setMaxConcurrentTasks(32);
+            controllerConfig.setMaxConcurrentTasks(OpenJiuwenExecutors.defaultTaskConcurrency());
             controllerConfig.setScheduleInterval(0.1);
             taskManager = new TaskManager(controllerConfig);
             eventQueue = new EventQueue(controllerConfig);

@@ -635,7 +635,7 @@ public class CallbackFramework {
                                 inner.submit(() -> callbackInfo.getCallback().apply(callbackKwargs));
                             result = innerFuture.get((long) (callbackInfo.getTimeout() * 1000), TimeUnit.MILLISECONDS);
                         } finally {
-                            inner.shutdownNow();
+                            OpenJiuwenExecutors.shutdown(inner);
                         }
                     } else {
                         result = callbackInfo.getCallback().apply(callbackKwargs);
@@ -656,7 +656,7 @@ public class CallbackFramework {
             }));
         }
 
-        executor.shutdown();
+        OpenJiuwenExecutors.shutdown(executor);
 
         List<Object> results = new ArrayList<>();
         for (Future<Object> future : futures) {
@@ -871,7 +871,7 @@ public class CallbackFramework {
             try {
                 return trigger(event, args, kwargs);
             } finally {
-                scheduler.shutdown();
+                OpenJiuwenExecutors.shutdown(scheduler);
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
     }

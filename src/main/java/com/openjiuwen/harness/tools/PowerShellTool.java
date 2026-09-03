@@ -108,7 +108,7 @@ public class PowerShellTool {
                 String stderr = stderrFuture.join();
                 return new ShellResult(stdout, stderr, exitCode);
             } finally {
-                processIoExecutor.shutdownNow();
+                OpenJiuwenExecutors.shutdown(processIoExecutor);
             }
         };
     }

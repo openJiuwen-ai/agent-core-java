@@ -255,7 +255,7 @@ public class TaskExecutorPool {
      * @since 0.1.14
      */
     public void shutdown() {
-        executor.shutdownNow();
+        OpenJiuwenExecutors.shutdown(executor);
     }
 
     /**

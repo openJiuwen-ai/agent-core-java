@@ -295,7 +295,7 @@ public class CallbackChain {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Callback execution interrupted", e);
         } finally {
-            executor.shutdownNow();
+            OpenJiuwenExecutors.shutdown(executor);
         }
     }
 
