@@ -39,6 +39,9 @@ import java.util.Map;
 public final class FileGuardChecker {
     private static final Logger logger = LoggerFactory.getLogger(FileGuardChecker.class);
 
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+
     private final EffectiveFileGuardConfig effective;
 
     private FileGuardChecker(EffectiveFileGuardConfig effective) {
@@ -164,6 +167,14 @@ public final class FileGuardChecker {
 
     private boolean matchesPrefix(FileGuardPathRule rule, String pathPosix, Path path) {
         String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
+        if (IS_WINDOWS) {
+            // Windows filesystems are case-insensitive: compare lowercased so case
+            // variants (d:/tmp vs D:/TMP) cannot bypass a prefix rule. Aligned with
+            // GlobMatcher/WildcardMatcher platform semantics.
+            String lowerPrefix = prefix.toLowerCase(java.util.Locale.ROOT);
+            String lowerPath = pathPosix.toLowerCase(java.util.Locale.ROOT);
+            return lowerPath.equals(lowerPrefix) || lowerPath.startsWith(lowerPrefix + "/");
+        }
         boolean isPathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
         if (!isPathMatches) {
             return false;

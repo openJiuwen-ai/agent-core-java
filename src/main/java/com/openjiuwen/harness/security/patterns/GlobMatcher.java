@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.security.patterns;
 
+import java.util.Locale;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -12,15 +13,21 @@ import java.util.regex.PatternSyntaxException;
  *
  * <p>Mirrors Python {@code openjiuwen.harness.security.file_guard._match_glob}. Supports
  * {@code **} (crosses {@code /}), {@code *} (does not cross {@code /}), and {@code ?}.
+ * Matching is case-insensitive on Windows (case-insensitive filesystem) so case
+ * variants ({@code d:/tmp} vs {@code D:/TMP}) cannot bypass a path rule;
+ * case-sensitive on Linux, aligned with {@link WildcardMatcher} platform semantics.
  *
  * @since 0.1.15
  */
 public final class GlobMatcher {
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+
     private GlobMatcher() {
     }
 
     /**
-     * Match a posix path against a glob pattern.
+     * Match a posix path against a glob pattern (case-insensitive on Windows).
      *
      * @param pattern   glob pattern
      * @param pathPosix posix-normalized path
@@ -51,8 +58,9 @@ public final class GlobMatcher {
                 i += 1;
             }
         }
+        int flags = IS_WINDOWS ? Pattern.CASE_INSENSITIVE : 0;
         try {
-            return Pattern.compile(out.toString()).matcher(pathPosix).matches();
+            return Pattern.compile(out.toString(), flags).matcher(pathPosix).matches();
         } catch (PatternSyntaxException ex) {
             return false;
         }
