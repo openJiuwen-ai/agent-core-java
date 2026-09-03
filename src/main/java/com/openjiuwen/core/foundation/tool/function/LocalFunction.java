@@ -12,6 +12,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -89,12 +90,21 @@ public class LocalFunction extends Tool {
     }
 
     /**
-     * stream.
-     * 
-     * @param inputs inputs
-     * @param kwargs kwargs
-     * @return the result
-     * @throws Exception Exception
+     * Execute the wrapped function once and expose its result as a stream of chunks.
+     * <p>
+     * A function returning {@code Iterator} or {@code Iterable} is streamed element by
+     * element. Any other return value, {@code null} included, yields a single chunk holding
+     * the complete result, so a non-streaming function produces the same value here as it
+     * does through {@link #invoke(Map, Map)}.
+     *
+     * @apiNote The wrapped function runs exactly once per call. This method never reports a
+     *     missing streaming capability by throwing, so callers must not retry through
+     *     {@code invoke} when it fails — a failure here means the function itself failed.
+     *
+     * @param inputs tool inputs, validated against the card's input schema
+     * @param kwargs execution kwargs, such as {@code session}
+     * @return an iterator over the result chunks; never {@code null}
+     * @throws Exception when input validation or the wrapped function fails
      * @since 0.1.7
      */
     @Override
@@ -116,9 +126,9 @@ public class LocalFunction extends Tool {
             return typedIterator;
         }
 
-        // Non-streaming function: throw error instead of silently wrapping
-        throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR, "method", "stream", "reason",
-                "func is not a streaming function (must return Iterator or Iterable)", "card", getCard().toString());
+        // Non-streaming function: the already-computed result is the single chunk.
+        // singletonList is used over List.of because the result may legitimately be null.
+        return Collections.singletonList(result).iterator();
     }
 
     /**
