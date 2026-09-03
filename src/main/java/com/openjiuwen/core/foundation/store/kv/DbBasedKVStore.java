@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -25,6 +26,8 @@ import javax.sql.DataSource;
  * @since 0.1.7
  */
 public class DbBasedKVStore extends BaseKVStore {
+    private static final Pattern SQL_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
     private final BaseDbStore<?> dbStore;
     private final String tableName;
 
@@ -47,7 +50,7 @@ public class DbBasedKVStore extends BaseKVStore {
      */
     public DbBasedKVStore(BaseDbStore<?> dbStore, String tableName) {
         this.dbStore = dbStore;
-        this.tableName = tableName;
+        this.tableName = requireTableIdentifier(tableName);
         initializeTable();
     }
 
@@ -279,5 +282,21 @@ public class DbBasedKVStore extends BaseKVStore {
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to initialize KV store table", e);
         }
+    }
+
+    /**
+     * Validate that the table name is a safe SQL identifier before it is concatenated
+     * into SQL commands. Table identifiers cannot use JDBC ? placeholders, so a strict
+     * whitelist check is applied instead.
+     * 
+     * @param tableName tableName
+     * @return the validated table name
+     * @since 0.1.7
+     */
+    private static String requireTableIdentifier(String tableName) {
+        if (tableName == null || !SQL_IDENTIFIER_PATTERN.matcher(tableName).matches()) {
+            throw new IllegalArgumentException("Invalid SQL table identifier: " + tableName);
+        }
+        return tableName;
     }
 }

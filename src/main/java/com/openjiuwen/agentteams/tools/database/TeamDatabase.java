@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Public class TeamDatabase used by the Java parity implementation.
@@ -35,6 +36,8 @@ public class TeamDatabase implements AutoCloseable {
     private static final String TEAM_TASK_DEPENDENCY_PREFIX = "team_task_dependency_";
     private static final String TEAM_MESSAGE_PREFIX = "team_message_";
     private static final String MESSAGE_READ_STATUS_PREFIX = "message_read_status_";
+
+    private static final Pattern SQL_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
     private final DatabaseConfig config;
     private final Connection injectedJdbcConnection;
@@ -560,10 +563,10 @@ public class TeamDatabase implements AutoCloseable {
         if (!isSqlite() || sessionId == null || sessionId.isBlank()) {
             return;
         }
-        String taskTable = taskTableName(sessionId);
-        String dependencyTable = dependencyTableName(sessionId);
-        String messageTable = messageTableName(sessionId);
-        String readStatusTable = readStatusTableName(sessionId);
+        String taskTable = requireSqlIdentifier(taskTableName(sessionId));
+        String dependencyTable = requireSqlIdentifier(dependencyTableName(sessionId));
+        String messageTable = requireSqlIdentifier(messageTableName(sessionId));
+        String readStatusTable = requireSqlIdentifier(readStatusTableName(sessionId));
         try (Statement statement = sqliteConnection.createStatement()) {
             statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS %s (
@@ -628,7 +631,7 @@ public class TeamDatabase implements AutoCloseable {
             try (ResultSet result = statement.executeQuery("""
                     SELECT task_id, team_name, title, content, status, assignee, updated_at
                     FROM %s
-                    """.formatted(taskTableName(sessionId)))) {
+                    """.formatted(requireSqlIdentifier(taskTableName(sessionId))))) {
                 while (result.next()) {
                     TaskRecord taskRecord = TaskRecord.builder()
                             .taskId(result.getString("task_id"))
@@ -646,7 +649,7 @@ public class TeamDatabase implements AutoCloseable {
                     SELECT task_id, depends_on_task_id
                     FROM %s
                     ORDER BY rowid
-                    """.formatted(dependencyTableName(sessionId)))) {
+                    """.formatted(requireSqlIdentifier(dependencyTableName(sessionId))))) {
                 while (result.next()) {
                     TaskRecord taskRecord = tables.tasks.get(result.getString("task_id"));
                     if (taskRecord != null) {
@@ -658,7 +661,7 @@ public class TeamDatabase implements AutoCloseable {
                     SELECT message_id, team_name, from_member_name, to_member_name, content,
                            timestamp, broadcast, is_read
                     FROM %s
-                    """.formatted(messageTableName(sessionId)))) {
+                    """.formatted(requireSqlIdentifier(messageTableName(sessionId))))) {
                 while (result.next()) {
                     MessageRecord messageRecord = MessageRecord.builder()
                             .messageId(result.getString("message_id"))
@@ -676,7 +679,7 @@ public class TeamDatabase implements AutoCloseable {
             try (ResultSet result = statement.executeQuery("""
                     SELECT member_name, team_name, read_at
                     FROM %s
-                    """.formatted(readStatusTableName(sessionId)))) {
+                    """.formatted(requireSqlIdentifier(readStatusTableName(sessionId))))) {
                 while (result.next()) {
                     tables.broadcastReadAt.put(
                             result.getString("team_name") + "::" + result.getString("member_name"),
@@ -697,7 +700,7 @@ public class TeamDatabase implements AutoCloseable {
         try (Statement statement = sqliteConnection.createStatement()) {
             for (String tableName : tableNames) {
                 if (sqliteTableExists(tableName)) {
-                    statement.executeUpdate("DROP TABLE IF EXISTS " + tableName);
+                    statement.executeUpdate("DROP TABLE IF EXISTS " + requireSqlIdentifier(tableName));
                     isDropped = true;
                 }
             }
@@ -736,7 +739,7 @@ public class TeamDatabase implements AutoCloseable {
                 }
             }
             for (String table : dynamicTables) {
-                statement.executeUpdate("DROP TABLE IF EXISTS " + table);
+                statement.executeUpdate("DROP TABLE IF EXISTS " + requireSqlIdentifier(table));
                 if (!deletedTables.contains(table)) {
                     deletedTables.add(table);
                 }
@@ -858,10 +861,10 @@ public class TeamDatabase implements AutoCloseable {
         String messageTable = messageTableName(sessionId);
         String readStatusTable = readStatusTableName(sessionId);
         try (Statement statement = sqliteConnection.createStatement()) {
-            statement.executeUpdate("DELETE FROM " + dependencyTable);
-            statement.executeUpdate("DELETE FROM " + taskTable);
-            statement.executeUpdate("DELETE FROM " + messageTable);
-            statement.executeUpdate("DELETE FROM " + readStatusTable);
+            statement.executeUpdate("DELETE FROM " + requireSqlIdentifier(dependencyTable));
+            statement.executeUpdate("DELETE FROM " + requireSqlIdentifier(taskTable));
+            statement.executeUpdate("DELETE FROM " + requireSqlIdentifier(messageTable));
+            statement.executeUpdate("DELETE FROM " + requireSqlIdentifier(readStatusTable));
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to clear SQLite session rows", e);
         }
@@ -915,7 +918,7 @@ public class TeamDatabase implements AutoCloseable {
         try (PreparedStatement statement = sqliteConnection.prepareStatement("""
                 INSERT INTO %s (task_id, team_name, title, content, status, assignee, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                """.formatted(taskTableName(sessionId)))) {
+                """.formatted(requireSqlIdentifier(taskTableName(sessionId))))) {
             statement.setString(1, taskRecord.getTaskId());
             statement.setString(2, taskRecord.getTeamName());
             statement.setString(3, taskRecord.getTitle());
@@ -936,7 +939,7 @@ public class TeamDatabase implements AutoCloseable {
         try (PreparedStatement statement = sqliteConnection.prepareStatement("""
                 INSERT INTO %s (task_id, depends_on_task_id, team_name, isResolved)
                 VALUES (?, ?, ?, ?)
-                """.formatted(dependencyTableName(sessionId)))) {
+                """.formatted(requireSqlIdentifier(dependencyTableName(sessionId))))) {
             statement.setString(1, taskRecord.getTaskId());
             statement.setString(2, dependencyId);
             statement.setString(3, taskRecord.getTeamName());
@@ -952,7 +955,7 @@ public class TeamDatabase implements AutoCloseable {
                 INSERT INTO %s
                     (message_id, team_name, from_member_name, to_member_name, content, timestamp, broadcast, is_read)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """.formatted(messageTableName(sessionId)))) {
+                """.formatted(requireSqlIdentifier(messageTableName(sessionId))))) {
             statement.setString(1, messageRecord.getMessageId());
             statement.setString(2, messageRecord.getTeamName());
             statement.setString(3, messageRecord.getFromMemberName());
@@ -975,7 +978,7 @@ public class TeamDatabase implements AutoCloseable {
         try (PreparedStatement statement = sqliteConnection.prepareStatement("""
                 INSERT INTO %s (team_name, member_name, read_at)
                 VALUES (?, ?, ?)
-                """.formatted(readStatusTableName(sessionId)))) {
+                """.formatted(requireSqlIdentifier(readStatusTableName(sessionId))))) {
             statement.setString(1, parts[0]);
             statement.setString(2, parts[1]);
             statement.setLong(3, readAt != null ? readAt : 0L);
@@ -1024,6 +1027,22 @@ public class TeamDatabase implements AutoCloseable {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 digest is unavailable", e);
         }
+    }
+
+    /**
+     * Validate that a value is a safe SQL identifier before it is concatenated into a SQL command.
+     * SQL identifiers (table/column names) cannot use JDBC ? placeholders, so a strict
+     * whitelist check is applied instead.
+     *
+     * @param identifier identifier to validate
+     * @return the validated identifier
+     * @throws IllegalArgumentException if the identifier is not a safe SQL identifier
+     */
+    private static String requireSqlIdentifier(String identifier) {
+        if (identifier == null || !SQL_IDENTIFIER_PATTERN.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL table identifier");
+        }
+        return identifier;
     }
 
     private String currentSessionId() {
