@@ -40,14 +40,13 @@ session 模块常量集合，覆盖超时、循环限制、检查点控制和环
 | --- | --- | --- |
 | `_stream_input_generator_timeout` | `-1.0` | `StreamProcessor` 构造时 `timeoutSeconds = 0`，迭代器走 `TimeoutConstants.BLOCKING_QUEUE_MS`（默认 60s）兜底 poll。详见 [TimeoutConstants](../common/constants/TimeoutConstants.md)。 |
 | `_comp_stream_call_timeout` | `-1.0` | `Vertex.streamCalledTimeout` 置 0，`streamDone.get()` 走 `TimeoutConstants.FUTURE_MS`（默认 300s）兜底。 |
-| `_stream_frame_timeout` | `-1.0` | 帧间超时置 -1，不走框架超时；若工作流执行截止时间有效则用其剩余时间，否则无限等待。 |
-| `_stream_first_frame_timeout` | `-1.0` | 同上，首帧超时置 -1，不走框架超时。 |
+| `_stream_frame_timeout` | `-1.0` | 帧间超时置 -1：若工作流执行截止时间有效则用其剩余时间，否则回退到 `TimeoutConstants.BLOCKING_QUEUE_MS`（默认 60s）。 |
+| `_stream_first_frame_timeout` | `-1.0` | 同上，首帧超时置 -1：执行截止时间剩余时间或 `BLOCKING_QUEUE_MS` 兜底。 |
 | `_execute_timeout` | `60.0` | 工作流执行总超时，默认 60 秒；为正数时直接生效。 |
 
 要点：
 
-- `_stream_input_generator_timeout` 和 `_comp_stream_call_timeout` 为 -1 时会回退到 `TimeoutConstants` 的框架默认值（可通过 `-Dopenjiuwen.timeout.*` 系统属性覆盖）。
-- `_stream_frame_timeout` 和 `_stream_first_frame_timeout` 为 -1 时**不**回退到框架默认，而是依赖工作流执行截止时间或无限等待。
+- 所有超时键为 -1 时均回退到 `TimeoutConstants` 的框架默认值（可通过 `-Dopenjiuwen.timeout.*` 系统属性覆盖）：帧超时类优先用工作流执行截止时间的剩余时间，无截止时间时用 `BLOCKING_QUEUE_MS` 兜底，不存在无限等待路径。
 - 显式配置正数超时值时，调用方值优先于框架默认值。
 - 环境变量覆盖优先级：`Config.WORKFLOW_SESSION_VARS`（线程本地） > 系统环境变量 > 内置默认值。
 

@@ -17,7 +17,7 @@ public class StreamProcessor
 | `queue` | `BlockingQueue<StreamPayload>` | `new LinkedBlockingQueue<>()` | 接收来自 `StreamActor` 的原始 payload 队列。 |
 | `processorQueues` | `Map<String, List<BlockingQueue<Object>>>` | `new HashMap<>()` | schema 引用路径到下游阻塞队列列表的映射。 |
 | `sources` | `Set<String>` | `new HashSet<>(sources)` | 期望收齐结束帧的来源键集合，格式为 `producerId-ABILITY`。 |
-| `timeoutSeconds` | `long` | `streamGeneratorTimeoutSeconds > 0 ? streamGeneratorTimeoutSeconds : 0` | 生成器取流超时秒数；`0` 表示无限等待。 |
+| `timeoutSeconds` | `long` | `streamGeneratorTimeoutSeconds > 0 ? streamGeneratorTimeoutSeconds : 0` | 生成器取流超时秒数；`0` 表示未显式指定，迭代器 poll 回退到 `TimeoutConstants.BLOCKING_QUEUE_MS`（默认 60s）兜底，不会无限等待。 |
 
 ## 构造方法
 

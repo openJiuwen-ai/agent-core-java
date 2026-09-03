@@ -1639,7 +1639,9 @@ public class Workflow {
     private long resolveReceiveTimeoutMillis(long configuredTimeoutMs, long executionDeadlineNanos) {
         long remainingExecutionMs = remainingExecutionMillis(executionDeadlineNanos);
         if (remainingExecutionMs < 0) {
-            return configuredTimeoutMs;
+            // No execution deadline: fall back to the framework default so the receive
+            // never blocks forever (and timeout errors report the value actually waited).
+            return configuredTimeoutMs > 0 ? configuredTimeoutMs : TimeoutConstants.BLOCKING_QUEUE_MS;
         }
         long cappedExecutionMs = Math.max(1L, remainingExecutionMs);
         if (configuredTimeoutMs <= 0) {

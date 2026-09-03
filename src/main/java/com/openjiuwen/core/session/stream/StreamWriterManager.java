@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -26,7 +27,7 @@ import java.util.function.Consumer;
  * @since 0.1.7
  */
 public class StreamWriterManager {
-    private static final long DEFAULT_FRAME_TIMEOUT = -1;
+    private static final long DEFAULT_FRAME_TIMEOUT = TimeoutConstants.BLOCKING_QUEUE_MS;
 
     private final StreamEmitter streamEmitter;
     private final List<StreamMode> defaultModes;
@@ -101,29 +102,31 @@ public class StreamWriterManager {
     /**
      * Iterate over stream output synchronously, invoking the consumer for each item.
      * Blocks until END_FRAME is encountered.
-     * 
-     * @param firstFrameTimeoutMs timeout for the first frame in ms, -1 for no timeout
-     * @param timeoutMs timeout for subsequent frames in ms, -1 for no timeout
+     *
+     * @param firstFrameTimeoutMs timeout for the first frame in ms; non-positive uses the default
+     * @param timeoutMs timeout for subsequent frames in ms; non-positive uses the default
      * @param needClose whether to close the queue when done
      * @param consumer callback for each stream item
      * @since 0.1.7
      */
     public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer) {
+        long effectiveFirstFrameTimeoutMs = firstFrameTimeoutMs > 0 ? firstFrameTimeoutMs : DEFAULT_FRAME_TIMEOUT;
+        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_FRAME_TIMEOUT;
         boolean isFirstFrame = true;
         while (true) {
             Object data;
             if (isFirstFrame) {
-                data = streamEmitter.getStreamQueue().receive(firstFrameTimeoutMs);
+                data = streamEmitter.getStreamQueue().receive(effectiveFirstFrameTimeoutMs);
                 if (data == null) {
                     throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, "timeout",
-                            formatTimeoutSeconds(firstFrameTimeoutMs), "reason", "");
+                            formatTimeoutSeconds(effectiveFirstFrameTimeoutMs), "reason", "");
                 }
                 isFirstFrame = false;
             } else {
-                data = streamEmitter.getStreamQueue().receive(timeoutMs);
+                data = streamEmitter.getStreamQueue().receive(effectiveTimeoutMs);
                 if (data == null) {
                     throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
-                            formatTimeoutSeconds(timeoutMs), "reason", "");
+                            formatTimeoutSeconds(effectiveTimeoutMs), "reason", "");
                 }
             }
 
@@ -161,14 +164,16 @@ public class StreamWriterManager {
 
     /**
      * Expose stream output as a blocking iterator with configurable timeouts.
-     * 
-     * @param firstFrameTimeoutMs firstFrameTimeoutMs
-     * @param timeoutMs timeoutMs
+     *
+     * @param firstFrameTimeoutMs timeout for the first frame in ms; non-positive uses the default
+     * @param timeoutMs timeout for subsequent frames in ms; non-positive uses the default
      * @param needClose needClose
      * @return the result
      * @since 0.1.7
      */
     public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose) {
+        long effectiveFirstFrameTimeoutMs = firstFrameTimeoutMs > 0 ? firstFrameTimeoutMs : DEFAULT_FRAME_TIMEOUT;
+        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_FRAME_TIMEOUT;
         return new Iterator<>() {
             private boolean firstFrame = true;
             private boolean done = false;
@@ -181,7 +186,7 @@ public class StreamWriterManager {
                 if (nextItem != null) {
                     return true;
                 }
-                nextItem = receiveNext(firstFrame ? firstFrameTimeoutMs : timeoutMs);
+                nextItem = receiveNext(firstFrame ? effectiveFirstFrameTimeoutMs : effectiveTimeoutMs);
                 firstFrame = false;
                 if (StreamEmitter.END_FRAME.equals(nextItem)) {
                     if (needClose) {
