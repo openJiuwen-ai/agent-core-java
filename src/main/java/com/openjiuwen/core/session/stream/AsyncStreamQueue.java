@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.concurrent.BlockingQueue;
@@ -35,10 +36,15 @@ public class AsyncStreamQueue {
 
     /**
      * DEFAULT_RECEIVE_TIMEOUT_MS.
-     * 
+     * <p>
+     * Non-positive caller values no longer mean "block forever": {@link #receive(long)}
+     * always falls back to this timeout when the caller does not supply a positive one.
+     * Defaults to {@link TimeoutConstants#BLOCKING_QUEUE_MS} and can be overridden via
+     * {@code -Dopenjiuwen.timeout.blocking-queue-ms=...}.
+     *
      * @since 0.1.7
      */
-    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1;
+    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = TimeoutConstants.BLOCKING_QUEUE_MS;
 
     /**
      * DEFAULT_CLOSE_TIMEOUT_MS.
@@ -169,8 +175,12 @@ public class AsyncStreamQueue {
 
     /**
      * Receive data from the queue.
-     * 
-     * @param timeoutMs timeout in milliseconds, -1 for no timeout
+     * <p>
+     * Non-positive {@code timeoutMs} falls back to {@link #DEFAULT_RECEIVE_TIMEOUT_MS}
+     * instead of blocking forever, so a consumer can never hang on a producer that
+     * died without closing the stream. Callers treat {@code null} as a timeout.
+     *
+     * @param timeoutMs timeout in milliseconds; non-positive values use the default timeout
      * @return the received data, or null if no data available within timeout
      * @since 0.1.7
      */
@@ -179,13 +189,9 @@ public class AsyncStreamQueue {
             throw new IllegalStateException("StreamQueue is already isClosed");
         }
 
+        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_RECEIVE_TIMEOUT_MS;
         try {
-            if (timeoutMs <= 0) {
-                // No timeout - block until data available
-                return streamQueue.take();
-            } else {
-                return streamQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
-            }
+            return streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             Loggers.SESSION.error("Stream data receive interrupted");

@@ -22,10 +22,10 @@ public class StreamWriterManager
 | `public static StreamWriterManager createManager(StreamEmitter streamEmitter, List<StreamMode> modes)` | 静态工厂方法。 |
 | `public static StreamWriterManager createManager(StreamEmitter streamEmitter)` | 默认模式版本的静态工厂方法。 |
 | `public StreamEmitter getStreamEmitter()` | 返回底层 `StreamEmitter`。 |
-| `public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer)` | 以回调方式同步消费流输出，直到遇到 `END_FRAME`。 |
-| `public void streamOutput(Consumer<Object> consumer)` | 使用默认超时参数消费流输出。 |
-| `public Iterator<Object> streamIterator()` | 返回阻塞式流输出迭代器。 |
-| `public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose)` | 返回带超时控制的阻塞式流输出迭代器。 |
+| `public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer)` | 以回调方式同步消费流输出，直到遇到 `END_FRAME`；超时参数非正值时回落默认帧超时。 |
+| `public void streamOutput(Consumer<Object> consumer)` | 使用默认帧超时（`TimeoutConstants.BLOCKING_QUEUE_MS`，默认 60s，可用 `-Dopenjiuwen.timeout.blocking-queue-ms` 覆盖）消费流输出；首帧/逐帧超时抛 `STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT` / `STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT`。 |
+| `public Iterator<Object> streamIterator()` | 返回阻塞式流输出迭代器；默认帧超时语义同上，超时抛错而不是永久阻塞。 |
+| `public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose)` | 返回带超时控制的阻塞式流输出迭代器；超时参数非正值时回落默认帧超时。 |
 | `public List<Object> collectStreamOutput()` | 阻塞收集全部流输出到 `List`。 |
 | `public void addWriter(StreamMode key, StreamWriter<?> writer)` | 为指定流模式注册 writer。 |
 | `public StreamWriter<?> getWriter(StreamMode key)` | 按模式返回 writer。 |

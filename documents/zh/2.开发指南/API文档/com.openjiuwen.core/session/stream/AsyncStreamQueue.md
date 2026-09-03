@@ -14,7 +14,7 @@ public class AsyncStreamQueue
 | --- | --- |
 | `public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200` | 单次发送尝试的默认超时时间，单位毫秒。 |
 | `public static final int DEFAULT_MAX_SEND_RETRIES = 5` | 发送失败后的默认最大重试次数。 |
-| `public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1` | 默认接收超时时间，`-1` 表示无限等待。 |
+| `public static final long DEFAULT_RECEIVE_TIMEOUT_MS = TimeoutConstants.BLOCKING_QUEUE_MS` | 默认接收超时时间，取自 `TimeoutConstants.BLOCKING_QUEUE_MS`（默认 60s，可通过 `-Dopenjiuwen.timeout.blocking-queue-ms` 覆盖）。`receive` 不再支持无限等待。 |
 | `public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000` | 默认关闭超时时间，单位毫秒。 |
 
 ## 构造方法
@@ -31,8 +31,8 @@ public class AsyncStreamQueue
 | `public boolean isClosed()` | 返回队列是否已经关闭。 |
 | `public void send(Object data, long attemptTimeout, int maxRetries)` | 按给定超时和重试次数把数据写入队列。 |
 | `public void send(Object data)` | 使用默认超时和重试参数发送数据。 |
-| `public Object receive(long timeoutMs)` | 按给定超时时间从队列读取一条数据。 |
-| `public Object receive()` | 使用默认超时策略读取一条数据。 |
+| `public Object receive(long timeoutMs)` | 按给定超时时间从队列读取一条数据；`timeoutMs` 非正值时回落到默认超时，超时返回 `null`。 |
+| `public Object receive()` | 使用默认超时策略读取一条数据；超时返回 `null`。 |
 | `public void close(long timeoutMs)` | 关闭队列并强制清空剩余元素。 |
 | `public void close()` | 使用默认关闭超时关闭队列。 |
 

@@ -35,7 +35,7 @@ public final class TimeoutConstants
 | `DEFAULT_FUTURE_MS` | `long` | `300_000L` | — | — | Future 默认超时（5 分钟）。 |
 | `DEFAULT_LATCH_MS` | `long` | `30_000L` | — | — | Latch 默认超时（30 秒）。 |
 | `DEFAULT_PROCESS_JOIN_MS` | `long` | `600_000L` | — | — | 子进程 join 默认超时（10 分钟）。 |
-| `BLOCKING_QUEUE_MS` | `long` | `60_000L` | `openjiuwen.timeout.blocking-queue-ms` | `StreamProcessor.pollPayload()` 主循环队列 poll；`StreamProcessor` 迭代器兜底 poll；`TaskManager` 任务队列 poll | 阻塞队列空闲超时。度量"队列多久没收到新数据"，不是总时长。60 秒默认值对 reasoning 模型 20-25 秒思考阶段留有 2 倍余量。 |
+| `BLOCKING_QUEUE_MS` | `long` | `60_000L` | `openjiuwen.timeout.blocking-queue-ms` | `StreamProcessor.pollPayload()` 主循环队列 poll；`StreamProcessor` 迭代器兜底 poll；`TaskManager` 任务队列 poll；`AsyncStreamQueue.receive(...)` 非正超时兜底；`StreamWriterManager` 无参 `streamOutput` / `streamIterator` 默认帧超时；`Workflow` 无执行截止时间且未配置帧超时的 receive 兜底 | 阻塞队列空闲超时。度量"队列多久没收到新数据"，不是总时长。60 秒默认值对 reasoning 模型 20-25 秒思考阶段留有 2 倍余量。 |
 | `FUTURE_MS` | `long` | `300_000L` | `openjiuwen.timeout.future-ms` | `Vertex.awaitStreamInAbilities` 的 `streamDone.get()`；`Vertex.runExecutable` 的 `future.get()`；`Task.waitFor` 的 `future.get()`；`Workflow` 工作流执行 future 等待 | Future / CountDownLatch 总等待超时。用于整段流式处理或任务执行的总时长上限。 |
 | `LATCH_MS` | `long` | `30_000L` | `openjiuwen.timeout.latch-ms` | `Vertex` 的 `abilityLatch.await()`（流启动阶段等待所有 ability 就绪） | CountDownLatch 等待超时。用于流式启动阶段等待上游 ability 注册就绪。 |
 | `PROCESS_JOIN_MS` | `long` | `600_000L` | `openjiuwen.timeout.process-join-ms` | `BashTool`、`CodeTool`、`PowerShellTool` 的子进程 `process.waitFor()` | 子进程 join 超时。用于等待外部命令行工具执行完毕。 |
@@ -57,11 +57,11 @@ public final class TimeoutConstants
 | --- | --- | --- |
 | `_stream_input_generator_timeout` | `-1.0` | `StreamProcessor` 构造时 `timeoutSeconds = 0`，迭代器走 `BLOCKING_QUEUE_MS`（60s）兜底 poll。 |
 | `_comp_stream_call_timeout` | `-1.0` | `Vertex.streamCalledTimeout` 置 0，`streamDone.get()` 走 `FUTURE_MS`（300s）兜底。 |
-| `_stream_frame_timeout` | `-1.0` | `Workflow` 帧间超时置 -1，不走框架超时；若工作流执行截止时间有效则用其剩余时间，否则无限等待。 |
-| `_stream_first_frame_timeout` | `-1.0` | 同上，首帧超时置 -1，不走框架超时。 |
+| `_stream_frame_timeout` | `-1.0` | `Workflow` 帧间超时置 -1：若工作流执行截止时间有效则用其剩余时间，否则回退到 `BLOCKING_QUEUE_MS`（默认 60s）。 |
+| `_stream_first_frame_timeout` | `-1.0` | 同上，首帧超时置 -1：执行截止时间剩余时间或 `BLOCKING_QUEUE_MS` 兜底。 |
 | `_execute_timeout` | `60.0`（正数） | 工作流执行总超时，默认 60 秒；为正数时直接生效。 |
 
-即：`_stream_input_generator_timeout` 和 `_comp_stream_call_timeout` 为 -1 时会回退到 `TimeoutConstants` 框架默认值；`_stream_frame_timeout` 和 `_stream_first_frame_timeout` 为 -1 时**不**回退到框架默认，而是依赖工作流执行截止时间或无限等待。
+即：`_stream_input_generator_timeout`、`_comp_stream_call_timeout`、`_stream_frame_timeout` 和 `_stream_first_frame_timeout` 为 -1 时都会回退到 `TimeoutConstants` 框架默认值（帧超时类优先用工作流执行截止时间的剩余时间，无截止时间时用 `BLOCKING_QUEUE_MS` 兜底），不存在无限等待路径。
 
 ## 说明
 
