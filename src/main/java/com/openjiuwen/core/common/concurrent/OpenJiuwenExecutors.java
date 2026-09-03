@@ -577,10 +577,10 @@ public final class OpenJiuwenExecutors {
 
     /**
      * I/O 阻塞型流式池默认上限：线程 99% 时间在等 LLM/网络，CPU 占用近零，按
-     * {@code max(64, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
      * 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
      *
-     * <p>下界 64 覆盖 JDK17 下实测的 60 并发场景（agent 侧 CPU 耗时 &lt;500ms，
+     * <p>下界 40 覆盖以 40 并发为基准的性能比拼场景（agent 侧 CPU 耗时 &lt;500ms，
      * 总耗时由 LLM 响应决定，wait/compute 比极高，线程数受限于 I/O 等待而非 CPU）；
      * 核数较多时随核数线性增长，避免高并发机器上成为瓶颈。</p>
      *
@@ -590,7 +590,7 @@ public final class OpenJiuwenExecutors {
      * @since 0.1.14
      */
     static int defaultIoBoundMaxSize() {
-        return Math.max(64, Runtime.getRuntime().availableProcessors() * 8);
+        return Math.max(40, Runtime.getRuntime().availableProcessors() * 8);
     }
 
     /**
@@ -636,7 +636,7 @@ public final class OpenJiuwenExecutors {
      * 平台线程模式下 DeepAgent 任务并发的默认上限。
      *
      * <p>DeepAgent 任务线程 99% 时间在等待 LLM/网络响应，属于 I/O 阻塞型，按
-     * {@code max(64, CPU 核数 × 8)} 估算并发槽位，与流式池 {@link #defaultIoBoundMaxSize()}
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位，与流式池 {@link #defaultIoBoundMaxSize()}
      * 对齐。仅在 JDK 17（不支持虚拟线程）时作为 {@code maxConcurrentTasks} 的默认值生效；
      * JDK 21+ 并发闸已放开，此值不再参与 gate 判定。</p>
      *

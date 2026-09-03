@@ -124,14 +124,14 @@ AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时�
 | --- | --- | --- | --- | --- |
 | `pregel-task` | Pregel 图节点并行 | `32` | `256` | 是 |
 | `workflow-stream` | Workflow 流式执行 | `32` | `256` | 是 |
-| `vertex-stream` | Vertex 流能力 | **`max(64, CPU 核数 * 8)`** | `256` | 是 |
-| `stream-actor` | StreamActor 流处理 | **`max(64, CPU 核数 * 8)`** | `256` | 是 |
+| `vertex-stream` | Vertex 流能力 | **`max(40, CPU 核数 * 8)`** | `256` | 是 |
+| `stream-actor` | StreamActor 流处理 | **`max(40, CPU 核数 * 8)`** | `256` | 是 |
 | `end-template-render` | End 模板渲染 | `8` | `128` | 是 |
 | `callback-parallel` | 回调并行触发（短生命周期） | `32` | `128` | 是 |
 | `mq-server-adapter` | MQ 服务端适配器 | `16` | `128` | 是 |
 | `task-manager-worker` | TaskManager 任务 worker | `16` | `128` | 是 |
-| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(64, CPU 核数 * 8)`** | `128` | 否 |
-| `react-agent-stream` | ReActAgent `stream()` 会话 | **`max(64, CPU 核数 * 8)`** | `128` | 否 |
+| `deep-agent-stream` | DeepAgent `stream()` 会话 / task-loop | **`max(40, CPU 核数 * 8)`** | `128` | 否 |
+| `react-agent-stream` | ReActAgent `stream()` 会话 | **`max(40, CPU 核数 * 8)`** | `128` | 否 |
 
 模块池共性：
 
