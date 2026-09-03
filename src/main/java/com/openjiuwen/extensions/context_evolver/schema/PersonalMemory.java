@@ -130,7 +130,7 @@ public class PersonalMemory {
      */
     public VectorNode toVectorNode() {
         String normalizedContent = content != null ? content : "";
-        String contentHash = SchemaUtils.md5Hex(normalizedContent);
+        String contentHash = SchemaUtils.sha256Hex(normalizedContent);
         String nodeId = "personal_" + workspaceId + "_" + contentHash;
 
         String embeddingContent = "About: " + target + "\n\nContent: " + normalizedContent;

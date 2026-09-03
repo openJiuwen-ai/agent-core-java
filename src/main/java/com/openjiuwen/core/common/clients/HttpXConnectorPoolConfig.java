@@ -112,7 +112,7 @@ public class HttpXConnectorPoolConfig extends ConnectorPoolConfig {
         normalized.put("local_address", localAddress);
         normalized.put("proxy", proxy);
         normalized.put("need_async", isNeedAsync);
-        return md5Hex(normalized.toString());
+        return sha256Hex(normalized.toString());
     }
 
     /**
