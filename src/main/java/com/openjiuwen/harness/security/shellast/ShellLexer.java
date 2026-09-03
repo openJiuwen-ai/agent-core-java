@@ -16,11 +16,21 @@ import java.util.List;
  * (pipes, redirections, substitutions) are detected earlier by the scanner and never
  * reach this lexer.
  *
+ * <p><b>Platform-aware backslash handling</b>: On Windows (cmd.exe), backslash is a
+ * path separator, not a POSIX escape character. Treating it as an escape would strip
+ * all backslashes from Windows paths (e.g. {@code C:\srv\workspace\secrets\*.txt}
+ * becomes {@code C:srvworkspacesecrets*.txt}), breaking file_guard prefix matching.
+ * On Windows, backslash is preserved as a literal character; on Linux/macOS, it retains
+ * its POSIX escape semantics.
+ *
  * @since 0.1.15
  */
 final class ShellLexer {
     private ShellLexer() {
     }
+
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase().contains("win");
 
     /**
      * Split a command into argv tokens.
@@ -57,7 +67,8 @@ final class ShellLexer {
                 hasContent = true;
                 continue;
             }
-            if (c == '\\') {
+            if (c == '\\' && !IS_WINDOWS) {
+                // POSIX escape: consume backslash, keep next char literally.
                 if (i + 1 < n) {
                     word.append(command.charAt(i + 1));
                     hasContent = true;
@@ -67,6 +78,7 @@ final class ShellLexer {
                 }
                 continue;
             }
+            // On Windows (or for any literal backslash), keep it as-is.
             word.append(c);
             hasContent = true;
             i++;
@@ -93,7 +105,8 @@ final class ShellLexer {
         int pos = start + 1;
         while (pos < n && command.charAt(pos) != '"') {
             char d = command.charAt(pos);
-            if (d == '\\' && pos + 1 < n) {
+            if (d == '\\' && pos + 1 < n && !IS_WINDOWS) {
+                // POSIX double-quote escape: only ", \, $, `, \n are escapable.
                 char next = command.charAt(pos + 1);
                 if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') {
                     word.append(next);
@@ -101,6 +114,7 @@ final class ShellLexer {
                     continue;
                 }
             }
+            // On Windows or for non-escapable chars, keep the backslash literally.
             word.append(d);
             pos++;
         }

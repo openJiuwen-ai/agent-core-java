@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -81,14 +80,40 @@ public final class PathAccessExtractor {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class PathAccess {
-        /** Resolved path. */
+        /** Resolved path, or {@code null} when the raw string contains characters
+         * that {@code Paths.get} rejects (e.g. {@code *} on Windows). */
         private Path path;
+
+        /** Posix-normalized raw path string, set when {@code path} is {@code null}
+         * (i.e. {@code Paths.get} threw {@code InvalidPathException}). Enables
+         * string-based glob/prefix matching in {@code FileGuardChecker} even when
+         * a {@code Path} object cannot be constructed. */
+        private String rawPathStr;
 
         /** Inferred file-access axis. */
         private FileGuardAction action;
 
         /** Origin: {@code tool_arg} or {@code shlex}. */
         private String source;
+    }
+
+    /**
+     * Result of path resolution: either a resolved {@code Path} (normal case) or
+     * a raw posix string (when {@code Paths.get} throws {@code InvalidPathException}
+     * due to reserved wildcard characters like {@code *} on Windows).
+     */
+    private record ResolvedPath(Path path, String rawPosix) {
+        static ResolvedPath ofPath(Path p) {
+            return new ResolvedPath(p, null);
+        }
+
+        static ResolvedPath ofRaw(String posixStr) {
+            return new ResolvedPath(null, posixStr);
+        }
+
+        boolean isEmpty() {
+            return path == null && rawPosix == null;
+        }
     }
 
     private record Spec(String argName, FileGuardAction action) {
@@ -123,12 +148,13 @@ public final class PathAccessExtractor {
                 if (!(raw instanceof String s) || s.isBlank()) {
                     continue;
                 }
-                Path p = resolvePathStr(s, workspaceRoot).orElse(null);
-                if (p == null) {
+                ResolvedPath rp = resolvePathStr(s, workspaceRoot);
+                if (rp.isEmpty()) {
                     continue;
                 }
                 out.add(PathAccess.builder()
-                        .path(p)
+                        .path(rp.path())
+                        .rawPathStr(rp.rawPosix())
                         .action(spec.action())
                         .source("tool_arg")
                         .build());
@@ -139,12 +165,13 @@ public final class PathAccessExtractor {
             FileGuardAction action = WRITE_PATH_TOOLS.contains(toolName)
                     ? FileGuardAction.WRITE : FileGuardAction.READ;
             for (String s : iterPathStrings(args)) {
-                Path p = resolvePathStr(s, workspaceRoot).orElse(null);
-                if (p == null) {
+                ResolvedPath rp = resolvePathStr(s, workspaceRoot);
+                if (rp.isEmpty()) {
                     continue;
                 }
                 out.add(PathAccess.builder()
-                        .path(p)
+                        .path(rp.path())
+                        .rawPathStr(rp.rawPosix())
                         .action(action)
                         .source("tool_arg")
                         .build());
@@ -245,23 +272,27 @@ public final class PathAccessExtractor {
         if (scriptTok.isEmpty() || scriptTok.startsWith("-") || !looksLikePath(scriptTok)) {
             return;
         }
-        resolvePathStr(scriptTok, base).ifPresent(p -> out.add(PathAccess.builder()
-                .path(p)
-                .action(FileGuardAction.EXEC)
-                .source("shlex")
-                .build()));
+        ResolvedPath rp = resolvePathStr(scriptTok, base);
+        if (!rp.isEmpty()) {
+            out.add(PathAccess.builder()
+                    .path(rp.path())
+                    .rawPathStr(rp.rawPosix())
+                    .action(FileGuardAction.EXEC)
+                    .source("shlex")
+                    .build());
+        }
     }
 
     private static List<PathAccess> extractFromArgv(String cmd0, List<String> tokens, Path base) {
-        List<Path> pathTokens = new ArrayList<>();
+        List<ResolvedPath> pathTokens = new ArrayList<>();
         for (int i = 1; i < tokens.size(); i++) {
             String tok = stripQuotes(tokens.get(i));
             if (tok.isEmpty() || isShellFlag(tok) || !looksLikePath(tok)) {
                 continue;
             }
-            Path p = (base != null ? resolvePathStr(tok, base) : rawPathOrNull(tok)).orElse(null);
-            if (p != null) {
-                pathTokens.add(p);
+            ResolvedPath rp = (base != null ? resolvePathStr(tok, base) : rawPathOrNull(tok));
+            if (!rp.isEmpty()) {
+                pathTokens.add(rp);
             }
         }
         List<PathAccess> out = new ArrayList<>();
@@ -271,23 +302,32 @@ public final class PathAccessExtractor {
                 out.add(access(pathTokens.get(i), FileGuardAction.WRITE, base));
             }
         } else if (WRITE_CMDS.contains(cmd0)) {
-            for (Path p : pathTokens) {
-                out.add(access(p, FileGuardAction.WRITE, base));
+            for (ResolvedPath rp : pathTokens) {
+                out.add(access(rp, FileGuardAction.WRITE, base));
             }
         } else if (READ_CMDS.contains(cmd0)) {
-            for (Path p : pathTokens) {
-                out.add(access(p, FileGuardAction.READ, base));
+            for (ResolvedPath rp : pathTokens) {
+                out.add(access(rp, FileGuardAction.READ, base));
             }
         } else if ("cd".equals(cmd0)) {
-            for (Path p : pathTokens) {
-                out.add(access(p, FileGuardAction.READ, base));
+            for (ResolvedPath rp : pathTokens) {
+                out.add(access(rp, FileGuardAction.READ, base));
             }
         } else {
-            for (Path p : pathTokens) {
-                out.add(access(p, FileGuardAction.WRITE, base));
+            for (ResolvedPath rp : pathTokens) {
+                out.add(access(rp, FileGuardAction.WRITE, base));
             }
         }
         return out;
+    }
+
+    private static PathAccess access(ResolvedPath rp, FileGuardAction action, Path base) {
+        return PathAccess.builder()
+                .path(rp.path())
+                .rawPathStr(rp.rawPosix())
+                .action(action)
+                .source("shlex")
+                .build();
     }
 
     private static PathAccess access(Path resolved, FileGuardAction action, Path base) {
@@ -307,23 +347,23 @@ public final class PathAccessExtractor {
             if (target.isEmpty() || !looksLikePath(target)) {
                 continue;
             }
-            Path p = (base != null ? resolvePathStr(target, base) : rawPathOrNull(target)).orElse(null);
-            if (p == null) {
+            ResolvedPath rp = (base != null ? resolvePathStr(target, base) : rawPathOrNull(target));
+            if (rp.isEmpty()) {
                 continue;
             }
             FileGuardAction action = (op.contains("<") && !op.contains(">"))
                     ? FileGuardAction.READ : FileGuardAction.WRITE;
-            out.add(access(p, action, base));
+            out.add(access(rp, action, base));
         }
         return out;
     }
 
     // ---------- path resolution ----------
 
-    private static Optional<Path> resolvePathStr(String raw, Path workspace) {
+    private static ResolvedPath resolvePathStr(String raw, Path workspace) {
         String s = stripQuotes(raw).trim();
         if (s.isEmpty()) {
-            return Optional.empty();
+            return ResolvedPath.ofRaw(null);
         }
         s = expandRaw(s);
         try {
@@ -331,18 +371,26 @@ public final class PathAccessExtractor {
             if (!p.isAbsolute() && workspace != null) {
                 p = workspace.resolve(s);
             }
-            return Optional.of(p.normalize());
+            return ResolvedPath.ofPath(p.normalize());
         } catch (InvalidPathException ex) {
-            logger.warn("[file_guard] path.resolve_failed raw={} reason={}", s, ex.getMessage());
-            return Optional.empty();
+            logger.warn("[file_guard] path.resolve_failed raw={} reason={} — retaining raw string for guard matching",
+                    s, ex.getMessage());
+            // Instead of silently dropping the path, return the posix-normalized raw
+            // string so FileGuardChecker can still do glob/prefix string matching.
+            // This prevents deny-rule bypass when the path contains wildcard chars
+            // (e.g. * on Windows) that Paths.get rejects.
+            String posix = s.replace("\\", "/");
+            return ResolvedPath.ofRaw(posix);
         }
     }
 
-    private static Optional<Path> rawPathOrNull(String tok) {
+    private static ResolvedPath rawPathOrNull(String tok) {
         try {
-            return Optional.of(Paths.get(tok).normalize());
+            return ResolvedPath.ofPath(Paths.get(tok).normalize());
         } catch (InvalidPathException ex) {
-            return Optional.empty();
+            // Retain raw string for guard matching (same fix as resolvePathStr).
+            String posix = tok.replace("\\", "/");
+            return ResolvedPath.ofRaw(posix);
         }
     }
 
