@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -248,6 +249,21 @@ class GitCodeIssueToolTest(unittest.TestCase):
                 gitcode_issue.command_submit(self._submit_args(confirmed=False))
         self.assertEqual("SUBMISSION_NOT_CONFIRMED", raised.exception.code)
         api.assert_not_called()
+
+    def test_api_classifies_os_error_subclasses_as_transport_failures(self) -> None:
+        failures = (
+            urllib.error.URLError("offline"),
+            TimeoutError("timed out"),
+            OSError("transport unavailable"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                api = gitcode_issue.GitCodeApi("unit-test-only-not-a-real-pat")
+                with mock.patch.object(api._opener, "open", side_effect=failure):
+                    with self.assertRaises(gitcode_issue.ApiError) as raised:
+                        api.get("/user")
+                self.assertFalse(raised.exception.uncertain)
+                self.assertNotIn("unit-test-only-not-a-real-pat", str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -36,7 +36,17 @@ mv -- "$temporary_classes" "$test_classes"
 
 run_classpath="$test_classes:$compile_classpath"
 java -cp "$run_classpath" examples.gitcode_issue_evolver.gitcode.HttpGitCodeClientDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_issue_evolver.codecheck.HttpOpenLibingCodeCheckClientDeterministicTest
 java -cp "$run_classpath" examples.gitcode_issue_evolver.polling.PollingDeterministicTest
+java -cp "$run_classpath" examples.gitcode_issue_evolver.polling.CodeCheckFeedbackDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_issue_evolver.curation.CodingStandardCurationDeterministicTest
 java -cp "$run_classpath" examples.gitcode_issue_evolver.ServiceTriggerModeDeterministicTest
+java -cp "$run_classpath" examples.gitcode_issue_evolver.IssueManualFullScanDeterministicTest
+java -cp "$run_classpath" examples.gitcode_issue_evolver.worker.IssueControllerDeterministicTest
+java -cp "$run_classpath" examples.gitcode_issue_evolver.worker.IssueSmokeGateDeterministicTest
+java -cp "$run_classpath" \
+    examples.gitcode_issue_evolver.publish.PullRequestPublisherDeterministicTest
 
 printf 'GitCode Issue Evolver deterministic tests passed.\n'

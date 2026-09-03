@@ -56,9 +56,25 @@ public final class GitCodeIssueEvolverExample {
             String triggerMode = config.getTriggerMode().name().toLowerCase(Locale.ROOT);
             System.out.println("Trigger mode: " + triggerMode);
             System.out.println("Trigger label: " + config.getTriggerLabel());
+            System.out.println("Controller repair rounds: primary="
+                    + config.getMaxPrimaryRepairRounds() + ", diagnostic="
+                    + config.getMaxDiagnosticRepairRounds());
+            System.out.println("Transient stage retries: " + config.getMaxTransientStageRetries());
+            System.out.println("CodeCheck standard-only override: "
+                    + config.isCodeCheckStandardOnlyOverride());
+            if (config.isSmokeTestEnabled()) {
+                System.out.println("JiuwenTestJava smoke: enabled / selectors="
+                        + String.join(",", config.getSmokeTestSelectors()));
+            } else {
+                System.out.println("JiuwenTestJava smoke: disabled");
+            }
             if (config.getTriggerMode().usesPolling()) {
                 System.out.println("Issue scan window: " + config.getIssueScanWindowHours() + " hours");
                 System.out.println("Poll interval: " + config.getPollIntervalMinutes() + " minutes");
+                if (config.isManualFullScanEnabled()) {
+                    System.out.println("Manual full scan: POST http://127.0.0.1:"
+                            + config.getPort() + "/admin/poll/full");
+                }
             }
             return;
         }

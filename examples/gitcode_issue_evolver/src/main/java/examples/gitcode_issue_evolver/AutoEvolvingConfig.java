@@ -32,6 +32,9 @@ public final class AutoEvolvingConfig {
 
     private static final URI GITCODE_API_BASE = URI.create("https://api.gitcode.com/api/v5/");
     private static final Pattern ACCOUNT_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_.-]+");
+    private static final Pattern TEST_SELECTOR_PATTERN = Pattern.compile(
+            "[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
+    private static final int MAX_SMOKE_TEST_SELECTORS = 3;
 
     @Builder.Default
     private final String bindHost = "127.0.0.1";
@@ -64,6 +67,35 @@ public final class AutoEvolvingConfig {
     private final int pollIntervalMinutes = 15;
     @Builder.Default
     private final int maxIssueScanPages = 10;
+    @Builder.Default
+    private final boolean manualFullScanEnabled = false;
+    @Builder.Default
+    private final boolean codeCheckFeedbackEnabled = false;
+    @Builder.Default
+    private final boolean codeCheckStandardOnlyOverride = false;
+    @Builder.Default
+    private final String codeCheckBotLogin = "openJiuwen-bot";
+    @Builder.Default
+    private final String codeCheckSuccessLabel = "ci-successful";
+    @Builder.Default
+    private final String openLibingBaseUrl = "";
+    @Builder.Default
+    private final int openLibingTimeoutSeconds = 60;
+    @Builder.Default
+    private final int openLibingMaxFindings = 100;
+    @Builder.Default
+    private final int maxPrimaryRepairRounds = 5;
+    @Builder.Default
+    private final int maxDiagnosticRepairRounds = 3;
+    @Builder.Default
+    private final int maxTransientStageRetries = 5;
+    @Builder.Default
+    private final boolean smokeTestEnabled = false;
+    private final Path smokeTestRepository;
+    @Builder.Default
+    private final List<String> smokeTestSelectors = List.of();
+    @Builder.Default
+    private final int smokeTestTimeoutMinutes = 30;
     @Builder.Default
     private final String gitUserName = "gitcode-issue-evolver";
     @Builder.Default
@@ -159,6 +191,44 @@ public final class AutoEvolvingConfig {
         if (maxIssueScanPages < 1 || maxIssueScanPages > 100) {
             errors.add("maxIssueScanPages must be between 1 and 100");
         }
+        if (manualFullScanEnabled && !"127.0.0.1".equals(bindHost)) {
+            errors.add("manualFullScanEnabled requires bindHost 127.0.0.1");
+        }
+        if (manualFullScanEnabled && (triggerMode == null || !triggerMode.usesPolling())) {
+            errors.add("manualFullScanEnabled requires polling or both triggerMode");
+        }
+        if (codeCheckFeedbackEnabled && (triggerMode == null || !triggerMode.usesPolling())) {
+            errors.add("codeCheckFeedbackEnabled requires polling or both triggerMode");
+        }
+        if (codeCheckFeedbackEnabled && invalidAccountName(codeCheckBotLogin)) {
+            errors.add("codeCheckBotLogin is invalid");
+        }
+        if (codeCheckFeedbackEnabled
+                && (codeCheckSuccessLabel == null || codeCheckSuccessLabel.isBlank()
+                || codeCheckSuccessLabel.length() > 64)) {
+            errors.add("codeCheckSuccessLabel must contain between 1 and 64 characters");
+        }
+        if (codeCheckFeedbackEnabled && !isValidOpenLibingBase(openLibingBaseUrl)) {
+            errors.add("openLibingBaseUrl must be a plain HTTPS origin");
+        }
+        if (openLibingTimeoutSeconds < 5 || openLibingTimeoutSeconds > 300) {
+            errors.add("openLibingTimeoutSeconds must be between 5 and 300");
+        }
+        if (openLibingMaxFindings < 1 || openLibingMaxFindings > 200) {
+            errors.add("openLibingMaxFindings must be between 1 and 200");
+        }
+        if (maxPrimaryRepairRounds < 1 || maxPrimaryRepairRounds > 20) {
+            errors.add("maxPrimaryRepairRounds must be between 1 and 20");
+        }
+        if (maxDiagnosticRepairRounds < 0 || maxDiagnosticRepairRounds > 10) {
+            errors.add("maxDiagnosticRepairRounds must be between 0 and 10");
+        }
+        if (maxTransientStageRetries < 1 || maxTransientStageRetries > 10) {
+            errors.add("maxTransientStageRetries must be between 1 and 10");
+        }
+        if (smokeTestTimeoutMinutes < 1 || smokeTestTimeoutMinutes > 120) {
+            errors.add("smokeTestTimeoutMinutes must be between 1 and 120");
+        }
     }
 
     private void validateCredentials(List<String> errors) {
@@ -207,6 +277,7 @@ public final class AutoEvolvingConfig {
         if (!isReadableSkill(issueWorkerSkill)) {
             errors.add("issueWorkerSkill must point to a readable Skill directory");
         }
+        validateSmokeRepository(errors);
         if (dataDir == null || !ensureWritableDirectory(dataDir)) {
             errors.add("dataDir must be creatable and writable");
         }
@@ -222,6 +293,26 @@ public final class AutoEvolvingConfig {
         }
         if (!ensureWritableDirectory(worktreeRoot)) {
             errors.add("worktreeRoot must be creatable and writable");
+        }
+    }
+
+    private void validateSmokeRepository(List<String> errors) {
+        if (!smokeTestEnabled) {
+            return;
+        }
+        if (!isSmokeTestRepository(smokeTestRepository)) {
+            errors.add("smokeTestRepository must point to a readable JiuwenTestJava Git repository");
+        }
+        if (smokeTestSelectors == null || smokeTestSelectors.isEmpty()
+                || smokeTestSelectors.size() > MAX_SMOKE_TEST_SELECTORS
+                || smokeTestSelectors.stream().anyMatch(this::invalidTestSelector)) {
+            errors.add("smokeTestSelectors must contain between 1 and 3 exact Java test class names");
+        }
+        if (overlaps(smokeTestRepository, localRepository)
+                || overlaps(smokeTestRepository, worktreeRoot)
+                || overlaps(smokeTestRepository, codingStandardSkill)
+                || overlaps(smokeTestRepository, issueWorkerSkill)) {
+            errors.add("smokeTestRepository must be isolated from source, Worktree, and Skill paths");
         }
     }
 
@@ -244,6 +335,22 @@ public final class AutoEvolvingConfig {
         return account == null || account.isBlank() || !ACCOUNT_NAME_PATTERN.matcher(account).matches();
     }
 
+    private boolean invalidTestSelector(String selector) {
+        return selector == null || !TEST_SELECTOR_PATTERN.matcher(selector).matches();
+    }
+
+    private static boolean isValidOpenLibingBase(String value) {
+        try {
+            URI uri = URI.create(value == null ? "" : value);
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
+                    && uri.getUserInfo() == null && uri.getQuery() == null && uri.getFragment() == null
+                    && (uri.getPort() == -1 || uri.getPort() == 443)
+                    && (uri.getPath().isBlank() || "/".equals(uri.getPath()));
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
     private static boolean isGitRepository(Path directory) {
         return directory != null && Files.isDirectory(directory)
                 && Files.isReadable(directory) && Files.exists(directory.resolve(".git"));
@@ -252,6 +359,12 @@ public final class AutoEvolvingConfig {
     private static boolean isReadableSkill(Path directory) {
         return directory != null && Files.isDirectory(directory)
                 && Files.isReadable(directory) && Files.isReadable(directory.resolve("SKILL.md"));
+    }
+
+    private static boolean isSmokeTestRepository(Path directory) {
+        return isGitRepository(directory)
+                && Files.isReadable(directory.resolve("pom.xml"))
+                && Files.isDirectory(directory.resolve("src/test/java"));
     }
 
     private static boolean overlaps(Path first, Path second) {

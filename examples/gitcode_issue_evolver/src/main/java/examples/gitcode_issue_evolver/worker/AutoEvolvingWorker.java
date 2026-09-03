@@ -49,6 +49,7 @@ public final class AutoEvolvingWorker {
     private final GitCodeClient gitCode;
     private final IssueTaskExecutor executor;
     private final String workerId;
+    private final int maxTransientStageRetries;
 
     /**
      * Create a worker with a process-unique lease owner.
@@ -58,7 +59,7 @@ public final class AutoEvolvingWorker {
      * @param executor isolated AutoHarness task executor
      */
     public AutoEvolvingWorker(EvolutionJobStore store, GitCodeClient gitCode, IssueTaskExecutor executor) {
-        this(store, gitCode, executor, UUID.randomUUID().toString());
+        this(store, gitCode, executor, UUID.randomUUID().toString(), 5);
     }
 
     /**
@@ -71,6 +72,21 @@ public final class AutoEvolvingWorker {
      */
     public AutoEvolvingWorker(EvolutionJobStore store, GitCodeClient gitCode,
                               IssueTaskExecutor executor, String workerId) {
+        this(store, gitCode, executor, workerId, 5);
+    }
+
+    /**
+     * Create a worker with explicit transient retry policy.
+     *
+     * @param store durable job store
+     * @param gitCode configured-target GitCode client
+     * @param executor isolated Issue task executor
+     * @param workerId nonblank lease owner
+     * @param maxTransientStageRetries maximum scheduled transient retries
+     */
+    public AutoEvolvingWorker(EvolutionJobStore store, GitCodeClient gitCode,
+                              IssueTaskExecutor executor, String workerId,
+                              int maxTransientStageRetries) {
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.gitCode = Objects.requireNonNull(gitCode, "gitCode must not be null");
         this.executor = Objects.requireNonNull(executor, "executor must not be null");
@@ -78,6 +94,10 @@ public final class AutoEvolvingWorker {
             throw new IllegalArgumentException("workerId must not be blank");
         }
         this.workerId = workerId;
+        if (maxTransientStageRetries < 1) {
+            throw new IllegalArgumentException("maxTransientStageRetries must be positive");
+        }
+        this.maxTransientStageRetries = maxTransientStageRetries;
     }
 
     /**
@@ -92,6 +112,7 @@ public final class AutoEvolvingWorker {
             return false;
         }
         AtomicReference<EvolutionJob> current = new AtomicReference<>(leased.get());
+        boolean isCodeCheckRepair = leased.get().state() == EvolutionJobState.CODECHECK_REPAIR;
         ScheduledThreadPoolExecutor heartbeat = new ScheduledThreadPoolExecutor(
                 1,
                 new AutoEvolvingThreadFactory("auto-evolving-heartbeat"),
@@ -122,11 +143,14 @@ public final class AutoEvolvingWorker {
                 finishCancellation(current);
                 return true;
             }
-            Optional<GitCodePullRequest> existing = gitCode.findOpenPullRequest(issue.iid(), current.get().branch());
-            checkCancellation(current);
-            if (existing.isPresent()) {
-                bindExistingPullRequest(current, existing.get());
-                return true;
+            if (!isCodeCheckRepair) {
+                Optional<GitCodePullRequest> existing = gitCode.findOpenPullRequest(
+                        issue.iid(), current.get().branch());
+                checkCancellation(current);
+                if (existing.isPresent()) {
+                    bindExistingPullRequest(current, existing.get());
+                    return true;
+                }
             }
 
             ExecutionOutcome execution = executeAndAwait(current, issue);
@@ -184,8 +208,10 @@ public final class AutoEvolvingWorker {
                     ex.getMessage(), false);
             return true;
         } catch (IllegalStateException | CompletionException ex) {
+            LOGGER.error("Unclassified worker execution failed for evolution job {}",
+                    current.get().id(), ex);
             failOrFinishCancellation(current, IssueExecutionErrorCode.WORKER_INFRASTRUCTURE_FAILED,
-                    "Worker execution failed", true);
+                    "Unclassified worker execution failed", false);
             return true;
         } finally {
             cancel(heartbeatTask);
@@ -284,11 +310,30 @@ public final class AutoEvolvingWorker {
             return;
         }
         IssueExecutionErrorCode requiredCode = Objects.requireNonNull(errorCode, "errorCode must not be null");
-        transition(current, failureState(retryable), requiredCode.format(error));
+        boolean retryAllowed = retryable && latest.attemptCount() < maxTransientStageRetries;
+        EvolutionJobState state = retryAllowed
+                ? EvolutionJobState.RETRY_SCHEDULED
+                : failureState(requiredCode, false);
+        transition(current, state, requiredCode.format(error));
     }
 
-    static EvolutionJobState failureState(boolean retryable) {
-        return retryable ? EvolutionJobState.FAILED_RETRYABLE : EvolutionJobState.FAILED_FINAL;
+    static EvolutionJobState failureState(IssueExecutionErrorCode errorCode, boolean retryable) {
+        if (retryable) {
+            return EvolutionJobState.RETRY_SCHEDULED;
+        }
+        return switch (errorCode) {
+            case NO_ACTION_REQUIRED -> EvolutionJobState.NO_ACTION_REQUIRED;
+            case BLOCKED_EXTERNAL, TARGET_PATH_NOT_FOUND,
+                    EARLY_E2E_TEST_TARGET_REQUIRED -> EvolutionJobState.BLOCKED_EXTERNAL;
+            case OUTSIDE_SPARSE_CHECKOUT_SCOPE, COMMIT_VALIDATION_FAILED ->
+                    EvolutionJobState.FAILED_POLICY;
+            case AGENT_PROTOCOL_FAILED, AGENT_FAILED_TO_ACT, VERIFICATION_FAILED ->
+                    EvolutionJobState.FAILED_AUTOMATION;
+            case GITCODE_API_FAILED, AGENT_CONFIGURATION_FAILED ->
+                    EvolutionJobState.FAILED_CONFIGURATION;
+            case WORKER_INFRASTRUCTURE_FAILED -> EvolutionJobState.FAILED_INTERNAL;
+            default -> EvolutionJobState.FAILED_AUTOMATION;
+        };
     }
 
     private void transition(AtomicReference<EvolutionJob> current, EvolutionJobState state, String error) {

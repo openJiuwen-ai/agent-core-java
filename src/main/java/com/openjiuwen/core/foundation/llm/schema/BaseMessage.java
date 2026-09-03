@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.foundation.llm.schema;
 
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serial;
@@ -35,13 +37,13 @@ public class BaseMessage implements Serializable {
      * For simple text messages, use {@code String}. For multimodal messages,
      * use a {@code List} of maps containing text/image data.
      */
-    private Object content;
+    private Serializable content;
 
     /** Optional name identifier for the message sender. */
     private String name;
 
     /** Optional metadata map carried with the message. */
-    private Map<String, Object> metadata;
+    private LinkedHashMap<String, Object> metadata;
 
     /**
      * BaseMessage.
@@ -62,9 +64,13 @@ public class BaseMessage implements Serializable {
      */
     public BaseMessage(String role, Object content, String name, Map<String, Object> metadata) {
         this.role = role;
-        this.content = content;
+        if (content == null) {
+            this.content = null;
+        } else {
+            this.content = SerializationUtils.requireSerializable(content, "content");
+        }
         this.name = name;
-        this.metadata = metadata;
+        this.metadata = metadata == null ? null : new LinkedHashMap<>(metadata);
     }
 
     // ==================== Convenience Constructors ====================
@@ -129,7 +135,11 @@ public class BaseMessage implements Serializable {
      * @since 0.1.7
      */
     public void setContent(Object content) {
-        this.content = content;
+        if (content == null) {
+            this.content = null;
+        } else {
+            this.content = SerializationUtils.requireSerializable(content, "content");
+        }
     }
 
     /**
@@ -169,7 +179,7 @@ public class BaseMessage implements Serializable {
      * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
-        this.metadata = metadata;
+        this.metadata = metadata == null ? null : new LinkedHashMap<>(metadata);
     }
 
     /**
