@@ -345,7 +345,7 @@ class LLMSchemaSystemTest {
         }
 
         @Test
-        @DisplayName("Merge chunks uses last-wins for reasoning content")
+        @DisplayName("Merge chunks concatenates reasoning content")
         void testMergeReasoningContent() {
             AssistantMessageChunk chunk1 =
                 AssistantMessageChunk.builder().content("").reasoningContent("Step 1: ").build();
@@ -353,15 +353,18 @@ class LLMSchemaSystemTest {
             AssistantMessageChunk chunk2 =
                 AssistantMessageChunk.builder().content("").reasoningContent("Analyze data").build();
 
-            // merge uses last-wins: other.reasoningContent takes precedence
             AssistantMessageChunk merged = chunk1.merge(chunk2);
             assertNotNull(merged);
-            assertEquals("Analyze data", merged.getReasoningContent());
+            assertEquals("Step 1: Analyze data", merged.getReasoningContent());
 
-            // when other has null reasoning, this reasoning is preserved
             AssistantMessageChunk chunk3 = AssistantMessageChunk.builder().content("").build();
             AssistantMessageChunk merged2 = chunk1.merge(chunk3);
             assertEquals("Step 1: ", merged2.getReasoningContent());
+
+            AssistantMessageChunk streamed = AssistantMessageChunk.builder().content("").reasoningContent("Let me").build()
+                    .merge(AssistantMessageChunk.builder().content("").reasoningContent(" think").build())
+                    .merge(AssistantMessageChunk.builder().content("").reasoningContent("。").build());
+            assertEquals("Let me think。", streamed.getReasoningContent());
         }
     }
 
