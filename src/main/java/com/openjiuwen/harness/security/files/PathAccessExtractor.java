@@ -373,7 +373,7 @@ public final class PathAccessExtractor {
             }
             return ResolvedPath.ofPath(p.normalize());
         } catch (InvalidPathException ex) {
-            logger.warn("[file_guard] path.resolve_failed raw={} reason={} — retaining raw string for guard matching",
+            logger.warn("[file_guard] path.resolve_failed raw={} reason={} -- retaining raw string for guard matching",
                     s, ex.getMessage());
             // Instead of silently dropping the path, return the posix-normalized raw
             // string so FileGuardChecker can still do glob/prefix string matching.

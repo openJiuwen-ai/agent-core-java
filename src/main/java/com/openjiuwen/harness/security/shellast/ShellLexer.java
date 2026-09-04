@@ -26,11 +26,11 @@ import java.util.List;
  * @since 0.1.15
  */
 final class ShellLexer {
-    private ShellLexer() {
-    }
-
     private static final boolean IS_WINDOWS =
             System.getProperty("os.name", "").toLowerCase().contains("win");
+
+    private ShellLexer() {
+    }
 
     /**
      * Split a command into argv tokens.
