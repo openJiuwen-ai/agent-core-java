@@ -210,6 +210,34 @@ public class AbilityManager implements ToolRegistry {
     }
 
     /**
+     * Unregister all per-session tool overrides for the given session id.
+     * <p>
+     * Must be called when a session ends (e.g. in {@code stopTaskLoopRuntime}) to
+     * prevent the outer {@code sessionTools} map from retaining entries keyed by
+     * session id indefinitely. Each entry's inner map (and the {@link Tool} instances
+     * it references, which indirectly hold {@code ModelContext} → message buffer
+     * → message list) is released for GC.
+     *
+     * @param sessionId session id whose tool overrides should be removed
+     * @since 0.1.15
+     */
+    public void unregisterSessionTool(String sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        sessionTools.remove(sessionId);
+    }
+
+    /**
+     * Remove all per-session tool overrides. Intended for shutdown / destroy paths.
+     *
+     * @since 0.1.15
+     */
+    public void clearAllSessionTools() {
+        sessionTools.clear();
+    }
+
+    /**
      * Resolve a per-session tool override for the given session and tool name.
      *
      * @param toolName tool name requested by the model
