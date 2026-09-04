@@ -34,7 +34,7 @@ public class AssistantMessageChunk extends AssistantMessage {
     }
 
     /**
-     * Merge another chunk into this one, combining content and tool call fragments.
+     * Merge another chunk into this one, combining content, reasoning, and tool call fragments.
      * <p>
      * Tool call fragments are merged by a stable key with priority:
      * {@code index > id > name > anonymous}. This is more tolerant than the previous
@@ -113,8 +113,7 @@ public class AssistantMessageChunk extends AssistantMessage {
                 .usageMetadata(other.getUsageMetadata() != null ? other.getUsageMetadata() : this.getUsageMetadata())
                 .finishReason(mergedFinishReason)
                 .parserContent(other.getParserContent() != null ? other.getParserContent() : this.getParserContent())
-                .reasoningContent(
-                        other.getReasoningContent() != null ? other.getReasoningContent() : this.getReasoningContent())
+                .reasoningContent(orEmpty(this.getReasoningContent()) + orEmpty(other.getReasoningContent()))
                 .build();
     }
 
