@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Tests for {@link InMemoryCheckpointer}.
@@ -128,5 +129,112 @@ class InMemoryCheckpointerTest {
         // Concurrent write isolation wraps InMemoryStore with KeyLockedStore.
         assertInstanceOf(KeyLockedStore.class, checkpointer.graphStore());
         assertInstanceOf(InMemoryStore.class, ((KeyLockedStore) checkpointer.graphStore()).delegate());
+    }
+
+    @Test
+    @DisplayName("sessions older than TTL are evicted on the next write")
+    void testTtlEvictionRemovesExpiredSession() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
+
+        AgentSession first = new AgentSession("session-1", new Config(), checkpointer);
+        checkpointer.preAgentExecute(first, null);
+        assertTrue(checkpointer.sessionExists("session-1"));
+
+        now.set(1_000_000L + 60_001L);
+        AgentSession second = new AgentSession("session-2", new Config(), checkpointer);
+        checkpointer.preAgentExecute(second, null);
+
+        assertFalse(checkpointer.sessionExists("session-1"),
+                "expired session should be evicted by the TTL policy");
+        assertTrue(checkpointer.sessionExists("session-2"));
+    }
+
+    @Test
+    @DisplayName("capacity limit evicts the least recently written session")
+    void testCapacityEvictionRemovesOldestWrittenSession() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
+
+        for (String sessionId : List.of("session-1", "session-2")) {
+            AgentSession session = new AgentSession(sessionId, new Config(), checkpointer);
+            checkpointer.preAgentExecute(session, null);
+        }
+        assertTrue(checkpointer.sessionExists("session-1"));
+        assertTrue(checkpointer.sessionExists("session-2"));
+
+        now.set(1_000_000L + 1L);
+        AgentSession third = new AgentSession("session-3", new Config(), checkpointer);
+        checkpointer.preAgentExecute(third, null);
+
+        assertFalse(checkpointer.sessionExists("session-1"),
+                "least recently written session should be evicted when capacity is exceeded");
+        assertTrue(checkpointer.sessionExists("session-2"));
+        assertTrue(checkpointer.sessionExists("session-3"));
+    }
+
+    @Test
+    @DisplayName("write refreshes TTL so an active session survives")
+    void testWriteRefreshesTtlForActiveSession() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        // TTL = 100s; write every 60s so the session stays alive across a 180s window.
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(100_000L, 0, now::get);
+
+        AgentSession session = new AgentSession("session-1", new Config(), checkpointer);
+        checkpointer.preAgentExecute(session, null);
+        for (int i = 0; i < 3; i++) {
+            now.set(1_000_000L + (i + 1) * 60_000L);
+            checkpointer.postAgentExecute(session);
+        }
+        now.set(1_000_000L + 180_001L);
+
+        AgentSession probe = new AgentSession("session-2", new Config(), checkpointer);
+        checkpointer.preAgentExecute(probe, null);
+
+        assertTrue(checkpointer.sessionExists("session-1"),
+                "a session written within the TTL window must survive");
+    }
+
+    @Test
+    @DisplayName("eviction removes graph store entries for the evicted session")
+    void testEvictionClearsGraphStoreEntries() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
+
+        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        checkpointer.preWorkflowExecute(session, null);
+        checkpointer.graphStore().save("session-1", "workflow-1",
+                GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
+        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").isPresent());
+
+        now.set(1_000_000L + 60_001L);
+        WorkflowSession other = new WorkflowSession("workflow-2", null, "session-2", InMemoryState.create(), null);
+        checkpointer.preWorkflowExecute(other, null);
+
+        assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").isPresent(),
+                "graph store entries must be removed together with the evicted session");
+    }
+
+    @Test
+    @DisplayName("release still clears state explicitly and does not interfere with eviction")
+    void testReleaseAndEvictionCoexist() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
+
+        for (String sessionId : List.of("session-1", "session-2")) {
+            AgentSession session = new AgentSession(sessionId, new Config(), checkpointer);
+            checkpointer.preAgentExecute(session, null);
+        }
+        checkpointer.release("session-1");
+        assertFalse(checkpointer.sessionExists("session-1"));
+
+        // After release the slot is free: session-3 must not evict session-2.
+        now.set(1_000_000L + 1L);
+        AgentSession third = new AgentSession("session-3", new Config(), checkpointer);
+        checkpointer.preAgentExecute(third, null);
+
+        assertTrue(checkpointer.sessionExists("session-2"),
+                "released session must free its capacity slot");
+        assertTrue(checkpointer.sessionExists("session-3"));
     }
 }
