@@ -1658,6 +1658,10 @@ public class DeepAgent implements AutoCloseable {
             if (taskManager != null) {
                 taskManager.removeTask(TaskFilter.bySessionId(sessionId));
             }
+            // Unregister per-session tool overrides (e.g. context reloader) to prevent
+            // the sessionTools map from retaining Tool → ModelContext → message buffer
+            // references after the session ends.
+            agent.getAbilityManager().unregisterSessionTool(sessionId);
         }
     }
 
@@ -2212,6 +2216,9 @@ public class DeepAgent implements AutoCloseable {
         destroyTaskLoopRuntime();
         // Release all per-session state eagerly to prevent retention in long-running scenarios.
         sessionLoopCoordinators.clear();
+        if (agent != null) {
+            agent.getAbilityManager().clearAllSessionTools();
+        }
         if (taskManager != null) {
             taskManager.clearState();
         }
