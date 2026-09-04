@@ -50,53 +50,93 @@ public final class ApiConfigLoader {
         return configCache;
     }
 
-    /** @return configured API base URL */
+    /**
+     * Returns the configured API base URL.
+     *
+     * @return configured API base URL
+     */
     public static String getApiBase() {
         return load().get("API_BASE");
     }
 
-    /** @return configured API key */
+    /**
+     * Returns the configured API key.
+     *
+     * @return configured API key
+     */
     public static String getApiKey() {
         return load().get("API_KEY");
     }
 
-    /** @return configured model provider */
+    /**
+     * Returns the configured model provider.
+     *
+     * @return configured model provider
+     */
     public static String getModelProvider() {
         return load().get("MODEL_PROVIDER");
     }
 
-    /** @return configured model name */
+    /**
+     * Returns the configured model name.
+     *
+     * @return configured model name
+     */
     public static String getModelName() {
         return load().get("MODEL_NAME");
     }
 
-    /** @return whether model TLS verification is enabled */
+    /**
+     * Indicates whether model TLS verification is enabled.
+     *
+     * @return whether model TLS verification is enabled
+     */
     public static boolean getSslVerify() {
         return Boolean.parseBoolean(load().getOrDefault("LLM_SSL_VERIFY", "true"));
     }
 
-    /** @return configured model certificate path */
+    /**
+     * Returns the configured model certificate path.
+     *
+     * @return configured model certificate path
+     */
     public static String getSslCert() {
         return load().get("LLM_SSL_CERT");
     }
 
-    /** @return configured embedding API base URL */
+    /**
+     * Returns the configured embedding API base URL.
+     *
+     * @return configured embedding API base URL
+     */
     public static String getEmbeddingApiBase() {
         return load().get("API_BASE_EMBEDDING");
     }
 
-    /** @return configured embedding model name */
+    /**
+     * Returns the configured embedding model name.
+     *
+     * @return configured embedding model name
+     */
     public static String getEmbeddingModelName() {
         return load().get("MODEL_NAME_EMBEDDING");
     }
 
-    /** @return whether embedding TLS verification is enabled */
+    /**
+     * Indicates whether embedding TLS verification is enabled.
+     *
+     * @return whether embedding TLS verification is enabled
+     */
     public static boolean getEmbeddingSslVerify() {
         return Boolean.parseBoolean(
                 load().getOrDefault("EMBEDDING_SSL_VERIFY", load().getOrDefault("LLM_SSL_VERIFY", "true")));
     }
 
-    /** @return configured embedding certificate path */
+    /**
+     * Returns the configured embedding certificate path.
+     *
+     * @return configured embedding certificate path
+     */
     public static String getEmbeddingSslCert() {
         return load().getOrDefault("EMBEDDING_SSL_CERT", load().get("LLM_SSL_CERT"));
     }

@@ -25,7 +25,6 @@ class VectorStoreFactoryTest {
         assertInstanceOf(ChromaVectorStore.class,
                 VectorStoreFactory.createVectorStore(new VectorStoreConfig(StoreType.CHROMA, "kb_chunks")));
     }
-
     @Test
     void createMilvusStoreAcceptsProvidedClient() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
