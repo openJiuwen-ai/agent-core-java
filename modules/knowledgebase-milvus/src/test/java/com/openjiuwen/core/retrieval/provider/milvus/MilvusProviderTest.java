@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.ServiceLoader;
 
+/** Tests Milvus provider discovery. */
 class MilvusProviderTest {
     @Test
     void serviceLoaderDiscoversMilvusProviders() {

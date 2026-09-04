@@ -11,6 +11,7 @@ import com.openjiuwen.core.retrieval.provider.EmbeddingProvider;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Provider for OpenAI-compatible embedding endpoints.
@@ -25,9 +26,9 @@ public final class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
     @Override
     public boolean supports(EmbeddingConfig config, Map<String, Object> options) {
-        String provider = providerOption(options);
-        if (provider != null) {
-            return "openai".equals(provider);
+        Optional<String> provider = providerOption(options);
+        if (provider.isPresent()) {
+            return "openai".equals(provider.get());
         }
         String baseUrl = config == null ? null : config.getBaseUrl();
         return baseUrl == null || !baseUrl.toLowerCase(Locale.ROOT).contains("dashscope");
@@ -38,14 +39,14 @@ public final class OpenAIEmbeddingProvider implements EmbeddingProvider {
         return new OpenAIEmbedding(config);
     }
 
-    private static String providerOption(Map<String, Object> options) {
+    private static Optional<String> providerOption(Map<String, Object> options) {
         if (options == null) {
-            return null;
+            return Optional.empty();
         }
         Object value = options.get("provider");
         if (value == null) {
             value = options.get("provider_name");
         }
-        return value == null ? null : String.valueOf(value).toLowerCase(Locale.ROOT);
+        return value == null ? Optional.empty() : Optional.of(String.valueOf(value).toLowerCase(Locale.ROOT));
     }
 }

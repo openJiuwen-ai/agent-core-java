@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.ServiceLoader;
 
+/** Tests DashScope embedding provider discovery. */
 class DashscopeEmbeddingProviderTest {
     private static final EmbeddingConfig CONFIG =
             new EmbeddingConfig("multimodal-embedding-v1", "https://dashscope.aliyuncs.com/api/v1", "test-key");

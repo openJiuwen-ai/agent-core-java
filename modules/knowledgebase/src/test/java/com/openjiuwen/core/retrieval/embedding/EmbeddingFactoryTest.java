@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+/** Tests embedding provider selection. */
 class EmbeddingFactoryTest {
     private static final EmbeddingConfig CONFIG =
             new EmbeddingConfig("test-model", "https://api.example.com/v1", "test-key");

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.ServiceLoader;
 
+/** Tests document parser provider discovery. */
 class DocumentParserProviderTest {
     @Test
     void discoversAllDocumentParserProviders() {

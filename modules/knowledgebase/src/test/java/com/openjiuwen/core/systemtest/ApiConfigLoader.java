@@ -7,12 +7,15 @@ package com.openjiuwen.core.systemtest;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
 
 /**
  * Loads API configuration from classpath resource APIKEY/apiconfig.json.
  * Ensures that no API keys or URLs are hard-coded in test source files.
+ *
+ * @since 0.1.15
  */
 public final class ApiConfigLoader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -38,7 +41,7 @@ public final class ApiConfigLoader {
                         }
                         configCache = MAPPER.readValue(is, new TypeReference<Map<String, String>>() {
                         });
-                    } catch (Exception e) {
+                    } catch (IOException e) {
                         throw new IllegalStateException("Failed to load apiconfig.json", e);
                     }
                 }
@@ -47,43 +50,53 @@ public final class ApiConfigLoader {
         return configCache;
     }
 
+    /** @return configured API base URL */
     public static String getApiBase() {
         return load().get("API_BASE");
     }
 
+    /** @return configured API key */
     public static String getApiKey() {
         return load().get("API_KEY");
     }
 
+    /** @return configured model provider */
     public static String getModelProvider() {
         return load().get("MODEL_PROVIDER");
     }
 
+    /** @return configured model name */
     public static String getModelName() {
         return load().get("MODEL_NAME");
     }
 
+    /** @return whether model TLS verification is enabled */
     public static boolean getSslVerify() {
         return Boolean.parseBoolean(load().getOrDefault("LLM_SSL_VERIFY", "true"));
     }
 
+    /** @return configured model certificate path */
     public static String getSslCert() {
         return load().get("LLM_SSL_CERT");
     }
 
+    /** @return configured embedding API base URL */
     public static String getEmbeddingApiBase() {
         return load().get("API_BASE_EMBEDDING");
     }
 
+    /** @return configured embedding model name */
     public static String getEmbeddingModelName() {
         return load().get("MODEL_NAME_EMBEDDING");
     }
 
+    /** @return whether embedding TLS verification is enabled */
     public static boolean getEmbeddingSslVerify() {
         return Boolean.parseBoolean(
                 load().getOrDefault("EMBEDDING_SSL_VERIFY", load().getOrDefault("LLM_SSL_VERIFY", "true")));
     }
 
+    /** @return configured embedding certificate path */
     public static String getEmbeddingSslCert() {
         return load().getOrDefault("EMBEDDING_SSL_CERT", load().get("LLM_SSL_CERT"));
     }

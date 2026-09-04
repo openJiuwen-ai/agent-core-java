@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+/** Tests vector store factory compatibility behavior. */
 class VectorStoreFactoryTest {
     @Test
     void createFactoryReturnsCompatibilityStores() {

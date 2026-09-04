@@ -13,6 +13,7 @@ import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import javax.sql.DataSource;
 
@@ -44,34 +45,35 @@ public final class PGVectorRetrievalStoreProvider implements VectorStoreProvider
      */
     @Override
     public VectorStore create(VectorStoreConfig config, String indexType, Map<String, Object> options) {
-        Object dataSourceOption = firstOption(options, List.of("dataSource", "data_source"));
-        if (dataSourceOption instanceof DataSource dataSource) {
+        Optional<Object> dataSourceOption = firstOption(options, List.of("dataSource", "data_source"));
+        if (dataSourceOption.isPresent() && dataSourceOption.get() instanceof DataSource dataSource) {
             return new PGVectorStore(config, dataSource, indexType, options);
         }
-        String jdbcUrl = stringOption(options, List.of("jdbcUrl", "jdbc_url", "pgUri", "pg_uri", "url"));
-        if (jdbcUrl == null || jdbcUrl.isBlank()) {
+        Optional<String> jdbcUrl = stringOption(options, List.of("jdbcUrl", "jdbc_url", "pgUri", "pg_uri", "url"));
+        if (jdbcUrl.isEmpty() || jdbcUrl.get().isBlank()) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "jdbcUrl or dataSource is required for PGVectorStore");
         }
-        String username = stringOption(options, List.of("username", "user"));
-        String password = stringOption(options, List.of("password"));
-        return new PGVectorStore(config, jdbcUrl, username, password, indexType, options);
+        Optional<String> username = stringOption(options, List.of("username", "user"));
+        Optional<String> password = stringOption(options, List.of("password"));
+        String user = username.isPresent() ? username.get() : null;
+        String secret = password.isPresent() ? password.get() : null;
+        return new PGVectorStore(config, jdbcUrl.get(), user, secret, indexType, options);
     }
 
-    private static Object firstOption(Map<String, Object> options, List<String> keys) {
+    private static Optional<Object> firstOption(Map<String, Object> options, List<String> keys) {
         if (options == null) {
-            return null;
+            return Optional.empty();
         }
         for (String key : keys) {
             if (options.containsKey(key)) {
-                return options.get(key);
+                return Optional.ofNullable(options.get(key));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private static String stringOption(Map<String, Object> options, List<String> keys) {
-        Object value = firstOption(options, keys);
-        return value == null ? null : String.valueOf(value);
+    private static Optional<String> stringOption(Map<String, Object> options, List<String> keys) {
+        return firstOption(options, keys).map(String::valueOf);
     }
 }

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.retrieval.provider.milvus;
 
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.indexer.MilvusIndexer;
 import com.openjiuwen.core.retrieval.provider.IndexerProvider;
@@ -37,6 +39,10 @@ public final class MilvusIndexerProvider implements IndexerProvider {
      */
     @Override
     public Indexer create(VectorStore vectorStore) {
-        return new MilvusIndexer((MilvusVectorStore) vectorStore);
+        if (!(vectorStore instanceof MilvusVectorStore milvusVectorStore)) {
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+                    "MilvusVectorStore is required");
+        }
+        return new MilvusIndexer(milvusVectorStore);
     }
 }

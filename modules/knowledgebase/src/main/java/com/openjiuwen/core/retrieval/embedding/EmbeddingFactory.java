@@ -12,6 +12,7 @@ import com.openjiuwen.core.retrieval.provider.EmbeddingProvider;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 
 /**
@@ -50,27 +51,27 @@ public final class EmbeddingFactory {
             throw RetrievalExceptions.validation("EmbeddingConfig is required");
         }
         Map<String, Object> resolvedOptions = options == null ? Map.of() : options;
-        String requested = providerOption(resolvedOptions);
+        Optional<String> requested = providerOption(resolvedOptions);
         for (EmbeddingProvider provider : PROVIDERS) {
-            if ((requested == null || requested.equalsIgnoreCase(provider.providerName()))
+            if ((requested.isEmpty() || requested.get().equalsIgnoreCase(provider.providerName()))
                     && provider.supports(config, resolvedOptions)) {
                 return provider.create(config, resolvedOptions);
             }
         }
-        String providerName = requested == null ? "default" : requested;
+        String providerName = requested.orElse("default");
         throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_MODEL_NOT_FOUND,
                 "No embedding provider registered for: " + providerName);
     }
 
-    private static String providerOption(Map<String, Object> options) {
+    private static Optional<String> providerOption(Map<String, Object> options) {
         Object provider = options.get("provider");
         if (provider == null) {
             provider = options.get("provider_name");
         }
         if (provider == null) {
-            return null;
+            return Optional.empty();
         }
         String value = String.valueOf(provider).trim().toLowerCase(Locale.ROOT);
-        return value.isBlank() ? null : value;
+        return value.isBlank() ? Optional.empty() : Optional.of(value);
     }
 }

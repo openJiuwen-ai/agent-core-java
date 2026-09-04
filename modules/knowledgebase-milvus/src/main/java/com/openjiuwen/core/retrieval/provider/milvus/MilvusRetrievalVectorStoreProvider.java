@@ -15,6 +15,7 @@ import io.milvus.v2.client.MilvusClientV2;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Creates retrieval vector stores backed by Milvus.
@@ -44,33 +45,33 @@ public final class MilvusRetrievalVectorStoreProvider implements VectorStoreProv
      */
     @Override
     public VectorStore create(VectorStoreConfig config, String indexType, Map<String, Object> options) {
-        Object clientOption = firstOption(options, List.of("milvus_client", "milvusClient", "client"));
-        if (clientOption instanceof MilvusClientV2 client) {
+        Optional<Object> clientOption = firstOption(options, List.of("milvus_client", "milvusClient", "client"));
+        if (clientOption.isPresent() && clientOption.get() instanceof MilvusClientV2 client) {
             return new MilvusVectorStore(client, config, indexType, options);
         }
-        String uri = stringOption(options, List.of("milvus_uri", "milvusUri", "uri"));
-        if (uri == null || uri.isBlank()) {
+        Optional<String> uri = stringOption(options, List.of("milvus_uri", "milvusUri", "uri"));
+        if (uri.isEmpty() || uri.get().isBlank()) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "milvus_uri or milvusClient is required for MilvusVectorStore");
         }
-        String token = stringOption(options, List.of("milvus_token", "milvusToken", "token"));
-        return new MilvusVectorStore(config, uri, token, indexType);
+        Optional<String> token = stringOption(options, List.of("milvus_token", "milvusToken", "token"));
+        String milvusToken = token.isPresent() ? token.get() : null;
+        return new MilvusVectorStore(config, uri.get(), milvusToken, indexType);
     }
 
-    private static Object firstOption(Map<String, Object> options, List<String> keys) {
+    private static Optional<Object> firstOption(Map<String, Object> options, List<String> keys) {
         if (options == null) {
-            return null;
+            return Optional.empty();
         }
         for (String key : keys) {
             if (options.containsKey(key)) {
-                return options.get(key);
+                return Optional.ofNullable(options.get(key));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private static String stringOption(Map<String, Object> options, List<String> keys) {
-        Object value = firstOption(options, keys);
-        return value == null ? null : String.valueOf(value);
+    private static Optional<String> stringOption(Map<String, Object> options, List<String> keys) {
+        return firstOption(options, keys).map(String::valueOf);
     }
 }

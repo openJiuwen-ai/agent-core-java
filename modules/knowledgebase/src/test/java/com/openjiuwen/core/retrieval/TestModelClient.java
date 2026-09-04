@@ -21,6 +21,8 @@ import java.util.Map;
 
 /**
  * Minimal test double for BaseModelClient.
+ *
+ * @since 0.1.15
  */
 public class TestModelClient extends BaseModelClient {
     private final String responseText;
@@ -52,7 +54,7 @@ public class TestModelClient extends BaseModelClient {
 
     @Override
     public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+            String negativePrompt, int n, boolean shouldExtendPrompt, boolean shouldApplyWatermark, int seed,
             Map<String, Object> kwargs) {
         return null;
     }
@@ -65,7 +67,8 @@ public class TestModelClient extends BaseModelClient {
 
     @Override
     public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String model, String size, String resolution, int duration, boolean shouldExtendPrompt,
+            boolean shouldApplyWatermark,
             String negativePrompt, Integer seed, Map<String, Object> kwargs) {
         return null;
     }

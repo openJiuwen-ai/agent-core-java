@@ -20,6 +20,7 @@ import java.util.ServiceLoader;
 
 import javax.sql.DataSource;
 
+/** Tests PGVector provider discovery. */
 class PGVectorProviderTest {
     @Test
     void serviceLoaderDiscoversPgVectorProvider() {
