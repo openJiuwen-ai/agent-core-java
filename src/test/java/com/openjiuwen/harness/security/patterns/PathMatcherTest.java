@@ -2,6 +2,8 @@ package com.openjiuwen.harness.security.patterns;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,6 +59,32 @@ class PathMatcherTest {
         void singleStar_doesNotCrossSlash() {
             assertThat(GlobMatcher.match("/data/*", "/data/a/b")).isFalse();
             assertThat(GlobMatcher.match("/data/*", "/data/foo")).isTrue();
+        }
+
+        /**
+         * On Windows (case-insensitive NTFS), glob matching must be case-insensitive
+         * so that case variants cannot bypass a deny rule. On Linux this test is
+         * skipped because the filesystem is case-sensitive — case variants are
+         * genuinely distinct paths.
+         */
+        @Test
+        @EnabledOnOs(OS.WINDOWS)
+        void globCaseInsensitive_windows() {
+            assertThat(GlobMatcher.match("D:/tmp/*.txt", "d:/tmp/cookies.txt")).isTrue();
+            assertThat(GlobMatcher.match("D:/tmp/*.txt", "D:/TMP/COOKIES.TXT")).isTrue();
+            assertThat(GlobMatcher.match("D:/tmp/*.txt", "d:/Tmp/Cookies.Txt")).isTrue();
+        }
+
+        /**
+         * On Linux (case-sensitive filesystem), glob matching must be case-sensitive.
+         * Case variants are genuinely distinct paths and must NOT match.
+         */
+        @Test
+        @EnabledOnOs(OS.LINUX)
+        void globCaseSensitive_linux() {
+            assertThat(GlobMatcher.match("/tmp/*.txt", "/tmp/cookies.txt")).isTrue();
+            assertThat(GlobMatcher.match("/tmp/*.txt", "/TMP/cookies.txt")).isFalse();
+            assertThat(GlobMatcher.match("/tmp/*.txt", "/tmp/COOKIES.TXT")).isFalse();
         }
     }
 

@@ -39,6 +39,9 @@ import java.util.Map;
 public final class FileGuardChecker {
     private static final Logger logger = LoggerFactory.getLogger(FileGuardChecker.class);
 
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+
     private final EffectiveFileGuardConfig effective;
 
     private FileGuardChecker(EffectiveFileGuardConfig effective) {
@@ -88,10 +91,14 @@ public final class FileGuardChecker {
         List<String> matchedBits = new ArrayList<>();
 
         for (PathAccessExtractor.PathAccess pa : accesses) {
-            Resolve rr = resolveOne(pa.getPath(), pa.getAction());
+            // Determine the posix path string for matching: use rawPathStr when
+            // path is null (Paths.get failed due to wildcard chars like * on Windows),
+            // otherwise use the resolved Path's posix form.
+            String pathPosix = posixOf(pa);
+            Resolve rr = resolveOne(pa.getPath(), pathPosix, pa.getAction());
             overall = strictest(overall, rr.level);
             if (rr.level != PermissionLevel.ALLOW) {
-                hitExternal.add(posix(pa.getPath()));
+                hitExternal.add(pathPosix);
                 if (rr.ruleId != null) {
                     matchedBits.add(rr.ruleId);
                 }
@@ -102,7 +109,8 @@ public final class FileGuardChecker {
             return null;
         }
 
-        String hint = hitExternal.isEmpty() ? posix(accesses.get(0).getPath()) : hitExternal.get(0);
+        String hint = hitExternal.isEmpty()
+                ? posixOf(accesses.get(0)) : hitExternal.get(0);
         String reason = overall == PermissionLevel.DENY
                 ? "file_guard denied: " + hint
                 : "file_guard requires approval: " + hint;
@@ -118,13 +126,15 @@ public final class FileGuardChecker {
     /**
      * Resolve the level for a single access against all rules.
      *
-     * @param path   the access path
-     * @param action the file-access axis
+     * @param path      the access path, or {@code null} when the raw string could
+     *                  not be parsed by {@code Paths.get} (wildcard chars on Windows)
+     * @param pathPosix the posix-normalized path string (from either the resolved
+     *                  {@code Path} or the retained raw string); used for glob/prefix matching
+     * @param action    the file-access axis
      * @return the resolved level and matched rule id
      * @since 0.1.15
      */
-    private Resolve resolveOne(Path path, FileGuardAction action) {
-        String pathPosix = posix(path);
+    private Resolve resolveOne(Path path, String pathPosix, FileGuardAction action) {
         FileGuardPathRule bestPrefix = null;
         int bestLen = -1;
         List<PermissionLevel> globCandidates = new ArrayList<>();
@@ -164,9 +174,22 @@ public final class FileGuardChecker {
 
     private boolean matchesPrefix(FileGuardPathRule rule, String pathPosix, Path path) {
         String prefix = stripTrailingSlash(rule.getPath().replace("\\", "/"));
+        if (IS_WINDOWS) {
+            // Windows filesystems are case-insensitive: compare lowercased so case
+            // variants (d:/tmp vs D:/TMP) cannot bypass a prefix rule. Aligned with
+            // GlobMatcher/WildcardMatcher platform semantics.
+            String lowerPrefix = prefix.toLowerCase(java.util.Locale.ROOT);
+            String lowerPath = pathPosix.toLowerCase(java.util.Locale.ROOT);
+            return lowerPath.equals(lowerPrefix) || lowerPath.startsWith(lowerPrefix + "/");
+        }
         boolean isPathMatches = pathPosix.equals(prefix) || pathPosix.startsWith(prefix + "/");
         if (!isPathMatches) {
             return false;
+        }
+        // When path is null (Paths.get failed on wildcard chars), fall back to
+        // string-only comparison — PathMatcher.containsPath requires a Path object.
+        if (path == null) {
+            return true;
         }
         return PathMatcher.containsPath(prefix, path.toString())
                 || pathPosix.equals(prefix)
@@ -215,6 +238,27 @@ public final class FileGuardChecker {
 
     private static String posix(Path p) {
         return p.toString().replace("\\", "/");
+    }
+
+    /**
+     * Extract the posix-normalized path string from a {@link PathAccessExtractor.PathAccess},
+     * handling both resolved paths and raw strings retained after
+     * {@code Paths.get} failures.
+     *
+     * <p>When the access path was successfully resolved (non-null {@code path}),
+     * the Path's posix form is returned. When the path could not be parsed
+     * (null {@code path}, e.g. wildcard {@code *} on Windows), the retained
+     * {@code rawPathStr} is returned instead, enabling glob/prefix string matching.
+     *
+     * @param pa the path access
+     * @return posix-normalized path string, never {@code null}
+     */
+    private static String posixOf(PathAccessExtractor.PathAccess pa) {
+        if (pa.getPath() != null) {
+            return posix(pa.getPath());
+        }
+        // path is null → rawPathStr was set by resolvePathStr when Paths.get failed
+        return pa.getRawPathStr() != null ? pa.getRawPathStr() : "";
     }
 
     private static String stripTrailingSlash(String s) {

@@ -330,6 +330,8 @@ fileGuard.put("paths", List.of(
 | `prefix` | 最长前缀匹配 | path=`/etc` 匹配 `/etc/hosts`、`/etc/passwd` |
 | `glob` | Glob 通配符匹配 | path=`**/.env*` 匹配 `/work/.env.local` |
 
+> **大小写敏感性**：Windows 上 `prefix` 与 `glob` 匹配均为大小写不敏感（详见[跨平台注意事项](#大小写不敏感匹配windows)）；Linux 上区分大小写。例如 Windows 上 deny 规则 `D:/tmp/*.txt` 同样拦截 `d:/tmp/cookies.txt`、`D:/TMP/COOKIES.TXT` 等大小写变体。
+
 ### 轴蕴含规则
 
 - `WRITE` 操作同时检查 `READ` 轴（write ⇒ read 蕴含）
@@ -337,6 +339,34 @@ fileGuard.put("paths", List.of(
 - 取 `strictest(action_level, read_level)` 作为最终决策
 
 ## 跨平台注意事项
+
+### 大小写不敏感匹配（Windows）
+
+**Windows 平台上所有模式匹配统一为大小写不敏感**，包括：
+
+| 匹配场景 | 实现类 | 说明 |
+|---------|--------|------|
+| Pipeline A 参数级规则（wildcard / regex） | `RuleMatcher`、`WildcardMatcher` | 命令与参数匹配不区分大小写 |
+| Pipeline B `file_guard` glob 匹配 | `GlobMatcher` | glob 规则与实际路径不区分大小写 |
+| Pipeline B `file_guard` prefix 匹配 | `FileGuardChecker.matchesPrefix` | 前缀比较前统一转小写 |
+
+**设计理由**：Windows 文件系统（NTFS）不区分大小写，`D:/tmp/cookies.txt` 和 `d:/TMP/COOKIES.TXT` 指向**同一物理文件**。若匹配区分大小写，攻击者（或 LLM 生成的路径）只需变换大小写即可绕过 deny 规则读取受保护文件。因此与文件系统语义对齐，Windows 上统一不敏感。
+
+**Linux 平台保持大小写敏感**（ext4/xfs 等文件系统区分大小写，`Readme.md` 与 `README.md` 是不同文件），行为与 Python 原版一致。
+
+**示例**：Windows 上 deny 规则 `D:/tmp/*.txt`（glob）可拦截以下全部变体：
+
+```
+D:/tmp/cookies.txt          ← 精确匹配
+d:/tmp/cookies.txt          ← 小写盘符
+D:/TMP/cookies.txt          ← 大写目录
+D:/tmp/COOKIES.TXT          ← 大写文件名+扩展名
+d:/Tmp/Cookies.txt          ← 混合大小写
+D:\tmp\cookies.txt          ← 反斜杠（posix 化后匹配）
+D:/tmp/./cookies.txt        ← 点号段（normalize 后匹配）
+D:/tmp/sub/../cookies.txt   ← 遍历段（normalize 后匹配）
+```
+
 
 ### Windows 路径问题
 
@@ -386,7 +416,7 @@ java -Dfile.encoding=UTF-8 -cp "examples/deep_agent/build;target/classes;target/
 
 - 设计方案文档：`../../../output/tool_guardrail_design.md`
 - 示例代码：`../../../../examples/deep_agent/DeepAgentToolGuardrailExample.java`
-- E2E 测试：`../../../../jiuwen-test/src/test/java/com/openjiuwen/test/cases/agent/deep_agent/ToolGuardrailE2E001.java`
+- E2E 测试：`../../../../jiuwen-test/src/test/java/com/openjiuwen/test/cases/harness/security/ToolGuardrailE2E001.java`
 - 引擎源码：`../../../../src/main/java/com/openjiuwen/harness/security/PermissionEngine.java`
 - Rail 源码：`../../../../src/main/java/com/openjiuwen/harness/rails/security/PermissionInterruptRail.java`
 - 内置规则：`../../../../src/main/resources/harness/security/builtin_rules.yaml`
