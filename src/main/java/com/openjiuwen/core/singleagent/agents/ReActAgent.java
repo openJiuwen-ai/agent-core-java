@@ -1736,7 +1736,10 @@ public class ReActAgent extends BaseAgent {
             reasoningPayload.put("result_type", "answer");
             agentSession.writeStream(new OutputSchema("llm_reasoning", index, reasoningPayload));
         }
-        if (chunk.getContent() != null && !(chunk.getContent() instanceof String str && str.isBlank())) {
+        // 仅丢弃空串；保留 "\n" 等纯空白 chunk。流式模型常把换行作为独立 delta 发送，
+        // 若按 isBlank() 丢弃会导致下游拼接时丢失换行，Markdown 的标题/列表结构被破坏
+        // （Python 基线 react_agent.py 中 `if chunk.content:` 同样只排除 falsy）。
+        if (chunk.getContent() != null && !(chunk.getContent() instanceof String str && str.isEmpty())) {
             Map<String, Object> contentPayload = new HashMap<String, Object>();
             contentPayload.put("task_id", taskId);
             contentPayload.put("content", chunk.getContent());
