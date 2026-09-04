@@ -71,9 +71,6 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
      */
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    /** Default per-call cap (seconds) when caller does not specify one. */
-    private static final float DEFAULT_CALL_TIMEOUT_SECONDS = 180f;
-
     /** Override OkHttp Dispatcher.maxRequests (default OkHttp=64). */
     private static final String MAX_REQUESTS_PROPERTY = "openjiuwen.llm.http.max-requests";
 
@@ -477,8 +474,10 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
      * @since 0.1.7
      */
     private static void applyCallTimeout(Call call, Float timeoutOverride) {
-        float effective = timeoutOverride != null ? timeoutOverride.floatValue() : DEFAULT_CALL_TIMEOUT_SECONDS;
-        call.timeout().timeout(resolveTimeout(effective).toMillis(), TimeUnit.MILLISECONDS);
+        if (timeoutOverride == null) {
+            return;
+        }
+        call.timeout().timeout(resolveTimeout(timeoutOverride).toMillis(), TimeUnit.MILLISECONDS);
     }
 
     /**
