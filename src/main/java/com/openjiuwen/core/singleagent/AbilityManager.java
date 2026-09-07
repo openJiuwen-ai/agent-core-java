@@ -30,6 +30,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.ForceFinishRequest;
 import com.openjiuwen.core.singleagent.rail.Rails;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
@@ -53,6 +54,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -76,6 +78,7 @@ public class AbilityManager {
     private final Map<String, ExternalTool> externalTools = Collections.synchronizedMap(new LinkedHashMap<>());
     private final Map<String, McpServerConfig> mcpServers = Collections.synchronizedMap(new LinkedHashMap<>());
     private final Map<String, Set<String>> mcpToolAllowlists = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Tool>> sessionTools = new ConcurrentHashMap<>();
     private Object contextEngine;
     private String ownerId;
 
@@ -123,6 +126,52 @@ public class AbilityManager {
             }
         }
         mcpToolAllowlists.put(serverId, Set.copyOf(normalized));
+    }
+
+    /**
+     * Bind a tool instance to one session so concurrent sessions do not share
+     * the last-registered stateful tool (for example the context reloader).
+     */
+    public void registerSessionTool(String sessionId, Tool tool) {
+        if (sessionId == null || sessionId.isBlank() || tool == null || tool.getCard() == null) {
+            return;
+        }
+        String toolName = tool.getCard().getName();
+        if (toolName == null || toolName.isBlank()) {
+            return;
+        }
+        sessionTools.computeIfAbsent(sessionId, key -> new ConcurrentHashMap<>()).put(toolName, tool);
+    }
+
+    /**
+     * Unregister all per-session tool overrides for the given session id.
+     * Must be called when a session ends to prevent Tool → ModelContext
+     * references from accumulating across sessions.
+     */
+    public void unregisterSessionTool(String sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        sessionTools.remove(sessionId);
+    }
+
+    /**
+     * Remove all per-session tool overrides. Intended for shutdown / destroy paths.
+     */
+    public void clearAllSessionTools() {
+        sessionTools.clear();
+    }
+
+    private Optional<Tool> resolveSessionTool(String toolName, Object session) {
+        String id = sessionId(session);
+        if (id == null || toolName == null || toolName.isBlank()) {
+            return Optional.empty();
+        }
+        Map<String, Tool> overrides = sessionTools.get(id);
+        if (overrides == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(overrides.get(toolName));
     }
 
     public static String qualifyToolId(ToolCard card, String ownerId) {
@@ -437,14 +486,16 @@ public class AbilityManager {
         Object effectiveSession = session != null
                 ? session
                 : ctx != null && ctx.getSession() != null ? ctx.getSession() : SessionContextHolder.getCurrentSession();
+        int maxParallel = resolveMaxParallelToolCalls(ctx);
         if (ctx == null || ctx.getAgent() == null) {
-            return executeUnrailed(toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag);
+            return executeUnrailed(toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag, maxParallel);
         }
-        return executeRailed(ctx, toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag);
+        return executeRailed(ctx, toolCalls, shouldParallelToolCalls, resolver, effectiveSession, tag, maxParallel);
     }
 
     private List<ExecutionResult> executeUnrailed(List<ToolCall> toolCalls, boolean shouldParallelToolCalls,
-                                                  ToolResolver resolver, Object session, Object tag) {
+                                                  ToolResolver resolver, Object session, Object tag,
+                                                  int maxParallel) {
         if (!shouldParallelToolCalls || toolCalls.size() == 1) {
             List<ExecutionResult> results = new ArrayList<>(toolCalls.size());
             for (ToolCall singleToolCall : toolCalls) {
@@ -452,12 +503,12 @@ public class AbilityManager {
             }
             return results;
         }
-        return executeParallelToolTasks(toolCalls, resolver, null, session, tag);
+        return executeParallelToolTasks(toolCalls, resolver, null, session, tag, maxParallel);
     }
 
     private List<ExecutionResult> executeRailed(AgentCallbackContext ctx, List<ToolCall> toolCalls,
                                                 boolean shouldParallelToolCalls, ToolResolver resolver,
-                                                Object session, Object tag) {
+                                                Object session, Object tag, int maxParallel) {
         List<AgentCallbackContext> toolContexts = new ArrayList<>(toolCalls.size());
         for (ToolCall singleToolCall : toolCalls) {
             toolContexts.add(newToolCallContext(ctx, singleToolCall, session));
@@ -469,7 +520,7 @@ public class AbilityManager {
                 results.add(safeRailedExecuteOne(toolContexts.get(i), toolCalls.get(i), resolver, session, tag));
             }
         } else {
-            results = executeParallelToolTasks(toolCalls, resolver, toolContexts, session, tag);
+            results = executeParallelToolTasks(toolCalls, resolver, toolContexts, session, tag, maxParallel);
         }
         propagateForceFinish(ctx, toolContexts);
         return results;
@@ -477,7 +528,7 @@ public class AbilityManager {
 
     private List<ExecutionResult> executeParallelToolTasks(List<ToolCall> toolCalls, ToolResolver resolver,
                                                            List<AgentCallbackContext> toolContexts,
-                                                           Object session, Object tag) {
+                                                           Object session, Object tag, int maxParallel) {
         List<ExecutionResult> results = new ArrayList<>(Collections.nCopies(toolCalls.size(), null));
         List<Integer> batchIndices = new ArrayList<>();
         for (int index = 0; index < toolCalls.size(); index++) {
@@ -485,17 +536,17 @@ public class AbilityManager {
                 batchIndices.add(index);
                 continue;
             }
-            flushParallelBatch(toolCalls, resolver, toolContexts, session, tag, batchIndices, results);
+            flushParallelBatch(toolCalls, resolver, toolContexts, session, tag, batchIndices, results, maxParallel);
             results.set(index, runScheduledCall(toolCalls.get(index), resolver,
                     toolContexts == null ? null : toolContexts.get(index), session, tag));
         }
-        flushParallelBatch(toolCalls, resolver, toolContexts, session, tag, batchIndices, results);
+        flushParallelBatch(toolCalls, resolver, toolContexts, session, tag, batchIndices, results, maxParallel);
         return results;
     }
 
     private void flushParallelBatch(List<ToolCall> toolCalls, ToolResolver resolver,
                                     List<AgentCallbackContext> toolContexts, Object session, Object tag,
-                                    List<Integer> batchIndices, List<ExecutionResult> results) {
+                                    List<Integer> batchIndices, List<ExecutionResult> results, int maxParallel) {
         if (batchIndices.isEmpty()) {
             return;
         }
@@ -505,9 +556,11 @@ public class AbilityManager {
             String laneKey = resourceKey == null ? "independent:" + index : resourceKey;
             lanes.computeIfAbsent(laneKey, ignored -> new ArrayList<>()).add(index);
         }
+        Semaphore permits = new Semaphore(maxParallel > 0 ? maxParallel : 3);
         List<CompletableFuture<Void>> laneFutures = new ArrayList<>();
         for (List<Integer> lane : lanes.values()) {
             laneFutures.add(OpenJiuwenExecutors.supplyToolCallAsync(() -> {
+                acquireParallelPermit(permits);
                 SessionContextHolder.restoreCurrentSession(session);
                 try {
                     for (Integer index : lane) {
@@ -517,6 +570,7 @@ public class AbilityManager {
                     return null;
                 } finally {
                     SessionContextHolder.clearCurrentSession();
+                    permits.release();
                 }
             }));
         }
@@ -721,6 +775,18 @@ public class AbilityManager {
     private ExecutionResult executeOne(ToolCall toolCall, ToolResolver resolver, Object session, Object tag) {
         if (toolCall == null) {
             return new ExecutionResult(null, null);
+        }
+        Optional<Tool> sessionTool = resolveSessionTool(toolCall.getName(), session);
+        if (sessionTool.isPresent()) {
+            Object parsedArguments;
+            try {
+                parsedArguments = parseToolArguments(toolCall.getArguments());
+            } catch (IllegalArgumentException exception) {
+                throw AbilityExecutionError.of(toolCall, exception.getMessage(), exception);
+            }
+            Tool tool = sessionTool.get();
+            ToolCard card = tool.getCard();
+            return invokeRegisteredTool(tool, card, toolCall, parsedArguments, session);
         }
         if (resolver != null) {
             Optional<Tool> resolved = resolver.resolve(toolCall);
@@ -1576,6 +1642,25 @@ public class AbilityManager {
         return new ExecutionResult(null, new ToolMessage(errorMsg,
                 toolCall == null ? null : toolCall.getId(),
                 name));
+    }
+
+    private static int resolveMaxParallelToolCalls(AgentCallbackContext ctx) {
+        if (ctx != null && ctx.getConfig() instanceof ReActAgentConfig config) {
+            int configured = config.getMaxParallelToolCalls();
+            if (configured > 0) {
+                return configured;
+            }
+        }
+        return 3;
+    }
+
+    private static void acquireParallelPermit(Semaphore permits) {
+        try {
+            permits.acquire();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Interrupted while waiting for a parallel tool-call slot");
+        }
     }
 
     private static String sessionId(Object session) {

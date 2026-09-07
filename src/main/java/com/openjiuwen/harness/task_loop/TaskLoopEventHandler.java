@@ -212,7 +212,12 @@ public class TaskLoopEventHandler extends EventHandler {
         String message = "";
         Event event = inputs == null ? null : inputs.getEvent();
         if (event instanceof TaskInteractionEvent interactionEvent && !interactionEvent.getInteraction().isEmpty()) {
-            message = frameText(interactionEvent.getInteraction().get(0));
+            DataFrame frame = interactionEvent.getInteraction().get(0);
+            // Structured interrupt control info (type=__interaction__ / result_type=interrupt)
+            // must stay in the interrupt state and never enter the steering queue as text.
+            if (!isStructuredInterruptFrame(frame)) {
+                message = frameText(frame);
+            }
         }
         if (!message.isBlank() && interactionQueues != null) {
             interactionQueues.pushSteer(message);
@@ -351,6 +356,14 @@ public class TaskLoopEventHandler extends EventHandler {
             return String.valueOf(jsonDataFrame.data());
         }
         return frame == null ? "" : String.valueOf(frame);
+    }
+
+    private static boolean isStructuredInterruptFrame(DataFrame frame) {
+        if (!(frame instanceof DataFrame.JsonDataFrame jsonDataFrame) || jsonDataFrame.data() == null) {
+            return false;
+        }
+        return "__interaction__".equals(String.valueOf(jsonDataFrame.data().get("type")))
+                || "interrupt".equals(String.valueOf(jsonDataFrame.data().get("result_type")));
     }
 
     private static Map<String, Object> normalizeCompletionResult(Map<String, Object> result) {

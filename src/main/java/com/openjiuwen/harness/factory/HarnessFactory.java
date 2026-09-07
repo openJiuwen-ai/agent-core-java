@@ -159,6 +159,7 @@ public final class HarnessFactory {
         return DeepAgentConfig.builder()
                 .systemPrompt(source.getSystemPrompt())
                 .maxIterations(source.getMaxIterations())
+                .shouldFailTaskOnToolError(source.isShouldFailTaskOnToolError())
                 .isTaskLoopEnabled(source.isEnableTaskLoop())
                 .isTaskPlanningEnabled(source.isEnableTaskPlanning())
                 .language(language)

@@ -9,6 +9,8 @@ import com.openjiuwen.deepagents.DeepAgentsFactory;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
+import com.openjiuwen.harness.security.ApprovalOverrideEntry;
+import com.openjiuwen.harness.security.PermissionsSection;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,6 +25,8 @@ import java.util.Map;
  * {@code openjiuwen/harness/harness_config/builder.py}.</p>
  */
 public final class HarnessConfigBuilder {
+
+    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
 
     /**
      * Python {@code _BUILTIN_RAIL_REGISTRY} currently only registers task_planning.
@@ -64,6 +68,9 @@ public final class HarnessConfigBuilder {
                 if (harnessConfig.getResources() != null) {
                     config.setTools(resolveTools(harnessConfig.getResources()));
                     config.setRails(resolveRails(harnessConfig.getResources()));
+                }
+                if (harnessConfig.getPermissions() != null && !harnessConfig.getPermissions().isEmpty()) {
+                    config.setPermissions(toPermissionsSection(harnessConfig.getPermissions()));
                 }
             }
         }
@@ -121,6 +128,9 @@ public final class HarnessConfigBuilder {
             throw new IllegalArgumentException("package rail requires module and class");
         }
         String dotted = module + "." + className;
+        if (!dotted.startsWith(TRUSTED_CLASS_PREFIX)) {
+            throw new IllegalArgumentException("Rail class is not trusted: " + dotted);
+        }
         try {
             Class<?> loaded = Class.forName(dotted);
             if (!DeepAgentRail.class.isAssignableFrom(loaded)) {
@@ -185,5 +195,98 @@ public final class HarnessConfigBuilder {
             }
         }
         return null;
+    }
+
+    /**
+     * Project the declarative {@code permissions} map onto the typed
+     * {@link PermissionsSection}; unknown keys (e.g. {@code file_guard}) ride along as
+     * extensions so the section round-trips losslessly through the rail factory.
+     */
+    private static PermissionsSection toPermissionsSection(Map<String, Object> permissions) {
+        PermissionsSection section = new PermissionsSection();
+        for (Map.Entry<String, Object> entry : permissions.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            switch (key) {
+                case "enabled" -> section.setEnabled(value instanceof Boolean flag
+                        ? flag : Boolean.parseBoolean(String.valueOf(value)));
+                case "schema" -> section.setSchema(value == null ? null : String.valueOf(value));
+                case "defaults" -> {
+                    if (value instanceof Map<?, ?> map) {
+                        section.setDefaults(stringKeyMap(map));
+                    }
+                }
+                case "tools" -> {
+                    if (value instanceof Map<?, ?> map) {
+                        section.setTools(stringKeyMap(map));
+                    }
+                }
+                case "rules" -> {
+                    if (value instanceof List<?> list) {
+                        section.setRules(mapList(list));
+                    }
+                }
+                case "approval_overrides" -> section.setApprovalOverrides(overrideEntries(value));
+                case "external_directory" -> {
+                    if (value instanceof Map<?, ?> map) {
+                        Map<String, String> external = new LinkedHashMap<>();
+                        map.forEach((k, v) -> external.put(String.valueOf(k), String.valueOf(v)));
+                        section.setExternalDirectory(external);
+                    }
+                }
+                default -> section.putExtension(key, value);
+            }
+        }
+        return section;
+    }
+
+    private static Map<String, Object> stringKeyMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private static List<Map<String, Object>> mapList(List<?> source) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : source) {
+            result.add(item instanceof Map<?, ?> map ? stringKeyMap(map) : null);
+        }
+        return result;
+    }
+
+    private static List<ApprovalOverrideEntry> overrideEntries(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return null;
+        }
+        List<ApprovalOverrideEntry> entries = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
+            }
+            ApprovalOverrideEntry entry = new ApprovalOverrideEntry();
+            entry.setId(map.get("id") == null ? null : String.valueOf(map.get("id")));
+            entry.setTools(stringList(map.get("tools")));
+            entry.setMatchType(map.get("match_type") == null ? null : String.valueOf(map.get("match_type")));
+            entry.setPattern(map.get("pattern") == null ? null : String.valueOf(map.get("pattern")));
+            entry.setAction(map.get("action") == null ? null : String.valueOf(map.get("action")));
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    private static List<String> stringList(Object value) {
+        if (value instanceof String text) {
+            return List.of(text);
+        }
+        if (!(value instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) {
+                result.add(String.valueOf(item));
+            }
+        }
+        return result;
     }
 }

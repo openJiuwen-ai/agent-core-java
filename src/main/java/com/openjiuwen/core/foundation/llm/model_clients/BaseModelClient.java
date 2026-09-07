@@ -154,7 +154,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
         if (isBlank(modelClientConfig.getApiBase())) {
             throw ErrorHelper.buildError(
                     StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "rror_msg",
+                    "error_msg",
                     "model client config api_base is required for " + clientName + ".");
         }
     }

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class ShellAstTest {
 
@@ -53,5 +55,15 @@ class ShellAstTest {
         ShellAstParseResult result = ShellAst.parseShellForPermission("echo \"unterminated");
 
         assertEquals("parse_unavailable", result.getKind());
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void windowsKeepsBackslashPathSeparators() {
+        ShellAstParseResult result = ShellAst.parseShellForPermission("type C:\\srv\\workspace\\secrets\\*.txt");
+
+        assertEquals("simple", result.getKind());
+        assertEquals(1, result.getSubcommands().size());
+        assertEquals("C:\\srv\\workspace\\secrets\\*.txt", result.getSubcommands().get(0).getArgv().get(1));
     }
 }

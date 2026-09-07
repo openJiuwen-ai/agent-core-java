@@ -6,7 +6,9 @@ package com.openjiuwen.core.common.clients;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.AbstractMap;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -82,7 +84,7 @@ public class SessionConfig extends AbstractMap<String, Object> {
         parts.sort(String::compareTo);
         String key = String.join("&", parts);
         if (key.length() > 256) {
-            return md5Hex(key);
+            return sha256Hex(key);
         }
         return key;
     }
@@ -130,17 +132,13 @@ public class SessionConfig extends AbstractMap<String, Object> {
         return String.valueOf(value);
     }
 
-    private static String md5Hex(String value) {
+    private static String sha256Hex(String value) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte current : bytes) {
-                hex.append(String.format("%02x", current));
-            }
-            return hex.toString();
-        } catch (Exception exception) {
-            return Integer.toString(value.hashCode());
+            return HexFormat.of().formatHex(bytes);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 not available", exception);
         }
     }
 

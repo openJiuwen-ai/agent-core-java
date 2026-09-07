@@ -6,7 +6,9 @@ package com.openjiuwen.core.common.exception;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.utils.SerializationUtils;
 
+import java.io.Serial;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,6 +21,9 @@ import java.util.Map;
  * </p>
  */
 public class BaseError extends RuntimeException {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -38,7 +43,7 @@ public class BaseError extends RuntimeException {
         this.params = params != null
                 ? Collections.unmodifiableMap(new LinkedHashMap<>(params))
                 : Collections.emptyMap();
-        this.details = details;
+        this.details = details == null ? null : SerializationUtils.requireSerializable(details, "details");
         this.templateMessage = renderMessage(status, this.params);
         this.message = msg != null ? msg : this.templateMessage;
         this.recoverable = defaultRecoverable();

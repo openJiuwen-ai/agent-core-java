@@ -4,11 +4,12 @@
 
 package com.openjiuwen.core.graph;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
-
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.stream_actor.StreamConsumer;
 import com.openjiuwen.core.runner.Runner;
@@ -852,9 +853,26 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                 }, STREAM_EXECUTOR);
                 tasks.add(task);
             }
-            abilityReadyLatch.await();
+            if (!abilityReadyLatch.await(TimeoutConstants.LATCH_MS, TimeUnit.MILLISECONDS)) {
+                Loggers.PERFORMANCE.warning(
+                        "Vertex ability latch await timeout after {}ms, node_id={}",
+                        TimeoutConstants.LATCH_MS, nodeId);
+                throw buildError(StatusCode.GRAPH_VERTEX_ABILITY_LATCH_TIMEOUT,
+                        null,
+                        Map.of("timeout", TimeoutConstants.LATCH_MS, "node_id", nodeId));
+            }
             readyLatch.countDown();
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
+            try {
+                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
+                        .get(TimeoutConstants.FUTURE_MS, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException timeoutException) {
+                Loggers.PERFORMANCE.warning(
+                        "Vertex allOf future get timeout after {}ms, node_id={}",
+                        TimeoutConstants.FUTURE_MS, nodeId);
+                throw buildError(StatusCode.GRAPH_VERTEX_FUTURE_TIMEOUT,
+                        timeoutException,
+                        Map.of("timeout", TimeoutConstants.FUTURE_MS, "node_id", nodeId));
+            }
             for (CompletableFuture<Boolean> task : tasks) {
                 task.join();
             }
@@ -961,12 +979,14 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             if (streamCallTimeoutSeconds > 0) {
                 result = streamDone.get(streamCallTimeoutSeconds, TimeUnit.SECONDS);
             } else {
-                result = streamDone.get();
+                result = streamDone.get(TimeoutConstants.FUTURE_MS, TimeUnit.MILLISECONDS);
             }
         } catch (TimeoutException timeoutException) {
             throw buildError(StatusCode.GRAPH_VERTEX_STREAM_CALL_TIMEOUT,
                     timeoutException,
-                    Map.of("timeout", streamCallTimeoutSeconds, "node_id", nodeId));
+                    Map.of("timeout", streamCallTimeoutSeconds > 0
+                            ? streamCallTimeoutSeconds
+                            : TimeoutConstants.FUTURE_MS, "node_id", nodeId));
         } catch (ExecutionException executionException) {
             Throwable cause = unwrapCompletion(executionException);
             if (cause instanceof Exception exception) {

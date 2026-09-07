@@ -7,6 +7,7 @@ package com.openjiuwen.harness.security;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -16,6 +17,9 @@ import java.util.regex.Pattern;
  * <p>Mirrors Python's {@code openjiuwen/harness/security/shell_ast.py}.
  */
 public final class ShellAst {
+
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     private static final Pattern COMMAND_SUBSTITUTION = Pattern.compile("`|\\$\\(");
     private static final Pattern PROCESS_SUBSTITUTION = Pattern.compile("[<>]\\(");
@@ -305,6 +309,9 @@ public final class ShellAst {
     }
 
     private static boolean isEscaped(String command, int index) {
+        if (IS_WINDOWS) {
+            return false;
+        }
         int slashCount = 0;
         for (int i = index - 1; i >= 0 && command.charAt(i) == '\\'; i--) {
             slashCount++;
@@ -326,7 +333,7 @@ public final class ShellAst {
                 escaping = false;
                 continue;
             }
-            if (ch == '\\' && !inSingle) {
+            if (ch == '\\' && !inSingle && !IS_WINDOWS) {
                 escaping = true;
                 continue;
             }

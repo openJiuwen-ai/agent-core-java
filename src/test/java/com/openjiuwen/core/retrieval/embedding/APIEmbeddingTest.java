@@ -107,8 +107,18 @@ class APIEmbeddingTest {
 
         Future<String> threadName = model.executor.submit(() -> Thread.currentThread().getName());
 
-        assertEquals(10, model.executor.getMaximumPoolSize());
         assertTrue(threadName.get().startsWith("openjiuwen_embed-"));
+        if (model.executor instanceof java.util.concurrent.ThreadPoolExecutor pool) {
+            // JDK 17: fixed platform pool honors the configured worker count.
+            assertEquals(10, pool.getMaximumPoolSize());
+        } else {
+            // JDK 21+: virtual-thread-per-task executor; the concurrency cap is
+            // enforced by the semaphore limiter instead of the pool size.
+            assertEquals(10, model.getLimiter().availablePermits());
+            Boolean virtual = model.executor
+                    .submit(com.openjiuwen.core.common.VirtualThreadSupport::isCurrentThreadVirtual).get();
+            assertTrue(virtual);
+        }
     }
 
     @Test

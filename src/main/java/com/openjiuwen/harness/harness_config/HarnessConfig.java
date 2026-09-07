@@ -70,6 +70,15 @@ public class HarnessConfig {
     @JsonProperty("completion_timeout")
     private Double completionTimeout;
 
+    /**
+     * Declarative permissions section. When {@code enabled} is {@code true}, the builder
+     * projects it onto {@code DeepAgentConfig.permissions} and the agent wires a
+     * permission interrupt rail during initialization.
+     */
+    @Builder.Default
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, Object> permissions = new LinkedHashMap<>();
+
     @Builder.Default
     private Map<String, Object> extraFields = new LinkedHashMap<>();
 

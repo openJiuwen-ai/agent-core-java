@@ -15,7 +15,7 @@ import java.util.concurrent.Semaphore;
  * Mirrors Python's {@code Embedding} in
  * {@code openjiuwen/core/foundation/store/base_embedding.py}.
  */
-public abstract class Embedding {
+public abstract class Embedding implements AutoCloseable {
 
     /** Semaphore-based rate limiter aligned with Python's instance attribute. */
     protected Semaphore limiter;
@@ -69,4 +69,12 @@ public abstract class Embedding {
      * @return embedding dimension
      */
     public abstract int getDimension();
+
+    /**
+     * Release resources held by this embedding model (e.g. thread pools).
+     * Default is a no-op; subclasses holding resources should override.
+     */
+    @Override
+    public void close() throws Exception {
+    }
 }

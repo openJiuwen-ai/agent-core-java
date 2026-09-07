@@ -22,10 +22,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class VirtualThreadSupport {
 
+    private static final int MINIMUM_VIRTUAL_THREAD_VERSION = 21;
     private static final MethodHandle THREAD_OF_VIRTUAL;
     private static final MethodHandle VIRTUAL_BUILDER_START;
     private static final MethodHandle VIRTUAL_BUILDER_NAME;
     private static final MethodHandle VIRTUAL_BUILDER_NAME_WITH_COUNTER;
+    private static final MethodHandle VIRTUAL_BUILDER_UNCAUGHT;
+    private static final MethodHandle VIRTUAL_BUILDER_UNSTARTED;
     private static final MethodHandle VIRTUAL_BUILDER_FACTORY;
     private static final MethodHandle VIRTUAL_EXECUTOR_METHOD;
     private static final MethodHandle THREAD_PER_TASK_EXECUTOR_METHOD;
@@ -36,32 +39,41 @@ public final class VirtualThreadSupport {
         MethodHandle builderStart = null;
         MethodHandle builderName = null;
         MethodHandle builderNameWithCounter = null;
+        MethodHandle builderUncaught = null;
+        MethodHandle builderUnstarted = null;
         MethodHandle builderFactory = null;
         MethodHandle vteMethod = null;
         MethodHandle threadPerTaskExecutorMethod = null;
         MethodHandle threadIsVirtual = null;
 
-        try {
-            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-            Class<?> virtualBuilderClass = loadClass("java.lang.Thread$Builder$OfVirtual");
-            ofVirtual = lookup.unreflect(Thread.class.getMethod("ofVirtual"));
-            builderStart = lookup.unreflect(virtualBuilderClass.getMethod("start", Runnable.class));
-            builderName = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class));
-            builderNameWithCounter = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class, long.class));
-            builderFactory = lookup.unreflect(virtualBuilderClass.getMethod("factory"));
-            vteMethod = lookup.unreflect(Executors.class.getMethod("newVirtualThreadPerTaskExecutor"));
-            threadPerTaskExecutorMethod = lookup.unreflect(Executors.class.getMethod(
-                    "newThreadPerTaskExecutor", ThreadFactory.class));
-            Method isVirtual = Thread.class.getMethod("isVirtual");
-            threadIsVirtual = lookup.unreflect(isVirtual);
-        } catch (Exception e) {
-            // JDK < 21: virtual threads not available
+        if (Runtime.version().feature() >= MINIMUM_VIRTUAL_THREAD_VERSION) {
+            try {
+                MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+                Class<?> virtualBuilderClass = loadClass("java.lang.Thread$Builder$OfVirtual");
+                ofVirtual = lookup.unreflect(Thread.class.getMethod("ofVirtual"));
+                builderStart = lookup.unreflect(virtualBuilderClass.getMethod("start", Runnable.class));
+                builderName = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class));
+                builderNameWithCounter = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class, long.class));
+                builderUncaught = lookup.unreflect(virtualBuilderClass.getMethod(
+                        "uncaughtExceptionHandler", Thread.UncaughtExceptionHandler.class));
+                builderUnstarted = lookup.unreflect(virtualBuilderClass.getMethod("unstarted", Runnable.class));
+                builderFactory = lookup.unreflect(virtualBuilderClass.getMethod("factory"));
+                vteMethod = lookup.unreflect(Executors.class.getMethod("newVirtualThreadPerTaskExecutor"));
+                threadPerTaskExecutorMethod = lookup.unreflect(Executors.class.getMethod(
+                        "newThreadPerTaskExecutor", ThreadFactory.class));
+                Method isVirtual = Thread.class.getMethod("isVirtual");
+                threadIsVirtual = lookup.unreflect(isVirtual);
+            } catch (Exception e) {
+                // Current runtime does not expose stable virtual-thread APIs.
+            }
         }
 
         THREAD_OF_VIRTUAL = ofVirtual;
         VIRTUAL_BUILDER_START = builderStart;
         VIRTUAL_BUILDER_NAME = builderName;
         VIRTUAL_BUILDER_NAME_WITH_COUNTER = builderNameWithCounter;
+        VIRTUAL_BUILDER_UNCAUGHT = builderUncaught;
+        VIRTUAL_BUILDER_UNSTARTED = builderUnstarted;
         VIRTUAL_BUILDER_FACTORY = builderFactory;
         VIRTUAL_EXECUTOR_METHOD = vteMethod;
         THREAD_PER_TASK_EXECUTOR_METHOD = threadPerTaskExecutorMethod;
@@ -123,6 +135,15 @@ public final class VirtualThreadSupport {
      * name prefix for thread naming.
      */
     public static ExecutorService newThreadPerTaskExecutor(String namePrefix) {
+        return newThreadPerTaskExecutor(namePrefix, null);
+    }
+
+    /**
+     * Returns a named per-task executor, optionally with an uncaught-exception handler.
+     * On JDK 21+ this uses virtual threads; on JDK 17 it falls back to a cached pool.
+     */
+    public static ExecutorService newThreadPerTaskExecutor(String namePrefix,
+            Thread.UncaughtExceptionHandler exceptionHandler) {
         if (THREAD_OF_VIRTUAL != null
                 && VIRTUAL_BUILDER_NAME_WITH_COUNTER != null
                 && VIRTUAL_BUILDER_FACTORY != null
@@ -130,6 +151,9 @@ public final class VirtualThreadSupport {
             try {
                 Object builder = THREAD_OF_VIRTUAL.invoke();
                 Object namedBuilder = VIRTUAL_BUILDER_NAME_WITH_COUNTER.invoke(builder, namePrefix + "-", 1L);
+                if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
+                    namedBuilder = VIRTUAL_BUILDER_UNCAUGHT.invoke(namedBuilder, exceptionHandler);
+                }
                 ThreadFactory factory = (ThreadFactory) VIRTUAL_BUILDER_FACTORY.invoke(namedBuilder);
                 return (ExecutorService) THREAD_PER_TASK_EXECUTOR_METHOD.invoke(factory);
             } catch (Throwable e) {
@@ -140,8 +164,31 @@ public final class VirtualThreadSupport {
         return Executors.newCachedThreadPool(runnable -> {
             Thread thread = new Thread(runnable, namePrefix + "-" + counter.getAndIncrement());
             thread.setDaemon(true);
+            if (exceptionHandler != null) {
+                thread.setUncaughtExceptionHandler(exceptionHandler);
+            }
             return thread;
         });
+    }
+
+    /**
+     * Creates an unstarted virtual thread, or {@code null} when the runtime has no VT APIs.
+     */
+    public static Thread newUnstartedThread(String threadName, Runnable task,
+            Thread.UncaughtExceptionHandler exceptionHandler) {
+        if (THREAD_OF_VIRTUAL == null || VIRTUAL_BUILDER_NAME == null || VIRTUAL_BUILDER_UNSTARTED == null) {
+            return null;
+        }
+        try {
+            Object builder = THREAD_OF_VIRTUAL.invoke();
+            Object namedBuilder = VIRTUAL_BUILDER_NAME.invoke(builder, threadName);
+            if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
+                namedBuilder = VIRTUAL_BUILDER_UNCAUGHT.invoke(namedBuilder, exceptionHandler);
+            }
+            return (Thread) VIRTUAL_BUILDER_UNSTARTED.invoke(namedBuilder, task);
+        } catch (Throwable e) {
+            return null;
+        }
     }
 
     /**

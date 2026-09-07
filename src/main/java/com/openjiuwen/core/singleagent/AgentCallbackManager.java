@@ -11,6 +11,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.IdentityHashMap;
@@ -45,6 +46,13 @@ public class AgentCallbackManager {
         this.instanceCallbackFramework = new InstanceCallbackFramework();
     }
 
+    /**
+     * Registers a callback for the given event.
+     *
+     * @param event the agent callback event
+     * @param callback the callback consumer
+     * @param priority execution priority (higher value runs first)
+     */
     public CompletionStage<AgentCallbackManager> registerCallback(AgentCallbackEvent event,
                                                                   AgentCallback callback,
                                                                   int priority) {
@@ -117,6 +125,40 @@ public class AgentCallbackManager {
 
     public CompletionStage<Void> unregister_rail(AgentRail rail, Object agent) {
         return unregisterRail(rail, agent);
+    }
+
+    /**
+     * Unregister every rail registered on this manager.
+     *
+     * <p>Per-task DeepAgent instances register business rails on their inner
+     * BaseAgent; until the rails are unregistered, the process-global
+     * callback framework keeps one CallbackInfo per rail callback alive,
+     * pinning the whole agent object graph. This snapshot-based bulk
+     * unregister releases all of them without clearing shared event names.</p>
+     *
+     * @param agent the BaseAgent instance (for rail uninit)
+     */
+    public CompletionStage<Void> unregisterAllRails(Object agent) {
+        List<AgentRail> rails = new ArrayList<>(railCallbacks.keySet());
+        List<AgentRail> instanceRails = new ArrayList<>(instanceRailCallbacks.keySet());
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (AgentRail rail : rails) {
+            chain = chain.thenCompose(ignored -> unregisterRail(rail, agent).thenApply(v -> {
+                if (rail != null && agent instanceof BaseAgent baseAgent) {
+                    rail.uninit(baseAgent);
+                }
+                return v;
+            }));
+        }
+        for (AgentRail rail : instanceRails) {
+            chain = chain.thenCompose(ignored -> unregisterInstanceRail(rail, agent).thenApply(v -> {
+                if (rail != null && agent instanceof BaseAgent baseAgent) {
+                    rail.uninit(baseAgent);
+                }
+                return v;
+            }));
+        }
+        return chain;
     }
 
     public CompletionStage<Void> unregisterInstanceRail(AgentRail rail, Object agent) {

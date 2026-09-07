@@ -1,3 +1,0 @@
-resource mgr integration
-line 2
-line 3

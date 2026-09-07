@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -190,6 +191,97 @@ class InMemoryCheckpointerTest {
                 .toCompletableFuture()
                 .join()
                 .isPresent());
+    }
+
+    @Test
+    void ttlEvictsSessionThatWasNotWrittenAgain() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
+
+        checkpointer.preAgentExecute(TestSession.agent("session-1", "agent-1", new AgentStateCollection()), null);
+        assertTrue(checkpointer.sessionExists("session-1"));
+
+        now.set(1_000_000L + 60_001L);
+        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
+        checkpointer.cleanUpRegistry();
+
+        assertFalse(checkpointer.sessionExists("session-1"));
+        assertTrue(checkpointer.sessionExists("session-2"));
+    }
+
+    @Test
+    void capacityLimitEvictsLeastRecentlyWrittenSession() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
+
+        for (String sessionId : List.of("session-1", "session-2")) {
+            checkpointer.preAgentExecute(TestSession.agent(sessionId, sessionId, new AgentStateCollection()), null);
+        }
+        now.set(1_000_000L + 1L);
+        checkpointer.preAgentExecute(TestSession.agent("session-3", "agent-3", new AgentStateCollection()), null);
+        checkpointer.cleanUpRegistry();
+
+        assertFalse(checkpointer.sessionExists("session-1"));
+        assertTrue(checkpointer.sessionExists("session-2"));
+        assertTrue(checkpointer.sessionExists("session-3"));
+    }
+
+    @Test
+    void writeRefreshesTtlForActiveSession() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(100_000L, 0, now::get);
+
+        TestSession session = TestSession.agent("session-1", "agent-1", new AgentStateCollection());
+        checkpointer.preAgentExecute(session, null);
+        for (int i = 0; i < 3; i++) {
+            now.set(1_000_000L + (i + 1) * 60_000L);
+            checkpointer.postAgentExecute(session);
+        }
+        now.set(1_000_000L + 180_001L);
+        checkpointer.preAgentExecute(TestSession.agent("session-2", "agent-2", new AgentStateCollection()), null);
+        checkpointer.cleanUpRegistry();
+
+        assertTrue(checkpointer.sessionExists("session-1"));
+    }
+
+    @Test
+    void evictionClearsGraphStoreEntries() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(60_000L, 0, now::get);
+
+        TestSession session = TestSession.workflow("session-1", "workflow-1", workflowState());
+        checkpointer.preWorkflowExecute(session, (Object) null);
+        checkpointer.graphStore().save(
+                "session-1",
+                "workflow-1",
+                GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of())
+        ).toCompletableFuture().join();
+        assertTrue(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
+
+        now.set(1_000_000L + 60_001L);
+        checkpointer.preWorkflowExecute(TestSession.workflow("session-2", "workflow-2", workflowState()), (Object) null);
+        checkpointer.cleanUpRegistry();
+
+        assertFalse(checkpointer.graphStore().get("session-1", "workflow-1").toCompletableFuture().join().isPresent());
+    }
+
+    @Test
+    void releaseFreesCapacitySlot() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        InMemoryCheckpointer checkpointer = new InMemoryCheckpointer(0, 2, now::get);
+
+        for (String sessionId : List.of("session-1", "session-2")) {
+            checkpointer.preAgentExecute(TestSession.agent(sessionId, sessionId, new AgentStateCollection()), null);
+        }
+        checkpointer.release("session-1");
+        assertFalse(checkpointer.sessionExists("session-1"));
+
+        now.set(1_000_000L + 1L);
+        checkpointer.preAgentExecute(TestSession.agent("session-3", "agent-3", new AgentStateCollection()), null);
+        checkpointer.cleanUpRegistry();
+
+        assertTrue(checkpointer.sessionExists("session-2"));
+        assertTrue(checkpointer.sessionExists("session-3"));
     }
 
     private static WorkflowCommitState workflowState() {

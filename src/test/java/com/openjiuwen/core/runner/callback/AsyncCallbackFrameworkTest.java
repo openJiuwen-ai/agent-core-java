@@ -169,11 +169,19 @@ class AsyncCallbackFrameworkTest {
         Field poolField = AsyncCallbackFramework.class.getDeclaredField("PARALLEL_EXECUTOR");
         poolField.setAccessible(true);
         ExecutorService executor = (ExecutorService) poolField.get(null);
-        assertTrue(executor instanceof ThreadPoolExecutor);
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
-        assertTrue(pool.getQueue() instanceof ArrayBlockingQueue);
-        assertEquals(pool.getMaximumPoolSize(), pool.getCorePoolSize());
-        assertFalse(pool.isShutdown());
+        assertFalse(executor.isShutdown());
+        if (com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors.isVirtualThreadSupported()) {
+            // JDK 21+: virtual-thread-per-task executor replaces the platform pool.
+            Boolean virtual = executor
+                    .submit(com.openjiuwen.core.common.VirtualThreadSupport::isCurrentThreadVirtual)
+                    .get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(virtual);
+        } else {
+            assertTrue(executor instanceof ThreadPoolExecutor);
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            assertTrue(pool.getQueue() instanceof ArrayBlockingQueue);
+            assertEquals(pool.getMaximumPoolSize(), pool.getCorePoolSize());
+        }
     }
 
     private static Function<Map<String, Object>, Object> named(

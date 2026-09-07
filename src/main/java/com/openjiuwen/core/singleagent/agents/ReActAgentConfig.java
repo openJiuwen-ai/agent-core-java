@@ -63,6 +63,9 @@ public class ReActAgentConfig {
     @JsonProperty("parallel_tool_calls")
     private boolean parallelToolCalls = true;
 
+    @JsonProperty("max_parallel_tool_calls")
+    private int maxParallelToolCalls = 3;
+
     /**
      * When true, a tool execution error force-finishes the task as FAILED instead of
      * continuing the ReAct loop toward a misleading COMPLETED state (issue #51).
@@ -349,6 +352,23 @@ public class ReActAgentConfig {
         return configureParallelToolCalls(parallelToolCalls);
     }
 
+    public int getMaxParallelToolCalls() {
+        return maxParallelToolCalls;
+    }
+
+    public void setMaxParallelToolCalls(int maxParallelToolCalls) {
+        this.maxParallelToolCalls = maxParallelToolCalls;
+    }
+
+    public ReActAgentConfig configureMaxParallelToolCalls(int maxParallelToolCalls) {
+        this.maxParallelToolCalls = maxParallelToolCalls;
+        return this;
+    }
+
+    public ReActAgentConfig configure_max_parallel_tool_calls(int maxParallelToolCalls) {
+        return configureMaxParallelToolCalls(maxParallelToolCalls);
+    }
+
     public boolean isShouldFailTaskOnToolError() {
         return shouldFailTaskOnToolError;
     }
@@ -520,6 +540,11 @@ public class ReActAgentConfig {
 
         public Builder parallelToolCalls(boolean parallelToolCalls) {
             config.setParallelToolCalls(parallelToolCalls);
+            return this;
+        }
+
+        public Builder maxParallelToolCalls(int maxParallelToolCalls) {
+            config.setMaxParallelToolCalls(maxParallelToolCalls);
             return this;
         }
 

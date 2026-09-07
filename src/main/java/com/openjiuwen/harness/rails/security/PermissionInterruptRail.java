@@ -4,6 +4,9 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail.ConfirmPayload;
 import com.openjiuwen.harness.security.PermissionConfirmResponse;
@@ -24,6 +27,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Tool permission interrupt rail.
  *
@@ -31,6 +37,11 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/harness/rails/security/tool_security_rail.py}.</p>
  */
 public class PermissionInterruptRail extends BaseSecurityRail {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PermissionInterruptRail.class);
+    private static final ObjectMapper ARGUMENTS_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private static final Map<String, String> TOOL_NAME_ALIASES = Map.of(
             "free_search", "mcp_free_search",
@@ -227,11 +238,11 @@ public class PermissionInterruptRail extends BaseSecurityRail {
     ) {
         if (response.isApproved()) {
             boolean persisted = false;
-            if (response.isAutoConfirm()) {
+            if (response.isPersistAllow()) {
                 persisted = persistAllowAlways(toolName, toolArgs);
-                if (!persisted && !autoConfirmKey.isBlank()) {
-                    storeAutoConfirm(ctx, autoConfirmKey);
-                }
+            }
+            if (response.isAutoConfirm() && !persisted && !autoConfirmKey.isBlank()) {
+                storeAutoConfirm(ctx, autoConfirmKey);
             }
             ctx.put("permission_confirmed", Map.of(
                     "approved", true,
@@ -344,9 +355,26 @@ public class PermissionInterruptRail extends BaseSecurityRail {
         request.put("tool_args", new LinkedHashMap<>(toolArgs));
         request.put("matched_rule", result.getMatchedRule());
         request.put("reason", result.getReason());
-        request.put("payload_schema", ConfirmPayload.toSchema());
+        request.put("payload_schema", permissionPayloadSchema());
         request.put("auto_confirm_key", autoConfirmKey);
         return request;
+    }
+
+    /**
+     * Extend the shared confirm schema with the permission-specific
+     * {@code persist_allow} flag without mutating {@link ConfirmPayload#toSchema()},
+     * which is shared with other confirm rails.
+     */
+    private static Map<String, Object> permissionPayloadSchema() {
+        Map<String, Object> schema = new LinkedHashMap<>(ConfirmPayload.toSchema());
+        Map<String, Object> properties = new LinkedHashMap<>();
+        Object rawProperties = schema.get("properties");
+        if (rawProperties instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> properties.put(String.valueOf(key), value));
+        }
+        properties.put("persist_allow", Map.of("type", "boolean", "default", false));
+        schema.put("properties", properties);
+        return schema;
     }
 
     private String buildMessage(String toolName, Map<String, Object> toolArgs, PermissionResult result) {
@@ -396,8 +424,31 @@ public class PermissionInterruptRail extends BaseSecurityRail {
         Map<String, Object> result = new LinkedHashMap<>();
         if (value instanceof Map<?, ?> map) {
             map.forEach((key, item) -> result.put(String.valueOf(key), item));
+            return result;
+        }
+        if (value instanceof String rawArgs) {
+            return parseJsonToolArgs(rawArgs);
         }
         return result;
+    }
+
+    /**
+     * Parse a JSON-encoded tool-arguments string into a map. Tool calls carry their
+     * arguments as a raw JSON string (see {@code AbilityManager#newToolCallContext}),
+     * so the rail must decode it before the engine can match parameter-level rules
+     * (Pipeline A patterns) or extract guarded paths (Pipeline B file_guard).
+     */
+    private static Map<String, Object> parseJsonToolArgs(String rawArgs) {
+        if (rawArgs == null || rawArgs.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Map<String, Object> parsed = ARGUMENTS_MAPPER.readValue(rawArgs, MAP_TYPE);
+            return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
+        } catch (Exception ex) {
+            LOGGER.warn("[PermissionEngine] permission.tool_args.parse_failed raw={}", rawArgs, ex);
+            return new LinkedHashMap<>();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -413,8 +464,18 @@ public class PermissionInterruptRail extends BaseSecurityRail {
         }
         boolean approved = booleanValue(map.get("approved"), false);
         boolean autoConfirm = booleanValue(map.get("auto_confirm"), false);
+        boolean persistAllow = booleanValue(firstPresent(map, "persist_allow", "persistAllow"), false);
         Object feedback = map.get("feedback");
-        return new PermissionConfirmResponse(approved, feedback == null ? "" : String.valueOf(feedback), autoConfirm);
+        return new PermissionConfirmResponse(
+                approved,
+                feedback == null ? "" : String.valueOf(feedback),
+                autoConfirm,
+                persistAllow
+        );
+    }
+
+    private static Object firstPresent(Map<?, ?> map, String first, String second) {
+        return map.containsKey(first) ? map.get(first) : map.get(second);
     }
 
     private static void storeAutoConfirm(CallbackContext ctx, String key) {

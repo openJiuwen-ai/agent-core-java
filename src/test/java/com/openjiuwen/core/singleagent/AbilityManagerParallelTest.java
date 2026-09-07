@@ -13,6 +13,8 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.SessionContextHolder;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -159,6 +161,39 @@ class AbilityManagerParallelTest {
         assertThat(results).hasSize(2);
         assertThat(results).extracting(result -> String.valueOf(result.result()))
                 .allMatch(text -> text.contains("session=worker-session"));
+    }
+
+    @Test
+    @DisplayName("maxParallelToolCalls=1 时独立工具串行执行")
+    void executeRespectsMaxParallelToolCalls() {
+        List<String> order = new ArrayList<>();
+        String firstId = registerOrderingTool("cap-first", true, order);
+        String secondId = registerOrderingTool("cap-second", true, order);
+
+        AgentCallbackContext ctx = new AgentCallbackContext();
+        ctx.setConfig(ReActAgentConfig.builder().maxParallelToolCalls(1).build());
+
+        long start = System.nanoTime();
+        List<AbilityManager.ExecutionResult> results = manager.execute(
+                ctx,
+                List.of(
+                        ToolCall.builder().id("tc-1").name(firstId).arguments("{}").build(),
+                        ToolCall.builder().id("tc-2").name(secondId).arguments("{}").build()
+                ),
+                null,
+                true,
+                null,
+                null
+        );
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+        assertThat(results).hasSize(2);
+        // maxParallelToolCalls 承诺的是并发上限（串行性），而非 FIFO 执行顺序：
+        // 每个独立工具进入独立 lane 后并发争抢一个非公平 Semaphore 许可，
+        // 哪个 lane 先拿到许可取决于线程池调度，顺序不做保证。
+        // 串行性由耗时断言保证（两个 80ms 工具并行执行总耗时约 80ms，串行约 160ms）。
+        assertThat(order).containsExactlyInAnyOrder(firstId, secondId);
+        assertThat(elapsedMillis).isGreaterThanOrEqualTo(140L);
     }
 
     private String registerBlockingTool(String prefix, CountDownLatch bothStarted) {

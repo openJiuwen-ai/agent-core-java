@@ -16,6 +16,10 @@ public record NewTaskSpec(
         @JsonProperty("task_id") String taskId,
         String title,
         String content,
-        @JsonProperty("initial_status") String initialStatus
+        @JsonProperty("initial_status") String initialStatus,
+        String assignee
 ) {
+    public NewTaskSpec(String taskId, String title, String content, String initialStatus) {
+        this(taskId, title, content, initialStatus, null);
+    }
 }

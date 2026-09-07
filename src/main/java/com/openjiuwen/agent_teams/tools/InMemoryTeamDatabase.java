@@ -375,12 +375,23 @@ public class InMemoryTeamDatabase {
             String title,
             String content,
             String status) {
+        return createTask(taskId, teamName, title, content, status, null);
+    }
+
+    public CompletableFuture<Boolean> createTask(
+            String taskId,
+            String teamName,
+            String title,
+            String content,
+            String status,
+            String assignee) {
         synchronized (lock) {
             if (tasks.containsKey(taskId)) {
                 TEAM_LOGGER.error("Task %s already exists", taskId);
                 return CompletableFuture.completedFuture(false);
             }
-            tasks.put(taskId, new TeamTask(taskId, teamName, title, content, status, null, getCurrentTime()));
+            String owner = assignee == null || assignee.isBlank() ? null : assignee;
+            tasks.put(taskId, new TeamTask(taskId, teamName, title, content, status, owner, getCurrentTime()));
             TEAM_LOGGER.info("Task %s created", taskId);
             return CompletableFuture.completedFuture(true);
         }
@@ -455,10 +466,13 @@ public class InMemoryTeamDatabase {
                 return CompletableFuture.completedFuture(false);
             }
             if (task.getAssignee() != null) {
-                TEAM_LOGGER.warning("Task %s is already claimed by member %s", taskId, task.getAssignee());
-                return CompletableFuture.completedFuture(false);
-            }
-            if (!isValidTaskTransition(task.getStatus(), TaskStatus.CLAIMED)) {
+                boolean startAssigned = memberName.equals(task.getAssignee())
+                        && Objects.equals(task.getStatus(), TaskStatus.PENDING.value());
+                if (!startAssigned) {
+                    TEAM_LOGGER.warning("Task %s is already claimed by member %s", taskId, task.getAssignee());
+                    return CompletableFuture.completedFuture(false);
+                }
+            } else if (!isValidTaskTransition(task.getStatus(), TaskStatus.CLAIMED)) {
                 TEAM_LOGGER.error(
                         "Invalid state transition for task %s: %s -> %s",
                         taskId,
@@ -664,7 +678,7 @@ public class InMemoryTeamDatabase {
                         spec.title(),
                         spec.content(),
                         spec.initialStatus(),
-                        null,
+                        spec.assignee() == null || spec.assignee().isBlank() ? null : spec.assignee(),
                         now
                 ));
             }

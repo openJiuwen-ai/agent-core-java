@@ -45,6 +45,10 @@ public class DeepAgentConfig {
     @Builder.Default
     private int maxIterations = 15;
     @Builder.Default
+    private int maxParallelToolCalls = 3;
+    @Builder.Default
+    private boolean shouldFailTaskOnToolError = false;
+    @Builder.Default
     private boolean isTaskLoopEnabled = false;
     @Builder.Default
     private boolean isTaskPlanningEnabled = false;

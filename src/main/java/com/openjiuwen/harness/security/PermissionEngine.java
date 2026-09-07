@@ -36,7 +36,9 @@ public class PermissionEngine {
     private Object llm;
     private String modelName;
     private final Path workspaceRoot;
+    private final List<String> trustedDirs;
     private ExternalDirectoryChecker externalChecker;
+    private FileGuardChecker fileGuard;
 
     public PermissionEngine() {
         this((Map<String, Object>) null, null, null, null);
@@ -56,12 +58,37 @@ public class PermissionEngine {
             String modelName,
             Path workspaceRoot
     ) {
+        this(config, llm, modelName, workspaceRoot, null);
+    }
+
+    /**
+     * Build an engine with explicit trusted directories for the file-guard pipeline.
+     *
+     * <p>The file-guard checker is compiled once at construction time via
+     * {@link FileGuardChecker#build}; when the layer is disabled or absent the
+     * reference is {@code null} and Pipeline B is skipped.
+     *
+     * @param config        permissions config map
+     * @param llm           llm
+     * @param modelName     model name
+     * @param workspaceRoot runtime workspace root (may be {@code null})
+     * @param trustedDirs   trusted directories projected to allow-prefix rules
+     */
+    public PermissionEngine(
+            Map<String, Object> config,
+            Object llm,
+            String modelName,
+            Path workspaceRoot,
+            List<String> trustedDirs
+    ) {
         this.config = normalizeConfig(config);
         this.enabled = boolOrDefault(this.config.get("enabled"), true);
         this.llm = llm;
         this.modelName = modelName;
         this.workspaceRoot = workspaceRoot;
+        this.trustedDirs = trustedDirs == null ? List.of() : List.copyOf(trustedDirs);
         this.externalChecker = new ExternalDirectoryChecker(this.config, this.workspaceRoot);
+        this.fileGuard = FileGuardChecker.build(this.config, this.workspaceRoot, this.trustedDirs);
     }
 
     public PermissionEngine(
@@ -77,6 +104,7 @@ public class PermissionEngine {
         this.config = normalizeConfig(config);
         this.enabled = boolOrDefault(this.config.get("enabled"), true);
         this.externalChecker = new ExternalDirectoryChecker(this.config, this.workspaceRoot);
+        this.fileGuard = FileGuardChecker.build(this.config, this.workspaceRoot, this.trustedDirs);
     }
 
     public void updateConfig(PermissionsSection config) {
@@ -102,6 +130,24 @@ public class PermissionEngine {
 
     public Map<String, Object> getConfig() {
         return new LinkedHashMap<>(config);
+    }
+
+    /**
+     * getTrustedDirs.
+     *
+     * @return the trusted directories projected to file-guard allow-prefix rules
+     */
+    public List<String> getTrustedDirs() {
+        return trustedDirs;
+    }
+
+    /**
+     * getFileGuard.
+     *
+     * @return the compiled file-guard checker, or {@code null} when the layer is disabled
+     */
+    public FileGuardChecker getFileGuard() {
+        return fileGuard;
     }
 
     public void setPermissionChecksActive(BooleanSupplier permissionChecksActive) {
@@ -146,6 +192,22 @@ public class PermissionEngine {
                             ? externalResult.getMatchedRule()
                             : "external_directory";
                     matchedRule = matchedRule + "|" + externalRule;
+                }
+            }
+
+            if (fileGuard != null) {
+                PermissionResult guardResult = fileGuard.evaluate(toolName, resolvedArgs);
+                if (guardResult != null) {
+                    String guardRule = guardResult.getMatchedRule() != null
+                            ? guardResult.getMatchedRule()
+                            : "file_guard";
+                    if (permission == null) {
+                        permission = guardResult.getPermission();
+                        matchedRule = guardRule;
+                    } else {
+                        permission = TieredPolicy.strictest(permission, guardResult.getPermission());
+                        matchedRule = matchedRule + "|" + guardRule;
+                    }
                 }
             }
         }
@@ -206,6 +268,28 @@ public class PermissionEngine {
                     toolName);
         }
 
+        if (fileGuard != null) {
+            PermissionResult guardResult = fileGuard.evaluate(toolName, resolvedArgs);
+            if (guardResult != null) {
+                permission = TieredPolicy.strictest(permission, guardResult.getPermission());
+                String guardRule = guardResult.getMatchedRule() != null
+                        ? guardResult.getMatchedRule()
+                        : "file_guard";
+                matchedRule = matchedRule + "|" + guardRule;
+                if (guardResult.getExternalPaths() != null && !guardResult.getExternalPaths().isEmpty()) {
+                    externalPaths = externalPaths == null
+                            ? guardResult.getExternalPaths()
+                            : mergePaths(externalPaths, guardResult.getExternalPaths());
+                }
+                LOGGER.info(
+                        "permission.file_guard.result tool={} permission={} matched_rule={}",
+                        toolName,
+                        guardResult.getPermission().value(),
+                        guardRule
+                );
+            }
+        }
+
         PermissionResult result = new PermissionResult(
                 permission,
                 matchedRule,
@@ -224,6 +308,16 @@ public class PermissionEngine {
 
     private static Map<String, Object> normalizeConfig(Map<String, Object> config) {
         return config == null ? new LinkedHashMap<>() : new LinkedHashMap<>(config);
+    }
+
+    private static List<String> mergePaths(List<String> first, List<String> second) {
+        List<String> merged = new ArrayList<>(first);
+        for (String path : second) {
+            if (!merged.contains(path)) {
+                merged.add(path);
+            }
+        }
+        return merged;
     }
 
     private static Map<String, Object> normalizeToolArgs(Map<String, Object> toolArgs) {

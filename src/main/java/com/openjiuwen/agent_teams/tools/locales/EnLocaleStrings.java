@@ -56,6 +56,7 @@ public final class EnLocaleStrings {
         map.put("create_task.task.content", "Task details including goals and acceptance criteria");
         map.put("create_task.task.depends_on", "Prerequisite task IDs that must complete first");
         map.put("create_task.task.depended_by", "Existing task IDs that should wait for this task (reverse dependency)");
+        map.put("create_task.task.assignee", "Optional teammate member_name; omit to leave the task in the shared claim pool. Lands as pending with this assignee (assigned, not yet started)");
         map.put("view_task.action", "View mode: 'list' (default, summary of all tasks), 'get' (single task detail, requires task_id), 'claimable' (pending tasks ready to claim)");
         map.put("view_task.task_id", "Task ID \u2014 required when action=get, ignored otherwise");
         map.put("view_task.status", "Status filter for action=list only: pending/claimed/plan_approved/completed/cancelled/blocked. Omit to list all.");

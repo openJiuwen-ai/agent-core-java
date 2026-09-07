@@ -178,15 +178,17 @@ public final class LogManager {
     }
 
     private static Map<String, Map<String, Object>> getAllConfigs(String backend) {
-        if (LogConfigProvider.provider != null) {
-            return LogConfigProvider.provider.get();
+        java.util.function.Supplier<Map<String, Map<String, Object>>> provider = LogConfigProvider.provider;
+        if (provider != null) {
+            return provider.get();
         }
         return LoggingDefaults.logConfig().getAllConfigs(backend);
     }
 
     private static Map<String, Object> getCustomConfig(String logType, String backend) {
-        if (LogConfigProvider.provider != null) {
-            Map<String, Map<String, Object>> configs = LogConfigProvider.provider.get();
+        java.util.function.Supplier<Map<String, Map<String, Object>>> provider = LogConfigProvider.provider;
+        if (provider != null) {
+            Map<String, Map<String, Object>> configs = provider.get();
             Map<String, Object> config = configs != null ? configs.get(logType) : null;
             if (config != null) {
                 return config;

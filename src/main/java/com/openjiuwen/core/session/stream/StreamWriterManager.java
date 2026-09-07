@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -26,7 +27,7 @@ import java.util.function.Consumer;
  */
 public class StreamWriterManager {
 
-    private static final long DEFAULT_FRAME_TIMEOUT = -1L;
+    private static final long DEFAULT_FRAME_TIMEOUT = TimeoutConstants.BLOCKING_QUEUE_MS;
     private static final long DEFAULT_CLOSE_TIMEOUT = AsyncStreamQueue.DEFAULT_CLOSE_TIMEOUT_MS;
 
     private final StreamEmitter streamEmitter;
@@ -188,7 +189,8 @@ public class StreamWriterManager {
     }
 
     private Object receiveOrThrow(long timeoutMs, boolean firstFrame) {
-        Object data = streamEmitter.getStreamQueue().receive(timeoutMs);
+        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_FRAME_TIMEOUT;
+        Object data = streamEmitter.getStreamQueue().receive(effectiveTimeoutMs);
         if (data != null) {
             return data;
         }
@@ -197,7 +199,7 @@ public class StreamWriterManager {
                 : StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT;
         throw ErrorHelper.buildError(
                 status,
-                "timeout", formatTimeoutSeconds(timeoutMs),
+                "timeout", formatTimeoutSeconds(effectiveTimeoutMs),
                 "reason", ""
         );
     }

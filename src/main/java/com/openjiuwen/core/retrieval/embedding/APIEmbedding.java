@@ -33,14 +33,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Mirrors Python's {@code APIEmbedding} in
  * {@code openjiuwen/core/retrieval/embedding/api_embedding.py}.
  */
-public class APIEmbedding extends Embedding implements AutoCloseable {
+public class APIEmbedding extends Embedding {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
@@ -56,7 +55,7 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
     protected final int maxBatchSize;
     protected final int maxConcurrent;
     protected final Map<String, String> headers;
-    protected final ThreadPoolExecutor executor;
+    protected final ExecutorService executor;
     protected final HttpClient httpClient;
 
     private volatile Integer dimension;
@@ -98,13 +97,11 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
             this.headers.putAll(extraHeaders);
         }
         this.limiter = new Semaphore(maxConcurrent);
-        // 线程名前缀保持 openjiuwen_embed-，对齐历史实现与 Python 侧命名习惯
-        ExecutorService pool = OpenJiuwenExecutors.newFixedThreadPool(
+        // 线程名前缀保持 openjiuwen_embed-，对齐历史实现与 Python 侧命名习惯。
+        // JDK 21+ 上 OpenJiuwenExecutors 返回虚拟线程执行器（非 ThreadPoolExecutor），
+        // 此处仅依赖 ExecutorService 语义，并发上限由 limiter 信号量保证。
+        this.executor = OpenJiuwenExecutors.newFixedThreadPool(
                 "openjiuwen_embed", this.maxConcurrent, true);
-        if (!(pool instanceof ThreadPoolExecutor threadPoolExecutor)) {
-            throw new ClassCastException("embed executor is not ThreadPoolExecutor");
-        }
-        this.executor = threadPoolExecutor;
         this.httpClient = httpClient == null ? createHttpClient() : httpClient;
     }
 
@@ -179,7 +176,7 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
         }
     }
 
-    public ThreadPoolExecutor getExecutor() {
+    public ExecutorService getExecutor() {
         return executor;
     }
 

@@ -118,6 +118,10 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     }
 
     public CompletionStage<Void> startRound(Object content) {
+        if (state.isTeamCleaned() || isShutdownRequestedNow()) {
+            closeStream();
+            return CompletableFuture.completedFuture(null);
+        }
         if (resources.getHarness() == null || streamQueue == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -383,6 +387,10 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
             closeStream();
             return;
         }
+        if (isShutdownRequestedNow()) {
+            closeStream();
+            return;
+        }
         if (cancelRequested) {
             return;
         }
@@ -403,6 +411,18 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
         wakeMailboxIfInterruptCleared().toCompletableFuture().join();
         if (requestCompletionPollCallback != null) {
             requestCompletionPollCallback.get().toCompletableFuture().join();
+        }
+    }
+
+    private boolean isShutdownRequestedNow() {
+        TeamMember teamMember = state.getTeamMember();
+        if (teamMember == null) {
+            return false;
+        }
+        try {
+            return teamMember.status().toCompletableFuture().join() == MemberStatus.SHUTDOWN_REQUESTED;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 

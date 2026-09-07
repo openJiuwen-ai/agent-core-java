@@ -68,6 +68,12 @@ Runner.start();
 
 OpenJiuwen 通过统一入口创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用共享线程池；模块已有的实例专用线程池也由统一入口创建，但保留原有的队列、拒绝策略和生命周期。
 
+同一份 JDK 17 编译产物可同时运行在 JDK 17 与 JDK 21：
+
+- JDK 17：`OpenJiuwenExecutors` 的普通业务执行器继续使用平台线程池，保留原线程数、队列和拒绝策略。
+- JDK 21 及以上：`newBoundedModulePool` / `newFixedThreadPool` / `newThreadPool` / 共享 tool-call 与 background 执行器切换为每任务虚拟线程，不再受平台线程数限制。
+- `newSingleThreadExecutor` 与 `newScheduledThreadPool` 始终使用平台线程，以保留串行状态机和定时调度语义。
+
 AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
 
 线程池配置支持 JVM 系统属性或环境变量。两种方式都是进程启动参数，在线程池初始化时读取，不支持运行期热更新。

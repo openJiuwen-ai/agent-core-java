@@ -40,6 +40,7 @@ import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -109,6 +110,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -143,6 +145,7 @@ public class DeepAgent implements AutoCloseable {
     private final Set<DeepAgentRail> railsBoundToAgent = ConcurrentHashMap.newKeySet();
     private final List<Object> registeredTools = new CopyOnWriteArrayList<>();
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean destroyed = new AtomicBoolean(false);
     private SessionToolkit sessionToolkit;
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
@@ -220,7 +223,9 @@ public class DeepAgent implements AutoCloseable {
                 .configurePromptTemplate(java.util.List.of(
                         java.util.Map.of("role", "system", "content", this.config.getSystemPrompt())
                 ))
-                .configureMaxIterations(this.config.getMaxIterations());
+                .configureMaxIterations(this.config.getMaxIterations())
+                .configureMaxParallelToolCalls(this.config.getMaxParallelToolCalls())
+                .configureFailTaskOnToolError(this.config.isShouldFailTaskOnToolError());
         applyModelConfig(runtimeConfig, this.config.getModel());
         applyBackendConfig(runtimeConfig, this.config.getBackend());
         return runtimeConfig;
@@ -914,6 +919,12 @@ public class DeepAgent implements AutoCloseable {
                 if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
                     deepSession.withTenantContext(effectiveCtx);
                 }
+                // Reused DeepAgentSession objects keep POST-done after the first
+                // run; clear it so this invocation still commits/closes.
+                deepSession.resetPostRunState();
+                if (session != null) {
+                    deepSession.markPreRunDone();
+                }
                 deepSession.preRun(normalized);
             }
             try {
@@ -921,6 +932,10 @@ public class DeepAgent implements AutoCloseable {
             } finally {
                 if (effectiveSession instanceof DeepAgentSession deepSession) {
                     deepSession.postRun();
+                    if (session != null) {
+                        session.markPreRunDone();
+                        session.markPostRunDone();
+                    }
                 }
             }
         }
@@ -1116,9 +1131,16 @@ public class DeepAgent implements AutoCloseable {
         if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
             effectiveSession.withTenantContext(effectiveCtx);
         }
+        // Same-object reuse must drop a stale POST-done flag; a newly created
+        // internal session is already clean. Keep PRE-done when the caller
+        // already ran preRun, matching copyPreRunState on 830.
+        effectiveSession.resetPostRunState();
+        if (session != null) {
+            effectiveSession.markPreRunDone();
+        }
         effectiveSession.preRun(normalized);
         if (session != null) {
-            copySessionState(session, effectiveSession);
+            mergeSessionState(session, effectiveSession);
         }
         if (config.isEnableTaskLoop() && !resumeInput) {
             try {
@@ -1149,10 +1171,14 @@ public class DeepAgent implements AutoCloseable {
                     } finally {
                         try {
                             if (session != null) {
-                                copySessionState(effectiveSession, session);
+                                replaceSessionState(effectiveSession, session);
                             }
                         } finally {
                             effectiveSession.postRun();
+                            if (session != null) {
+                                session.markPreRunDone();
+                                session.markPostRunDone();
+                            }
                         }
                     }
                 });
@@ -1164,6 +1190,10 @@ public class DeepAgent implements AutoCloseable {
                         "result_type", "error"
                 )));
                 effectiveSession.postRun();
+                if (session != null) {
+                    session.markPreRunDone();
+                    session.markPostRunDone();
+                }
             }
             return effectiveSession.streamIterator();
         }
@@ -1183,10 +1213,14 @@ public class DeepAgent implements AutoCloseable {
             try {
                 // Copy before postRun so Runner does not checkpoint stale outer state.
                 if (session != null) {
-                    copySessionState(effectiveSession, session);
+                    replaceSessionState(effectiveSession, session);
                 }
             } finally {
                 effectiveSession.postRun();
+                if (session != null) {
+                    session.markPreRunDone();
+                    session.markPostRunDone();
+                }
             }
         }
         java.util.Iterator<Object> iterator = effectiveSession.streamIterator();
@@ -1498,7 +1532,7 @@ public class DeepAgent implements AutoCloseable {
             ControllerConfig controllerConfig = new ControllerConfig();
             controllerConfig.setScheduleInterval(0.1);
             // Align with 19c4f1fd (#66): raise concurrent task slots for multi-session outer loop.
-            controllerConfig.setMaxConcurrentTasks(32);
+            controllerConfig.setMaxConcurrentTasks(OpenJiuwenExecutors.defaultTaskConcurrency());
             taskManager = new TaskManager(controllerConfig);
             eventQueue = new EventQueue(controllerConfig);
             eventHandler = new TaskLoopEventHandler(this);
@@ -1535,9 +1569,11 @@ public class DeepAgent implements AutoCloseable {
     public void shutdown() {
         if (taskScheduler != null) {
             taskScheduler.stop();
+            taskScheduler = null;
         }
         if (eventQueue != null) {
             eventQueue.stop();
+            eventQueue = null;
         }
         activeTaskLoopSessions.clear();
         sessionLoopCoordinators.clear();
@@ -1703,8 +1739,11 @@ public class DeepAgent implements AutoCloseable {
             if (taskManager != null) {
                 taskManager.removeTask(TaskFilter.bySessionId(sessionId));
             }
-            if (agent != null && agent.getContextEngine() != null) {
-                agent.getContextEngine().clearContext(null, sessionId);
+            if (agent != null) {
+                agent.getAbilityManager().unregisterSessionTool(sessionId);
+                if (agent.getContextEngine() != null) {
+                    agent.getContextEngine().clearContext(null, sessionId);
+                }
             }
         }
     }
@@ -1871,7 +1910,7 @@ public class DeepAgent implements AutoCloseable {
             innerSession.withTenantContext(ctx);
         }
         innerSession.preRun(effectiveInputs);
-        copySessionState(session, innerSession);
+        mergeSessionState(session, innerSession);
         if (ctx != null && ctx.isTenantAware()) {
             TenantContextHolder.setCurrentTenant(ctx);
             try {
@@ -1897,7 +1936,7 @@ public class DeepAgent implements AutoCloseable {
                 session.writeStream(outputSchema);
             }
         });
-        copySessionState(innerSession, session);
+        replaceSessionState(innerSession, session);
         Map<String, Object> result = extractFinalStreamResult(streamItems);
         List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
         if (!normalizedChunks.isEmpty()) {
@@ -1906,16 +1945,46 @@ public class DeepAgent implements AutoCloseable {
         return result;
     }
 
-    private void copySessionState(AgentSessionApi source, AgentSessionApi target) {
+    @SuppressWarnings("unchecked")
+    private void mergeSessionState(AgentSessionApi source, AgentSessionApi target) {
         if (source == null || target == null) {
             return;
         }
         BaseSession sourceInner = innerOf(source);
         BaseSession targetInner = innerOf(target);
-        if (sourceInner != null && targetInner != null
-                && sourceInner.state() != null && targetInner.state() != null) {
-            targetInner.state().setState(sourceInner.state().getState());
+        if (sourceInner == null || targetInner == null
+                || sourceInner.state() == null || targetInner.state() == null) {
+            return;
         }
+        Map<String, Object> sourceState = sourceInner.state().getState();
+        if (sourceState == null) {
+            return;
+        }
+        Object global = sourceState.get(State.GLOBAL_STATE_KEY);
+        if (global instanceof Map<?, ?> globalMap) {
+            targetInner.state().updateGlobal((Map<String, Object>) globalMap);
+        }
+        Object agentState = sourceState.get(State.AGENT_STATE_KEY);
+        if (agentState instanceof Map<?, ?> agentMap) {
+            targetInner.state().update((Map<String, Object>) agentMap);
+        }
+    }
+
+    /**
+     * Replace an upstream session with the authoritative state produced by a
+     * completed downstream execution, so stale keys are not left behind.
+     */
+    private void replaceSessionState(AgentSessionApi source, AgentSessionApi target) {
+        if (source == null || target == null) {
+            return;
+        }
+        BaseSession sourceInner = innerOf(source);
+        BaseSession targetInner = innerOf(target);
+        if (sourceInner == null || targetInner == null
+                || sourceInner.state() == null || targetInner.state() == null) {
+            return;
+        }
+        targetInner.state().setState(sourceInner.state().getState());
     }
 
     private static BaseSession innerOf(AgentSessionApi session) {
@@ -2144,17 +2213,65 @@ public class DeepAgent implements AutoCloseable {
     /**
      * destroy.
      *
+     * <p>Per-task agents MUST fully release every process-global
+     * registration they made. Before this fix destroy() only stopped the
+     * tmp-file cleaner and cleared session maps, which leaked, per created
+     * agent: one CallbackInfo set in the global callback framework per rail
+     * callback, one task-scheduler thread plus its managed executor entry.</p>
+     *
+     * <p>Terminal one-shot: safe to call from any thread and idempotent,
+     * but the agent MUST NOT be used afterwards.</p>
+     *
      * @since 0.1.7
      */
     public void destroy() {
+        if (!destroyed.compareAndSet(false, true)) {
+            return;
+        }
         if (tmpFileCleaner != null) {
             tmpFileCleaner.stop();
             tmpFileCleaner = null;
         }
-        sessionLoopCoordinators.clear();
-        if (taskManager != null) {
-            taskManager.clearState();
+        destroyRails();
+        destroyTools();
+        if (agent != null) {
+            agent.getAbilityManager().clearAllSessionTools();
         }
+        shutdown();
+    }
+
+    /**
+     * Unregister every rail so the global callback framework stops retaining
+     * this agent's callbacks. Covers both rails registered through
+     * DeepAgent.ensureInitialized and business rails registered directly on
+     * the inner BaseAgent.
+     */
+    private void destroyRails() {
+        for (Object rail : List.copyOf(registeredRails)) {
+            if (rail instanceof DeepAgentRail deepAgentRail) {
+                unbindDeepAgentRailFromAgent(deepAgentRail);
+                deepAgentRail.uninit(this);
+            }
+        }
+        registeredRails.clear();
+        railsBoundToAgent.clear();
+        if (agent != null) {
+            agent.getAgentCallbackManager().unregisterAllRails(agent).toCompletableFuture().join();
+        }
+    }
+
+    /**
+     * Unregister harness tools from the global ResourceMgr so repeated
+     * create/destroy cycles do not accumulate card entries.
+     */
+    private void destroyTools() {
+        for (Object tool : List.copyOf(registeredTools)) {
+            if (tool instanceof Tool toolInstance) {
+                unregisterHarnessTool(toolInstance);
+            }
+        }
+        registeredTools.clear();
+        registeredMcps.clear();
     }
 
     @Override
@@ -2887,6 +3004,9 @@ public class DeepAgent implements AutoCloseable {
                 ? List.of(className)
                 : List.of(module == null || module.isBlank() ? className : module + "." + className, className);
         for (String candidate : candidates) {
+            if (!candidate.startsWith("com.openjiuwen.")) {
+                continue;
+            }
             try {
                 return Class.forName(candidate);
             } catch (ClassNotFoundException ignored) {

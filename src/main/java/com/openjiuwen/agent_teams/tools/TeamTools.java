@@ -707,11 +707,13 @@ public final class TeamTools {
      * {@code openjiuwen/agent_teams/tools/team_tools.py}.</p>
      */
     public static final class TaskCreateTool extends AbstractTeamTool {
+        private final TeamBackend agentTeam;
         private final TeamTaskManager taskManager;
 
         public TaskCreateTool(TeamBackend agentTeam, Translator translator) {
             super(TeamTools.card("team.create_task", "create_task", translator));
-            this.taskManager = Objects.requireNonNull(agentTeam, "agentTeam").getTaskManager();
+            this.agentTeam = Objects.requireNonNull(agentTeam, "agentTeam");
+            this.taskManager = agentTeam.getTaskManager();
         }
 
         @Override
@@ -762,21 +764,44 @@ public final class TeamTools {
         }
 
         private TaskCreateResult createOne(Map<String, Object> spec) {
+            String assigneeError = validateCreateAssignee(spec);
+            if (assigneeError != null) {
+                return TaskCreateResult.fail(assigneeError);
+            }
+            String assignee = emptyToNull(stringValue(spec.get("assignee")));
             if (isPresent(spec.get("depended_by"))) {
                 return join(taskManager.addWithPriority(
                         stringValue(spec.get("title")),
                         stringValue(spec.get("content")),
                         emptyToNull(stringValue(spec.get("task_id"))),
                         stringList(spec.get("depends_on")),
-                        stringList(spec.get("depended_by"))
+                        stringList(spec.get("depended_by")),
+                        assignee
                 ));
             }
             return join(taskManager.add(
                     stringValue(spec.get("title")),
                     stringValue(spec.get("content")),
                     emptyToNull(stringValue(spec.get("task_id"))),
-                    stringList(spec.get("depends_on"))
+                    stringList(spec.get("depends_on")),
+                    assignee
             ));
+        }
+
+        private String validateCreateAssignee(Map<String, Object> spec) {
+            String assignee = emptyToNull(stringValue(spec.get("assignee")));
+            if (assignee == null) {
+                return null;
+            }
+            String leader = agentTeam.getLeaderMemberName();
+            if (leader != null && !leader.isBlank() && leader.equals(assignee)) {
+                return "Task '" + specLabel(spec) + "': assignee '" + assignee
+                        + "' is the team leader; assign tasks to teammates";
+            }
+            if (join(agentTeam.getMember(assignee)).isEmpty()) {
+                return "Task '" + specLabel(spec) + "': member '" + assignee + "' not found in the team";
+            }
+            return null;
         }
 
         @Override
@@ -955,6 +980,13 @@ public final class TeamTools {
                 }
             }
             if (assignee != null) {
+                String busyTaskId = join(taskManager.getOtherActiveTaskId(assignee, taskId));
+                if (busyTaskId != null) {
+                    return ToolOutput.failure(
+                            "Member '" + assignee + "' already has an active task " + busyTaskId
+                                    + "; complete or reset it first"
+                    );
+                }
                 if (task.getAssignee() != null && !Objects.equals(task.getAssignee(), assignee)) {
                     if (isHumanAgentLocked(task)) {
                         return ToolOutput.failure(translator.translate(
@@ -1107,6 +1139,13 @@ public final class TeamTools {
                 TaskOpResult result;
                 String targetStatus;
                 if (TaskStatus.CLAIMED.value().equals(status)) {
+                    String busyTaskId = join(taskManager.getOtherActiveTaskId(taskManager.getMemberName(), taskId));
+                    if (busyTaskId != null && !busyTaskId.isBlank()) {
+                        return ToolOutput.failure(
+                                "You already have an active task #" + busyTaskId
+                                        + "; complete it before claiming another."
+                        );
+                    }
                     result = join(taskManager.claim(taskId));
                     targetStatus = TaskStatus.CLAIMED.value();
                 } else if (TaskStatus.COMPLETED.value().equals(status)) {
@@ -1428,7 +1467,18 @@ public final class TeamTools {
                     "reason", stringParam(translator, name, "reason")
             ), List.of("approved"));
             case "create_task" -> objectSchema(Map.of(
-                    "tasks", typedParam("array", translator, name, "tasks")
+                    "tasks", linkedMap(
+                            "type", "array",
+                            "description", safeTranslate(translator, name, "tasks"),
+                            "items", objectSchema(linkedMap(
+                                    "task_id", stringParam(translator, name, "task.task_id"),
+                                    "title", stringParam(translator, name, "task.title"),
+                                    "content", stringParam(translator, name, "task.content"),
+                                    "depends_on", typedParam("array", translator, name, "task.depends_on"),
+                                    "depended_by", typedParam("array", translator, name, "task.depended_by"),
+                                    "assignee", stringParam(translator, name, "task.assignee")
+                            ), List.of("title", "content"))
+                    )
             ), List.of("tasks"));
             case "view_task" -> objectSchema(Map.of(
                     "action", enumParam(translator, name, "action", List.of("list", "get", "claimable")),
@@ -1545,7 +1595,8 @@ public final class TeamTools {
             return linkedMap(
                     "task_id", teamTask.getTaskId(),
                     "title", teamTask.getTitle(),
-                    "status", teamTask.getStatus()
+                    "status", teamTask.getStatus(),
+                    "assignee", teamTask.getAssignee()
             );
         }
         return objectMap(task);

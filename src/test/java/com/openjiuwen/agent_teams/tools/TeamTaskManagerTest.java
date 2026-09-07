@@ -98,6 +98,63 @@ class TeamTaskManagerTest {
     }
 
     @Test
+    void createTaskOptionalAssigneeStaysPendingUntilOwnerClaims() {
+        InMemoryTeamDatabase database = database();
+        RecordingMessager messager = new RecordingMessager();
+        TeamTaskManager leader = new TeamTaskManager("team-a", "leader", database, messager, tempDir, null, "leader");
+        TeamTaskManager worker = new TeamTaskManager("team-a", "worker", database, messager, tempDir, null, "leader");
+
+        TaskCreateResult created = leader.add("Assigned", "do it", "task-assigned", null, "worker")
+                .toCompletableFuture()
+                .join();
+        TaskCreateResult unknown = leader.add("Missing", "no", "task-missing", null, "ghost")
+                .toCompletableFuture()
+                .join();
+        TaskCreateResult toLeader = leader.add("Lead", "no", "task-leader", null, "leader")
+                .toCompletableFuture()
+                .join();
+
+        assertThat(created.ok()).isTrue();
+        assertThat(created.task()).isInstanceOf(TeamTask.class);
+        TeamTask createdTask = (TeamTask) created.task();
+        assertThat(createdTask.getStatus()).isEqualTo(TaskStatus.PENDING.value());
+        assertThat(createdTask.getAssignee()).isEqualTo("worker");
+        assertThat(unknown.ok()).isFalse();
+        assertThat(unknown.reason()).contains("ghost").contains("not found");
+        assertThat(toLeader.ok()).isFalse();
+        assertThat(toLeader.reason()).contains("team leader");
+
+        TaskOpResult otherClaim = leader.claim("task-assigned").toCompletableFuture().join();
+        TaskOpResult ownerClaim = worker.claim("task-assigned").toCompletableFuture().join();
+        assertThat(otherClaim.ok()).isFalse();
+        assertThat(otherClaim.reason()).contains("already claimed by worker");
+        assertThat(ownerClaim.ok()).isTrue();
+        assertThat(database.getTask("task-assigned").join()).get()
+                .extracting(TeamTask::getStatus)
+                .isEqualTo(TaskStatus.CLAIMED.value());
+    }
+
+    @Test
+    void claimRejectsSecondActiveTaskForSameMember() {
+        InMemoryTeamDatabase database = database();
+        RecordingMessager messager = new RecordingMessager();
+        TeamTaskManager worker = new TeamTaskManager("team-a", "worker", database, messager, tempDir, null, "leader");
+        worker.add("First", "one", "task-1", null).toCompletableFuture().join();
+        worker.add("Second", "two", "task-2", null).toCompletableFuture().join();
+
+        assertThat(worker.claim("task-1").toCompletableFuture().join().ok()).isTrue();
+        TaskOpResult second = worker.claim("task-2").toCompletableFuture().join();
+        assertThat(second.ok()).isFalse();
+        assertThat(second.reason()).contains("already has an active task task-1");
+
+        TaskOpResult assignBusy = worker.assign("task-2", "worker").toCompletableFuture().join();
+        assertThat(assignBusy.ok()).isFalse();
+        assertThat(assignBusy.reason()).contains("already has an active task task-1");
+        TaskOpResult assignPlanner = worker.assign("task-2", "planner").toCompletableFuture().join();
+        assertThat(assignPlanner.ok()).isTrue();
+    }
+
+    @Test
     void submitPlanCopiesPlanClaimsTaskNotifiesLeaderAndApprovalControlsDecision() throws Exception {
         InMemoryTeamDatabase database = database();
         RecordingMessager messager = new RecordingMessager();

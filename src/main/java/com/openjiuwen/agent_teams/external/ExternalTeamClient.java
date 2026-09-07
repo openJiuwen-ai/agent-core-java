@@ -452,7 +452,18 @@ public class ExternalTeamClient implements AutoCloseable {
 
         @Override
         public CompletionStage<Boolean> createTask(String taskId, String teamName, String title, String content, String status) {
-            return taskDao.createTask(taskId, teamName, title, content, status);
+            return createTask(taskId, teamName, title, content, status, null);
+        }
+
+        @Override
+        public CompletionStage<Boolean> createTask(
+                String taskId,
+                String teamName,
+                String title,
+                String content,
+                String status,
+                String assignee) {
+            return taskDao.createTask(taskId, teamName, title, content, status, assignee);
         }
 
         @Override

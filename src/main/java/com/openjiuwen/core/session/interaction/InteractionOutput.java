@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.interaction;
 
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
@@ -28,12 +30,12 @@ public class InteractionOutput implements Serializable {
     }
 
     public InteractionOutput(Object value) {
-        this.value = value;
+        this.value = normalizeValue(value);
     }
 
     public InteractionOutput(String id, Object value) {
         this.id = id;
-        this.value = value;
+        this.value = normalizeValue(value);
     }
 
     public String getId() {
@@ -49,7 +51,11 @@ public class InteractionOutput implements Serializable {
     }
 
     public void setValue(Object value) {
-        this.value = value;
+        this.value = normalizeValue(value);
+    }
+
+    private static Object normalizeValue(Object value) {
+        return value == null ? null : SerializationUtils.requireSerializable(value, "value");
     }
 
     public Map<String, Object> getMetadata() {

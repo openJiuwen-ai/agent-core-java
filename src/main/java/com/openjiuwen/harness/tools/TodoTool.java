@@ -210,13 +210,24 @@ public class TodoTool {
         switch (action) {
             case "delete" -> deleteTodos(todos, stringList(inputs.get("ids")));
             case "cancel" -> cancelTodos(todos, stringList(inputs.get("ids")));
-            case "update" -> applyUpdates(todos, mapList(inputs.get("todos")));
+            case "update" -> applyUpdates(todos, resolveUpdates(inputs));
             case "append" -> appendTodos(todos, mapList(inputs.get("todos")));
             case "insert_after" -> insertTodos(todos, mapValue(inputs.get("todo_data")), true);
             case "insert_before" -> insertTodos(todos, mapValue(inputs.get("todo_data")), false);
             default -> throw new IllegalArgumentException("Invalid action: " + action);
         }
         validateSingleInProgress(todos);
+    }
+
+    /**
+     * Resolves the update payload; the primary {@code todos} field takes precedence over the
+     * compatibility {@code updates} field.
+     */
+    private static List<Map<String, Object>> resolveUpdates(Map<String, Object> inputs) {
+        if (inputs.containsKey("todos")) {
+            return mapList(inputs.get("todos"));
+        }
+        return mapList(inputs.get("updates"));
     }
 
     /**
@@ -227,6 +238,7 @@ public class TodoTool {
      * @since 0.1.7
      */
     private static void applyUpdates(List<TodoItem> todos, List<Map<String, Object>> updates) {
+        requireTodoMaps(updates, "update");
         for (Map<String, Object> update : updates) {
             if (update == null) {
                 continue;

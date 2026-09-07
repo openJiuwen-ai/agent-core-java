@@ -12,6 +12,8 @@ import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
 import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -305,6 +307,38 @@ class SerializerTest {
         assertTrue(pendingBuffer.getMessage().contains("pendingBuffer"));
         assertTrue(pendingNode.getMessage().contains("pendingNode"));
         assertTrue(nodeVersion.getMessage().contains("nodeVersion"));
+    }
+
+    @Test
+    void javaSerializerRejectsClassesOutsideAllowlist() throws Exception {
+        Serializer serializer = Serializer.create("java");
+        byte[] bytes;
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+            oos.writeObject(new java.net.URL("https://example.com"));
+            bytes = bos.toByteArray();
+        }
+        Serializer.TypedBytes data = new Serializer.TypedBytes("java", bytes);
+        assertThrows(IllegalStateException.class, () -> serializer.loadsTyped(data));
+    }
+
+    @Test
+    void javaSerializerRoundTripsGraphStoreStateWithSerializablePayloads() {
+        Serializer serializer = Serializer.create("java");
+        Message pendingMessage = new Message("sender", "target", Map.of("event", "pending"));
+        GraphStoreState state = GraphStoreState.create(
+                "workflow",
+                2,
+                Map.of("channel", "value"),
+                List.of(pendingMessage),
+                Map.of(),
+                Map.of("start", 1)
+        );
+
+        GraphStoreState restored = (GraphStoreState) serializer.loadsTyped(serializer.dumpsTyped(state));
+
+        assertEquals("value", restored.getChannelValues().get("channel"));
+        assertEquals(Map.of("event", "pending"), restored.getPendingBuffer().get(0).getPayload());
     }
 
     private static Serializer.TypedBytes jsonBytes(String json) {

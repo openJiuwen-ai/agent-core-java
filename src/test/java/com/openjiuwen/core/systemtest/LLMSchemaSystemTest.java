@@ -229,6 +229,33 @@ class LLMSchemaSystemTest {
         }
 
         @Test
+        @DisplayName("Empty tool-call placeholders do not steal later argument fragments")
+        void testMergeSkipsVacuousToolCallFragments() {
+            AssistantMessageChunk named = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("call_1")
+                            .name("search")
+                            .arguments("{\"q")
+                            .build()))
+                    .build();
+            AssistantMessageChunk empty = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder().build()))
+                    .build();
+            AssistantMessageChunk args = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder().arguments("\":\"hi\"}").build()))
+                    .build();
+
+            AssistantMessageChunk merged = named.merge(empty).merge(args);
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_1", merged.getToolCalls().get(0).getId());
+            assertEquals("search", merged.getToolCalls().get(0).getName());
+            assertEquals("{\"q\":\"hi\"}", merged.getToolCalls().get(0).getArguments());
+        }
+
+        @Test
         @DisplayName("Merge multiple parallel tool call deltas distinguished by index")
         void testMergeMultipleParallelToolCallsByIndex() {
             ToolCall tc1f1 = ToolCall.builder()

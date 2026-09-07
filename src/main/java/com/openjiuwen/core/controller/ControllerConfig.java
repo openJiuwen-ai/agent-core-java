@@ -6,6 +6,7 @@ package com.openjiuwen.core.controller;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +21,7 @@ import java.util.List;
 public class ControllerConfig {
 
     @JsonProperty("max_concurrent_tasks")
-    private int maxConcurrentTasks = 5;
+    private int maxConcurrentTasks = OpenJiuwenExecutors.defaultTaskConcurrency();
 
     @JsonProperty("schedule_interval")
     private double scheduleInterval = 1.0;

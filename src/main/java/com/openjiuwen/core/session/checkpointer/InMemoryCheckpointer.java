@@ -4,6 +4,12 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import com.google.common.base.Ticker;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalCause;
+import com.google.common.cache.RemovalNotification;
+
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -29,20 +35,82 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 /**
  * In-memory checkpointer implementation.
+ *
+ * <p>Checkpoints are kept per session so an interrupted execution can resume later.
+ * To keep memory bounded in long-running processes, sessions are evicted with a
+ * combined TTL + capacity policy backed by a Guava {@link Cache}: entries not
+ * written within the TTL (default 7 days, aligned with the Redis checkpointer's
+ * {@code default_ttl}) are expired, and when the number of tracked sessions
+ * exceeds the capacity limit (default 100) the least recently written sessions
+ * are evicted first.</p>
+ *
+ * <p>Eviction is lazy: Guava expires entries during cache maintenance that runs
+ * on read and write activity, not on a background timer.</p>
  *
  * <p>Mirrors Python's {@code InMemoryCheckpointer} in
  * {@code openjiuwen/core/session/checkpointer/inmemory.py}.</p>
  */
 public class InMemoryCheckpointer extends Checkpointer {
 
+    /** Default TTL in milliseconds: 7 days, aligned with the Redis checkpointer default. */
+    static final long DEFAULT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000;
+
+    /** Default maximum number of tracked sessions before least-recently-written eviction. */
+    static final int DEFAULT_MAX_SESSIONS = 100;
+
     private final Map<String, AgentStorage> agentStores = new ConcurrentHashMap<>();
     private final Map<String, AgentTeamStorage> agentTeamStores = new ConcurrentHashMap<>();
     private final Map<String, WorkflowStorage> workflowStores = new ConcurrentHashMap<>();
     private final Store graphStore = new InMemoryStore();
     private final Map<String, Set<String>> sessionToWorkflowIds = new ConcurrentHashMap<>();
+
+    private final long ttlMillis;
+    private final int maxSessions;
+    private final LongSupplier clock;
+    private final Cache<String, Boolean> sessionRegistry;
+
+    public InMemoryCheckpointer() {
+        this(DEFAULT_TTL_MILLIS, DEFAULT_MAX_SESSIONS, System::currentTimeMillis);
+    }
+
+    /**
+     * Create a checkpointer with a custom eviction policy.
+     *
+     * @param ttlMillis time-to-live per session in milliseconds; non-positive disables TTL eviction
+     * @param maxSessions maximum number of tracked sessions; non-positive disables capacity eviction
+     * @param clock wall-clock source in milliseconds
+     */
+    InMemoryCheckpointer(long ttlMillis, int maxSessions, LongSupplier clock) {
+        this.ttlMillis = ttlMillis;
+        this.maxSessions = maxSessions;
+        this.clock = clock != null ? clock : System::currentTimeMillis;
+        CacheBuilder<Object, Object> builder = CacheBuilder.newBuilder();
+        if (ttlMillis > 0) {
+            builder.expireAfterWrite(ttlMillis, TimeUnit.MILLISECONDS);
+        }
+        if (maxSessions > 0) {
+            builder.maximumSize(maxSessions);
+        }
+        this.sessionRegistry = builder
+                .ticker(new Ticker() {
+                    @Override
+                    public long read() {
+                        return TimeUnit.MILLISECONDS.toNanos(InMemoryCheckpointer.this.clock.getAsLong());
+                    }
+                })
+                .removalListener((RemovalNotification<String, Boolean> notification) -> {
+                    if (notification.getCause() != RemovalCause.EXPLICIT
+                            && notification.getCause() != RemovalCause.REPLACED) {
+                        evictSession(notification.getKey());
+                    }
+                })
+                .build();
+    }
 
     String tenantAwareSessionId(String sessionId) {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
@@ -57,6 +125,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         String sessionId = tenantAwareSessionId(session.sessionId());
         AgentStorage agentStorage = agentStores.computeIfAbsent(sessionId, ignored -> new AgentStorage());
         agentStorage.recover(session);
+        touchSession(sessionId);
         if (inputs != null && session.state() != null) {
             session.state().update(mapOf(Constant.INTERACTIVE_INPUT, new ArrayList<>(List.of(inputs))));
         }
@@ -76,6 +145,7 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent store not found"
             );
         }
+        touchSession(tenantAwareSessionId(session.sessionId()));
         agentStorage.save(session);
     }
 
@@ -93,6 +163,7 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent store not found"
             );
         }
+        touchSession(tenantAwareSessionId(session.sessionId()));
         agentStorage.save(session);
     }
 
@@ -101,6 +172,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         String sessionId = tenantAwareSessionId(session.sessionId());
         AgentTeamStorage teamStorage = agentTeamStores.computeIfAbsent(sessionId, ignored -> new AgentTeamStorage());
         teamStorage.recover(session);
+        touchSession(sessionId);
         if (inputs != null && session.state() != null) {
             session.state().updateGlobal(mapOf(Constant.INTERACTIVE_INPUT, new ArrayList<>(List.of(inputs))));
         }
@@ -120,6 +192,7 @@ public class InMemoryCheckpointer extends Checkpointer {
                     "agent team store not found"
             );
         }
+        touchSession(tenantAwareSessionId(session.sessionId()));
         teamStorage.save(session);
     }
 
@@ -205,6 +278,7 @@ public class InMemoryCheckpointer extends Checkpointer {
             }
             return;
         }
+        unregisterSession(tid);
 
         Set<String> workflowIds = sessionToWorkflowIds.get(tid);
         if (workflowIds != null) {
@@ -233,6 +307,7 @@ public class InMemoryCheckpointer extends Checkpointer {
         String workflowId = Checkpointer.workflowId(session);
         WorkflowStorage workflowStorage = workflowStores.computeIfAbsent(sessionId, ignored -> new WorkflowStorage());
         sessionToWorkflowIds.computeIfAbsent(sessionId, ignored -> ConcurrentHashMap.newKeySet());
+        touchSession(sessionId);
 
         if (inputs != null) {
             workflowStorage.recover(session, inputs);
@@ -255,6 +330,7 @@ public class InMemoryCheckpointer extends Checkpointer {
     }
 
     private void saveWorkflowCheckpoint(String sessionId, String workflowId, BaseSession session) {
+        touchSession(sessionId);
         WorkflowStorage workflowStorage = Objects.requireNonNull(workflowStores.get(sessionId), "workflowStorage");
         workflowStorage.save(session);
         sessionToWorkflowIds.computeIfAbsent(sessionId, ignored -> ConcurrentHashMap.newKeySet()).add(workflowId);
@@ -270,6 +346,58 @@ public class InMemoryCheckpointer extends Checkpointer {
         if (workflowIds != null) {
             workflowIds.remove(workflowId);
         }
+    }
+
+    /**
+     * Record a write for the session. Expiration and capacity eviction are
+     * applied lazily by the Guava cache. A read does not refresh the TTL.
+     */
+    private void touchSession(String tid) {
+        sessionRegistry.put(tid, Boolean.TRUE);
+    }
+
+    /**
+     * Run pending cache maintenance immediately. Tests call it to make eviction deterministic.
+     */
+    void cleanUpRegistry() {
+        sessionRegistry.cleanUp();
+    }
+
+    /**
+     * Stop tracking a session without touching its checkpoints.
+     */
+    private void unregisterSession(String tid) {
+        sessionRegistry.invalidate(tid);
+    }
+
+    /**
+     * Remove all checkpoint state for a session evicted by the TTL or capacity policy.
+     */
+    private void evictSession(String tid) {
+        sessionToWorkflowIds.remove(tid);
+        graphStore.delete(tid, null).toCompletableFuture().join();
+        String rawSessionId = stripTenantPrefix(tid);
+        if (rawSessionId != null && !rawSessionId.equals(tid)) {
+            graphStore.delete(rawSessionId, null).toCompletableFuture().join();
+        }
+        for (String storedSessionId : new ArrayList<>(agentStores.keySet())) {
+            if (storedSessionId.equals(tid) || storedSessionId.startsWith(tid)) {
+                agentStores.remove(storedSessionId);
+            }
+        }
+        agentTeamStores.remove(tid);
+        workflowStores.remove(tid);
+    }
+
+    /**
+     * Extract the raw sessionId from a tenant-prefixed tid.
+     */
+    private static String stripTenantPrefix(String tid) {
+        if (tid == null) {
+            return null;
+        }
+        int colon = tid.indexOf(':');
+        return colon >= 0 ? tid.substring(colon + 1) : tid;
     }
 
     private static boolean containsInterrupt(Object result) {

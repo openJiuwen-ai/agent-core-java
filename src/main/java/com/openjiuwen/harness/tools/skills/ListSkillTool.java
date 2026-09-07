@@ -53,6 +53,13 @@ public class ListSkillTool extends AbstractHarnessTool {
             }
             List<String> selectedNames = skillRouter.route(query, dumpSkills(skills));
             List<SkillDescriptor> selected = selectByName(skills, selectedNames);
+            if (selected.isEmpty()) {
+                return ToolOutput.success(Map.of(
+                        "skills", dumpSkills(skills),
+                        "mode", "all",
+                        "message", "filtered result is empty, fallback to all skills."
+                ));
+            }
             return ToolOutput.success(Map.of(
                     "skills", dumpSkills(selected),
                     "mode", "filtered",

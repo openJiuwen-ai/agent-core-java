@@ -119,16 +119,21 @@ class LoggerPythonParityTest {
     }
 
     private void threadTraceIdIsolation() throws Exception {
+        // Use a dedicated log type and set the factory before the provider so a
+        // stray LogManager initialization from a leftover background thread (the
+        // single-fork suite JVM is shared) can never pre-register "common" with
+        // the real DefaultLogger factory and steal this test's messages.
         RecordingLogger commonLogger = new RecordingLogger("common");
-        LogManager.LogConfigProvider.setProvider(() -> Map.of("common", config(LogLevels.INFO)));
-        LogManager.setDefaultLoggerFactory((logType, config) -> commonLogger);
+        String logType = "logger-parity-trace-isolation";
+        LogManager.setDefaultLoggerFactory((type, config) -> commonLogger);
+        LogManager.LogConfigProvider.setProvider(() -> Map.of(logType, config(LogLevels.INFO)));
 
         List<List<String>> recorded = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(3);
         List<Thread> threads = List.of(
-                threadForSession("10001", recorded, latch),
-                threadForSession("10002", recorded, latch),
-                threadForSession("10003", recorded, latch)
+                threadForSession(logType, "10001", recorded, latch),
+                threadForSession(logType, "10002", recorded, latch),
+                threadForSession(logType, "10003", recorded, latch)
         );
         for (Thread thread : threads) {
             thread.start();
@@ -147,9 +152,10 @@ class LoggerPythonParityTest {
         assertTrue(commonLogger.infoMessages.toString().contains("10003"));
     }
 
-    private static Thread threadForSession(String sessionId, List<List<String>> recorded, CountDownLatch latch) {
+    private static Thread threadForSession(String logType, String sessionId, List<List<String>> recorded,
+            CountDownLatch latch) {
         return new Thread(() -> {
-            LoggerProtocol logger = LogManager.getLogger("common");
+            LoggerProtocol logger = LogManager.getLogger(logType);
             LoggingUtils.setSessionId(sessionId);
             logger.info("Thread started with session id " + sessionId);
             recorded.add(List.of(sessionId, LoggingUtils.getSessionId()));

@@ -541,7 +541,9 @@ public class TaskScheduler {
 
                 lock.lock();
                 try {
-                    if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
+                    if (config.getMaxConcurrentTasks() > 0
+                            && !OpenJiuwenExecutors.isVirtualThreadSupported()
+                            && runningTasks.size() >= config.getMaxConcurrentTasks()) {
                         Loggers.CONTROLLER.warning(
                                 "Reached max concurrent tasks limit ({}), waiting for next schedule",
                                 config.getMaxConcurrentTasks());
@@ -617,15 +619,10 @@ public class TaskScheduler {
             schedulerFuture.cancel(true);
         }
         if (scheduler != null) {
-            scheduler.shutdown();
-            try {
-                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    scheduler.shutdownNow();
-                }
-            } catch (InterruptedException ex) {
-                scheduler.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+            // Route through OpenJiuwenExecutors.shutdown so the terminated
+            // pool is also deregistered from the static MANAGED_EXECUTORS
+            // registry instead of lingering forever.
+            OpenJiuwenExecutors.shutdown(scheduler);
         }
 
         // Wait for running tasks

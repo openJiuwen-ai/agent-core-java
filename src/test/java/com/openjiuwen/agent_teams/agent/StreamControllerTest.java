@@ -125,14 +125,48 @@ class StreamControllerTest {
     }
 
     @Test
-    void teamCleanedClosesStreamAfterRound() {
+    void shutdownRequestedClosesStreamAfterRound() {
         TeamAgentState state = new TeamAgentState();
-        state.setTeamCleaned(true);
+        state.setTeamMember(memberWithStatus(MemberStatus.SHUTDOWN_REQUESTED));
         StreamController controller = controller(new RuntimeStub(List.of()), state);
 
         controller.runOneRound("query").toCompletableFuture().join();
 
         assertThat(controller.getRawStreamQueue()).containsExactly((Object) null);
+    }
+
+    @Test
+    void startRoundRefusesWhenTeamCleaned() {
+        TeamAgentState state = new TeamAgentState();
+        state.setTeamCleaned(true);
+        StreamController controller = controller(new RuntimeStub(List.of()), state);
+
+        controller.startRound("query").toCompletableFuture().join();
+
+        assertThat(controller.getAgentTask()).isNull();
+        assertThat(controller.getRawStreamQueue()).containsExactly((Object) null);
+    }
+
+    @Test
+    void startRoundRefusesWhenShutdownRequested() {
+        TeamAgentState state = new TeamAgentState();
+        state.setTeamMember(memberWithStatus(MemberStatus.SHUTDOWN_REQUESTED));
+        StreamController controller = controller(new RuntimeStub(List.of()), state);
+
+        controller.startRound("query").toCompletableFuture().join();
+
+        assertThat(controller.getAgentTask()).isNull();
+        assertThat(controller.getRawStreamQueue()).containsExactly((Object) null);
+    }
+
+    private static TeamMember memberWithStatus(MemberStatus status) {
+        return new TeamMember(
+                "leader",
+                "team",
+                new AgentCard("card", "card", "desc"),
+                new FixedStatusStore(status),
+                new NoopMessager()
+        );
     }
 
     @Test
@@ -703,6 +737,79 @@ class StreamControllerTest {
         @Override
         public Object sysOperation() {
             return null;
+        }
+    }
+
+    private static final class FixedStatusStore implements TeamMember.MemberStore {
+        private final MemberStatus status;
+
+        private FixedStatusStore(MemberStatus status) {
+            this.status = status;
+        }
+
+        @Override
+        public CompletionStage<TeamMember.MemberSnapshot> getMember(String memberName, String teamName) {
+            return CompletableFuture.completedFuture(
+                    new TeamMember.MemberSnapshot(status.value(), ExecutionStatus.IDLE.value())
+            );
+        }
+
+        @Override
+        public CompletionStage<Boolean> updateMemberStatus(String memberName, String teamName, String nextStatus) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        @Override
+        public CompletionStage<Boolean> updateMemberExecutionStatus(
+                String memberName,
+                String teamName,
+                String executionStatus) {
+            return CompletableFuture.completedFuture(true);
+        }
+    }
+
+    private static final class NoopMessager implements com.openjiuwen.agent_teams.messager.Messager {
+        @Override
+        public CompletionStage<Void> start() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> stop() {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> publish(String topicId, com.openjiuwen.agent_teams.schema.events.EventMessage message) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> subscribe(
+                String topicId,
+                com.openjiuwen.agent_teams.messager.MessagerHandler handler) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> unsubscribe(String topicId) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> send(String agentId, com.openjiuwen.agent_teams.schema.events.EventMessage message) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> registerDirectMessageHandler(
+                com.openjiuwen.agent_teams.messager.MessagerHandler handler) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<Void> unregisterDirectMessageHandler() {
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

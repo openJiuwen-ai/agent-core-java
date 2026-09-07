@@ -156,13 +156,17 @@ public class StreamActor {
      * Waits for the stream call and processor tasks to complete.
      */
     public void awaitCompletion() {
+        CompletableFuture<Void> taskComp;
+        List<RunningTask> tasks;
         synchronized (startGuard) {
-            if (taskCompletion != null) {
-                awaitCompletion(taskCompletion, "stream actor task");
-            }
-            for (RunningTask runningTask : runningTasks) {
-                awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
-            }
+            taskComp = taskCompletion;
+            tasks = new ArrayList<>(runningTasks);
+        }
+        if (taskComp != null) {
+            awaitCompletion(taskComp, "stream actor task");
+        }
+        for (RunningTask runningTask : tasks) {
+            awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
         }
     }
 
@@ -180,35 +184,37 @@ public class StreamActor {
      * Cancels the stream call and all processor tasks.
      */
     public void shutdown() {
+        LOGGER.debug("Begin to shutdown stream actor task for {}", nodeId);
+        CompletableFuture<Void> currentTaskCompletion;
+        List<RunningTask> tasks;
         synchronized (startGuard) {
-            LOGGER.debug("Begin to shutdown stream actor task for {}", nodeId);
-            try {
-                if (task != null && !task.isDone() && !task.isCancelled()) {
-                    task.cancel(true);
-                }
-                if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
-                    taskError.cancel(true);
-                }
-                for (RunningTask runningTask : runningTasks) {
-                    Future<?> future = runningTask.future();
-                    if (!future.isDone() && !future.isCancelled()) {
-                        future.cancel(true);
-                    }
-                }
-
-                if (taskCompletion != null) {
-                    awaitCompletion(taskCompletion, "stream actor task");
-                }
-                for (RunningTask runningTask : runningTasks) {
-                    awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
-                }
-                LOGGER.debug("Succeed to shutdown stream actor task for {}", nodeId);
-            } finally {
-                task = null;
-                taskCompletion = null;
-                runningTasks.clear();
+            if (task != null && !task.isDone() && !task.isCancelled()) {
+                task.cancel(true);
             }
+            if (taskError != null && !taskError.isDone() && !taskError.isCancelled()) {
+                taskError.cancel(true);
+            }
+            tasks = new ArrayList<>(runningTasks);
+            for (RunningTask runningTask : tasks) {
+                Future<?> future = runningTask.future();
+                if (!future.isDone() && !future.isCancelled()) {
+                    future.cancel(true);
+                }
+            }
+            currentTaskCompletion = taskCompletion;
         }
+        if (currentTaskCompletion != null) {
+            awaitCompletion(currentTaskCompletion, "stream actor task");
+        }
+        for (RunningTask runningTask : tasks) {
+            awaitCompletion(runningTask.completion(), "stream actor processor " + runningTask.ability().name());
+        }
+        synchronized (startGuard) {
+            task = null;
+            taskCompletion = null;
+            runningTasks.clear();
+        }
+        LOGGER.debug("Succeed to shutdown stream actor task for {}", nodeId);
     }
 
     private CountDownLatch beginStreamCall() {

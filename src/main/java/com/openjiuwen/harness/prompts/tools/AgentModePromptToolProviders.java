@@ -15,19 +15,19 @@ import java.util.Map;
 public final class AgentModePromptToolProviders {
 
     private static final String SWITCH_MODE_DESCRIPTION_CN = """
-            鍦?normal 涓?plan 妯″紡闂村垏鎹㈠綋鍓嶄細璇濇ā寮忋€?
+            在 normal 与 plan 模式间切换当前会话模式。
 
-            浣曟椂浣跨敤锛?
-            - 鐢ㄦ埛鏄庣‘瑕佹眰鍙仛瑙勫垝銆佷笉鍋氬疄鐜版椂锛岋紙e.g.鍒囧埌 plan 妯″紡锛夈€?
-            - 浣犲垽鏂綋鍓嶆ā寮忎笉閫傚悎璇ヤ换鍔°€?
-            - 浠诲姟鐨勫鏉傚害鎴栭渶姹傚彂鐢熸樉钁楀彉鍖栥€?
+            何时使用：
+            - 用户明确要求只做规划、不做实现时，（e.g.切到 plan 模式）。
+            - 你判断当前模式不适合该任务。
+            - 任务的复杂度或需求发生显著变化。
 
-            妯″紡璇存槑锛?
-            - plan锛氳鍒掍紭鍏堛€傞櫎 plan 鏂囦欢澶栦粎鍏佽鍙鎿嶄綔銆?
-            - normal锛氬畬鏁寸殑寮€鍙戞潈闄愶紝鍙慨鏀规枃浠跺苟鎵ц鍛戒护銆?
+            模式说明：
+            - plan：规划优先。除 plan 文件外仅允许只读操作。
+            - normal：完整的开发权限，可修改文件并执行命令。
 
-            娉ㄦ剰锛?
-            - 鍦ㄦ剰鍥句笉鏄庣‘鏃跺厛鐢?ask_user 婢勬竻锛屽啀鍒囨崲妯″紡銆?
+            注意：
+            - 在意图不明确时先用 ask_user 澄清，再切换模式。
             """;
 
     private static final String SWITCH_MODE_DESCRIPTION_EN = """
@@ -47,19 +47,15 @@ public final class AgentModePromptToolProviders {
             """;
 
     private static final String ENTER_PLAN_MODE_DESCRIPTION_CN = """
-            鍒濆鍖?plan 鏂囦欢骞惰繑鍥炴枃浠惰矾寰勩€傚湪 plan 妯″紡涓嬶紝杩欏繀椤绘槸浣犵殑绗竴涓搷浣溿€?
-            璇ュ伐鍏蜂細鍒涘缓涓€涓柊鐨?plan 鏂囦欢锛堝箓绛夛細鑻ュ凡瀛樺湪鍒欑洿鎺ヨ繑鍥炶矾寰勶級銆?
+            初始化 plan 文件并返回文件路径。在 plan 模式下，如需生成正式计划可调用此工具；只读操作（如 gh/git 只读命令、read_file、grep 等）可直接执行，无需先调用本工具。该工具会创建一个新的 plan 文件（幂等：若已存在则直接返回路径）。
             """;
 
     private static final String ENTER_PLAN_MODE_DESCRIPTION_EN = """
-            Initialize the plan file and return its path. In plan mode this must be your very first action.
-            Creates a new plan file (idempotent: returns the existing path if already created).
+            Initialize the plan file and return its path. In plan mode, call this tool when you need to produce a formal plan; read-only actions (e.g. read-only gh/git commands, read_file, grep) can be run directly without calling this first. Creates a new plan file (idempotent: returns the existing path if already created).
             """;
 
     private static final String EXIT_PLAN_MODE_DESCRIPTION_CN = """
-            璇诲彇 plan 鏂囦欢鍏ㄦ枃骞剁洿鎺ヨ繑鍥炵粰鐢ㄦ埛锛岀粨鏉熻鍒掗樁娈碉紝璇锋眰鐢ㄦ埛瀹℃壒鏄惁瑕佸垏鎹㈠埌 normal 妯″紡鎵ц銆?
-            褰撲綘瀵规渶缁?plan 鏂囦欢婊℃剰鏃讹紝蹇呴』璋冪敤姝ゅ伐鍏风粨鏉熻鍒掗樁娈点€?
-            tool_result 涓寘鍚畬鏁磋鍒掑唴瀹广€?
+            读取 plan 文件全文并直接返回给用户，结束规划阶段，请求用户审批是否要切换到 normal 模式执行。当你对最终 plan 文件满意时，必须调用此工具结束规划阶段。tool_result 中包含完整计划内容。
             """;
 
     private static final String EXIT_PLAN_MODE_DESCRIPTION_EN = """
@@ -75,7 +71,7 @@ public final class AgentModePromptToolProviders {
     public static Map<String, Object> getSwitchModeInputParams(String language) {
         String description = "en".equals(language)
                 ? "Target mode: normal or plan"
-                : "鐩爣妯″紡锛歯ormal 鎴?plan";
+                : "目标模式：normal 或 plan";
         Map<String, Object> mode = new LinkedHashMap<>();
         mode.put("type", "string");
         mode.put("enum", List.of("normal", "plan"));

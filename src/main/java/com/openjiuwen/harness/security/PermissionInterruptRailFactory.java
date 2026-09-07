@@ -69,7 +69,14 @@ public final class PermissionInterruptRailFactory {
         );
     }
 
-    private static Map<String, Object> toConfigMap(PermissionsSection permissions) {
+    /**
+     * Flatten a typed {@link PermissionsSection} into the raw permissions map consumed by
+     * the permission engine; unknown keys ride along via the section's extensions.
+     *
+     * @param permissions typed permissions section (may be {@code null})
+     * @return raw permissions map
+     */
+    public static Map<String, Object> toConfigMap(PermissionsSection permissions) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (permissions == null) {
             return result;

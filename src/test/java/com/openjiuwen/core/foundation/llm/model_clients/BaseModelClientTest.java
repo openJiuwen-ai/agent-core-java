@@ -60,7 +60,7 @@ class BaseModelClientTest {
     }
 
     @Test
-    void validateConfigPreservesPythonApiBaseTypo() {
+    void validateConfigRendersApiBaseErrorMessage() {
         ModelClientConfig config = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)
                 .apiKey("sk-test")
@@ -69,9 +69,9 @@ class BaseModelClientTest {
 
         BaseError error = assertThrows(BaseError.class, () -> new TestModelClient(requestConfig(), config));
 
-        assertTrue(error.getMessage().contains("<missing:error_msg>"));
+        assertTrue(error.getMessage().contains("api_base is required for TestModelClient"));
         assertEquals("model client config api_base is required for TestModelClient.",
-                error.getParams().get("rror_msg"));
+                error.getParams().get("error_msg"));
     }
 
     @Test

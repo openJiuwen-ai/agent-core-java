@@ -68,6 +68,17 @@ class VirtualThreadSupportTest {
     }
 
     @Test
+    void newUnstartedThreadUsesVirtualThreadWhenRuntimeSupportsIt() {
+        Assumptions.assumeTrue(runtimeSupportsVirtualThreads());
+        Thread thread = VirtualThreadSupport.newUnstartedThread("unstarted-virtual", () -> {
+        }, null);
+        assertThat(thread).isNotNull();
+        assertThat(thread.isAlive()).isFalse();
+        assertThat(isVirtual(thread)).isTrue();
+        assertThat(thread.getName()).isEqualTo("unstarted-virtual");
+    }
+
+    @Test
     void namedExecutorKeepsThreadNamePrefixOnEveryRuntime() throws Exception {
         ExecutorService executor = VirtualThreadSupport.newThreadPerTaskExecutor("virtual-support-executor");
         try {

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DynamicTest;
@@ -222,6 +224,34 @@ class TaskManagerTest {
         Task grouped = manager.getTask("task-grouped");
         assertThat(grouped.getStatus()).isEqualTo(TaskStatus.COMPLETED);
         assertThat(TaskContext.getTaskGroup()).isNull();
+    }
+
+    @Test
+    void waitAllWithReturnExceptionsCatchesExecutionError() {
+        TaskManager manager = TaskManager.getInstance();
+        manager.createTask(() -> {
+            throw new ExecutionError(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", 300000L, "task_id", "test-exec-error"));
+        }, null, "exec-error-task", null, null, Map.of(), false);
+
+        List<Object> results = manager.waitAll(null, true).join();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0)).isInstanceOf(ExecutionError.class);
+        assertThat(((ExecutionError) results.get(0)).getStatus())
+                .isEqualTo(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT);
+    }
+
+    @Test
+    void waitAllPropagatesExecutionErrorWhenNotCatching() {
+        TaskManager manager = TaskManager.getInstance();
+        manager.createTask(() -> {
+            throw new ExecutionError(StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", 300000L, "task_id", "test-exec-error-2"));
+        }, null, "exec-error-task", null, null, Map.of(), false);
+
+        assertThatThrownBy(() -> manager.waitAll(null, false).join())
+                .hasCauseInstanceOf(ExecutionError.class);
     }
 
     /**

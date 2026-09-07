@@ -90,7 +90,7 @@ public class VLLMEmbedding extends OpenAIEmbedding {
 
     public CompletableFuture<List<Double>> embedMultimodal(Object input,
                                                             Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> embedMultimodalSyncDouble(input, options), executor);
+        return CompletableFuture.supplyAsync(() -> embedMultimodalSyncDouble(input, options), this.executor);
     }
 
     public List<Double> embedMultimodalSync(MultimodalDocument document) {

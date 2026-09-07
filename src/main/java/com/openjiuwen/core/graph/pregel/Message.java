@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 
@@ -27,7 +29,7 @@ public class Message implements Serializable {
     public Message(String sender, String target, Object payload) {
         this.sender = sender;
         this.target = target;
-        this.payload = payload;
+        this.payload = payload == null ? null : SerializationUtils.requireSerializable(payload, "payload");
     }
 
     public String getSender() {

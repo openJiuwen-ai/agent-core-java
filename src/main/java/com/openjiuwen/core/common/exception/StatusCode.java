@@ -214,6 +214,12 @@ public enum StatusCode {
             "stream output first stream chunk timeout, timeout={timeout}s, error=''{reason}''"),
     STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT(111135,
             "stream output next stream chunk timeout, interval_timeout={timeout}s, error=''{reason}''"),
+    STREAM_PROCESSOR_QUEUE_TIMEOUT(111136,
+            "stream processor queue poll timeout, timeout={timeout}ms, source={source}"),
+    TASK_MANAGER_QUEUE_TIMEOUT(111137,
+            "task manager asCompleted queue poll timeout, timeout={timeout}ms"),
+    TASK_WAIT_FOR_FUTURE_TIMEOUT(111138,
+            "task waitFor future get timeout, timeout={timeout}ms, task_id={task_id}"),
 
     TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error=''{reason}''"),
     TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error=''{reason}''"),
@@ -231,6 +237,10 @@ public enum StatusCode {
     GRAPH_VERTEX_EXECUTION_ERROR(112050, "vertex execute error, error=''{reason}'', node_id={node_id}"),
     GRAPH_VERTEX_STREAM_CALL_TIMEOUT(112051, "vertex stream timeout, timeout={timeout}, node_id={node_id}"),
     GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error=''{reason}'', node_id={node_id}"),
+    GRAPH_VERTEX_ABILITY_LATCH_TIMEOUT(112053,
+            "vertex ability latch await timeout, timeout={timeout}ms, node_id={node_id}"),
+    GRAPH_VERTEX_FUTURE_TIMEOUT(112054,
+            "vertex future get timeout, timeout={timeout}ms, node_id={node_id}"),
 
     PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error=''{reason}''"),
     PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error=''{reason}''"),
@@ -507,7 +517,9 @@ public enum StatusCode {
     SYS_OPERATION_SHELL_EXECUTION_ERROR(199004, "shell operation execution error, execution: {execution}, reason: {error_msg}"),
     SYS_OPERATION_CODE_EXECUTION_ERROR(199005, "code operation execution error, execution: {execution}, reason: {error_msg}"),
     SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}"),
-    SYS_OPERATION_SANDBOX_GATEWAY_ERROR(199007, "sandbox gateway error, operation: {operation}, error: {error_msg}");
+    SYS_OPERATION_SANDBOX_GATEWAY_ERROR(199007, "sandbox gateway error, operation: {operation}, error: {error_msg}"),
+    SYS_OPERATION_PROCESS_JOIN_TIMEOUT(199008,
+            "child process join timeout, timeout={timeout}ms, command=''{command}''");
 
     private final int code;
     private final String errmsg;
