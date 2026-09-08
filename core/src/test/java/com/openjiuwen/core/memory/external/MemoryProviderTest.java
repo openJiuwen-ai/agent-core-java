@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Tests memory provider lifecycle adapters.
+ */
 class MemoryProviderTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
