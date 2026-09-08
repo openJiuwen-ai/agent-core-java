@@ -128,27 +128,6 @@ public class LocalFunction extends Tool {
         }
     }
 
-    /**
-     * Invokes the wrapped function within a saved session context that is
-     * restored after execution, so parallel tool calls do not clobber the
-     * session bound to the calling thread.
-     */
-    private Object invokeFunction(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
-        Object session = kwargs != null ? kwargs.get("session") : null;
-        Object previousSession = SessionContextHolder.getCurrentSession();
-        try {
-            if (session != null) {
-                SessionContextHolder.setCurrentSession(session);
-            }
-            if (contextFunc != null) {
-                return awaitIfNeeded(contextFunc.apply(inputs, kwargs != null ? kwargs : Map.of()));
-            }
-            return awaitIfNeeded(func.apply(inputs));
-        } finally {
-            SessionContextHolder.restoreCurrentSession(previousSession);
-        }
-    }
-
     private Map<String, Object> formatInputs(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Map<String, Object> inputParams = getCard().getInputParams();
         if (inputParams == null) {
