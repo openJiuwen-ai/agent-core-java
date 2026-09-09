@@ -3,10 +3,10 @@
  */
 
 package com.openjiuwen.core.memory.external;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.net.URI;
@@ -17,7 +17,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * Full bidirectional memory via OpenViking context database.
@@ -31,7 +30,8 @@ import java.util.concurrent.Executors;
 public class OpenVikingMemoryProvider extends MemoryProvider {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("openviking-memory-provider-io");
+    private static final Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("openviking-memory-provider-io", true);
 
     // Tool schemas
     private static final Map<String, Object> VIKING_SEARCH_SCHEMA = Map.of(

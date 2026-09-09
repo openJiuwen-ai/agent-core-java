@@ -6,7 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.processor.extractor;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -35,7 +35,7 @@ public class TripleExtractor extends Extractor {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("triple-extractor-io");
+            OpenJiuwenExecutors.newBoundedModulePool("triple-extractor-io", true);
     private static final String PROMPT_TEMPLATE = """
             # Instruction
 

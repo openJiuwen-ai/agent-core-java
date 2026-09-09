@@ -4,10 +4,9 @@
 
 package com.openjiuwen.harness.lsp.core;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.harness.lsp.core.utils.FileUriUtils;
@@ -71,7 +70,7 @@ public class LspClient {
         this.config = Objects.requireNonNull(config, "config");
         this.process = Objects.requireNonNull(process, "process");
         this.onExitCallback = onExit;
-        this.ioExecutor = VirtualThreadSupport.newThreadPerTaskExecutor("lsp-client-io");
+        this.ioExecutor = OpenJiuwenExecutors.newBoundedModulePool("lsp-client-io", true);
         this.scheduler = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("lsp-client-timer"));
     }
 
@@ -166,7 +165,7 @@ public class LspClient {
         pending.clear();
         isInitialized = false;
         capabilities = null;
-        ioExecutor.shutdownNow();
+        OpenJiuwenExecutors.shutdownNow(ioExecutor);
         scheduler.shutdownNow();
     }
 

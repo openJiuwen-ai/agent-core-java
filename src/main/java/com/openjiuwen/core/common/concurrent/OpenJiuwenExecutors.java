@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.common.concurrent;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.List;
@@ -32,9 +31,8 @@ import java.util.function.Supplier;
 /**
  * OpenJiuwen 运行时的统一线程池入口。
  *
- * <p>共享线程池和模块专用线程池均由本类创建，以统一线程命名、异常记录和 JVM 退出时的资源回收。
- * JDK 17 使用平台线程池；JDK 21 及以上普通业务执行器切换为每任务虚拟线程，
- * 单线程执行器和定时线程池始终保持平台线程语义。</p>
+ * <p>共享线程池和模块专用线程池均由本类创建，
+ * 以统一线程命名、异常记录和 JVM 退出时的资源回收。</p>
  *
  * @since 0.1.13
  */
@@ -135,7 +133,7 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建实例专用的有界模块线程池，并纳入统一资源回收。
+     * 创建实例专用的有界模块执行器，并纳入统一资源回收。
      *
      * <p>JDK 17 使用有界平台线程池，最大线程数与队列容量可通过系统属性
      * {@code openjiuwen.executor.{模块名}.max-size} / {@code openjiuwen.executor.{模块名}.queue-size}
@@ -152,7 +150,7 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建实例专用的有界模块线程池，并纳入统一资源回收。
+     * 创建实例专用的有界模块执行器，并纳入统一资源回收。
      *
      * @param threadNamePrefix 线程名称前缀
      * @param defaultMaxSize 默认最大线程数（可被系统属性/环境变量覆盖）
@@ -166,7 +164,7 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(defaultMaxSize, "defaultMaxSize");
         validatePositive(defaultQueueCapacity, "defaultQueueCapacity");
-        if (VirtualThreadSupport.isVirtualThreadSupported()) {
+        if (VirtualThreadSupport.isSupported()) {
             return register(new ManagedVirtualThreadExecutor(threadNamePrefix));
         }
         return register(newBoundedPlatformExecutor(threadNamePrefix, defaultMaxSize, defaultQueueCapacity, isDaemon));
@@ -174,21 +172,16 @@ public final class OpenJiuwenExecutors {
 
     private static ExecutorService newBoundedPlatformExecutor(String threadNamePrefix, int defaultMaxSize,
             int defaultQueueCapacity, boolean isDaemon) {
-        int maxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
+        int platformMaxSize = moduleIntSetting(threadNamePrefix, "max-size", defaultMaxSize, 1);
         int queueCapacity = moduleIntSetting(threadNamePrefix, "queue-size", defaultQueueCapacity, 1);
         ModulePoolDefaults defaults = ModulePoolDefaults.forPrefix(threadNamePrefix);
-        // core=max + ArrayBlockingQueue: JDK only creates extra workers after the queue fills when
-        // core < max. A bounded queue with core=0 therefore serializes long tasks. All module pools
-        // use the same overflow-queue semantics (issue #70 / 5baf23e5).
-        ThreadPoolExecutor executor = new ManagedThreadPoolExecutor(
-                maxSize,
-                maxSize,
-                DEFAULT_KEEP_ALIVE_SECONDS,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(queueCapacity),
-                namedThreadFactory(threadNamePrefix, isDaemon),
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        // 统一排队语义：core=max 使所有线程常热，ArrayBlockingQueue 只做溢出缓冲。
+        // JDK 陷阱：core < max + 有界队列时，超过 core 的线程仅在队列满后才创建，
+        // 导致 max 永远达不到（长任务被串行化），因此 core 必须等于 max。
+        BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(queueCapacity);
+        ThreadPoolExecutor executor = new ManagedThreadPoolExecutor(platformMaxSize, platformMaxSize,
+                DEFAULT_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, workQueue,
+                namedThreadFactory(threadNamePrefix, isDaemon), defaults.rejectionHandler());
         executor.allowCoreThreadTimeOut(defaults.allowsCoreTimeout());
         return executor;
     }
@@ -197,8 +190,8 @@ public final class OpenJiuwenExecutors {
      * 创建实例专用的缓存线程池，并纳入统一资源回收。
      *
      * @param threadNamePrefix 线程名称前缀
-     * @param isDaemon 是否创建守护线程
-     * @return 有界模块线程池（自 0.1.14 起不再无界）
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      * @deprecated 请使用 {@link #newBoundedModulePool(String, boolean)}
      */
     @Deprecated(since = "0.1.14")
@@ -207,22 +200,22 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建实例专用的固定大小线程池，并纳入统一资源回收。
+     * 创建实例专用的固定并发执行器，并纳入统一资源回收。
+     *
+     * <p>JDK 17 使用原固定大小平台线程池；JDK 21 及以上使用不限制并发的
+     * 每任务虚拟线程，此时 {@code size} 仅用于参数合法性校验，
+     * 不限制任务并发。</p>
      *
      * @param threadNamePrefix 线程名称前缀
      * @param size 线程数
-     * @param isDaemon 是否创建守护线程
-     * @return 固定大小线程池
+     * @param isDaemon JDK 17 平台线程是否为守护线程；JDK 21 及以上忽略该参数
+     * @return 自适应任务执行器
      */
     public static ExecutorService newFixedThreadPool(String threadNamePrefix, int size, boolean isDaemon) {
+        Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
         validatePositive(size, "size");
-        return newThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
-                .poolSize(size, size)
-                .keepAlive(0L, TimeUnit.MILLISECONDS)
-                .workQueue(new LinkedBlockingQueue<>())
-                .isDaemon(isDaemon)
-                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
-                .build());
+        ThreadPoolConfig config = fixedThreadPoolConfig(size, isDaemon);
+        return newThreadPool(threadNamePrefix, config);
     }
 
     /**
@@ -234,13 +227,8 @@ public final class OpenJiuwenExecutors {
      */
     public static ExecutorService newSingleThreadExecutor(String threadNamePrefix, boolean isDaemon) {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
-        return register(newPlatformThreadPool(threadNamePrefix, ThreadPoolConfig.builder()
-                .poolSize(1, 1)
-                .keepAlive(0L, TimeUnit.MILLISECONDS)
-                .workQueue(new LinkedBlockingQueue<>())
-                .isDaemon(isDaemon)
-                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
-                .build()));
+        ThreadPoolConfig config = fixedThreadPoolConfig(1, isDaemon);
+        return register(newPlatformThreadPool(threadNamePrefix, config));
     }
 
     /**
@@ -272,11 +260,14 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建参数可定制的实例专用线程池，并纳入统一资源回收。
+     * 创建参数可定制的实例专用执行器，并纳入统一资源回收。
+     *
+     * <p>JDK 17 使用调用方配置的平台线程池；JDK 21 及以上使用不限制并发的
+     * 每任务虚拟线程，此时线程数、队列、daemon 和拒绝策略配置不生效。</p>
      *
      * @param threadNamePrefix 线程名称前缀
-     * @param config 线程池配置
-     * @return 线程池
+     * @param config JDK 17 平台线程池配置
+     * @return 自适应任务执行器
      */
     public static ExecutorService newThreadPool(String threadNamePrefix, ThreadPoolConfig config) {
         Objects.requireNonNull(threadNamePrefix, "threadNamePrefix");
@@ -284,10 +275,20 @@ public final class OpenJiuwenExecutors {
         Objects.requireNonNull(config.unit, "unit");
         Objects.requireNonNull(config.workQueue, "workQueue");
         Objects.requireNonNull(config.rejectionHandler, "rejectionHandler");
-        if (VirtualThreadSupport.isVirtualThreadSupported()) {
+        if (VirtualThreadSupport.isSupported()) {
             return register(new ManagedVirtualThreadExecutor(threadNamePrefix));
         }
         return register(newPlatformThreadPool(threadNamePrefix, config));
+    }
+
+    private static ThreadPoolConfig fixedThreadPoolConfig(int size, boolean isDaemon) {
+        return ThreadPoolConfig.builder()
+                .poolSize(size, size)
+                .keepAlive(0L, TimeUnit.MILLISECONDS)
+                .workQueue(new LinkedBlockingQueue<>())
+                .isDaemon(isDaemon)
+                .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                .build();
     }
 
     private static ManagedThreadPoolExecutor newPlatformThreadPool(String threadNamePrefix, ThreadPoolConfig config) {
@@ -298,9 +299,10 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 自定义线程池的创建配置。
+     * 自定义执行器的 JDK 17 平台线程池配置。
      *
-     * <p>使用构建器逐项设置，避免调用方依赖多个位置参数的顺序。</p>
+     * <p>使用构建器逐项设置，避免调用方依赖多个位置参数的顺序。
+     * JDK 21 及以上使用虚拟线程时不应用这些配置。</p>
      *
      * @since 0.1.13
      */
@@ -473,8 +475,9 @@ public final class OpenJiuwenExecutors {
     /**
      * 强制关闭单个登记过的线程池并从登记表中移除。
      *
-     * <p>适用于承载 long-running I/O 循环的线程池：这些线程阻塞在 native I/O 上，
-     * {@link #shutdown(ExecutorService)} 的优雅停止无法让它们及时退出。</p>
+     * <p>适用于承载 long-running I/O 循环（如 ZMQ poll）的线程池：
+     * 这些线程阻塞在 native I/O 上，{@link #shutdown(ExecutorService)} 的优雅停止
+     * 无法让它们及时退出，必须用 {@code shutdownNow()} 中断。</p>
      *
      * @param executor 待关闭的线程池
      */
@@ -489,53 +492,6 @@ public final class OpenJiuwenExecutors {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    /**
-     * Returns whether the current runtime exposes virtual threads.
-     *
-     * @return {@code true} when virtual threads are available
-     */
-    public static boolean isVirtualThreadSupported() {
-        return VirtualThreadSupport.isVirtualThreadSupported();
-    }
-
-    /**
-     * Default DeepAgent task-concurrency cap in platform-thread mode, aligned with the I/O pool.
-     *
-     * <p>On JDK 21+ the concurrency gate is open, so this value is no longer used for gating.</p>
-     *
-     * @return default task concurrency
-     */
-    public static int defaultTaskConcurrency() {
-        return defaultIoBoundMaxSize();
-    }
-
-    /**
-     * Creates a configured but unstarted thread.
-     *
-     * <p>Uses a virtual thread on JDK 21+ and a platform thread on JDK 17.
-     * The caller is responsible for {@code Thread.start()}.</p>
-     *
-     * @param runnable task to run
-     * @param threadName thread name
-     * @param isDaemon whether the platform-thread fallback is a daemon
-     * @return unstarted thread
-     */
-    public static Thread newThread(Runnable runnable, String threadName, boolean isDaemon) {
-        Objects.requireNonNull(runnable, "runnable");
-        Objects.requireNonNull(threadName, "threadName");
-        Thread.UncaughtExceptionHandler exceptionHandler = (thread, error) ->
-                Loggers.COMMON.error("Uncaught exception in {}: {}", thread.getName(), error.getMessage());
-        Thread virtualThread = VirtualThreadSupport.newUnstartedThread(threadName, runnable, exceptionHandler);
-        if (virtualThread != null) {
-            return virtualThread;
-        }
-        Thread thread = Executors.defaultThreadFactory().newThread(runnable);
-        thread.setName(threadName);
-        thread.setDaemon(isDaemon);
-        thread.setUncaughtExceptionHandler(exceptionHandler);
-        return thread;
     }
 
     /**
@@ -575,14 +531,14 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 创建可配置的共享业务线程池。
+     * 创建共享业务任务执行器。
      *
-     * @param maxSizeProperty 最大线程数的系统属性名
-     * @param maxSizeEnv 最大线程数的环境变量名
-     * @param keepAliveProperty 空闲线程保留时间的系统属性名
-     * @param keepAliveEnv 空闲线程保留时间的环境变量名
+     * @param maxSizeProperty JDK 17 平台线程最大数量的系统属性名
+     * @param maxSizeEnv JDK 17 平台线程最大数量的环境变量名
+     * @param keepAliveProperty JDK 17 平台线程空闲保留时间的系统属性名
+     * @param keepAliveEnv JDK 17 平台线程空闲保留时间的环境变量名
      * @param threadNamePrefix 线程名称前缀
-     * @return 配置完成的共享线程池
+     * @return 自适应共享任务执行器
      */
     private static ExecutorService buildSharedExecutor(String maxSizeProperty, String maxSizeEnv,
             String keepAliveProperty, String keepAliveEnv, String threadNamePrefix) {
@@ -620,23 +576,21 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * I/O 型流式会话池默认上限：按 {@code max(64, CPU 核数 × 8)} 估算并发 session 槽位。
+     * I/O 阻塞型流式池默认上限：线程 99% 时间在等 LLM/网络，CPU 占用近零，按
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位。与 runtime 侧 QuerySsePumpExecutor
+     * 的默认公式对齐，避免 pump 池放行的并发流在 core 侧成为瓶颈。
+     *
+     * <p>下界 40 覆盖以 40 并发为基准的性能比拼场景（agent 侧 CPU 耗时 &lt;500ms，
+     * 总耗时由 LLM 响应决定，wait/compute 比极高，线程数受限于 I/O 等待而非 CPU）；
+     * 核数较多时随核数线性增长，避免高并发机器上成为瓶颈。</p>
+     *
+     * <p>适用于 deep-agent-stream / vertex-stream / stream-actor 等长驻流式会话池。</p>
      *
      * @return 默认最大线程数
      * @since 0.1.14
      */
     static int defaultIoBoundMaxSize() {
-        return Math.max(64, Runtime.getRuntime().availableProcessors() * 8);
-    }
-
-    /**
-     * DeepAgent stream 会话池默认上限。
-     *
-     * @return 默认最大线程数
-     * @since 0.1.14
-     */
-    static int defaultDeepAgentStreamMaxSize() {
-        return defaultIoBoundMaxSize();
+        return Math.max(40, Runtime.getRuntime().availableProcessors() * 8);
     }
 
     /**
@@ -657,6 +611,68 @@ public final class OpenJiuwenExecutors {
                     Loggers.COMMON.error("Uncaught exception in {}: {}", ignoredThread.getName(), error.getMessage()));
             return thread;
         };
+    }
+
+    private static Thread.UncaughtExceptionHandler virtualThreadExceptionHandler() {
+        return (thread, error) ->
+                Loggers.COMMON.exception("Uncaught exception in virtual thread=" + thread.getName(), error);
+    }
+
+    /**
+     * 当前运行时是否支持虚拟线程。
+     *
+     * <p>JDK 21 及以上返回 {@code true}，JDK 17 返回 {@code false}。调用方可据此决定是否
+     * 跳过基于平台线程数量的并发限制——虚拟线程下线程创建开销可忽略，应由上层
+     * 准入控制（如 runtime 的 TaskAdmissionGate）统一管控并发，而非 core 层自限。</p>
+     *
+     * @return 虚拟线程可用时为 {@code true}
+     * @since 0.1.15
+     */
+    public static boolean isVirtualThreadSupported() {
+        return VirtualThreadSupport.isSupported();
+    }
+
+    /**
+     * 平台线程模式下 DeepAgent 任务并发的默认上限。
+     *
+     * <p>DeepAgent 任务线程 99% 时间在等待 LLM/网络响应，属于 I/O 阻塞型，按
+     * {@code max(40, CPU 核数 × 8)} 估算并发槽位，与流式池 {@link #defaultIoBoundMaxSize()}
+     * 对齐。仅在 JDK 17（不支持虚拟线程）时作为 {@code maxConcurrentTasks} 的默认值生效；
+     * JDK 21+ 并发闸已放开，此值不再参与 gate 判定。</p>
+     *
+     * @return 平台线程模式下的默认任务并发上限
+     * @since 0.1.15
+     */
+    public static int defaultTaskConcurrency() {
+        return defaultIoBoundMaxSize();
+    }
+
+    /**
+     * 创建一个已配置但未启动的线程。
+     *
+     * <p>JDK 21 及以上使用虚拟线程，JDK 17 使用平台线程。调用方负责 {@code Thread.start()}。
+     * 虚拟线程始终是守护线程，{@code isDaemon} 参数仅在 JDK 17 平台线程路径生效。</p>
+     *
+     * @param runnable 任务
+     * @param threadName 线程名（虚拟线程直接用此名称，平台线程也用此名称）
+     * @param isDaemon JDK 17 平台线程是否为守护线程
+     * @return 已配置但未启动的线程
+     * @since 0.1.15
+     */
+    public static Thread newThread(Runnable runnable, String threadName, boolean isDaemon) {
+        Objects.requireNonNull(runnable, "runnable");
+        Objects.requireNonNull(threadName, "threadName");
+        Thread.UncaughtExceptionHandler exceptionHandler = (thread, error) ->
+                Loggers.COMMON.error("Uncaught exception in {}: {}", thread.getName(), error.getMessage());
+        Thread virtualThread = VirtualThreadSupport.newVirtualThread(runnable, threadName, exceptionHandler);
+        if (virtualThread != null) {
+            return virtualThread;
+        }
+        Thread thread = Executors.defaultThreadFactory().newThread(runnable);
+        thread.setName(threadName);
+        thread.setDaemon(isDaemon);
+        thread.setUncaughtExceptionHandler(exceptionHandler);
+        return thread;
     }
 
     /**
@@ -711,7 +727,11 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 各模块线程池默认上限。自 0.1.15 起统一 {@code core=max + ArrayBlockingQueue}。
+     * 各模块线程池默认上限。
+     *
+     * <p>所有模块池统一使用 {@code core=max + ArrayBlockingQueue} 排队语义，
+     * 不使用 SynchronousQueue（direct-handoff）。排队语义把突发流量转为缓冲，
+     * 失败模式更可控。</p>
      */
     private enum ModulePoolDefaults {
         PREGEL_TASK("pregel-task", 32, 256),
@@ -738,6 +758,12 @@ public final class OpenJiuwenExecutors {
             this.queueCapacity = queueCapacity;
         }
 
+        /**
+         * 解析该模块池的最大线程数。
+         *
+         * @return 流式会话池（deep-agent-stream / react-agent-stream / vertex-stream / stream-actor）
+         *         返回 CPU 公式值，其余池返回枚举声明的固定值
+         */
         int resolveMaxSize() {
             return switch (this) {
                 case DEEP_AGENT_STREAM, REACT_AGENT_STREAM, VERTEX_STREAM, STREAM_ACTOR -> defaultIoBoundMaxSize();
@@ -750,10 +776,17 @@ public final class OpenJiuwenExecutors {
         }
 
         /**
-         * DeepAgent / ReActAgent stream 池保持核心线程不回收，避免 SSE 会话热路径上的建线程延迟。
+         * 判断该模块池是否允许核心线程超时回收。
+         *
+         * @return {@code false} 当 DEEP_AGENT_STREAM 或 REACT_AGENT_STREAM（用户直接感知的 SSE 会话，
+         *         热线程可消除首 token 的线程创建延迟）；其余池返回 {@code true}
          */
         boolean allowsCoreTimeout() {
             return this != DEEP_AGENT_STREAM && this != REACT_AGENT_STREAM;
+        }
+
+        RejectedExecutionHandler rejectionHandler() {
+            return new ThreadPoolExecutor.AbortPolicy();
         }
 
         static ModulePoolDefaults forPrefix(String threadNamePrefix) {
@@ -767,16 +800,31 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
+     * 在线程池终止后自动解除登记。
+     */
+    private static final class ManagedThreadPoolExecutor extends ThreadPoolExecutor {
+        private ManagedThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+                BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory,
+                RejectedExecutionHandler rejectionHandler) {
+            super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, rejectionHandler);
+        }
+
+        @Override
+        protected void terminated() {
+            MANAGED_EXECUTORS.remove(this);
+            super.terminated();
+        }
+    }
+
+    /**
      * 使用每任务虚拟线程承载任务，并保留统一生命周期管理。
      */
     private static final class ManagedVirtualThreadExecutor extends AbstractExecutorService {
         private final ExecutorService delegate;
 
         private ManagedVirtualThreadExecutor(String threadNamePrefix) {
-            this.delegate = VirtualThreadSupport.newThreadPerTaskExecutor(
-                    threadNamePrefix,
-                    (thread, error) -> Loggers.COMMON.error(
-                            "Uncaught exception in {}: {}", thread.getName(), error.getMessage()));
+            this.delegate = VirtualThreadSupport.newVirtualExecutor(threadNamePrefix,
+                    virtualThreadExceptionHandler());
         }
 
         @Override
@@ -810,23 +858,6 @@ public final class OpenJiuwenExecutors {
         @Override
         public void execute(Runnable command) {
             delegate.execute(Objects.requireNonNull(command, "command"));
-        }
-    }
-
-    /**
-     * 在线程池终止后自动解除登记。
-     */
-    private static final class ManagedThreadPoolExecutor extends ThreadPoolExecutor {
-        private ManagedThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
-                BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory,
-                RejectedExecutionHandler rejectionHandler) {
-            super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, rejectionHandler);
-        }
-
-        @Override
-        protected void terminated() {
-            MANAGED_EXECUTORS.remove(this);
-            super.terminated();
         }
     }
 

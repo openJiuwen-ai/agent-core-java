@@ -9,8 +9,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -74,7 +74,8 @@ public class MilvusVectorStore extends BaseVectorStore {
             "openjiuwen/core/foundation/store/vector/milvus_vector_store.py";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("milvus-vector-store-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Logger LOGGER = Logger.getLogger(MilvusVectorStore.class.getName());

@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.sysop.config.PreDeployLauncherConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
@@ -63,7 +63,7 @@ final class JiuwenBoxProviderSupport {
     private static final Object RECREATE_LOCK = new Object();
     private static final Object IDLE_TIMEOUT_CACHE_LOCK = new Object();
     private static final java.util.concurrent.Executor LOCAL_PROCESS_IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-local-process-io");
+            OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-local-process-io", true);
     private static final Map<String, String> SHARED_SANDBOX_IDS = new ConcurrentHashMap<>();
     private static final Map<String, TimeoutConfig> IDLE_TIMEOUT_CACHE = new ConcurrentHashMap<>();
 

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.retrieval.indexing.indexer;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -39,7 +39,7 @@ public class ChromaIndexer extends Indexer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ChromaIndexer.class);
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("chroma-indexer-io");
+            OpenJiuwenExecutors.newBoundedModulePool("chroma-indexer-io", true);
 
     private final String chromaPath;
     private final String textField;

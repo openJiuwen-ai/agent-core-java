@@ -6,7 +6,7 @@ package com.openjiuwen.core.retrieval.vector_store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.vector_fields.PGVectorField;
@@ -46,7 +46,7 @@ public class PGVectorStore implements VectorStore {
     private static final int DEFAULT_BATCH_SIZE = 128;
     private static final int MAX_VECTOR_DIMENSION = 2000;
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("pg-vector-store-io");
+            OpenJiuwenExecutors.newBoundedModulePool("pg-vector-store-io", true);
 
     private final VectorStoreConfig config;
     private final DataSource dataSource;

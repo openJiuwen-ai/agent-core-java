@@ -7,8 +7,8 @@ package com.openjiuwen.core.foundation.store.vector;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -50,7 +50,8 @@ import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("gauss-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("gauss-vector-store-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Logger LOGGER = Logger.getLogger(GaussVectorStore.class.getName());

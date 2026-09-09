@@ -3,7 +3,8 @@
  */
 
 package com.openjiuwen.core.common;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -20,7 +21,7 @@ import java.util.function.Supplier;
  */
 public final class BackgroundTasks {
 
-    private static final ExecutorService DEFAULT_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
+    private static final ExecutorService DEFAULT_EXECUTOR = OpenJiuwenExecutors.backgroundExecutor();
     private static volatile TaskGroupProvider taskGroupProvider;
     private static volatile ManagerTaskCreator managerTaskCreator;
 

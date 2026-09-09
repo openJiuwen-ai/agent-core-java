@@ -6,7 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.indexer;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -63,7 +63,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
     private static final int DEFAULT_BATCH_SIZE = 128;
     private static final Set<String> VECTOR_INDEX_TYPES = Set.of("vector", "hybrid");
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("milvus-indexer-io");
+            OpenJiuwenExecutors.newBoundedModulePool("milvus-indexer-io", true);
 
     private final String milvusUri;
     private final String milvusToken;

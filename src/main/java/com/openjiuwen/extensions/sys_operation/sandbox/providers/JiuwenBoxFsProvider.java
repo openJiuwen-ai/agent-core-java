@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.protocal.BaseFsProtocal;
@@ -51,7 +51,7 @@ import java.util.concurrent.Flow;
 public class JiuwenBoxFsProvider extends BaseFsProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-fs-provider-io");
+            OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-fs-provider-io", true);
 
     private final JiuwenBoxProviderSupport.ProviderState state;
 

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -54,7 +54,7 @@ public class ImageCaptioner {
             ".webp", "image/webp"
     );
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("image-captioner-io");
+            OpenJiuwenExecutors.newBoundedModulePool("image-captioner-io", true);
 
     private final Model model;
     private final BaseModelClient baseModelClient;

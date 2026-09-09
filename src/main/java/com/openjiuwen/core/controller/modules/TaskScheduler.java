@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -553,11 +552,13 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on a background thread.
+                    // Start task on a virtual thread (JDK 21) or platform thread (JDK 17)
                     String taskId = task.getTaskId();
-                    Thread virtualThread = VirtualThreadSupport.startThread("task-" + taskId, () -> executeTaskWrapper(taskId, session));
+                    Thread taskThread = OpenJiuwenExecutors.newThread(
+                            () -> executeTaskWrapper(taskId, session), "task-" + taskId, true);
+                    taskThread.start();
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread));
                 } finally {
                     lock.unlock();
                 }

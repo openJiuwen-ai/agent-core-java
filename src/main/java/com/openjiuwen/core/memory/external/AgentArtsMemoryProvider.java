@@ -6,8 +6,8 @@ package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 
@@ -42,7 +42,8 @@ public class AgentArtsMemoryProvider extends MemoryProvider {
     static final Map<String, Object> EXTERNAL_MEMORY_SEARCH_SCHEMA = createExternalMemorySearchSchema();
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("agentarts-memory-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("agentarts-memory-io", true);
 
 
     private String baseUrl;

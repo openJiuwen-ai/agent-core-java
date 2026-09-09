@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.reranker;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
@@ -23,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 /**
  * DashScope text-rerank client.
@@ -37,7 +37,8 @@ public class DashscopeReranker extends StandardReranker {
     public static final String END_POINT = "/services/rerank/text-rerank/text-rerank";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("dashscope-reranker-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("dashscope-reranker-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 

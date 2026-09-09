@@ -4,8 +4,8 @@
 
 package com.openjiuwen.extensions.store.vector;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -39,7 +39,8 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
     public static final String METADATA_DOC_ID = "__collection_metadata__";
 
     private static final Logger LOGGER = Logger.getLogger(ElasticsearchVectorStore.class.getName());
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("elasticsearch-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("elasticsearch-vector-store-io", true);
     private static final int DEFAULT_VECTOR_DIM = 768;
     private static final int DEFAULT_BATCH_SIZE = 500;
     private static final Map<String, String> ES_SIMILARITY_MAP = Map.of(

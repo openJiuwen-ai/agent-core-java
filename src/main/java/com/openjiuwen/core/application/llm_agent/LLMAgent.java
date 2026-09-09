@@ -5,7 +5,7 @@
 package com.openjiuwen.core.application.llm_agent;
 
 import com.openjiuwen.core.application.llm.LlmController;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.Event;
@@ -50,7 +50,7 @@ public class LLMAgent extends ControllerAgent {
     private static final String QUERY = "query";
     private static final String USER_ID = "user_id";
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("llm-agent-io");
+            OpenJiuwenExecutors.newBoundedModulePool("llm-agent-io", true);
 
     private final LegacyReActAgentConfig agentConfig;
     private final LlmController llmController;

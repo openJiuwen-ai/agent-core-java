@@ -7,12 +7,12 @@ package com.openjiuwen.core.common.concurrent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
-
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -26,9 +26,9 @@ class OpenJiuwenExecutorsTest {
     @DisplayName("任务并发默认值与 I/O 池上限对齐")
     void defaultTaskConcurrencyMatchesIoBoundMaxSize() {
         assertThat(OpenJiuwenExecutors.defaultTaskConcurrency())
-                .isEqualTo(Math.max(64, Runtime.getRuntime().availableProcessors() * 8));
+                .isEqualTo(Math.max(40, Runtime.getRuntime().availableProcessors() * 8));
         assertThat(OpenJiuwenExecutors.isVirtualThreadSupported())
-                .isEqualTo(VirtualThreadSupport.isVirtualThreadSupported());
+                .isEqualTo(VirtualThreadSupport.isSupported());
     }
 
     @Test
@@ -38,7 +38,7 @@ class OpenJiuwenExecutorsTest {
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
             assertThat(executor).isNotInstanceOf(ThreadPoolExecutor.class);
-            Boolean virtual = executor.submit(VirtualThreadSupport::isCurrentThreadVirtual).get(2, TimeUnit.SECONDS);
+            Boolean virtual = executor.submit(() -> isVirtual(Thread.currentThread())).get(2, TimeUnit.SECONDS);
             assertThat(virtual).isTrue();
             String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
             assertThat(threadName).startsWith("deep-agent-stream-");
@@ -53,7 +53,7 @@ class OpenJiuwenExecutorsTest {
         ExecutorService executor = OpenJiuwenExecutors.newSingleThreadExecutor("single-thread-serial", true);
         try {
             assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
-            Boolean virtual = executor.submit(VirtualThreadSupport::isCurrentThreadVirtual).get(2, TimeUnit.SECONDS);
+            Boolean virtual = executor.submit(() -> isVirtual(Thread.currentThread())).get(2, TimeUnit.SECONDS);
             assertThat(virtual).isFalse();
         } finally {
             OpenJiuwenExecutors.shutdown(executor);
@@ -66,17 +66,17 @@ class OpenJiuwenExecutorsTest {
         Thread thread = OpenJiuwenExecutors.newThread(() -> {
         }, "new-thread-test", true);
         assertThat(thread.getName()).isEqualTo("new-thread-test");
-        assertThat(VirtualThreadSupport.isVirtual(thread))
+        assertThat(isVirtual(thread))
                 .isEqualTo(OpenJiuwenExecutors.isVirtualThreadSupported());
         assertThat(thread.isAlive()).isFalse();
     }
 
     @Test
-    @DisplayName("DeepAgent stream 模块池默认 max(64, CPU×8) 且可配置")
+    @DisplayName("DeepAgent stream 模块池默认 max(40, CPU×8) 且可配置")
     void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
         Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
-        int expectedDefault = OpenJiuwenExecutors.defaultDeepAgentStreamMaxSize();
-        assertThat(expectedDefault).isEqualTo(Math.max(64, Runtime.getRuntime().availableProcessors() * 8));
+        int expectedDefault = OpenJiuwenExecutors.defaultIoBoundMaxSize();
+        assertThat(expectedDefault).isEqualTo(Math.max(40, Runtime.getRuntime().availableProcessors() * 8));
 
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
@@ -271,6 +271,19 @@ class OpenJiuwenExecutorsTest {
             latch.await();
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean isVirtual(Thread thread) {
+        try {
+            Method isVirtual = Thread.class.getMethod("isVirtual");
+            return Boolean.TRUE.equals(isVirtual.invoke(thread));
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Failed to access Thread.isVirtual", exception);
+        } catch (InvocationTargetException exception) {
+            throw new IllegalStateException("Failed to invoke Thread.isVirtual", exception.getTargetException());
         }
     }
 }

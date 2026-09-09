@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.query.QueryExpr;
@@ -52,7 +53,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -67,7 +67,8 @@ public class MilvusVectorStore implements VectorStore {
     public static final String PYTHON_MODULE = "openjiuwen/core/retrieval/vector_store/milvus_store.py";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-retrieval-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("milvus-retrieval-vector-store-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Gson GSON = new Gson();

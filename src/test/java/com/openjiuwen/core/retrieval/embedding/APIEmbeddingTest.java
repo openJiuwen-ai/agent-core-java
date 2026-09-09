@@ -116,7 +116,7 @@ class APIEmbeddingTest {
             // enforced by the semaphore limiter instead of the pool size.
             assertEquals(10, model.getLimiter().availablePermits());
             Boolean virtual = model.executor
-                    .submit(com.openjiuwen.core.common.VirtualThreadSupport::isCurrentThreadVirtual).get();
+                    .submit(() -> isCurrentThreadVirtual()).get();
             assertTrue(virtual);
         }
     }
@@ -421,6 +421,15 @@ class APIEmbeddingTest {
 
         static java.net.http.HttpClient httpClient() {
             return java.net.http.HttpClient.newHttpClient();
+        }
+    }
+
+    private static boolean isCurrentThreadVirtual() {
+        try {
+            java.lang.reflect.Method isVirtual = Thread.class.getMethod("isVirtual");
+            return Boolean.TRUE.equals(isVirtual.invoke(Thread.currentThread()));
+        } catch (ReflectiveOperationException exception) {
+            return false;
         }
     }
 }

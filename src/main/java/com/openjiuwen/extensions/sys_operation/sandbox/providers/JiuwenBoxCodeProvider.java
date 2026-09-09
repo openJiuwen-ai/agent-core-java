@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
@@ -31,7 +31,7 @@ import java.util.concurrent.Flow;
 public class JiuwenBoxCodeProvider extends BaseCodeProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-code-provider-io");
+            OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-code-provider-io", true);
 
     private final JiuwenBoxProviderSupport.ProviderState state;
 

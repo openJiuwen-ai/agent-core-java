@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
@@ -28,7 +28,7 @@ import java.util.concurrent.Flow;
 public class JiuwenBoxShellProvider extends BaseShellProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-shell-provider-io");
+            OpenJiuwenExecutors.newBoundedModulePool("jiuwenbox-shell-provider-io", true);
 
     private final JiuwenBoxProviderSupport.ProviderState state;
 

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.agentevolving.agent_rl;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -139,7 +139,7 @@ public class BackendProxy implements AutoCloseable {
             server.createContext("/proxy/backends", this::handleBackendUpdate);
             server.createContext("/v1/models", this::handleModels);
             server.createContext("/v1", this::handleProxy);
-            server.setExecutor(VirtualThreadSupport.newThreadPerTaskExecutor("rl-backend-proxy"));
+            server.setExecutor(OpenJiuwenExecutors.newBoundedModulePool("rl-backend-proxy", true));
             server.start();
             running = true;
             waitForServerReady(30);

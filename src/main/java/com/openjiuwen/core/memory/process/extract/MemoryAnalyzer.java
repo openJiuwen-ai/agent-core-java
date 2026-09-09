@@ -6,7 +6,7 @@ package com.openjiuwen.core.memory.process.extract;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -38,7 +38,7 @@ public final class MemoryAnalyzer {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int DEFAULT_RETRIES = 3;
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("memory-analyzer-io");
+            OpenJiuwenExecutors.newBoundedModulePool("memory-analyzer-io", true);
 
     private MemoryAnalyzer() {
     }

@@ -173,7 +173,7 @@ class AsyncCallbackFrameworkTest {
         if (com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors.isVirtualThreadSupported()) {
             // JDK 21+: virtual-thread-per-task executor replaces the platform pool.
             Boolean virtual = executor
-                    .submit(com.openjiuwen.core.common.VirtualThreadSupport::isCurrentThreadVirtual)
+                    .submit(AsyncCallbackFrameworkTest::isCurrentThreadVirtual)
                     .get(2, java.util.concurrent.TimeUnit.SECONDS);
             assertTrue(virtual);
         } else {
@@ -218,6 +218,15 @@ class AsyncCallbackFrameworkTest {
         @Override
         public String toString() {
             return name;
+        }
+    }
+
+    private static boolean isCurrentThreadVirtual() {
+        try {
+            java.lang.reflect.Method isVirtual = Thread.class.getMethod("isVirtual");
+            return Boolean.TRUE.equals(isVirtual.invoke(Thread.currentThread()));
+        } catch (ReflectiveOperationException exception) {
+            return false;
         }
     }
 }

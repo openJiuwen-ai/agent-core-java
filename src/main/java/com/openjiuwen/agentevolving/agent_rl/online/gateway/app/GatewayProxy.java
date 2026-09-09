@@ -3,11 +3,11 @@
  */
 
 package com.openjiuwen.agentevolving.agent_rl.online.gateway.app;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.GatewayConfig;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -109,7 +109,7 @@ public final class GatewayProxy {
             this.server.createContext("/v1/gateway/upload/batch", this::handleUploadBatch);
             this.server.createContext("/v1/chat/completions", this::handleChatCompletions);
             this.server.createContext("/", this::handleProxyOther);
-            this.server.setExecutor(VirtualThreadSupport.newThreadPerTaskExecutor());
+            this.server.setExecutor(OpenJiuwenExecutors.newBoundedModulePool("rl-gateway-proxy", true));
         }
 
         void start() {

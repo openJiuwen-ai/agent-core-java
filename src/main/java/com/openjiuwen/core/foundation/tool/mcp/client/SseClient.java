@@ -3,10 +3,10 @@
  */
 
 package com.openjiuwen.core.foundation.tool.mcp.client;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.auth.AuthCallback;
 import com.openjiuwen.core.foundation.tool.auth.AuthHeaderAndQueryProvider;
@@ -400,7 +400,8 @@ public class SseClient extends McpClient {
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
-    private static final java.util.concurrent.ExecutorService SSE_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("mcp-sse");
+    private static final java.util.concurrent.ExecutorService SSE_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("mcp-sse", true);
     private static <T> CompletableFuture<T> runAsync(Callable<T> callable) {
         return CompletableFuture.supplyAsync(() -> {
             try {
