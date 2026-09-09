@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
@@ -116,7 +117,9 @@ public class FieldSchema {
     }
 
     public static FieldSchema fromDict(Map<String, Object> data) {
-        String dtypeValue = Objects.toString(data.getOrDefault("type", data.getOrDefault("dtype", "VARCHAR")), "VARCHAR");
+        String dtypeValue = Objects.toString(
+                data.getOrDefault("type", data.getOrDefault("dtype", "VARCHAR")),
+                "VARCHAR");
         Object elementTypeValue = data.get("element_type");
         return new FieldSchema(
                 (String) data.get("name"),

@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.store.FieldSchema;
 import com.openjiuwen.core.foundation.store.VectorDataType;
 import com.openjiuwen.core.foundation.store.VectorSearchResult;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
@@ -112,7 +113,9 @@ public class MilvusVectorStore extends BaseVectorStore {
         Object token = firstValue(safeKwargs, "milvus_token", "token");
         this.milvusToken = token == null ? null : String.valueOf(token);
         Object database = firstValue(safeKwargs, "database_name", "database", "db_name");
-        this.databaseName = database == null || String.valueOf(database).isBlank() ? "default" : String.valueOf(database);
+        this.databaseName = database == null || String.valueOf(database).isBlank()
+                ? "default"
+                : String.valueOf(database);
         this.clientKwargs = new LinkedHashMap<>(safeKwargs);
         this.closeClientOnClose = true;
     }
@@ -227,7 +230,11 @@ public class MilvusVectorStore extends BaseVectorStore {
         return CompletableFuture.supplyAsync(() -> {
             MilvusClientAdapter adapter = clientSync();
             if (!adapter.hasCollection(collectionName)) {
-                throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND, "collection_name", collectionName);
+                throw ErrorHelper.buildError(
+                        StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
+                        "collection_name",
+                        collectionName
+                );
             }
             CollectionDescription description = adapter.describeCollection(collectionName);
             CollectionSchema schema = new CollectionSchema(new ArrayList<>(),
@@ -316,7 +323,8 @@ public class MilvusVectorStore extends BaseVectorStore {
     }
 
     @Override
-    public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
+    public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids,
+            Map<String, Object> kwargs) {
         return CompletableFuture.runAsync(() -> {
             if (ids == null || ids.isEmpty()) {
                 LOGGER.warning("No IDs provided for deletion");
@@ -503,7 +511,8 @@ public class MilvusVectorStore extends BaseVectorStore {
             CollectionDescription description = clientSync().describeCollection(collectionName);
             for (FieldDescription field : description.fields()) {
                 if (field.dtype() == VectorDataType.FLOAT_VECTOR) {
-                    collectionMetadata.put(collectionName, new CollectionMetadata(null, field.name(), field.dim(), null));
+                    collectionMetadata.put(collectionName,
+                            new CollectionMetadata(null, field.name(), field.dim(), null));
                     return;
                 }
             }
@@ -1227,7 +1236,9 @@ public class MilvusVectorStore extends BaseVectorStore {
                 return hits;
             }
             for (SearchResp.SearchResult result : response.getSearchResults().get(0)) {
-                Map<String, Object> entity = result.getEntity() == null ? Map.of() : new LinkedHashMap<>(result.getEntity());
+                Map<String, Object> entity = result.getEntity() == null
+                        ? Map.of()
+                        : new LinkedHashMap<>(result.getEntity());
                 hits.add(new SearchHit(result.getId(), result.getPrimaryKey(),
                         result.getScore() == null ? null : result.getScore().doubleValue(), null, entity));
             }
