@@ -16,6 +16,10 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class PGVectorStore extends AbstractRetrievalVectorStoreAdapter {
+    PGVectorStore(com.openjiuwen.retrieval.vector_store.PGVectorStore delegate) {
+        super(delegate);
+    }
+
     /**
      * PGVectorStore.
      * 

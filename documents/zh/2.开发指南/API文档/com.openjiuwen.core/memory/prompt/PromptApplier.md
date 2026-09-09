@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.prompt.PromptApplier
+# com.openjiuwen.memory.prompt.PromptApplier
 
 ## 类 PromptApplier
 

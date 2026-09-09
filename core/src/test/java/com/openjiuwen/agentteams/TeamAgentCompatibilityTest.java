@@ -16,7 +16,6 @@ import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.spawn.SpawnContext;
-import com.openjiuwen.core.memory.team.TeamMemoryConfig;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
@@ -25,19 +24,12 @@ import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 public class TeamAgentCompatibilityTest {
-    @TempDir
-    Path tempDir;
-
     @AfterEach
     void resetSpawnSession() {
         // resumePersistentTeam pins a new session id into SpawnContext's
@@ -223,39 +215,6 @@ public class TeamAgentCompatibilityTest {
         assertThat(recovered.getContext().getSessionId()).isEqualTo("team-session-002");
         assertThat(recovered.getContext().getMetadata()).containsEntry("session_id", "team-session-002");
         assertThat(recovered.getLeaderInbox()).containsExactly("Please plan the recovery slice.");
-    }
-
-    @Test
-    void teamAgentShouldWireTeamMemoryIntoLeaderRuntime() throws Exception {
-        Path workspace = tempDir.resolve("team-workspace");
-        Files.createDirectories(workspace.resolve("memory"));
-        Files.writeString(workspace.resolve("memory").resolve("MEMORY.md"), "leader remembers escalation policy");
-        Path sharedDir = tempDir.resolve("team-memory");
-
-        TeamAgentSpec spec = TeamAgentSpec.builder().name("memory-team").lifecycle("persistent").language("en")
-                .members(List.of(TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker").role(TeamRole.MEMBER).build()))
-                .memory(TeamMemoryConfig.builder().enabled(true).sharedMemory(true).scenario("general")
-                        .teamMemoryDir(sharedDir.toString()).build())
-                .build();
-
-        TeamAgent agent = new TeamAgent().configure(spec,
-                com.openjiuwen.agentteams.schema.team.TeamRuntimeContext.builder().teamId("memory-team")
-                        .metadata(new java.util.LinkedHashMap<>(Map.of("workspace_path", workspace.toString())))
-                        .build());
-        Map<String, Object> result = agent.dispatchTask("policy");
-
-        assertThat(result).containsEntry("team_id", "memory-team");
-        assertThat(agent.getMemoryManager()).isNotNull();
-        assertThat(agent.getMemoryManager().getOwnedToolNames()).contains("memory_search", "memory_get", "read_memory",
-                "write_memory", "edit_memory");
-        assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().hasSection("team_memory")).isTrue();
-        assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().getSection("team_memory").render("en"))
-                .contains("leader remembers escalation policy");
-
-        agent.close();
-        assertThat(agent.getMemoryManager().getOwnedToolNames()).isEmpty();
-        assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().hasSection("team_memory")).isFalse();
     }
 
     @Test

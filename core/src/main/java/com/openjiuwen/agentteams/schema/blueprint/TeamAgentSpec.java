@@ -7,8 +7,8 @@ package com.openjiuwen.agentteams.schema.blueprint;
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
+import com.openjiuwen.agentteams.schema.team.TeamMemoryConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
-import com.openjiuwen.core.memory.team.TeamMemoryConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

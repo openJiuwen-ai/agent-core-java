@@ -17,7 +17,7 @@ public class LlmEventHandler extends EventHandler
 **说明**
 
 - 会根据 `agentMemoryConfig` 与 `memoryScopeId` 计算是否启用长期记忆逻辑。
-- 内部维护 `LongTermMemory` 单例引用，用于在满足条件时回写消息。
+- 不直接依赖 Memory 实现；记忆写回由 `LlmAgent` 通过可选的 Memory 运行时完成。
 
 ## 公共方法
 

@@ -9,15 +9,21 @@ import com.openjiuwen.agentteams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agentteams.agent.coordination.DispatcherHost;
 import com.openjiuwen.agentteams.agent.coordination.TeamAgentBlueprint;
 import com.openjiuwen.agentteams.agent.coordination.TeamInfra;
+import com.openjiuwen.agentteams.memory.TeamExecutionContext;
+import com.openjiuwen.agentteams.memory.TeamMemberContext;
+import com.openjiuwen.agentteams.memory.TeamMemory;
+import com.openjiuwen.agentteams.memory.TeamMemoryContext;
+import com.openjiuwen.agentteams.memory.TeamMemoryResolver;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.messager.MessagerFactory;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
-import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntries;
+import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
+import com.openjiuwen.agentteams.schema.team.TeamMemoryConfig;
 import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
@@ -30,17 +36,12 @@ import com.openjiuwen.agentteams.tools.database.DatabaseType;
 import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.memory.team.PromptMode;
-import com.openjiuwen.core.memory.team.TeamLanguage;
-import com.openjiuwen.core.memory.team.TeamMemoryConfig;
-import com.openjiuwen.core.memory.team.TeamMemoryManager;
-import com.openjiuwen.core.memory.team.TeamMemoryManagerParams;
-import com.openjiuwen.core.memory.team.TeamScenario;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentKind;
@@ -91,7 +92,7 @@ public class TeamAgent implements DispatcherHost {
     private RecoveryManager recoveryManager;
     private SpawnManager spawnManager;
     private ModelAllocator modelAllocator;
-    private TeamMemoryManager memoryManager;
+    private TeamMemory memoryManager;
     private DeepAgent deepAgent;
     private StreamController streamController;
     private com.openjiuwen.core.session.AgentSessionApi agentSession;
@@ -1175,10 +1176,6 @@ public class TeamAgent implements DispatcherHost {
 
     private void configureMemoryManager(Workspace workspace, SysOperation sysOperation, String leaderName) {
         this.memoryManager = buildMemoryManager(workspace, sysOperation, leaderName);
-        Object configuredModel = this.deepAgent.getConfig().getModel();
-        if (this.memoryManager != null && configuredModel instanceof com.openjiuwen.core.foundation.llm.Model model) {
-            this.memoryManager.setExtractionModel(model);
-        }
     }
 
     private List<Tool> registerTeamTools() {
@@ -1295,7 +1292,7 @@ public class TeamAgent implements DispatcherHost {
         return config != null ? config.modelClientConfig() : null;
     }
 
-    private TeamMemoryManager buildMemoryManager(Workspace workspace, SysOperation sysOperation, String memberName) {
+    private TeamMemory buildMemoryManager(Workspace workspace, SysOperation sysOperation, String memberName) {
         TeamMemoryConfig memory = spec.getMemory();
         if (memory == null || !memory.isEnabled()) {
             return nullValue();
@@ -1305,35 +1302,19 @@ public class TeamAgent implements DispatcherHost {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to initialize team workspace", e);
         }
-        com.openjiuwen.core.memory.team.TeamLifecycle lifecycle = parseMemoryLifecycle(spec.getLifecycle());
-        String teamMemoryDir = null;
-        if (memory.isSharedMemory() && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT) {
-            teamMemoryDir = memory.getTeamMemoryDir() != null && !memory.getTeamMemoryDir().isBlank()
-                    ? memory.getTeamMemoryDir()
-                    : defaultTeamMemoryDir(context.getTeamId()).toString();
+        TeamMemberContext member = new TeamMemberContext(memberName, context.getTeamId(), spec.getLifecycle(),
+                resolveLanguage());
+        TeamExecutionContext execution = new TeamExecutionContext(workspace, sysOperation,
+                defaultTeamMemoryDir(context.getTeamId()).toString(), teamBackend, resolveExtractionModel());
+        return TeamMemoryResolver.require(new TeamMemoryContext(memory, member, execution));
+    }
+
+    private Model resolveExtractionModel() {
+        Object configuredModel = deepAgent.getConfig().getModel();
+        if (configuredModel instanceof Model model) {
+            return model;
         }
-        String readOnlySource = lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY
-                ? memory.getParentWorkspacePath()
-                : null;
-        return new TeamMemoryManager(TeamMemoryManagerParams.builder()
-                .memberName(memberName)
-                .teamName(context.getTeamId())
-                .role(com.openjiuwen.core.memory.team.TeamRole.LEADER)
-                .lifecycle(lifecycle)
-                .scenario(parseScenario(memory.getScenario()))
-                .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(memory))
-                .workspace(workspace)
-                .sysOperation(sysOperation)
-                .teamMemoryDir(teamMemoryDir)
-                .language(parseLanguage(resolveLanguage()))
-                .promptMode(parsePromptMode(memory.getMemberMemoryPromptMode()))
-                .enableAutoExtract(memory.isAutoExtract()
-                        && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT)
-                .readOnlySourceWorkspace(readOnlySource)
-                .db(teamBackend.getDb())
-                .taskManager(teamBackend.getTaskManager())
-                .timezoneOffsetHours(memory.getTimezoneOffsetHours())
-                .build());
+        return null;
     }
 
     private String resolvePersona(TeamMemberSpec fallbackLeader) {
@@ -1351,16 +1332,7 @@ public class TeamAgent implements DispatcherHost {
             return;
         }
         try {
-            if (memoryManager.initToolkit()) {
-                memoryManager.registerTools(deepAgent);
-                if (memoryManager.getExtractionModel() == null) {
-                    Object configuredModel = deepAgent.getConfig().getModel();
-                    if (configuredModel instanceof com.openjiuwen.core.foundation.llm.Model model) {
-                        memoryManager.setExtractionModel(model);
-                    }
-                }
-                memoryManager.loadAndInject(deepAgent, query != null ? query : "");
-            }
+            memoryManager.startRound(deepAgent, query != null ? query : "");
         } catch (IOException e) {
             throw new IllegalStateException("Team memory initialization failed", e);
         }
@@ -1371,7 +1343,7 @@ public class TeamAgent implements DispatcherHost {
             return;
         }
         try {
-            memoryManager.extractAfterRound();
+            memoryManager.finishRound();
         } catch (IOException e) {
             throw new IllegalStateException("Team memory extraction failed", e);
         }
@@ -1799,24 +1771,6 @@ public class TeamAgent implements DispatcherHost {
 
     private String resolveLanguage() {
         return spec.getLanguage() != null && !spec.getLanguage().isBlank() ? spec.getLanguage() : "cn";
-    }
-
-    private static com.openjiuwen.core.memory.team.TeamLifecycle parseMemoryLifecycle(String lifecycle) {
-        return "persistent".equalsIgnoreCase(lifecycle)
-                ? com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT
-                : com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY;
-    }
-
-    private static TeamScenario parseScenario(String scenario) {
-        return "coding".equalsIgnoreCase(scenario) ? TeamScenario.CODING : TeamScenario.GENERAL;
-    }
-
-    private static TeamLanguage parseLanguage(String language) {
-        return "en".equalsIgnoreCase(language) ? TeamLanguage.EN : TeamLanguage.CN;
-    }
-
-    private static PromptMode parsePromptMode(String mode) {
-        return "passive".equalsIgnoreCase(mode) ? PromptMode.PASSIVE : PromptMode.PROACTIVE;
     }
 
     private static String payloadRole(TeamRole role) {

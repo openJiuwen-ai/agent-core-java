@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.process.extract.Generator
+# com.openjiuwen.memory.process.extract.Generator
 
 ## 类 Generator
 

@@ -1,6 +1,6 @@
 ﻿# manage
 
-`com.openjiuwen.core.memory.manage` 汇总长期记忆引擎的管理层能力，按职责拆分为 `index`、`mem_model`、`search`、`update` 四个子包，分别负责写入协调、底层数据模型、检索参数与增量更新判定。
+`com.openjiuwen.memory.manage` 汇总长期记忆引擎的管理层能力，按职责拆分为 `index`、`mem_model`、`search`、`update` 四个子包，分别负责写入协调、底层数据模型、检索参数与增量更新判定。
 
 ## 子包
 

@@ -3,7 +3,7 @@ package com.openjiuwen.harness.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import org.junit.jupiter.api.Test;
@@ -131,7 +131,7 @@ class TodoStorageFactoryTest {
             public String typeName() { return customType; }
             @Override
             public TodoStorage create(Map<String, Object> conf) {
-                return new KvTodoStorage(new TestInMemoryKVStore());
+                return new KvTodoStorage(new InMemoryKVStore());
             }
         };
         TodoStorageFactory.register(customType, fileProvider);

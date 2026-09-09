@@ -5,27 +5,20 @@
 package com.openjiuwen.harness.harness_config;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
-import com.openjiuwen.core.memory.external.Mem0MemoryProvider;
-import com.openjiuwen.core.memory.external.MemoryProvider;
-import com.openjiuwen.core.memory.external.OpenJiuwenMemoryProvider;
-import com.openjiuwen.core.memory.external.OpenVikingMemoryProvider;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.rails.AgentModeRail;
-import com.openjiuwen.harness.rails.CodingMemoryRail;
 import com.openjiuwen.harness.rails.ContextAssembleRail;
 import com.openjiuwen.harness.rails.ContextProcessorRail;
-import com.openjiuwen.harness.rails.ExternalMemoryRail;
 import com.openjiuwen.harness.rails.HeartbeatRail;
 import com.openjiuwen.harness.rails.LspRail;
 import com.openjiuwen.harness.rails.McpRail;
-import com.openjiuwen.harness.rails.MemoryRail;
 import com.openjiuwen.harness.rails.ProgressiveToolRail;
 import com.openjiuwen.harness.rails.SecurityRail;
 import com.openjiuwen.harness.rails.SessionRail;
-import com.openjiuwen.harness.rails.SkillUseRail;
 import com.openjiuwen.harness.rails.SkillCreateRail;
+import com.openjiuwen.harness.rails.SkillUseRail;
 import com.openjiuwen.harness.rails.SubagentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
@@ -57,6 +50,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -141,9 +135,6 @@ public final class HarnessConfigBuilder {
         BUILTIN_RAILS.put("task_completion", HarnessConfigBuilder::createTaskCompletionRail);
         BUILTIN_RAILS.put("context_assemble", (root, spec) -> new ContextAssembleRail());
         BUILTIN_RAILS.put("context_processor", HarnessConfigBuilder::createContextProcessorRail);
-        BUILTIN_RAILS.put("memory", HarnessConfigBuilder::createMemoryRail);
-        BUILTIN_RAILS.put("coding_memory", HarnessConfigBuilder::createCodingMemoryRail);
-        BUILTIN_RAILS.put("external_memory", HarnessConfigBuilder::createExternalMemoryRail);
         BUILTIN_RAILS.put("verification_contract", (root, spec) -> new VerificationContractRail());
         BUILTIN_RAILS.put("verification", HarnessConfigBuilder::createVerificationRail);
         BUILTIN_RAILS.put("skill_use", HarnessConfigBuilder::createSkillUseRail);
@@ -172,9 +163,6 @@ public final class HarnessConfigBuilder {
         RAIL_CLASS_TO_NAME.put(TaskCompletionRail.class, "task_completion");
         RAIL_CLASS_TO_NAME.put(ContextAssembleRail.class, "context_assemble");
         RAIL_CLASS_TO_NAME.put(ContextProcessorRail.class, "context_processor");
-        RAIL_CLASS_TO_NAME.put(MemoryRail.class, "memory");
-        RAIL_CLASS_TO_NAME.put(CodingMemoryRail.class, "coding_memory");
-        RAIL_CLASS_TO_NAME.put(ExternalMemoryRail.class, "external_memory");
         RAIL_CLASS_TO_NAME.put(VerificationContractRail.class, "verification_contract");
         RAIL_CLASS_TO_NAME.put(VerificationRail.class, "verification");
         RAIL_CLASS_TO_NAME.put(SkillCreateRail.class, "skill_create");
@@ -208,6 +196,21 @@ public final class HarnessConfigBuilder {
      */
     public static void registerRailProvider(HarnessRailProvider provider) {
         RAIL_ENTRY_POINTS.put(provider.name(), provider);
+    }
+
+    /**
+     * Creates an optional rail supplied by an external module.
+     *
+     * @param name rail provider name
+     * @param workspaceRoot workspace root
+     * @param config rail configuration
+     * @return the rail when its provider is available
+     * @since 0.1.7
+     */
+    public static Optional<Object> createOptionalRail(String name, Path workspaceRoot, Map<String, Object> config) {
+        HarnessConfig.RailResourceSchema spec = HarnessConfig.RailResourceSchema.builder().type("builtin")
+                .name(name).config(config == null ? Map.of() : config).build();
+        return findRailProvider(name).map(provider -> provider.create(workspaceRoot, spec));
     }
 
     /**
@@ -346,14 +349,15 @@ public final class HarnessConfigBuilder {
             String type = spec.getType();
             if ("builtin".equals(type)) {
                 BiFunction<Path, HarnessConfig.RailResourceSchema, Object> factory = BUILTIN_RAILS.get(spec.getName());
-                if (factory == null) {
-                    throw new IllegalArgumentException("Unknown builtin rail: " + spec.getName());
+                if (factory != null) {
+                    rails.add(factory.apply(workspaceRoot, spec));
+                } else {
+                    rails.add(resolveRailEntryPoint(spec.getName(), workspaceRoot, spec));
                 }
-                rails.add(factory.apply(workspaceRoot, spec));
             } else if ("package".equals(type)) {
                 rails.add(instantiateNoArgs(spec.getModule(), spec.getClassName()));
             } else if ("entry_point".equals(type)) {
-                rails.add(resolveRailEntryPoint(spec.getName()));
+                rails.add(resolveRailEntryPoint(spec.getName(), workspaceRoot, spec));
             } else {
                 throw new IllegalArgumentException("Unsupported rail resource type: " + type);
             }
@@ -446,98 +450,6 @@ public final class HarnessConfigBuilder {
                 stringList(config.get("processor_keys")), booleanValue(config.get("session_memory_enabled"), false));
     }
 
-    /**
-     * createMemoryRail.
-     * 
-     * @param root root
-     * @param spec spec
-     * @return the result
-     * @since 0.1.7
-     */
-    private static MemoryRail createMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
-        Map<String, Object> config = railConfig(spec);
-        return new MemoryRail(null, booleanValue(config.get("isProactive"), true));
-    }
-
-    /**
-     * createCodingMemoryRail.
-     * 
-     * @param root root
-     * @param spec spec
-     * @return the result
-     * @since 0.1.7
-     */
-    private static CodingMemoryRail createCodingMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
-        Map<String, Object> config = railConfig(spec);
-        String configuredDir = stringValue(config.get("coding_memory_dir"), null);
-        if (configuredDir != null && !Path.of(configuredDir).isAbsolute()) {
-            configuredDir = root.resolve(configuredDir).toString();
-        }
-        return new CodingMemoryRail(configuredDir, null, booleanValue(config.get("isProactive"), true));
-    }
-
-    /**
-     * createExternalMemoryRail.
-     * 
-     * @param root root
-     * @param spec spec
-     * @return the result
-     * @since 0.1.7
-     */
-    private static ExternalMemoryRail createExternalMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
-        Map<String, Object> config = railConfig(spec);
-        MemoryProvider provider = createMemoryProvider(config);
-        return new ExternalMemoryRail(provider,
-                stringValue(firstPresent(config, new String[]{"user_id", "userId"}), "__default__"),
-                stringValue(firstPresent(config, new String[]{"scope_id", "scopeId"}), "__default__"),
-                stringValue(firstPresent(config, new String[]{"session_id", "sessionId"}), "__default__"));
-    }
-
-    /**
-     * createMemoryProvider.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static MemoryProvider createMemoryProvider(Map<String, Object> config) {
-        String providerName =
-            stringValue(firstPresent(config, new String[]{"provider", "provider_name", "providerName"}), "");
-        if (providerName.isBlank()) {
-            return nullValue();
-        }
-        return switch (providerName.toLowerCase(java.util.Locale.ROOT)) {
-            case "openjiuwen", "jiuwen", "default" -> new OpenJiuwenMemoryProvider(providerConfig(config), null, null);
-            case "mem0" -> new Mem0MemoryProvider();
-            case "openviking", "viking" -> new OpenVikingMemoryProvider();
-            default -> throw new IllegalArgumentException("Unknown external memory provider: " + providerName);
-        };
-    }
-
-    /**
-     * providerConfig.
-     * 
-     * @param config config
-     * @return the result
-     * @since 0.1.7
-     */
-    private static Map<String, Object> providerConfig(Map<String, Object> config) {
-        Object nested = firstPresent(config, new String[]{"provider_config", "providerConfig", "config"});
-        if (nested instanceof Map<?, ?> map) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (entry.getKey() != null) {
-                    result.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-            }
-            return result;
-        }
-        Map<String, Object> result = new LinkedHashMap<>(config);
-        result.remove("provider");
-        result.remove("provider_name");
-        result.remove("providerName");
-        return result;
-    }
 
     /**
      * createVerificationRail.
@@ -1108,18 +1020,39 @@ public final class HarnessConfigBuilder {
      * @return the result
      * @since 0.1.7
      */
-    private static Object resolveRailEntryPoint(String name) {
-        HarnessRailProvider provider = RAIL_ENTRY_POINTS.get(name);
-        if (provider != null) {
-            return provider.create();
+    private static Object resolveRailEntryPoint(String name, Path workspaceRoot,
+            HarnessConfig.RailResourceSchema spec) {
+        return findRailProvider(name).map(provider -> provider.create(workspaceRoot, spec))
+                .orElseThrow(() -> new IllegalArgumentException("Harness rail entry point not found: " + name));
+    }
+
+    private static Optional<HarnessRailProvider> findRailProvider(String name) {
+        HarnessRailProvider registered = RAIL_ENTRY_POINTS.get(name);
+        if (registered != null) {
+            return Optional.of(registered);
         }
         for (HarnessRailProvider loaded : ServiceLoader.load(HarnessRailProvider.class)) {
             if (loaded.name().equals(name)) {
                 RAIL_ENTRY_POINTS.put(name, loaded);
-                return loaded.create();
+                return Optional.of(loaded);
             }
         }
-        throw new IllegalArgumentException("Harness rail entry point not found: " + name);
+        return Optional.empty();
+    }
+
+    private static Optional<HarnessRailProvider> findRailProvider(Object rail) {
+        Optional<HarnessRailProvider> registered = RAIL_ENTRY_POINTS.values().stream()
+                .filter(provider -> provider.supports(rail)).findFirst();
+        if (registered.isPresent()) {
+            return registered;
+        }
+        for (HarnessRailProvider loaded : ServiceLoader.load(HarnessRailProvider.class)) {
+            RAIL_ENTRY_POINTS.putIfAbsent(loaded.name(), loaded);
+            if (loaded.supports(rail)) {
+                return Optional.of(loaded);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -1170,8 +1103,16 @@ public final class HarnessConfigBuilder {
                 specs.add(HarnessConfig.RailResourceSchema.builder().type("builtin").name(name)
                         .config(toRailConfig(rail)).build());
             } else {
-                specs.add(HarnessConfig.RailResourceSchema.builder().type("package")
-                        .module(rail.getClass().getPackageName()).className(rail.getClass().getSimpleName()).build());
+                Optional<HarnessRailProvider> provider = findRailProvider(rail);
+                if (provider.isPresent()) {
+                    HarnessRailProvider external = provider.get();
+                    specs.add(HarnessConfig.RailResourceSchema.builder().type("builtin").name(external.name())
+                            .config(external.toConfig(rail)).build());
+                } else {
+                    specs.add(HarnessConfig.RailResourceSchema.builder().type("package")
+                            .module(rail.getClass().getPackageName()).className(rail.getClass().getSimpleName())
+                            .build());
+                }
             }
         }
         return specs;
@@ -1217,15 +1158,6 @@ public final class HarnessConfigBuilder {
             putIfFalse(config, "preset", processor.isPreset());
             putIfNotEmpty(config, "processor_keys", processor.getProcessorKeys());
             putIfTrue(config, "session_memory_enabled", processor.isSessionMemoryEnabled());
-            return config;
-        }
-        if (rail instanceof CodingMemoryRail codingMemory) {
-            putIfNotBlank(config, "coding_memory_dir", codingMemory.codingMemoryDir());
-            putIfFalse(config, "isProactive", codingMemory.isProactive());
-            return config;
-        }
-        if (rail instanceof MemoryRail memory) {
-            putIfFalse(config, "isProactive", memory.isProactive());
             return config;
         }
         if (rail instanceof VerificationRail verification) {
@@ -1413,6 +1345,40 @@ public final class HarnessConfigBuilder {
          * @since 0.1.7
          */
         Object create();
+
+        /**
+         * Creates a rail using its workspace and declarative configuration.
+         *
+         * @param workspaceRoot workspace root
+         * @param spec rail resource specification
+         * @return the created rail
+         * @since 0.1.7
+         */
+        default Object create(Path workspaceRoot, HarnessConfig.RailResourceSchema spec) {
+            return create();
+        }
+
+        /**
+         * Checks whether this provider owns a rail instance.
+         *
+         * @param rail rail instance
+         * @return {@code true} when this provider owns the rail
+         * @since 0.1.7
+         */
+        default boolean supports(Object rail) {
+            return false;
+        }
+
+        /**
+         * Converts a rail instance to declarative configuration.
+         *
+         * @param rail rail instance
+         * @return rail configuration
+         * @since 0.1.7
+         */
+        default Map<String, Object> toConfig(Object rail) {
+            return Map.of();
+        }
     }
 
     /**

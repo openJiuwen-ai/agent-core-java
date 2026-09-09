@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.migrator.VectorMigrator
+# com.openjiuwen.memory.migration.migrator.VectorMigrator
 
 ## 类 VectorMigrator
 

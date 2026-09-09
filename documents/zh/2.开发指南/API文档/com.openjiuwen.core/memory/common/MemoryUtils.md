@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.common.MemoryUtils
+# com.openjiuwen.memory.common.MemoryUtils
 
 ## 类 MemoryUtils
 
@@ -6,7 +6,7 @@
 public final class MemoryUtils
 ```
 
-`MemoryUtils` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`MemoryUtils` 是 `com.openjiuwen.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 公开方法
 

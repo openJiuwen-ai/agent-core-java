@@ -2,7 +2,7 @@ package com.openjiuwen.harness.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
+import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class TodoStorageProviderTest {
     @Test
     void testKvProvider_createWithSharedKvStore() {
         KvTodoStorageProvider provider = new KvTodoStorageProvider();
-        BaseKVStore sharedKvStore = new TestInMemoryKVStore();
+        BaseKVStore sharedKvStore = new InMemoryKVStore();
         Map<String, Object> conf = new HashMap<>();
         conf.put("sharedKvStore", sharedKvStore);
         TodoStorage storage = provider.create(conf);
@@ -92,7 +92,7 @@ class TodoStorageProviderTest {
     @Test
     void testKvProvider_sharedKvStorePriorityOverConf() {
         KvTodoStorageProvider provider = new KvTodoStorageProvider();
-        BaseKVStore sharedKvStore = new TestInMemoryKVStore();
+        BaseKVStore sharedKvStore = new InMemoryKVStore();
         Map<String, Object> conf = new HashMap<>();
         conf.put("sharedKvStore", sharedKvStore);
         conf.put("kvStoreType", "in_memory");

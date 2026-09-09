@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.common.KvPrefixRegistry
+# com.openjiuwen.memory.common.KvPrefixRegistry
 
 ## 类 KvPrefixRegistry
 
@@ -6,7 +6,7 @@
 public final class KvPrefixRegistry
 ```
 
-`KvPrefixRegistry` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`KvPrefixRegistry` 是 `com.openjiuwen.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

@@ -1,0 +1,48 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.memory.manage.mem_model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+/**
+ * Variable memory unit.
+ * 
+ * @since 0.1.7
+ */
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class VariableUnit extends BaseMemoryUnit {
+    private String variableName;
+    private String variableMem;
+
+    /**
+     * getMemType.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public MemoryType getMemType() {
+        return MemoryType.VARIABLE;
+    }
+
+    /**
+     * getMemId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
+    public String getMemId() {
+        return "";
+    }
+}

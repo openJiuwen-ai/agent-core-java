@@ -14,6 +14,10 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class MilvusVectorStore extends AbstractRetrievalVectorStoreAdapter {
+    MilvusVectorStore(com.openjiuwen.retrieval.vector_store.MilvusVectorStore delegate) {
+        super(delegate);
+    }
+
     /**
      * MilvusVectorStore.
      * 

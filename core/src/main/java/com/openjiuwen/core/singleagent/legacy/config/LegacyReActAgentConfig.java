@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.singleagent.legacy.config;
 
+import com.openjiuwen.core.application.schema.AgentMemoryConfig;
 import com.openjiuwen.core.common.constants.ControllerType;
-import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.PluginSchema;
 
 import lombok.AllArgsConstructor;
