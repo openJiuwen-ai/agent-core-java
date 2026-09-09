@@ -6,14 +6,13 @@ package com.openjiuwen.core.foundation.store;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * Mirrors Python's {@code FieldSchema} in
@@ -75,13 +74,13 @@ public class FieldSchema {
 
     private void validateDim() {
         if (dim != null && dim <= 0) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "dim of vector field is invalid, field=" + name + ", dim=" + dim
             );
         }
         if (dtype == VectorDataType.FLOAT_VECTOR && dim == null) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "dim of vector field is missing, field=" + name + ", dim=" + dim
             );

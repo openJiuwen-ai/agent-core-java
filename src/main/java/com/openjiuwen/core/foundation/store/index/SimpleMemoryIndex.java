@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.store.index;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -41,8 +42,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * Mirrors Python's {@code SimpleMemoryIndex} in
@@ -117,7 +116,7 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
                     LogEventType.MEMORY_STORE.getValue()
             );
             return CompletableFuture.failedFuture(
-                    buildError(
+                    ErrorHelper.buildError(
                             StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
                             "memory_type",
                             "vector store",

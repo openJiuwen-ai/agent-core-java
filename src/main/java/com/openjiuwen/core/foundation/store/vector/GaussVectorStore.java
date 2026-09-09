@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
@@ -38,8 +39,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * GaussVector store implementation.
@@ -149,7 +148,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                         vectorFieldName = field.getName();
                         vectorDim = field.getDim();
                         if (vectorDim == null || vectorDim <= 0) {
-                            throw buildError(
+                            throw ErrorHelper.buildError(
                                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                                     "error_msg",
                                     "dim of vector field is missing, field=" + colName + ", dim=" + vectorDim
@@ -173,7 +172,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                 }
 
                 if (vectorFieldName == null) {
-                    throw buildError(
+                    throw ErrorHelper.buildError(
                             StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                             "error_msg",
                             "schema must contain at least one FLOAT_VECTOR field"
@@ -191,7 +190,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         null,
                         null,
@@ -224,7 +223,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         null,
                         null,
@@ -263,7 +262,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                         collectionName
                 );
                 if (!Boolean.TRUE.equals(firstValue(cursor.fetchOne()))) {
-                    throw buildError(
+                    throw ErrorHelper.buildError(
                             StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
                             "collection_name",
                             collectionName
@@ -365,7 +364,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         null,
                         null,
@@ -428,7 +427,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         null,
                         null,
@@ -458,7 +457,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         null,
                         null,
@@ -492,7 +491,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         null,
                         null,
@@ -556,7 +555,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                 if (collectionExists(tempCollectionName, Map.of()).join()) {
                     deleteCollection(tempCollectionName, Map.of()).join();
                 }
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         null,
                         null,
@@ -575,7 +574,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             }
             Object version = metadata.get("schema_version");
             if (version != null && (!(version instanceof Number number) || number.intValue() < 0)) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema_version must be a non-negative integer, got " + version
@@ -588,7 +587,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                         collectionName
                 );
                 if (!Boolean.TRUE.equals(firstValue(cursor.fetchOne()))) {
-                    throw buildError(
+                    throw ErrorHelper.buildError(
                             StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
                             "error_msg",
                             "'" + collectionName + "' does not exist."
@@ -667,7 +666,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             case DOUBLE -> "DOUBLE PRECISION";
             case BOOL -> "BOOLEAN";
             case JSON -> "JSONB";
-            default -> throw buildError(
+            default -> throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg",
                     "unsupported field type, field_type=" + fieldType
@@ -731,7 +730,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
     private String buildIndexSql(String collectionName, String vectorFieldName, String distanceMetric,
             String indexType, Map<String, Object> kwargs) {
         if (!"diskann".equals(indexType)) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg",
                     "index_type only support DiskANN"
@@ -769,7 +768,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             map.forEach((key, value) -> converted.put(String.valueOf(key), value));
             return CollectionSchema.fromDict(converted);
         }
-        throw buildError(
+        throw ErrorHelper.buildError(
                 StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                 "error_msg",
                 "schema must be CollectionSchema or dict"
@@ -823,7 +822,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
                 updateVectorDim(newSchema, stringProperty(operation, "fieldName", "field_name"),
                         intValue(property(operation, "newDimension", "new_dimension"), 0));
             } else {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "Unsupported operation type: " + kind
@@ -864,11 +863,11 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
     private void renameField(CollectionSchema schema, String oldFieldName, String newFieldName) {
         FieldSchema existing = schema.getField(oldFieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Old field '" + oldFieldName + "' does not exist");
         }
         if (schema.hasField(newFieldName)) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "New field '" + newFieldName + "' already exists");
         }
         existing.setName(newFieldName);
@@ -877,11 +876,11 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
     private void updateFieldType(CollectionSchema schema, String fieldName, VectorDataType newType) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() == VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Cannot update type of vector field '" + fieldName + "'");
         }
         existing.setDtype(newType);
@@ -890,11 +889,11 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
     private void updateVectorDim(CollectionSchema schema, String fieldName, int newDimension) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() != VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' is not a vector field");
         }
         existing.setDim(newDimension);
@@ -910,7 +909,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             case "bool", "boolean" -> VectorDataType.BOOL;
             case "json" -> VectorDataType.JSON;
             case "vector", "float_vector" -> VectorDataType.FLOAT_VECTOR;
-            default -> throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            default -> throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Unknown type string: '" + type + "'");
         };
     }

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
@@ -30,8 +31,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * ChromaDB vector store implementation.
@@ -76,7 +75,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             CollectionSchema collectionSchema = normalizeSchema(schema);
             FieldSchema primaryField = collectionSchema.getPrimaryKeyField();
             if (primaryField == null) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema must contain a primary key field (is_primary=True)"
@@ -84,7 +83,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             }
             List<FieldSchema> vectorFields = collectionSchema.getVectorFields();
             if (vectorFields.isEmpty()) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema must contain at least one FLOAT_VECTOR field"
@@ -214,7 +213,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             if (metadata != null && metadata.containsKey("schema_version")) {
                 Object version = metadata.get("schema_version");
                 if (!(version instanceof Number number) || number.intValue() < 0) {
-                    throw buildError(
+                    throw ErrorHelper.buildError(
                             StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                             "error_msg",
                             "schema_version must be a non-negative integer, got " + version
@@ -275,7 +274,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             collections.put(collectionName, collection);
             return collection;
         } catch (RuntimeException exception) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
                     "collection_name",
                     collectionName,
@@ -293,7 +292,7 @@ public class ChromaVectorStore extends BaseVectorStore {
         if (schema instanceof Map<?, ?> schemaMap) {
             return CollectionSchema.fromDict((Map<String, Object>) schemaMap);
         }
-        throw buildError(
+        throw ErrorHelper.buildError(
                 StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                 "error_msg",
                 "schema must be CollectionSchema or dict"
@@ -325,7 +324,7 @@ public class ChromaVectorStore extends BaseVectorStore {
         for (Map<String, Object> doc : batch) {
             Object rawId = doc.get(fieldMapping.primaryKey());
             if (rawId == null) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         "error_msg",
                         "document must have primary field '" + fieldMapping.primaryKey() + "'"
@@ -335,7 +334,7 @@ public class ChromaVectorStore extends BaseVectorStore {
 
             Object rawEmbedding = doc.get(fieldMapping.vectorField());
             if (rawEmbedding == null) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_DOC_INVALID,
                         "error_msg",
                         "document must have vector field '" + fieldMapping.vectorField() + "'"
@@ -506,7 +505,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                         intValue(property(operation, "newDimension", "new_dimension"), 0));
                 continue;
             }
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg",
                     "Unsupported operation type: " + kind
@@ -545,7 +544,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                     List<Double> normalizedVector = doubleList(newVector);
                     int actualDimension = newVector instanceof List<?> rawList ? rawList.size() : normalizedVector.size();
                     if (actualDimension != newDimension || normalizedVector.size() != newDimension) {
-                        throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+                        throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                                 "error_msg",
                                 "Generated vector length " + actualDimension + " does not match new_dim "
                                         + newDimension);
@@ -560,11 +559,11 @@ public class ChromaVectorStore extends BaseVectorStore {
     private void renameField(CollectionSchema schema, String oldFieldName, String newFieldName) {
         FieldSchema existing = schema.getField(oldFieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Old field '" + oldFieldName + "' does not exist");
         }
         if (schema.hasField(newFieldName)) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "New field '" + newFieldName + "' already exists");
         }
         existing.setName(newFieldName);
@@ -573,11 +572,11 @@ public class ChromaVectorStore extends BaseVectorStore {
     private void updateFieldType(CollectionSchema schema, String fieldName, VectorDataType newType) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() == VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Cannot update type of vector field '" + fieldName + "'");
         }
         existing.setDtype(newType);
@@ -586,11 +585,11 @@ public class ChromaVectorStore extends BaseVectorStore {
     private void updateVectorDim(CollectionSchema schema, String fieldName, int newDimension) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() != VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' is not a vector field");
         }
         existing.setDim(newDimension);
@@ -606,7 +605,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             case "bool", "boolean" -> VectorDataType.BOOL;
             case "json" -> VectorDataType.JSON;
             case "vector", "float_vector" -> VectorDataType.FLOAT_VECTOR;
-            default -> throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            default -> throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Unknown type string: '" + type + "'");
         };
     }
