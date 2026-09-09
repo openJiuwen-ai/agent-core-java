@@ -17,6 +17,8 @@ import java.util.regex.PatternSyntaxException;
  * directory separator, so {@code **} is required to match nested paths.
  * Matching is case-insensitive on Windows (case-insensitive filesystem) so case
  * variants cannot bypass a path rule; case-sensitive on Linux.
+ *
+ * @since 0.1.14
  */
 public final class GlobMatcher {
     private static final boolean IS_WINDOWS =

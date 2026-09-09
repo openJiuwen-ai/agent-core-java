@@ -14,6 +14,8 @@ import java.util.Optional;
  * independent {@code read}/{@code write}/{@code exec} level; this enum selects which
  * axis applies to a given tool invocation so that, for example, {@code write_file}
  * evaluates the {@code WRITE} axis while {@code read_file} evaluates {@code READ}.
+ *
+ * @since 0.1.14
  */
 public enum FileGuardAction {
     /** Read access (file inspection, listing, grep). */

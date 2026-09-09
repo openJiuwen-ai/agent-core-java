@@ -1658,8 +1658,10 @@ public class AbilityManager {
         try {
             permits.acquire();
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new CancellationException("Interrupted while waiting for a parallel tool-call slot");
+            CancellationException cancelled =
+                    new CancellationException("Interrupted while waiting for a parallel tool-call slot");
+            cancelled.initCause(interrupted);
+            throw cancelled;
         }
     }
 

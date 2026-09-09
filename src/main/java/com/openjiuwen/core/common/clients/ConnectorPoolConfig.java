@@ -78,6 +78,12 @@ public class ConnectorPoolConfig {
         return sha256Hex(keyStr);
     }
 
+    /**
+     * Hex-encoded SHA-256 digest used as a stable pool key.
+     *
+     * @param value canonical config string
+     * @return lowercase hex digest
+     */
     protected static String sha256Hex(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

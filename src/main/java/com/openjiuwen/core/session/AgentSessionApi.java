@@ -36,9 +36,15 @@ public interface AgentSessionApi {
         return this;
     }
 
+    /**
+     * Mark that this session has already completed {@code preRun} for the current invocation.
+     */
     default void markPreRunDone() {
     }
 
+    /**
+     * Mark that this session has already completed {@code postRun} for the current invocation.
+     */
     default void markPostRunDone() {
     }
 

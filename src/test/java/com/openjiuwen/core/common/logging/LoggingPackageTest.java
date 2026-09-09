@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.common.logging;
 
+import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -24,6 +27,7 @@ class LoggingPackageTest {
     void tearDown() {
         LogManager.reset();
         LogManager.LogConfigProvider.setProvider(null);
+        LoggingDefaults.reset();
     }
 
     @Test

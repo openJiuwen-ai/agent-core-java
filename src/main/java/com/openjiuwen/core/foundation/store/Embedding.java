@@ -75,6 +75,6 @@ public abstract class Embedding implements AutoCloseable {
      * Default is a no-op; subclasses holding resources should override.
      */
     @Override
-    public void close() throws Exception {
+    public void close() {
     }
 }

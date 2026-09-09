@@ -7,6 +7,7 @@ package com.openjiuwen.core.session.interaction;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.LinkedHashMap;

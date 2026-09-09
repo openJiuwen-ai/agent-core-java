@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;

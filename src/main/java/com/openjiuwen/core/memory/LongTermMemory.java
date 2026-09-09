@@ -1012,7 +1012,7 @@ public class LongTermMemory {
         if (removed != null) {
             try {
                 removed.close();
-            } catch (Exception exception) {
+            } catch (RuntimeException exception) {
                 MEMORY_LOGGER.warning("Failed to close scope embedding model. event_type={}, scope_id={}",
                         LogEventType.MEMORY_STORE.getValue(), scopeId);
             }

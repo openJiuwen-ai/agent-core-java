@@ -14,6 +14,8 @@ import java.util.Optional;
  * {@code "prefix"} (default) or {@code "glob"}. Axis levels may be {@code null} when
  * a caller builds a rule by hand; the normalizer always fills them so the checker
  * can apply the Write/Exec&#x21d2;Read implication deterministically.
+ *
+ * @since 0.1.14
  */
 public final class FileGuardPathRule {
 
@@ -42,27 +44,47 @@ public final class FileGuardPathRule {
         this.match = match == null ? MATCH_PREFIX : match;
     }
 
-    /** Normalized path (prefix rules) or glob pattern (glob rules). */
+    /**
+     * Normalized path (prefix rules) or glob pattern (glob rules).
+     *
+     * @return rule path or glob
+     */
     public String getPath() {
         return path;
     }
 
-    /** Level for the read axis; {@code null} means unspecified. */
+    /**
+     * Level for the read axis; {@code null} means unspecified.
+     *
+     * @return read permission level
+     */
     public PermissionLevel getRead() {
         return read;
     }
 
-    /** Level for the write axis; {@code null} means unspecified. */
+    /**
+     * Level for the write axis; {@code null} means unspecified.
+     *
+     * @return write permission level
+     */
     public PermissionLevel getWrite() {
         return write;
     }
 
-    /** Level for the exec axis; {@code null} means unspecified. */
+    /**
+     * Level for the exec axis; {@code null} means unspecified.
+     *
+     * @return exec permission level
+     */
     public PermissionLevel getExec() {
         return exec;
     }
 
-    /** Match strategy: {@code "prefix"} (default) or {@code "glob"}. */
+    /**
+     * Match strategy: {@code "prefix"} (default) or {@code "glob"}.
+     *
+     * @return match strategy
+     */
     public String getMatch() {
         return match;
     }

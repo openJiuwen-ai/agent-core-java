@@ -35,6 +35,8 @@ import java.util.regex.Pattern;
  * than filesystem {@code resolve()}, because the Java port must keep literal posix
  * paths such as {@code "/etc/hosts"} stable across operating systems and must not
  * require the target to exist on disk.
+ *
+ * @since 0.1.14
  */
 public final class FileGuardConfigNormalizer {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileGuardConfigNormalizer.class);

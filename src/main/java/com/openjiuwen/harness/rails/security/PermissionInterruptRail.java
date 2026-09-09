@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -19,6 +20,9 @@ import com.openjiuwen.harness.security.ShellAst;
 import com.openjiuwen.harness.security.ShellAstParseResult;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,9 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Tool permission interrupt rail.
@@ -364,6 +365,8 @@ public class PermissionInterruptRail extends BaseSecurityRail {
      * Extend the shared confirm schema with the permission-specific
      * {@code persist_allow} flag without mutating {@link ConfirmPayload#toSchema()},
      * which is shared with other confirm rails.
+     *
+     * @return schema map including {@code persist_allow}
      */
     private static Map<String, Object> permissionPayloadSchema() {
         Map<String, Object> schema = new LinkedHashMap<>(ConfirmPayload.toSchema());
@@ -437,6 +440,9 @@ public class PermissionInterruptRail extends BaseSecurityRail {
      * arguments as a raw JSON string (see {@code AbilityManager#newToolCallContext}),
      * so the rail must decode it before the engine can match parameter-level rules
      * (Pipeline A patterns) or extract guarded paths (Pipeline B file_guard).
+     *
+     * @param rawArgs JSON object text, or blank when the tool call has no arguments
+     * @return parsed argument map; never {@code null}
      */
     private static Map<String, Object> parseJsonToolArgs(String rawArgs) {
         if (rawArgs == null || rawArgs.isBlank()) {
@@ -445,7 +451,7 @@ public class PermissionInterruptRail extends BaseSecurityRail {
         try {
             Map<String, Object> parsed = ARGUMENTS_MAPPER.readValue(rawArgs, MAP_TYPE);
             return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
-        } catch (Exception ex) {
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
             LOGGER.warn("[PermissionEngine] permission.tool_args.parse_failed raw={}", rawArgs, ex);
             return new LinkedHashMap<>();
         }

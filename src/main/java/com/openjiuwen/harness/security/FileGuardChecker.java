@@ -28,6 +28,8 @@ import java.util.Map;
  * backward safety implication &#x2014; a WRITE/EXEC access also honors the rule's READ
  * axis (strictest), so {@code read=deny} forces {@code write=deny}. This satisfies the
  * acceptance requirement that {@code read=deny} denies writes too.
+ *
+ * @since 0.1.14
  */
 public final class FileGuardChecker {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileGuardChecker.class);
@@ -217,6 +219,9 @@ public final class FileGuardChecker {
     /**
      * Extract the posix-normalized path string, falling back to the raw string
      * retained after {@code Paths.get} failures (wildcard chars on Windows).
+     *
+     * @param pa extracted path access
+     * @return posix path string, never {@code null}
      */
     private static String posixOf(PathAccessExtractor.PathAccess pa) {
         if (pa.getPath() != null) {

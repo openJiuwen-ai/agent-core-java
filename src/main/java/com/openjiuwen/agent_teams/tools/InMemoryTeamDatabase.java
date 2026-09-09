@@ -466,9 +466,9 @@ public class InMemoryTeamDatabase {
                 return CompletableFuture.completedFuture(false);
             }
             if (task.getAssignee() != null) {
-                boolean startAssigned = memberName.equals(task.getAssignee())
+                boolean hasAssigned = memberName.equals(task.getAssignee())
                         && Objects.equals(task.getStatus(), TaskStatus.PENDING.value());
-                if (!startAssigned) {
+                if (!hasAssigned) {
                     TEAM_LOGGER.warning("Task %s is already claimed by member %s", taskId, task.getAssignee());
                     return CompletableFuture.completedFuture(false);
                 }

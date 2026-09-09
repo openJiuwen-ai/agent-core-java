@@ -94,9 +94,7 @@ public final class LogManager {
      * Get a logger by type. Creates one on-demand if not present.
      */
     public static LoggerProtocol getLogger(String logType) {
-        if (!initialized) {
-            initialize();
-        }
+        initialize();
         return LOGGERS.computeIfAbsent(logType, type -> {
             Map<String, Object> config = getCustomConfig(type, selectedBackend);
             return getDefaultLoggerFactory(selectedBackend != null ? selectedBackend : getConfiguredBackend())
@@ -106,9 +104,7 @@ public final class LogManager {
 
     /** Get all registered loggers. */
     public static Map<String, LoggerProtocol> getAllLoggers() {
-        if (!initialized) {
-            initialize();
-        }
+        initialize();
         return Map.copyOf(LOGGERS);
     }
 

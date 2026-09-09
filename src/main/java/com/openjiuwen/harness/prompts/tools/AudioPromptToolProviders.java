@@ -26,7 +26,8 @@ public final class AudioPromptToolProviders {
 
     private static final Map<String, String> AUDIO_METADATA_DESCRIPTION = Map.of(
             "cn", "识别音频时长，并在配置了 ACR 信息时尝试识别歌曲标题、歌手和发布时间。",
-            "en", "Inspect audio duration and optionally identify song metadata when ACR credentials are configured. This tool cannot transcribe speech or answer questions about spoken content."
+            "en", "Inspect audio duration and optionally identify song metadata when ACR credentials "
+                    + "are configured. This tool cannot transcribe speech or answer questions about spoken content."
     );
 
     private static final Map<String, Map<String, String>> AUDIO_TRANSCRIPTION_PARAMS = Map.of(

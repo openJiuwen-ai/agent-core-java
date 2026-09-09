@@ -142,12 +142,17 @@ public final class BashMetadataProvider implements ToolMetadataProvider {
                 ? "Working directory (relative or absolute path), defaults to workspace root; cannot escape workspace sandbox"
                 : "执行目录（相对或绝对路径），默认为工作区根目录；不能越出工作区沙箱"));
         properties.put("max_output_chars", integerProperty("en".equals(lang)
-                ? "Max output characters; default 8000; values are clamped between 200 and 20000 to prevent oversized output from flooding context"
+                ? "Max output characters; default 8000; values are clamped between 200 and 20000 "
+                + "to prevent oversized output from flooding context"
                 : "最大输出字符数；默认 8000，取值会被限制在 200 到 20000 之间，防止超大输出撑爆上下文"));
 
         Map<String, Object> shellType = property("string", "en".equals(lang)
-                ? "Shell to use: auto/cmd/powershell/bash/sh, default auto. cmd/PowerShell do not support `mkdir -p`; use auto/bash/sh for POSIX syntax only when the environment information shows Git Bash or a non-WSL-stub PATH bash is available."
-                : "指定 Shell 类型，可选值：auto/cmd/powershell/bash/sh，默认 auto。cmd/PowerShell 不支持 `mkdir -p`；只有环境信息显示 Git Bash 或非 WSL stub 的 PATH bash 可用时，才对 POSIX 语法使用 auto/bash/sh。");
+                ? "Shell to use: auto/cmd/powershell/bash/sh, default auto. cmd/PowerShell do not support "
+                + "`mkdir -p`; use auto/bash/sh for POSIX syntax only when the environment information "
+                + "shows Git Bash or a non-WSL-stub PATH bash is available."
+                : "指定 Shell 类型，可选值：auto/cmd/powershell/bash/sh，默认 auto。cmd/PowerShell 不支持 "
+                + "`mkdir -p`；只有环境信息显示 Git Bash 或非 WSL stub 的 PATH bash 可用时，"
+                + "才对 POSIX 语法使用 auto/bash/sh。");
         shellType.put("enum", List.of("auto", "cmd", "powershell", "bash", "sh"));
         properties.put("shell_type", shellType);
 

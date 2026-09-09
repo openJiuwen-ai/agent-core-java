@@ -8,6 +8,8 @@ import java.io.Serializable;
 
 /**
  * Utilities for enforcing Java native serialization contracts at object boundaries.
+ *
+ * @since 0.1.14
  */
 public final class SerializationUtils {
     private SerializationUtils() {

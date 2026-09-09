@@ -30,6 +30,8 @@ import java.util.regex.Pattern;
  * than exposed as a separate mutable registry module, since the Java port does not
  * yet support runtime tool registration. The builtin specs mirror Python
  * {@code files.registry._bootstrap_builtin_specs}.
+ *
+ * @since 0.1.14
  */
 public final class PathAccessExtractor {
     private static final Logger LOGGER = LoggerFactory.getLogger(PathAccessExtractor.class);
@@ -85,6 +87,8 @@ public final class PathAccessExtractor {
         /**
          * Resolved path, or {@code null} when the raw string contains characters
          * that {@code Paths.get} rejects (e.g. {@code *} on Windows).
+         *
+         * @return resolved path, or {@code null}
          */
         public Path getPath() {
             return path;
@@ -92,17 +96,27 @@ public final class PathAccessExtractor {
 
         /**
          * Posix-normalized raw path string, set when {@code path} is {@code null}.
+         *
+         * @return raw path string, or {@code null}
          */
         public String getRawPathStr() {
             return rawPathStr;
         }
 
-        /** Inferred file-access axis. */
+        /**
+         * Inferred file-access axis.
+         *
+         * @return file-guard action
+         */
         public FileGuardAction getAction() {
             return action;
         }
 
-        /** Origin: {@code tool_arg} or {@code shlex}. */
+        /**
+         * Origin: {@code tool_arg} or {@code shlex}.
+         *
+         * @return access source identifier
+         */
         public String getSource() {
             return source;
         }

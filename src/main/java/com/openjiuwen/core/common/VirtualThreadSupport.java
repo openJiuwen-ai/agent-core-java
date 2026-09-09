@@ -4,8 +4,7 @@
 
 package com.openjiuwen.core.common;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,51 +18,51 @@ import java.util.concurrent.atomic.AtomicInteger;
  * ({@code Thread.ofVirtual()}) on JDK 21+, falls back to cached platform
  * threads on JDK 17. All call sites compile on both JDK versions without
  * requiring multi-release JARs.</p>
+ *
+ * @since 0.1.14
  */
 public final class VirtualThreadSupport {
 
     private static final int MINIMUM_VIRTUAL_THREAD_VERSION = 21;
-    private static final MethodHandle THREAD_OF_VIRTUAL;
-    private static final MethodHandle VIRTUAL_BUILDER_START;
-    private static final MethodHandle VIRTUAL_BUILDER_NAME;
-    private static final MethodHandle VIRTUAL_BUILDER_NAME_WITH_COUNTER;
-    private static final MethodHandle VIRTUAL_BUILDER_UNCAUGHT;
-    private static final MethodHandle VIRTUAL_BUILDER_UNSTARTED;
-    private static final MethodHandle VIRTUAL_BUILDER_FACTORY;
-    private static final MethodHandle VIRTUAL_EXECUTOR_METHOD;
-    private static final MethodHandle THREAD_PER_TASK_EXECUTOR_METHOD;
-    private static final MethodHandle THREAD_IS_VIRTUAL;
+    private static final Method THREAD_OF_VIRTUAL;
+    private static final Method VIRTUAL_BUILDER_START;
+    private static final Method VIRTUAL_BUILDER_NAME;
+    private static final Method VIRTUAL_BUILDER_NAME_WITH_COUNTER;
+    private static final Method VIRTUAL_BUILDER_UNCAUGHT;
+    private static final Method VIRTUAL_BUILDER_UNSTARTED;
+    private static final Method VIRTUAL_BUILDER_FACTORY;
+    private static final Method VIRTUAL_EXECUTOR_METHOD;
+    private static final Method THREAD_PER_TASK_EXECUTOR_METHOD;
+    private static final Method THREAD_IS_VIRTUAL;
 
     static {
-        MethodHandle ofVirtual = null;
-        MethodHandle builderStart = null;
-        MethodHandle builderName = null;
-        MethodHandle builderNameWithCounter = null;
-        MethodHandle builderUncaught = null;
-        MethodHandle builderUnstarted = null;
-        MethodHandle builderFactory = null;
-        MethodHandle vteMethod = null;
-        MethodHandle threadPerTaskExecutorMethod = null;
-        MethodHandle threadIsVirtual = null;
+        Method ofVirtual = null;
+        Method builderStart = null;
+        Method builderName = null;
+        Method builderNameWithCounter = null;
+        Method builderUncaught = null;
+        Method builderUnstarted = null;
+        Method builderFactory = null;
+        Method vteMethod = null;
+        Method threadPerTaskExecutorMethod = null;
+        Method threadIsVirtual = null;
 
         if (Runtime.version().feature() >= MINIMUM_VIRTUAL_THREAD_VERSION) {
             try {
-                MethodHandles.Lookup lookup = MethodHandles.publicLookup();
                 Class<?> virtualBuilderClass = loadClass("java.lang.Thread$Builder$OfVirtual");
-                ofVirtual = lookup.unreflect(Thread.class.getMethod("ofVirtual"));
-                builderStart = lookup.unreflect(virtualBuilderClass.getMethod("start", Runnable.class));
-                builderName = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class));
-                builderNameWithCounter = lookup.unreflect(virtualBuilderClass.getMethod("name", String.class, long.class));
-                builderUncaught = lookup.unreflect(virtualBuilderClass.getMethod(
-                        "uncaughtExceptionHandler", Thread.UncaughtExceptionHandler.class));
-                builderUnstarted = lookup.unreflect(virtualBuilderClass.getMethod("unstarted", Runnable.class));
-                builderFactory = lookup.unreflect(virtualBuilderClass.getMethod("factory"));
-                vteMethod = lookup.unreflect(Executors.class.getMethod("newVirtualThreadPerTaskExecutor"));
-                threadPerTaskExecutorMethod = lookup.unreflect(Executors.class.getMethod(
-                        "newThreadPerTaskExecutor", ThreadFactory.class));
-                Method isVirtual = Thread.class.getMethod("isVirtual");
-                threadIsVirtual = lookup.unreflect(isVirtual);
-            } catch (Exception e) {
+                ofVirtual = Thread.class.getMethod("ofVirtual");
+                builderStart = virtualBuilderClass.getMethod("start", Runnable.class);
+                builderName = virtualBuilderClass.getMethod("name", String.class);
+                builderNameWithCounter = virtualBuilderClass.getMethod("name", String.class, long.class);
+                builderUncaught = virtualBuilderClass.getMethod(
+                        "uncaughtExceptionHandler", Thread.UncaughtExceptionHandler.class);
+                builderUnstarted = virtualBuilderClass.getMethod("unstarted", Runnable.class);
+                builderFactory = virtualBuilderClass.getMethod("factory");
+                vteMethod = Executors.class.getMethod("newVirtualThreadPerTaskExecutor");
+                threadPerTaskExecutorMethod = Executors.class.getMethod(
+                        "newThreadPerTaskExecutor", ThreadFactory.class);
+                threadIsVirtual = Thread.class.getMethod("isVirtual");
+            } catch (NoSuchMethodException | SecurityException | IllegalStateException | NullPointerException ignored) {
                 // Current runtime does not expose stable virtual-thread APIs.
             }
         }
@@ -80,12 +79,13 @@ public final class VirtualThreadSupport {
         THREAD_IS_VIRTUAL = threadIsVirtual;
     }
 
-
     private VirtualThreadSupport() {
     }
 
     /**
      * Returns whether the current runtime exposes JDK virtual thread APIs.
+     *
+     * @return {@code true} when virtual-thread APIs are available
      */
     public static boolean isVirtualThreadSupported() {
         return THREAD_OF_VIRTUAL != null && VIRTUAL_BUILDER_START != null && THREAD_IS_VIRTUAL != null;
@@ -93,6 +93,8 @@ public final class VirtualThreadSupport {
 
     /**
      * Returns whether the current thread is a virtual thread.
+     *
+     * @return {@code true} when the current thread is virtual
      */
     public static boolean isCurrentThreadVirtual() {
         return isVirtual(Thread.currentThread());
@@ -100,29 +102,33 @@ public final class VirtualThreadSupport {
 
     /**
      * Returns whether the given thread is a virtual thread.
+     *
+     * @param thread thread to inspect
+     * @return {@code true} when {@code thread} is virtual
      */
     public static boolean isVirtual(Thread thread) {
         if (thread == null || THREAD_IS_VIRTUAL == null) {
             return false;
         }
-        try {
-            return (boolean) THREAD_IS_VIRTUAL.invoke(thread);
-        } catch (Throwable e) {
-            return false;
+        Object result = invokeQuietly(THREAD_IS_VIRTUAL, thread);
+        if (result instanceof Boolean value) {
+            return value;
         }
+        return false;
     }
 
     /**
      * Returns an executor that creates a new thread per task.
      * On JDK 21+ this is a virtual-thread-per-task executor;
      * on JDK 17 it falls back to a cached thread pool.
+     *
+     * @return per-task executor
      */
     public static ExecutorService newThreadPerTaskExecutor() {
         if (VIRTUAL_EXECUTOR_METHOD != null) {
-            try {
-                return (ExecutorService) VIRTUAL_EXECUTOR_METHOD.invoke();
-            } catch (Throwable e) {
-                throw new RuntimeException("Failed to create virtual thread executor", e);
+            Object executor = invokeQuietly(VIRTUAL_EXECUTOR_METHOD, null);
+            if (executor instanceof ExecutorService service) {
+                return service;
             }
         }
         return Executors.newCachedThreadPool();
@@ -133,6 +139,9 @@ public final class VirtualThreadSupport {
      * On JDK 21+ this is a virtual-thread-per-task executor;
      * on JDK 17 it falls back to a cached thread pool using the given
      * name prefix for thread naming.
+     *
+     * @param namePrefix thread name prefix
+     * @return per-task executor
      */
     public static ExecutorService newThreadPerTaskExecutor(String namePrefix) {
         return newThreadPerTaskExecutor(namePrefix, null);
@@ -141,24 +150,16 @@ public final class VirtualThreadSupport {
     /**
      * Returns a named per-task executor, optionally with an uncaught-exception handler.
      * On JDK 21+ this uses virtual threads; on JDK 17 it falls back to a cached pool.
+     *
+     * @param namePrefix thread name prefix
+     * @param exceptionHandler optional uncaught-exception handler
+     * @return per-task executor
      */
     public static ExecutorService newThreadPerTaskExecutor(String namePrefix,
             Thread.UncaughtExceptionHandler exceptionHandler) {
-        if (THREAD_OF_VIRTUAL != null
-                && VIRTUAL_BUILDER_NAME_WITH_COUNTER != null
-                && VIRTUAL_BUILDER_FACTORY != null
-                && THREAD_PER_TASK_EXECUTOR_METHOD != null) {
-            try {
-                Object builder = THREAD_OF_VIRTUAL.invoke();
-                Object namedBuilder = VIRTUAL_BUILDER_NAME_WITH_COUNTER.invoke(builder, namePrefix + "-", 1L);
-                if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
-                    namedBuilder = VIRTUAL_BUILDER_UNCAUGHT.invoke(namedBuilder, exceptionHandler);
-                }
-                ThreadFactory factory = (ThreadFactory) VIRTUAL_BUILDER_FACTORY.invoke(namedBuilder);
-                return (ExecutorService) THREAD_PER_TASK_EXECUTOR_METHOD.invoke(factory);
-            } catch (Throwable e) {
-                throw new RuntimeException("Failed to create named virtual thread executor", e);
-            }
+        ExecutorService virtualExecutor = tryNamedVirtualExecutor(namePrefix, exceptionHandler);
+        if (virtualExecutor != null) {
+            return virtualExecutor;
         }
         AtomicInteger counter = new AtomicInteger(1);
         return Executors.newCachedThreadPool(runnable -> {
@@ -173,68 +174,112 @@ public final class VirtualThreadSupport {
 
     /**
      * Creates an unstarted virtual thread, or {@code null} when the runtime has no VT APIs.
+     *
+     * @param threadName thread name
+     * @param task task to run
+     * @param exceptionHandler optional uncaught-exception handler
+     * @return unstarted virtual thread, or {@code null}
      */
     public static Thread newUnstartedThread(String threadName, Runnable task,
             Thread.UncaughtExceptionHandler exceptionHandler) {
         if (THREAD_OF_VIRTUAL == null || VIRTUAL_BUILDER_NAME == null || VIRTUAL_BUILDER_UNSTARTED == null) {
             return null;
         }
-        try {
-            Object builder = THREAD_OF_VIRTUAL.invoke();
-            Object namedBuilder = VIRTUAL_BUILDER_NAME.invoke(builder, threadName);
-            if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
-                namedBuilder = VIRTUAL_BUILDER_UNCAUGHT.invoke(namedBuilder, exceptionHandler);
-            }
-            return (Thread) VIRTUAL_BUILDER_UNSTARTED.invoke(namedBuilder, task);
-        } catch (Throwable e) {
-            return null;
+        Object builder = invokeQuietly(THREAD_OF_VIRTUAL, null);
+        Object namedBuilder = invokeQuietly(VIRTUAL_BUILDER_NAME, builder, threadName);
+        if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
+            namedBuilder = invokeQuietly(VIRTUAL_BUILDER_UNCAUGHT, namedBuilder, exceptionHandler);
         }
+        Object started = invokeQuietly(VIRTUAL_BUILDER_UNSTARTED, namedBuilder, task);
+        if (started instanceof Thread thread) {
+            return thread;
+        }
+        return null;
     }
 
     /**
      * Starts a new thread to execute the given task.
      * Uses a virtual thread on JDK 21+, a daemon platform thread on JDK 17.
+     *
+     * @param task task to run
+     * @return started thread
      */
     public static Thread startThread(Runnable task) {
-        if (THREAD_OF_VIRTUAL != null) {
-            try {
-                Object builder = THREAD_OF_VIRTUAL.invoke();
-                return (Thread) VIRTUAL_BUILDER_START.invoke(builder, task);
-            } catch (Throwable e) {
-                // fall through to platform thread
+        if (THREAD_OF_VIRTUAL != null && VIRTUAL_BUILDER_START != null) {
+            Object builder = invokeQuietly(THREAD_OF_VIRTUAL, null);
+            Object started = invokeQuietly(VIRTUAL_BUILDER_START, builder, task);
+            if (started instanceof Thread thread) {
+                return thread;
             }
         }
-        Thread t = new Thread(task);
-        t.setDaemon(true);
-        t.start();
-        return t;
+        Thread platformThread = new Thread(task);
+        platformThread.setDaemon(true);
+        platformThread.start();
+        return platformThread;
     }
 
     /**
      * Starts a new named thread to execute the given task.
      * Uses a named virtual thread on JDK 21+, a named daemon platform thread on JDK 17.
+     *
+     * @param threadName thread name
+     * @param task task to run
+     * @return started thread
      */
     public static Thread startThread(String threadName, Runnable task) {
-        if (THREAD_OF_VIRTUAL != null && VIRTUAL_BUILDER_NAME != null) {
-            try {
-                Object builder = THREAD_OF_VIRTUAL.invoke();
-                builder = VIRTUAL_BUILDER_NAME.invoke(builder, threadName);
-                return (Thread) VIRTUAL_BUILDER_START.invoke(builder, task);
-            } catch (Throwable e) {
-                // fall through to platform thread
+        if (THREAD_OF_VIRTUAL != null && VIRTUAL_BUILDER_NAME != null && VIRTUAL_BUILDER_START != null) {
+            Object builder = invokeQuietly(THREAD_OF_VIRTUAL, null);
+            Object namedBuilder = invokeQuietly(VIRTUAL_BUILDER_NAME, builder, threadName);
+            Object started = invokeQuietly(VIRTUAL_BUILDER_START, namedBuilder, task);
+            if (started instanceof Thread thread) {
+                return thread;
             }
         }
-        Thread t = new Thread(task, threadName);
-        t.setDaemon(true);
-        t.start();
-        return t;
+        Thread platformThread = new Thread(task, threadName);
+        platformThread.setDaemon(true);
+        platformThread.start();
+        return platformThread;
+    }
+
+    private static ExecutorService tryNamedVirtualExecutor(
+            String namePrefix,
+            Thread.UncaughtExceptionHandler exceptionHandler) {
+        if (THREAD_OF_VIRTUAL == null
+                || VIRTUAL_BUILDER_NAME_WITH_COUNTER == null
+                || VIRTUAL_BUILDER_FACTORY == null
+                || THREAD_PER_TASK_EXECUTOR_METHOD == null) {
+            return null;
+        }
+        Object builder = invokeQuietly(THREAD_OF_VIRTUAL, null);
+        Object namedBuilder = invokeQuietly(
+                VIRTUAL_BUILDER_NAME_WITH_COUNTER, builder, namePrefix + "-", 1L);
+        if (exceptionHandler != null && VIRTUAL_BUILDER_UNCAUGHT != null) {
+            namedBuilder = invokeQuietly(VIRTUAL_BUILDER_UNCAUGHT, namedBuilder, exceptionHandler);
+        }
+        Object factory = invokeQuietly(VIRTUAL_BUILDER_FACTORY, namedBuilder);
+        Object executor = invokeQuietly(THREAD_PER_TASK_EXECUTOR_METHOD, null, factory);
+        if (executor instanceof ExecutorService service) {
+            return service;
+        }
+        return null;
+    }
+
+    private static Object invokeQuietly(Method method, Object target, Object... args) {
+        if (method == null) {
+            return null;
+        }
+        try {
+            return method.invoke(target, args);
+        } catch (IllegalAccessException | InvocationTargetException | IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static Class<?> loadClass(String name) {
         try {
             return Class.forName(name);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Class not found: " + name, e);
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalStateException("Class not found: " + name, exception);
         }
     }
 }

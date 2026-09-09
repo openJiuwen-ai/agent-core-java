@@ -22,6 +22,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -421,7 +422,7 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
         }
         try {
             return teamMember.status().toCompletableFuture().join() == MemberStatus.SHUTDOWN_REQUESTED;
-        } catch (RuntimeException ignored) {
+        } catch (CompletionException | CancellationException ignored) {
             return false;
         }
     }

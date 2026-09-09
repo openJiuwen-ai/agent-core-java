@@ -42,5 +42,6 @@ public final class LoggingDefaults {
 
     public static synchronized void reset() {
         logConfigInstance = new LogConfig();
+        LogManager.reset();
     }
 }

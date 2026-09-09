@@ -351,6 +351,8 @@ public class InMemoryCheckpointer extends Checkpointer {
     /**
      * Record a write for the session. Expiration and capacity eviction are
      * applied lazily by the Guava cache. A read does not refresh the TTL.
+     *
+     * @param tid tenant-aware session id
      */
     private void touchSession(String tid) {
         sessionRegistry.put(tid, Boolean.TRUE);
@@ -365,6 +367,8 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     /**
      * Stop tracking a session without touching its checkpoints.
+     *
+     * @param tid tenant-aware session id
      */
     private void unregisterSession(String tid) {
         sessionRegistry.invalidate(tid);
@@ -372,6 +376,8 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     /**
      * Remove all checkpoint state for a session evicted by the TTL or capacity policy.
+     *
+     * @param tid tenant-aware session id
      */
     private void evictSession(String tid) {
         sessionToWorkflowIds.remove(tid);
@@ -391,6 +397,9 @@ public class InMemoryCheckpointer extends Checkpointer {
 
     /**
      * Extract the raw sessionId from a tenant-prefixed tid.
+     *
+     * @param tid tenant-aware session id
+     * @return session id without tenant prefix
      */
     private static String stripTenantPrefix(String tid) {
         if (tid == null) {

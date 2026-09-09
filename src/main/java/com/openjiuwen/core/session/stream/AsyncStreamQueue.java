@@ -25,6 +25,7 @@ public class AsyncStreamQueue {
     public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200L;
     public static final int DEFAULT_MAX_SEND_RETRIES = 5;
     public static final int DEFAULT_MAX_SIZE = 1024;
+
     /**
      * Non-positive caller values no longer mean "block forever": {@link #receive(long)}
      * always falls back to this timeout. Defaults to {@link TimeoutConstants#BLOCKING_QUEUE_MS}

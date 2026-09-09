@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner;
 
+import com.openjiuwen.core.common.logging.LogManager;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
 import com.openjiuwen.core.runner.spawn.ClassAgentSpawnConfig;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
@@ -45,6 +46,7 @@ class RunnerSpawnAgentPythonParityTest {
     void resetHooks() {
         SpawnProcesses.resetTestHooks();
         LoggingDefaults.reset();
+        LogManager.reset();
         lastProcess = null;
     }
 

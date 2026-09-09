@@ -452,16 +452,18 @@ class LoggerPythonParityTest {
                 "loggers", Map.of("agent", Map.of("level", "DEBUG"))
         ));
 
-        RecordingLogger commonLogger = new RecordingLogger("common");
-        RecordingLogger agentLogger = new RecordingLogger("agent");
+        Map<String, RecordingLogger> byType = new LinkedHashMap<>();
+        LogManager.reset();
         LogManager.setDefaultLoggerFactory((logType, config) -> {
-            RecordingLogger logger = "agent".equals(logType) ? agentLogger : commonLogger;
+            RecordingLogger logger = byType.computeIfAbsent(logType, RecordingLogger::new);
             logger.reconfigure(config);
             return logger;
         });
 
         LoggerProtocol common = LogManager.getLogger("common");
         LoggerProtocol agent = LogManager.getLogger("agent");
+        RecordingLogger commonLogger = byType.get("common");
+        RecordingLogger agentLogger = byType.get("agent");
         common.debug("common debug should stay hidden");
         common.info("common info should be visible");
         agent.debug("agent debug should be visible");

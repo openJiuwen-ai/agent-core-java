@@ -201,6 +201,9 @@ public final class HarnessConfigBuilder {
      * Project the declarative {@code permissions} map onto the typed
      * {@link PermissionsSection}; unknown keys (e.g. {@code file_guard}) ride along as
      * extensions so the section round-trips losslessly through the rail factory.
+     *
+     * @param permissions raw permissions map
+     * @return typed permissions section
      */
     private static PermissionsSection toPermissionsSection(Map<String, Object> permissions) {
         PermissionsSection section = new PermissionsSection();
@@ -208,8 +211,8 @@ public final class HarnessConfigBuilder {
             String key = entry.getKey();
             Object value = entry.getValue();
             switch (key) {
-                case "enabled" -> section.setEnabled(value instanceof Boolean flag
-                        ? flag : Boolean.parseBoolean(String.valueOf(value)));
+                case "enabled" -> section.setEnabled(value instanceof Boolean isEnabled
+                        ? isEnabled : Boolean.parseBoolean(String.valueOf(value)));
                 case "schema" -> section.setSchema(value == null ? null : String.valueOf(value));
                 case "defaults" -> {
                     if (value instanceof Map<?, ?> map) {

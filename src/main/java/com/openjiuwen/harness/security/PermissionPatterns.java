@@ -159,7 +159,7 @@ public final class PermissionPatterns {
         if (accesses == null || accesses.isEmpty()) {
             return new PermissionsMergeResult(merged, false);
         }
-        boolean changed = false;
+        boolean isChanged = false;
         for (PathAccessExtractor.PathAccess access : accesses) {
             if (access == null || access.getPath() == null) {
                 continue;
@@ -170,9 +170,9 @@ public final class PermissionPatterns {
             }
             String[] axes = axesForFileGuardAction(access.getAction());
             mergeFileGuardPathRule(merged, pathNorm, axes, "prefix");
-            changed = true;
+            isChanged = true;
         }
-        return new PermissionsMergeResult(merged, changed);
+        return new PermissionsMergeResult(merged, isChanged);
     }
 
     public static PermissionsMergeResult mergeExternalDirectoryAllowIntoPermissions(
@@ -649,6 +649,10 @@ public final class PermissionPatterns {
     /**
      * Stage the rendered YAML in a temp file and atomically move it over the target,
      * so a failure never leaves a half-written agent config.
+     *
+     * @param target destination config path
+     * @param content YAML text to persist
+     * @throws IOException when the temp file cannot be written or moved
      */
     private static void stageAndMove(Path target, String content) throws IOException {
         Path absolute = target.toAbsolutePath().normalize();

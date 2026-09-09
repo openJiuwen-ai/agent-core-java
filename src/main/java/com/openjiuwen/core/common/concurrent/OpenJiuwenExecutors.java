@@ -492,25 +492,35 @@ public final class OpenJiuwenExecutors {
     }
 
     /**
-     * 当前运行时是否支持虚拟线程。
+     * Returns whether the current runtime exposes virtual threads.
+     *
+     * @return {@code true} when virtual threads are available
      */
     public static boolean isVirtualThreadSupported() {
         return VirtualThreadSupport.isVirtualThreadSupported();
     }
 
     /**
-     * 平台线程模式下 DeepAgent 任务并发的默认上限，与 I/O 流式池对齐。
+     * Default DeepAgent task-concurrency cap in platform-thread mode, aligned with the I/O pool.
      *
-     * <p>JDK 21+ 并发闸已放开，此值不再参与 gate 判定。</p>
+     * <p>On JDK 21+ the concurrency gate is open, so this value is no longer used for gating.</p>
+     *
+     * @return default task concurrency
      */
     public static int defaultTaskConcurrency() {
         return defaultIoBoundMaxSize();
     }
 
     /**
-     * 创建一个已配置但未启动的线程。
+     * Creates a configured but unstarted thread.
      *
-     * <p>JDK 21 及以上使用虚拟线程，JDK 17 使用平台线程。调用方负责 {@code Thread.start()}。</p>
+     * <p>Uses a virtual thread on JDK 21+ and a platform thread on JDK 17.
+     * The caller is responsible for {@code Thread.start()}.</p>
+     *
+     * @param runnable task to run
+     * @param threadName thread name
+     * @param isDaemon whether the platform-thread fallback is a daemon
+     * @return unstarted thread
      */
     public static Thread newThread(Runnable runnable, String threadName, boolean isDaemon) {
         Objects.requireNonNull(runnable, "runnable");

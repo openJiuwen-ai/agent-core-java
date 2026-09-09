@@ -77,6 +77,11 @@ public class AgentCallbackContext {
         steeringQueue = queue;
     }
 
+    /**
+     * Returns whether a steering queue has been bound to this context.
+     *
+     * @return {@code true} when {@link #pushSteering(String)} can enqueue messages
+     */
     public boolean hasSteeringQueue() {
         return steeringQueue != null;
     }

@@ -37,9 +37,10 @@ import java.util.function.Consumer;
  */
 public class StreamProcessor {
 
+    static final Object TIMEOUT_SENTINEL = new Object();
+
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final long MILLIS_PER_SECOND = 1000L;
-    static final Object TIMEOUT_SENTINEL = new Object();
 
     private final String nodeId;
     private final BlockingQueue<StreamPayload> queue = new LinkedBlockingQueue<>();

@@ -360,11 +360,23 @@ public class ReActAgentConfig {
         this.maxParallelToolCalls = maxParallelToolCalls;
     }
 
+    /**
+     * Configure the maximum number of parallel tool calls.
+     *
+     * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
+     * @return this config for chaining
+     */
     public ReActAgentConfig configureMaxParallelToolCalls(int maxParallelToolCalls) {
         this.maxParallelToolCalls = maxParallelToolCalls;
         return this;
     }
 
+    /**
+     * Python-compatible alias of {@link #configureMaxParallelToolCalls(int)}.
+     *
+     * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
+     * @return this config for chaining
+     */
     public ReActAgentConfig configure_max_parallel_tool_calls(int maxParallelToolCalls) {
         return configureMaxParallelToolCalls(maxParallelToolCalls);
     }
@@ -543,6 +555,12 @@ public class ReActAgentConfig {
             return this;
         }
 
+        /**
+         * Configure the maximum number of parallel tool calls on the builder.
+         *
+         * @param maxParallelToolCalls positive cap; non-positive values fall back to the default
+         * @return this builder
+         */
         public Builder maxParallelToolCalls(int maxParallelToolCalls) {
             config.setMaxParallelToolCalls(maxParallelToolCalls);
             return this;

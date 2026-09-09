@@ -19,6 +19,8 @@ import java.util.Map;
  * absence (a disabled layer yields {@code null} from the normalizer, so the checker
  * is never built) and a single unified extraction path. {@code defaults} is keyed by
  * axis so the checker can look up the fallback level for an unmatched access.
+ *
+ * @since 2026-01-01
  */
 public final class EffectiveFileGuardConfig {
 
@@ -37,22 +39,38 @@ public final class EffectiveFileGuardConfig {
         this.trustedDirs = trustedDirs == null ? List.of() : List.copyOf(trustedDirs);
     }
 
-    /** Per-axis fallback levels applied when no rule matches. */
+    /**
+     * Per-axis fallback levels applied when no rule matches.
+     *
+     * @return defaults keyed by file-guard action
+     */
     public Map<FileGuardAction, PermissionLevel> getDefaults() {
         return defaults;
     }
 
-    /** Compiled path rules, in evaluation order. */
+    /**
+     * Compiled path rules, in evaluation order.
+     *
+     * @return copy of compiled rules
+     */
     public List<FileGuardPathRule> getRules() {
         return new ArrayList<>(rules);
     }
 
-    /** Workspace root used to resolve relative paths and bind {@code file_guard.workspace}. */
+    /**
+     * Workspace root used to resolve relative paths and bind {@code file_guard.workspace}.
+     *
+     * @return workspace root, or {@code null}
+     */
     public Path getWorkspaceRoot() {
         return workspaceRoot;
     }
 
-    /** Trusted directories projected to allow-prefix rules. */
+    /**
+     * Trusted directories projected to allow-prefix rules.
+     *
+     * @return trusted directory paths
+     */
     public List<String> getTrustedDirs() {
         return trustedDirs;
     }

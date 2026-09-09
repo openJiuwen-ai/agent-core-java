@@ -53,11 +53,7 @@ public final class PromptLoader {
         String resourceName = key.language() == null
                 ? RESOURCE_ROOT + key.name() + ".md"
                 : RESOURCE_ROOT + key.language() + "/" + key.name() + ".md";
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        if (loader == null) {
-            loader = PromptLoader.class.getClassLoader();
-        }
-        try (InputStream stream = loader.getResourceAsStream(resourceName)) {
+        try (InputStream stream = openTemplateStream(resourceName)) {
             if (stream == null) {
                 throw new UncheckedIOException(new NoSuchFileException(resourceName));
             }
@@ -69,6 +65,21 @@ public final class PromptLoader {
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
+    }
+
+    private static InputStream openTemplateStream(String resourceName) {
+        InputStream stream = openFrom(Thread.currentThread().getContextClassLoader(), resourceName);
+        if (stream != null) {
+            return stream;
+        }
+        return openFrom(PromptLoader.class.getClassLoader(), resourceName);
+    }
+
+    private static InputStream openFrom(ClassLoader loader, String resourceName) {
+        if (loader == null) {
+            return null;
+        }
+        return loader.getResourceAsStream(resourceName);
     }
 
     private record CacheKey(String name, String language) {

@@ -253,9 +253,6 @@ public class TeamTaskManager {
                 return TaskCreateResult.fail(ownerError);
             }
             String nextTaskId = firstNonBlank(taskId, UUID.randomUUID().toString());
-            String status = dependencies != null && !dependencies.isEmpty()
-                    ? TaskStatus.BLOCKED.value()
-                    : TaskStatus.PENDING.value();
             List<TaskDao.DependencyEdge> edges = new ArrayList<>();
             if (dependencies != null) {
                 for (String dependency : dependencies) {
@@ -267,6 +264,9 @@ public class TeamTaskManager {
                     edges.add(new TaskDao.DependencyEdge(dependentTaskId, nextTaskId));
                 }
             }
+            String status = dependencies != null && !dependencies.isEmpty()
+                    ? TaskStatus.BLOCKED.value()
+                    : TaskStatus.PENDING.value();
             GraphMutationResult mutation = join(database.mutateDependencyGraph(
                     teamName,
                     List.of(new NewTaskSpec(nextTaskId, title, content, status, assignee)),
@@ -279,7 +279,10 @@ public class TeamTaskManager {
                 );
             }
             TeamTask created = createdTask(nextTaskId, title, content, status, assignee);
-            publishTaskEvent(taskCreatedEvent(nextTaskId, created.getStatus()), "Task created event for " + nextTaskId, true);
+            publishTaskEvent(
+                    taskCreatedEvent(nextTaskId, created.getStatus()),
+                    "Task created event for " + nextTaskId,
+                    true);
             return TaskCreateResult.success(created);
         });
     }
@@ -449,8 +452,8 @@ public class TeamTaskManager {
                 if (busyAssigned != null) {
                     return busyMemberFailure(memberName, busyAssigned);
                 }
-                boolean started = join(database.claimTask(taskId, memberName));
-                if (!started) {
+                boolean hasStarted = join(database.claimTask(taskId, memberName));
+                if (!hasStarted) {
                     return TaskOpResult.fail("Task " + taskId + " could not be started for " + memberName);
                 }
                 publishTaskEvent(taskClaimedEvent(taskId, memberName), "Task claimed event for " + taskId, true);
@@ -660,6 +663,13 @@ public class TeamTaskManager {
         return readPlanIndex(planId);
     }
 
+    /**
+     * Returns another in-progress task id for {@code targetMemberName}, excluding {@code excludeTaskId}.
+     *
+     * @param targetMemberName member whose active tasks are inspected
+     * @param excludeTaskId task id to ignore
+     * @return completion stage with the other active task id, or {@code null} when none
+     */
     public CompletionStage<String> getOtherActiveTaskId(String targetMemberName, String excludeTaskId) {
         return supplyStage(() -> getOtherActiveTaskIdSync(targetMemberName, excludeTaskId));
     }
@@ -697,8 +707,8 @@ public class TeamTaskManager {
             }
             TEAM_LOGGER.debug("Added task %s with dependencies: %s", nextTaskId, dependencies);
         } else {
-            boolean success = join(database.createTask(nextTaskId, teamName, title, content, status, assignee));
-            if (!success) {
+            boolean isSuccess = join(database.createTask(nextTaskId, teamName, title, content, status, assignee));
+            if (!isSuccess) {
                 return TaskCreateResult.fail(
                         "Failed to create task " + nextTaskId + " (likely a task_id collision)"
                 );
@@ -706,7 +716,10 @@ public class TeamTaskManager {
         }
 
         TeamTask created = createdTask(nextTaskId, title, content, status, assignee);
-        publishTaskEvent(taskCreatedEvent(nextTaskId, created.getStatus()), "Task created event for " + nextTaskId, true);
+        publishTaskEvent(
+                taskCreatedEvent(nextTaskId, created.getStatus()),
+                "Task created event for " + nextTaskId,
+                true);
         return TaskCreateResult.success(created);
     }
 
@@ -1665,6 +1678,16 @@ public class TeamTaskManager {
      * {@code openjiuwen/agent_teams/tools/task_manager.py}.</p>
      */
     public interface TeamTaskDatabase {
+        /**
+         * Create a task row. Overloads without {@code assignee} leave the task unassigned.
+         *
+         * @param taskId task id
+         * @param teamName team name
+         * @param title task title
+         * @param content task body
+         * @param status initial status
+         * @return whether the row was created
+         */
         default CompletionStage<Boolean> createTask(
                 String taskId,
                 String teamName,
