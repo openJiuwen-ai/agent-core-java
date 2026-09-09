@@ -9,11 +9,11 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.memory.common.MemoryUtils;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.SummaryUnit;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SummaryUnit;
+import com.openjiuwen.memory.manage.model.UserMemStore;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * Manages summary memory CRUD with encryption and vector storage.
- * 
+ *
  * @since 0.1.7
  */
 public class SummaryManager extends BaseMemoryManager {
@@ -36,7 +36,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * SummaryManager.
-     * 
+     *
      * @param memStore memStore
      * @param cryptoKey cryptoKey
      * @since 0.1.7
@@ -48,7 +48,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * addMemories.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memories memories
@@ -75,7 +75,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * update.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -100,7 +100,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * delete.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -124,7 +124,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * deleteByUserId.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param kwargs kwargs
@@ -152,7 +152,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * get.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -170,7 +170,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * search.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param query query
@@ -203,7 +203,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * listUserSummary.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @return the result
@@ -235,7 +235,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * addSummaryToMemStore.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param unit unit
@@ -256,7 +256,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * addSummaryToVector.
-     * 
+     *
      * @param unit unit
      * @param userId userId
      * @param scopeId scopeId
@@ -276,7 +276,7 @@ public class SummaryManager extends BaseMemoryManager {
 
     /**
      * getSemanticStore.
-     * 
+     *
      * @param operationType operationType
      * @param kwargs kwargs
      * @return the result

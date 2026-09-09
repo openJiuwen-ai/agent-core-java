@@ -4,15 +4,17 @@
 
 package com.openjiuwen.core.multitenant;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.memory.LongTermMemory;
 import com.openjiuwen.memory.common.DistributedLock;
 import com.openjiuwen.memory.common.MemoryUtils;
 import com.openjiuwen.memory.config.MemoryEngineConfig;
 import com.openjiuwen.memory.config.MemoryScopeConfig;
 import com.openjiuwen.memory.manage.index.VariableManager;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
-import com.openjiuwen.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.UserMemStore;
+import com.openjiuwen.memory.manage.model.VariableUnit;
 import com.openjiuwen.memory.support.TestInMemoryKVStore;
 
 import org.junit.jupiter.api.AfterEach;
@@ -24,8 +26,6 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Multitenant isolation tests for the memory subsystem covering LongTermMemory,

@@ -11,9 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore;
 import com.openjiuwen.memory.common.KvPrefixRegistry;
-import com.openjiuwen.memory.manage.mem_model.DbModel;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.memory.manage.model.DbModel;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SqlDbStore;
 import com.openjiuwen.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.memory.migration.operation.AddColumnOperation;
 import com.openjiuwen.memory.migration.operation.AddScalarFieldOperation;

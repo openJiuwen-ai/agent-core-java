@@ -1,3 +1,6 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.agentteams;
 
@@ -24,11 +27,17 @@ import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Verifies compatibility behavior of the Agent Teams facade.
+ *
+ * @since 0.1.7
+ */
 public class TeamAgentCompatibilityTest {
     @AfterEach
     void resetSpawnSession() {

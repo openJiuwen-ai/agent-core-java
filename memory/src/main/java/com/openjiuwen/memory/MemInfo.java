@@ -4,7 +4,7 @@
 
 package com.openjiuwen.memory;
 
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.memory.manage.model.MemoryType;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * Memory information containing id, content, and type.
- * 
+ *
  * @since 0.1.7
  */
 @Data

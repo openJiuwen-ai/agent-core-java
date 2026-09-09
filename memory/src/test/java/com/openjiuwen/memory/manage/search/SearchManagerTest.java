@@ -11,11 +11,11 @@ import com.openjiuwen.memory.manage.index.BaseMemoryManager;
 import com.openjiuwen.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.memory.manage.index.SummaryManager;
 import com.openjiuwen.memory.manage.index.VariableManager;
-import com.openjiuwen.memory.manage.mem_model.DataIdManager;
-import com.openjiuwen.memory.manage.mem_model.FragmentMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
-import com.openjiuwen.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.memory.manage.model.DataIdManager;
+import com.openjiuwen.memory.manage.model.FragmentMemoryUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.UserMemStore;
+import com.openjiuwen.memory.manage.model.VariableUnit;
 import com.openjiuwen.memory.support.TestInMemoryKVStore;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +80,7 @@ class SearchManagerTest {
                         .build()),
                 null,
                 Map.of("semantic_store",
-                        new com.openjiuwen.memory.manage.mem_model.SemanticStore(
+                        new com.openjiuwen.memory.manage.model.SemanticStore(
                                 new com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore(
                                         Map.of("collection_name", "search_manager_test")),
                                 new com.openjiuwen.core.retrieval.embedding.HashEmbedding())));
@@ -176,7 +176,7 @@ class SearchManagerTest {
 
         @Override
         public void addMemories(String userId, String scopeId,
-                List<? extends com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit> memories,
+                List<? extends com.openjiuwen.memory.manage.model.BaseMemoryUnit> memories,
                 Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
         }
 

@@ -4,24 +4,25 @@
 
 package com.openjiuwen.memory;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.memory.common.DistributedLock;
 import com.openjiuwen.memory.common.MemoryUtils;
 import com.openjiuwen.memory.manage.index.VariableManager;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
-import com.openjiuwen.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.UserMemStore;
+import com.openjiuwen.memory.manage.model.VariableUnit;
 import com.openjiuwen.memory.support.TestInMemoryKVStore;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class TenantMemoryIsolationTest {
 

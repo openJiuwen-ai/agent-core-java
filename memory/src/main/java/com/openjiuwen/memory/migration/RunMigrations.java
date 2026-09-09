@@ -7,8 +7,8 @@ package com.openjiuwen.memory.migration;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SqlDbStore;
 import com.openjiuwen.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.memory.migration.migrator.SqlMigrator;
 import com.openjiuwen.memory.migration.migrator.VectorMigrator;
@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * Entry point for running all memory migrations (SQL, Vector, KV).
- * 
+ *
  * @since 0.1.7
  */
 public final class RunMigrations {
@@ -28,7 +28,7 @@ public final class RunMigrations {
 
     /**
      * RunMigrations.
-     * 
+     *
      * @since 0.1.7
      */
     private RunMigrations() {
@@ -36,7 +36,7 @@ public final class RunMigrations {
 
     /**
      * runSqlMigrations.
-     * 
+     *
      * @param sqlDbStore sqlDbStore
      * @return the result
      * @since 0.1.7
@@ -61,7 +61,7 @@ public final class RunMigrations {
 
     /**
      * runVectorMigrations.
-     * 
+     *
      * @param semanticStore semanticStore
      * @return the result
      * @since 0.1.7
@@ -86,7 +86,7 @@ public final class RunMigrations {
 
     /**
      * runKvMigrations.
-     * 
+     *
      * @param kvStore kvStore
      * @return the result
      * @since 0.1.7

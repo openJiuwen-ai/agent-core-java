@@ -27,9 +27,9 @@ import com.openjiuwen.memory.common.KvPrefixRegistry;
 import com.openjiuwen.memory.config.MemoryEngineConfig;
 import com.openjiuwen.memory.config.MemoryScopeConfig;
 import com.openjiuwen.memory.manage.index.WriteManager;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.MessageManager;
-import com.openjiuwen.memory.manage.mem_model.ScopeUserMappingManager;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.MessageManager;
+import com.openjiuwen.memory.manage.model.ScopeUserMappingManager;
 import com.openjiuwen.memory.manage.search.SearchManager;
 import com.openjiuwen.memory.migration.MigrationPlan;
 import com.openjiuwen.memory.migration.migrator.KvMigrator;
@@ -290,8 +290,8 @@ class LongTermMemoryTest {
 
             InMemoryVectorStore vectorStore = new InMemoryVectorStore(Map.of("collection_name", "vector_user_profile"));
             String collectionName = "register_scope_user_profile";
-            com.openjiuwen.memory.manage.mem_model.SemanticStore semanticStore =
-                    new com.openjiuwen.memory.manage.mem_model.SemanticStore(vectorStore);
+            com.openjiuwen.memory.manage.model.SemanticStore semanticStore =
+                    new com.openjiuwen.memory.manage.model.SemanticStore(vectorStore);
             semanticStore.createCollection(collectionName, 3, Map.of());
             vectorStore.addDocs(collectionName,
                     List.of(Map.of("id", "vec-1", "text", "hello", "embedding", List.of(1.0f, 2.0f, 3.0f))),

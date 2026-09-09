@@ -12,17 +12,13 @@ import java.util.Map;
 
 /**
  * Foundation-store PGVector adapter.
- * 
+ *
  * @since 0.1.7
  */
 public class PGVectorStore extends AbstractRetrievalVectorStoreAdapter {
-    PGVectorStore(com.openjiuwen.retrieval.vector_store.PGVectorStore delegate) {
-        super(delegate);
-    }
-
     /**
      * PGVectorStore.
-     * 
+     *
      * @param options options
      * @since 0.1.7
      */
@@ -31,8 +27,18 @@ public class PGVectorStore extends AbstractRetrievalVectorStoreAdapter {
     }
 
     /**
+     * Wraps an existing PGVector retrieval store as a foundation vector store.
+     *
+     * @param delegate retrieval store to wrap
+     * @since 0.1.7
+     */
+    public PGVectorStore(com.openjiuwen.retrieval.vector_store.PGVectorStore delegate) {
+        super(delegate);
+    }
+
+    /**
      * config.
-     * 
+     *
      * @param options options
      * @return the result
      * @since 0.1.7
@@ -46,7 +52,7 @@ public class PGVectorStore extends AbstractRetrievalVectorStoreAdapter {
 
     /**
      * withFoundationAliases.
-     * 
+     *
      * @param options options
      * @return the result
      * @since 0.1.7

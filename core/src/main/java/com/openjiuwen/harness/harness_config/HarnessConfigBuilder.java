@@ -59,7 +59,7 @@ import java.util.function.Function;
 
 /**
  * HarnessConfigBuilder.
- * 
+ *
  * @since 0.1.7
  */
 public final class HarnessConfigBuilder {
@@ -87,28 +87,28 @@ public final class HarnessConfigBuilder {
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Map<String, HarnessToolProvider> TOOL_ENTRY_POINTS = new ConcurrentHashMap<>();
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Map<String, HarnessRailProvider> RAIL_ENTRY_POINTS = new ConcurrentHashMap<>();
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Map<Class<?>, String> TOOL_CLASS_TO_GROUP = new ConcurrentHashMap<>();
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Map<Class<?>, String> RAIL_CLASS_TO_NAME = new ConcurrentHashMap<>();
@@ -172,7 +172,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * HarnessConfigBuilder.
-     * 
+     *
      * @since 0.1.7
      */
     private HarnessConfigBuilder() {
@@ -180,7 +180,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * registerToolProvider.
-     * 
+     *
      * @param provider provider
      * @since 0.1.7
      */
@@ -190,7 +190,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * registerRailProvider.
-     * 
+     *
      * @param provider provider
      * @since 0.1.7
      */
@@ -215,7 +215,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * build.
-     * 
+     *
      * @param isResolved isResolved
      * @return the result
      * @since 0.1.7
@@ -249,7 +249,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * generateHarnessConfigYaml.
-     * 
+     *
      * @param card card
      * @param systemPrompt systemPrompt
      * @param tools tools
@@ -282,7 +282,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveWorkspaceRoot.
-     * 
+     *
      * @param isResolved isResolved
      * @return the result
      * @since 0.1.7
@@ -297,7 +297,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveTools.
-     * 
+     *
      * @param resources resources
      * @param workspaceRoot workspaceRoot
      * @return the result
@@ -334,7 +334,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveRails.
-     * 
+     *
      * @param resources resources
      * @param workspaceRoot workspaceRoot
      * @return the result
@@ -394,7 +394,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createProgressiveToolRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -408,7 +408,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createTaskPlanningRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -422,7 +422,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createTaskCompletionRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -438,7 +438,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createContextProcessorRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -453,7 +453,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createVerificationRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -467,7 +467,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createSkillUseRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -487,7 +487,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * remoteSkillSources.
-     * 
+     *
      * @param config config
      * @return the result
      * @since 0.1.7
@@ -514,7 +514,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * remoteSkillSourceFromString.
-     * 
+     *
      * @param spec spec
      * @return the result
      * @since 0.1.7
@@ -529,7 +529,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * remoteSkillSourceFromMap.
-     * 
+     *
      * @param source source
      * @return the result
      * @since 0.1.7
@@ -561,7 +561,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createSkillCreateRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -576,7 +576,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createTeamSkillCreateRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -591,7 +591,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * createTeamSkillRail.
-     * 
+     *
      * @param root root
      * @param spec spec
      * @return the result
@@ -605,7 +605,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * railConfig.
-     * 
+     *
      * @param spec spec
      * @return the result
      * @since 0.1.7
@@ -616,7 +616,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveRootPath.
-     * 
+     *
      * @param root root
      * @param path path
      * @return the result
@@ -632,7 +632,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * stringValue.
-     * 
+     *
      * @param isValue isValue
      * @param isFallback isFallback
      * @return the result
@@ -644,7 +644,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * firstPresent.
-     * 
+     *
      * @param config config
      * @param keys keys
      * @return the result
@@ -664,7 +664,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * stringList.
-     * 
+     *
      * @param isValue isValue
      * @return the result
      * @since 0.1.7
@@ -688,7 +688,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * stringMap.
-     * 
+     *
      * @param isValue isValue
      * @return the result
      * @since 0.1.7
@@ -712,7 +712,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * intValue.
-     * 
+     *
      * @param isValue isValue
      * @param isFallback isFallback
      * @return the result
@@ -728,7 +728,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * optionalInteger.
-     * 
+     *
      * @param isValue isValue
      * @return the result
      * @since 0.1.7
@@ -745,7 +745,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * booleanValue.
-     * 
+     *
      * @param isValue isValue
      * @param isFallback isFallback
      * @return the result
@@ -763,7 +763,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * optionalDuration.
-     * 
+     *
      * @param config config
      * @return the result
      * @since 0.1.7
@@ -782,7 +782,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * longValue.
-     * 
+     *
      * @param isValue isValue
      * @return the result
      * @since 0.1.7
@@ -833,7 +833,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * toPromptSections.
-     * 
+     *
      * @param sections sections
      * @return the result
      * @since 0.1.7
@@ -852,7 +852,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveSkillDirs.
-     * 
+     *
      * @param resources resources
      * @param sourcePath sourcePath
      * @return the result
@@ -868,7 +868,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveSkillMode.
-     * 
+     *
      * @param resources resources
      * @return the result
      * @since 0.1.7
@@ -882,7 +882,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * writeFileSections.
-     * 
+     *
      * @param fileSections fileSections
      * @param workspaceRoot workspaceRoot
      * @param language language
@@ -912,7 +912,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * pickLanguage.
-     * 
+     *
      * @param content content
      * @param language language
      * @return the result
@@ -934,7 +934,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * instantiateTool.
-     * 
+     *
      * @param module module
      * @param className className
      * @param workspaceRoot workspaceRoot
@@ -961,7 +961,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * instantiateNoArgs.
-     * 
+     *
      * @param module module
      * @param className className
      * @return the result
@@ -993,7 +993,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveToolEntryPoint.
-     * 
+     *
      * @param name name
      * @param workspaceRoot workspaceRoot
      * @return the result
@@ -1015,8 +1015,10 @@ public final class HarnessConfigBuilder {
 
     /**
      * resolveRailEntryPoint.
-     * 
+     *
      * @param name name
+     * @param workspaceRoot workspace root
+     * @param spec rail resource schema
      * @return the result
      * @since 0.1.7
      */
@@ -1057,7 +1059,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * toToolSpecs.
-     * 
+     *
      * @param tools tools
      * @return the result
      * @since 0.1.7
@@ -1087,7 +1089,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * toRailSpecs.
-     * 
+     *
      * @param rails rails
      * @return the result
      * @since 0.1.7
@@ -1120,7 +1122,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * toRailConfig.
-     * 
+     *
      * @param rail rail
      * @return the result
      * @since 0.1.7
@@ -1216,7 +1218,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfNotEmpty.
-     * 
+     *
      * @param config config
      * @param key key
      * @param values values
@@ -1230,7 +1232,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfNotBlank.
-     * 
+     *
      * @param config config
      * @param key key
      * @param isValue isValue
@@ -1244,7 +1246,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfTrue.
-     * 
+     *
      * @param config config
      * @param key key
      * @param isValue isValue
@@ -1258,7 +1260,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfFalse.
-     * 
+     *
      * @param config config
      * @param key key
      * @param isValue isValue
@@ -1272,7 +1274,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfNotDefault.
-     * 
+     *
      * @param config config
      * @param key key
      * @param isValue isValue
@@ -1287,7 +1289,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * putIfNotDefault.
-     * 
+     *
      * @param config config
      * @param key key
      * @param isValue isValue
@@ -1302,13 +1304,13 @@ public final class HarnessConfigBuilder {
 
     /**
      * Public interface HarnessToolProvider used by the Java parity implementation.
-     * 
+     *
      * @since 0.1.7
      */
     public interface HarnessToolProvider {
         /**
          * name.
-         * 
+         *
          * @return the result
          * @since 0.1.7
          */
@@ -1316,7 +1318,7 @@ public final class HarnessConfigBuilder {
 
         /**
          * create.
-         * 
+         *
          * @param workspaceRoot workspaceRoot
          * @return the result
          * @since 0.1.7
@@ -1326,13 +1328,13 @@ public final class HarnessConfigBuilder {
 
     /**
      * Public interface HarnessRailProvider used by the Java parity implementation.
-     * 
+     *
      * @since 0.1.7
      */
     public interface HarnessRailProvider {
         /**
          * name.
-         * 
+         *
          * @return the result
          * @since 0.1.7
          */
@@ -1340,7 +1342,7 @@ public final class HarnessConfigBuilder {
 
         /**
          * create.
-         * 
+         *
          * @return the result
          * @since 0.1.7
          */
@@ -1383,7 +1385,7 @@ public final class HarnessConfigBuilder {
 
     /**
      * nullValue.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */

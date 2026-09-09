@@ -4,7 +4,7 @@
 
 package com.openjiuwen.memory.migration.migrator;
 
-import com.openjiuwen.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.memory.manage.model.SqlDbStore;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * Manages memory_meta table for tracking migration schema versions.
- * 
+ *
  * @since 0.1.7
  */
 public class MemoryMetaManager {
@@ -22,7 +22,7 @@ public class MemoryMetaManager {
 
     /**
      * MemoryMetaManager.
-     * 
+     *
      * @param sqlDb sqlDb
      * @since 0.1.7
      */
@@ -32,7 +32,7 @@ public class MemoryMetaManager {
 
     /**
      * add.
-     * 
+     *
      * @param tableName tableName
      * @param schemaVersion schemaVersion
      * @since 0.1.7
@@ -55,7 +55,7 @@ public class MemoryMetaManager {
 
     /**
      * deleteByTableName.
-     * 
+     *
      * @param tableName tableName
      * @return the result
      * @since 0.1.7
@@ -68,7 +68,7 @@ public class MemoryMetaManager {
 
     /**
      * getByTableName.
-     * 
+     *
      * @param tableName tableName
      * @return the result
      * @since 0.1.7

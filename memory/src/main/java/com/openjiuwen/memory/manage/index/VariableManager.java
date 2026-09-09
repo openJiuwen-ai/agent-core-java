@@ -8,8 +8,8 @@ import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.memory.common.KvPrefixRegistry;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.VariableUnit;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.util.LinkedHashMap;
@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * Manages variable memory using KV store.
- * 
+ *
  * @since 0.1.7
  */
 public class VariableManager extends BaseMemoryManager {
@@ -32,7 +32,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * VariableManager.
-     * 
+     *
      * @param kvStore kvStore
      * @param cryptoKey cryptoKey
      * @since 0.1.7
@@ -47,7 +47,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * addMemories.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memories memories
@@ -74,7 +74,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * update.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -89,7 +89,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * updateUserVariable.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param varName varName
@@ -111,7 +111,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * delete.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -127,7 +127,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * deleteByUserId.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param kwargs kwargs
@@ -151,7 +151,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * deleteUserVariable.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param varName varName
@@ -169,7 +169,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * get.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -184,7 +184,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * search.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param query query
@@ -202,7 +202,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * queryVariable.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param name name
@@ -244,7 +244,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * makeVariableKey.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param varName varName
@@ -293,7 +293,7 @@ public class VariableManager extends BaseMemoryManager {
 
     /**
      * checkUserAndScopeId.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @since 0.1.7

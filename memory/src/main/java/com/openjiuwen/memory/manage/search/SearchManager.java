@@ -12,9 +12,9 @@ import com.openjiuwen.memory.manage.index.BaseMemoryManager;
 import com.openjiuwen.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.memory.manage.index.SummaryManager;
 import com.openjiuwen.memory.manage.index.VariableManager;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.UserMemStore;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 
 /**
  * Orchestrates memory search across different memory type managers.
- * 
+ *
  * @since 0.1.7
  */
 public class SearchManager {
@@ -37,7 +37,7 @@ public class SearchManager {
 
     /**
      * Arrays.stream.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Set<String> ALL_MEM_MANAGER_LIST =
@@ -49,7 +49,7 @@ public class SearchManager {
 
     /**
      * SearchManager.
-     * 
+     *
      * @param managers managers
      * @param memStore memStore
      * @param cryptoKey cryptoKey
@@ -63,7 +63,7 @@ public class SearchManager {
 
     /**
      * search.
-     * 
+     *
      * @param params params
      * @param semanticStore semanticStore
      * @return the result
@@ -126,7 +126,7 @@ public class SearchManager {
 
     /**
      * listUserMem.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param nums nums
@@ -150,7 +150,7 @@ public class SearchManager {
 
     /**
      * listUserProfile.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memType memType
@@ -172,7 +172,7 @@ public class SearchManager {
 
     /**
      * listUserProfile.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @return the result
@@ -184,7 +184,7 @@ public class SearchManager {
 
     /**
      * listUserSummary.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @return the result
@@ -206,7 +206,7 @@ public class SearchManager {
 
     /**
      * getUserVariable.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param varName varName
@@ -233,7 +233,7 @@ public class SearchManager {
 
     /**
      * getAllUserVariable.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @return the result

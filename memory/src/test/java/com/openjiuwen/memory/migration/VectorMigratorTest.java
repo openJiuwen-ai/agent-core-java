@@ -14,7 +14,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SemanticStore;
 import com.openjiuwen.memory.migration.migrator.VectorMigrator;
 import com.openjiuwen.memory.migration.operation.AddScalarFieldOperation;
 import com.openjiuwen.memory.migration.operation.OperationMetadata;

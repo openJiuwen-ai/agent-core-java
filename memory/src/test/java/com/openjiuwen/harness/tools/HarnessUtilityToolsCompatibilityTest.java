@@ -1,9 +1,12 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.memory.harness.tools.MemoryTools;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import com.openjiuwen.memory.harness.tools.MemoryTools;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

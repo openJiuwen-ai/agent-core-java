@@ -15,6 +15,7 @@ import com.openjiuwen.memory.provider.remote.OpenVikingMemoryProvider;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Creates the external Memory harness rail.
@@ -35,7 +36,7 @@ public final class ExternalMemoryRailProvider implements HarnessRailProvider {
     @Override
     public Object create(Path workspaceRoot, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = RailConfigSupport.config(spec);
-        MemoryProvider provider = createMemoryProvider(config);
+        MemoryProvider provider = createMemoryProvider(config).orElse(null);
         String userId = stringValue(config, "__default__", "user_id", "userId");
         String scopeId = stringValue(config, "__default__", "scope_id", "scopeId");
         String sessionId = stringValue(config, "__default__", "session_id", "sessionId");
@@ -47,21 +48,23 @@ public final class ExternalMemoryRailProvider implements HarnessRailProvider {
         return rail instanceof ExternalMemoryRail;
     }
 
-    private static MemoryProvider createMemoryProvider(Map<String, Object> config) {
+    private static Optional<MemoryProvider> createMemoryProvider(Map<String, Object> config) {
         String providerName = stringValue(config, "", "provider", "provider_name", "providerName");
         if (providerName.isBlank()) {
-            return null;
+            return Optional.empty();
         }
-        return switch (providerName.toLowerCase(Locale.ROOT)) {
+        MemoryProvider provider = switch (providerName.toLowerCase(Locale.ROOT)) {
             case "openjiuwen", "jiuwen", "default" ->
                 new OpenJiuwenMemoryProvider(RailConfigSupport.providerConfig(config), null, null);
             case "mem0" -> new Mem0MemoryProvider();
             case "openviking", "viking" -> new OpenVikingMemoryProvider();
             default -> throw new IllegalArgumentException("Unknown external memory provider: " + providerName);
         };
+        return Optional.of(provider);
     }
 
     private static String stringValue(Map<String, Object> config, String defaultValue, String... keys) {
-        return RailConfigSupport.stringValue(RailConfigSupport.firstPresent(config, keys), defaultValue);
+        return RailConfigSupport.stringValue(RailConfigSupport.firstPresent(config, keys).orElse(defaultValue),
+                defaultValue);
     }
 }

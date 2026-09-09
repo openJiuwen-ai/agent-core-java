@@ -3,6 +3,7 @@ package com.openjiuwen.memory.process.extract;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
@@ -13,9 +14,9 @@ import com.openjiuwen.core.application.schema.AgentMemoryConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.DataIdManager;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.DataIdManager;
+import com.openjiuwen.memory.manage.model.MemoryType;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -107,7 +108,8 @@ class GeneratorTest {
                 "2026-05-11 00:00:00", "summary_max_token", 128, "forbidden_variables", ""));
 
         List<String> contents = memories.get(MemoryType.USER_PROFILE.getValue()).stream()
-                .map(unit -> ((com.openjiuwen.memory.manage.mem_model.FragmentMemoryUnit) unit).getContent())
+                .map(unit -> assertInstanceOf(
+                        com.openjiuwen.memory.manage.model.FragmentMemoryUnit.class, unit).getContent())
                 .toList();
 
         assertEquals(List.of("plain profile", "content profile", "{other=fallback profile}"), contents);

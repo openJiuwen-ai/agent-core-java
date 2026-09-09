@@ -9,7 +9,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.memory.common.MemoryCrypto;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
 
 import java.util.List;
 import java.util.Map;
@@ -17,34 +17,34 @@ import java.util.Map;
 /**
  * Abstract base class for memory manager implementations.
  * Each subclass manages a specific type of memory data.
- * 
+ *
  * @since 0.1.7
  */
 public abstract class BaseMemoryManager {
     /**
      * MEMORY_LOGGER.
-     * 
+     *
      * @since 0.1.7
      */
     protected static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     /**
      * NONCE_HEX_LENGTH.
-     * 
+     *
      * @since 0.1.7
      */
     protected static final int NONCE_HEX_LENGTH = MemoryCrypto.NONCE_LENGTH * 2;
 
     /**
      * TAG_HEX_LENGTH.
-     * 
+     *
      * @since 0.1.7
      */
     protected static final int TAG_HEX_LENGTH = MemoryCrypto.TAG_LENGTH * 2;
 
     /**
      * Add memories in batch.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memories memories
@@ -57,7 +57,7 @@ public abstract class BaseMemoryManager {
 
     /**
      * Update memory by its id.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -70,7 +70,7 @@ public abstract class BaseMemoryManager {
 
     /**
      * Delete memory by its id.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -82,7 +82,7 @@ public abstract class BaseMemoryManager {
 
     /**
      * Delete memory by user id and scope id.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param kwargs kwargs
@@ -93,7 +93,7 @@ public abstract class BaseMemoryManager {
 
     /**
      * Get memory by its id.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -104,7 +104,7 @@ public abstract class BaseMemoryManager {
 
     /**
      * Query memory, return top k results.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param query query
@@ -119,7 +119,7 @@ public abstract class BaseMemoryManager {
     /**
      * Encrypt plaintext if a valid crypto key is provided.
      * Format: nonce_hex + tag_hex + ciphertext_hex
-     * 
+     *
      * @param key key
      * @param plaintext plaintext
      * @return the result
@@ -142,7 +142,7 @@ public abstract class BaseMemoryManager {
     /**
      * Decrypt ciphertext if a valid crypto key is provided.
      * Expected format: nonce_hex + tag_hex + ciphertext_hex
-     * 
+     *
      * @param key key
      * @param ciphertext ciphertext
      * @return the result

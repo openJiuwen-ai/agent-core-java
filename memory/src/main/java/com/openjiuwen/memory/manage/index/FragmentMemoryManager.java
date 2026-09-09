@@ -9,12 +9,12 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.memory.common.MemoryUtils;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.DataIdManager;
-import com.openjiuwen.memory.manage.mem_model.FragmentMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.DataIdManager;
+import com.openjiuwen.memory.manage.model.FragmentMemoryUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.UserMemStore;
 import com.openjiuwen.memory.manage.update.MemUpdateChecker;
 import com.openjiuwen.memory.manage.update.MemoryActionItem;
 import com.openjiuwen.memory.manage.update.MemoryStatus;
@@ -36,20 +36,20 @@ import java.util.Set;
 
 /**
  * Manages fragment (user profile) memory CRUD with encryption and vector storage.
- * 
+ *
  * @since 0.1.7
  */
 public class FragmentMemoryManager extends BaseMemoryManager {
     /**
      * UPDATE_CHECK_OLD_MEMORY_NUM.
-     * 
+     *
      * @since 0.1.7
      */
     public static final int UPDATE_CHECK_OLD_MEMORY_NUM = 5;
 
     /**
      * UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD.
-     * 
+     *
      * @since 0.1.7
      */
     public static final double UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD = 0.75;
@@ -62,7 +62,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * FragmentMemoryManager.
-     * 
+     *
      * @param memStore memStore
      * @param dataIdGenerator dataIdGenerator
      * @param cryptoKey cryptoKey
@@ -76,7 +76,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * addMemories.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memories memories
@@ -172,7 +172,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * update.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -198,7 +198,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * search.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param query query
@@ -275,7 +275,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * scoreOf.
-     * 
+     *
      * @param item item
      * @return the result
      * @since 0.1.7
@@ -323,7 +323,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * get.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -341,7 +341,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * delete.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -372,7 +372,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * deleteByUserId.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param kwargs kwargs
@@ -408,7 +408,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * listFragmentMemories.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memType memType
@@ -455,7 +455,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * addMemoryToStore.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memory memory
@@ -509,7 +509,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     /**
      * getSemanticStore.
-     * 
+     *
      * @param operationType operationType
      * @param kwargs kwargs
      * @return the result

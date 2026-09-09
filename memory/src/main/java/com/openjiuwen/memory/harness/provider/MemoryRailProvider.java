@@ -45,7 +45,9 @@ public final class MemoryRailProvider implements HarnessRailProvider {
 
     @Override
     public Map<String, Object> toConfig(Object rail) {
-        MemoryRail memoryRail = (MemoryRail) rail;
+        if (!(rail instanceof MemoryRail memoryRail)) {
+            throw new IllegalArgumentException("Expected MemoryRail configuration source");
+        }
         Map<String, Object> config = new LinkedHashMap<>();
         if (!memoryRail.isProactive()) {
             config.put("isProactive", false);

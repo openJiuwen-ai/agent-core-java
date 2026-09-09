@@ -5,6 +5,7 @@
 package com.openjiuwen.memory.team;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
@@ -22,6 +23,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Verifies Agent Teams discovery and use of the optional Memory integration.
+ *
+ * @since 0.1.7
+ */
 class TeamAgentMemoryIntegrationTest {
     @TempDir
     Path tempDir;
@@ -40,8 +46,7 @@ class TeamAgentMemoryIntegrationTest {
         Map<String, Object> result = agent.dispatchTask("policy");
 
         assertThat(result).containsEntry("team_id", "memory-team");
-        assertThat(agent.getMemoryManager()).isInstanceOf(AgentTeamsMemory.class);
-        AgentTeamsMemory memory = (AgentTeamsMemory) agent.getMemoryManager();
+        AgentTeamsMemory memory = assertInstanceOf(AgentTeamsMemory.class, agent.getMemoryManager());
         assertThat(memory.manager().getOwnedToolNames()).contains("memory_search", "memory_get", "read_memory",
                 "write_memory", "edit_memory");
         assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().getSection("team_memory").render("en"))

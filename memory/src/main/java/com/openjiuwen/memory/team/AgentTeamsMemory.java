@@ -12,6 +12,7 @@ import com.openjiuwen.agentteams.schema.team.TeamMemoryConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * Agent Teams integration backed by the Memory module.
@@ -64,12 +65,12 @@ public final class AgentTeamsMemory implements TeamMemory {
         TeamMemberContext member = context.member();
         TeamExecutionContext execution = context.execution();
         TeamLifecycle lifecycle = parseLifecycle(member.lifecycle());
-        String teamMemoryDir = resolveTeamMemoryDir(config, lifecycle, execution.defaultTeamMemoryDir());
+        Optional<String> teamMemoryDir = resolveTeamMemoryDir(config, lifecycle, execution.defaultTeamMemoryDir());
         String readOnlySource = lifecycle == TeamLifecycle.TEMPORARY ? config.getParentWorkspacePath() : null;
         return TeamMemoryManagerParams.builder().memberName(member.memberName()).teamName(member.teamName())
                 .role(TeamRole.LEADER).lifecycle(lifecycle).scenario(parseScenario(config.getScenario()))
                 .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(config)).workspace(execution.workspace())
-                .sysOperation(execution.sysOperation()).teamMemoryDir(teamMemoryDir)
+                .sysOperation(execution.sysOperation()).teamMemoryDir(teamMemoryDir.orElse(null))
                 .language(parseLanguage(member.language()))
                 .promptMode(parsePromptMode(config.getMemberMemoryPromptMode()))
                 .enableAutoExtract(config.isAutoExtract() && lifecycle == TeamLifecycle.PERSISTENT)
@@ -78,15 +79,15 @@ public final class AgentTeamsMemory implements TeamMemory {
                 .timezoneOffsetHours(config.getTimezoneOffsetHours()).build();
     }
 
-    private static String resolveTeamMemoryDir(TeamMemoryConfig config, TeamLifecycle lifecycle,
+    private static Optional<String> resolveTeamMemoryDir(TeamMemoryConfig config, TeamLifecycle lifecycle,
             String defaultTeamMemoryDir) {
         if (!config.isSharedMemory() || lifecycle != TeamLifecycle.PERSISTENT) {
-            return null;
+            return Optional.empty();
         }
         if (config.getTeamMemoryDir() != null && !config.getTeamMemoryDir().isBlank()) {
-            return config.getTeamMemoryDir();
+            return Optional.of(config.getTeamMemoryDir());
         }
-        return defaultTeamMemoryDir;
+        return Optional.ofNullable(defaultTeamMemoryDir);
     }
 
     private static TeamLifecycle parseLifecycle(String lifecycle) {

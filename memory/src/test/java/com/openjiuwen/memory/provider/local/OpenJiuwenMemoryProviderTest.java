@@ -10,7 +10,7 @@ import com.openjiuwen.core.application.schema.AgentMemoryConfig;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.memory.MemInfo;
 import com.openjiuwen.memory.MemResult;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.memory.manage.model.MemoryType;
 
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +19,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Verifies the local Memory provider lifecycle adapter.
+ *
+ * @since 0.1.7
+ */
 class OpenJiuwenMemoryProviderTest {
     @Test
     void providerShouldFormatSearchAndSyncMessages() throws Exception {

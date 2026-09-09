@@ -8,7 +8,7 @@ import com.openjiuwen.memory.config.graph.EpisodeType;
 import com.openjiuwen.memory.config.graph.GraphDefaults;
 import com.openjiuwen.memory.config.graph.SearchConfig;
 import com.openjiuwen.memory.graph.extraction.prompts.TemplateManager;
-import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
+import com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageBase;
 
 import org.junit.jupiter.api.Test;
 

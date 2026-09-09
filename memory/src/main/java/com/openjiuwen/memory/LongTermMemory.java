@@ -27,16 +27,16 @@ import com.openjiuwen.memory.manage.index.FragmentMemoryManager;
 import com.openjiuwen.memory.manage.index.SummaryManager;
 import com.openjiuwen.memory.manage.index.VariableManager;
 import com.openjiuwen.memory.manage.index.WriteManager;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.DataIdManager;
-import com.openjiuwen.memory.manage.mem_model.DbModel;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.MessageAddRequest;
-import com.openjiuwen.memory.manage.mem_model.MessageManager;
-import com.openjiuwen.memory.manage.mem_model.ScopeUserMappingManager;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.SqlDbStore;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.DataIdManager;
+import com.openjiuwen.memory.manage.model.DbModel;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.MessageAddRequest;
+import com.openjiuwen.memory.manage.model.MessageManager;
+import com.openjiuwen.memory.manage.model.ScopeUserMappingManager;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SqlDbStore;
+import com.openjiuwen.memory.manage.model.UserMemStore;
 import com.openjiuwen.memory.manage.search.SearchManager;
 import com.openjiuwen.memory.manage.search.SearchParams;
 import com.openjiuwen.memory.migration.RunMigrations;
@@ -61,7 +61,7 @@ import java.util.function.BooleanSupplier;
 /**
  * Main memory engine implementing long-term memory management.
  * Singleton class managing conversation memory, user variables, semantic search, and persistence.
- * 
+ *
  * @since 0.1.7
  */
 public class LongTermMemory {
@@ -69,14 +69,14 @@ public class LongTermMemory {
 
     /**
      * ObjectMapper.
-     * 
+     *
      * @since 0.1.7
      */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
      * DateTimeFormatter.ofPattern.
-     * 
+     *
      * @param HH:mm:ss" HH:mm:ss"
      * @since 0.1.7
      */
@@ -84,14 +84,14 @@ public class LongTermMemory {
 
     /**
      * DEFAULT_VALUE.
-     * 
+     *
      * @since 0.1.7
      */
     public static final String DEFAULT_VALUE = "__default__";
 
     /**
      * SCOPE_CONFIG_KEY.
-     * 
+     *
      * @since 0.1.7
      */
     public static final String SCOPE_CONFIG_KEY = "memory_scope_config";
@@ -103,7 +103,7 @@ public class LongTermMemory {
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final ConcurrentHashMap<String, MemoryScopeConfig> scopeConfig = new ConcurrentHashMap<>();
@@ -140,14 +140,14 @@ public class LongTermMemory {
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final ConcurrentHashMap<String, Embedding> scopeEmbedding = new ConcurrentHashMap<>();
 
     /**
      * LongTermMemory.
-     * 
+     *
      * @since 0.1.7
      */
     private LongTermMemory() {
@@ -155,7 +155,7 @@ public class LongTermMemory {
 
     /**
      * Gets the singleton instance of LongTermMemory.
-     * 
+     *
      * @return the LongTermMemory singleton instance
      * @since 0.1.7
      */
@@ -172,7 +172,7 @@ public class LongTermMemory {
 
     /**
      * Reset singleton for testing.
-     * 
+     *
      * @since 0.1.7
      */
     public static void resetInstance() {
@@ -188,7 +188,7 @@ public class LongTermMemory {
 
     /**
      * Registers storage backends for the memory engine.
-     * 
+     *
      * @param kvStore the key-value store for persistence
      * @param vectorStore the vector store for semantic search
      * @param dbStore the database store for structured data
@@ -227,7 +227,7 @@ public class LongTermMemory {
 
     /**
      * Sets the system memory engine configuration.
-     * 
+     *
      * @param config the memory engine configuration
      * @since 0.1.7
      */
@@ -270,7 +270,7 @@ public class LongTermMemory {
 
     /**
      * setScopeConfig.
-     * 
+     *
      * @param scopeId scopeId
      * @param memoryScopeConfig memoryScopeConfig
      * @return the result
@@ -309,7 +309,7 @@ public class LongTermMemory {
 
     /**
      * getScopeConfig.
-     * 
+     *
      * @param scopeId scopeId
      * @return the result
      * @since 0.1.7
@@ -340,7 +340,7 @@ public class LongTermMemory {
 
     /**
      * Deletes the configuration for a specific scope.
-     * 
+     *
      * @param scopeId the scope identifier
      * @return true if deletion was successful, false otherwise
      * @since 0.1.7
@@ -366,7 +366,7 @@ public class LongTermMemory {
 
     /**
      * Deletes all memory data for a specific scope.
-     * 
+     *
      * @param scopeId the scope identifier
      * @return true if deletion was successful, false otherwise
      * @since 0.1.7
@@ -392,7 +392,7 @@ public class LongTermMemory {
 
     /**
      * addMessages.
-     * 
+     *
      * @param messages messages
      * @param agentConfig agentConfig
      * @param userId userId
@@ -480,7 +480,7 @@ public class LongTermMemory {
 
     /**
      * addMessages.
-     * 
+     *
      * @param messages messages
      * @param agentConfig agentConfig
      * @param userId userId
@@ -497,7 +497,7 @@ public class LongTermMemory {
 
     /**
      * getRecentMessages.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param sessionId sessionId
@@ -519,7 +519,7 @@ public class LongTermMemory {
 
     /**
      * getMessageById.
-     * 
+     *
      * @param msgId msgId
      * @return the result
      * @since 0.1.7
@@ -534,7 +534,7 @@ public class LongTermMemory {
 
     /**
      * deleteMessagesByUserAndScope.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @since 0.1.7
@@ -550,7 +550,7 @@ public class LongTermMemory {
 
     /**
      * deleteMemById.
-     * 
+     *
      * @param memId memId
      * @param userId userId
      * @param scopeId scopeId
@@ -573,7 +573,7 @@ public class LongTermMemory {
 
     /**
      * deleteMemByUserId.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @since 0.1.7
@@ -595,7 +595,7 @@ public class LongTermMemory {
 
     /**
      * updateMemById.
-     * 
+     *
      * @param memId memId
      * @param memory memory
      * @param userId userId
@@ -621,7 +621,7 @@ public class LongTermMemory {
 
     /**
      * getVariables.
-     * 
+     *
      * @param names names
      * @param userId userId
      * @param scopeId scopeId
@@ -660,7 +660,7 @@ public class LongTermMemory {
 
     /**
      * updateVariables.
-     * 
+     *
      * @param variables variables
      * @param userId userId
      * @param scopeId scopeId
@@ -684,7 +684,7 @@ public class LongTermMemory {
 
     /**
      * deleteVariables.
-     * 
+     *
      * @param names names
      * @param userId userId
      * @param scopeId scopeId
@@ -712,7 +712,7 @@ public class LongTermMemory {
 
     /**
      * searchUserMem.
-     * 
+     *
      * @param query query
      * @param num num
      * @param userId userId
@@ -760,7 +760,7 @@ public class LongTermMemory {
 
     /**
      * scoreValue.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7
@@ -771,7 +771,7 @@ public class LongTermMemory {
 
     /**
      * searchUserHistorySummary.
-     * 
+     *
      * @param query query
      * @param num num
      * @param userId userId
@@ -804,7 +804,7 @@ public class LongTermMemory {
 
     /**
      * userMemTotalNum.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @return the result
@@ -820,7 +820,7 @@ public class LongTermMemory {
 
     /**
      * getUserMemByPage.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param pageSize pageSize
@@ -858,7 +858,7 @@ public class LongTermMemory {
 
     /**
      * getLlmFromConfig.
-     * 
+     *
      * @param modelConfig modelConfig
      * @param modelClientConfig modelClientConfig
      * @return the result
@@ -871,7 +871,7 @@ public class LongTermMemory {
     @SuppressWarnings("unchecked")
     /**
      * getInternalScopeConfig.
-     * 
+     *
      * @param scopeId scopeId
      * @return the result
      * @since 0.1.7
@@ -897,7 +897,7 @@ public class LongTermMemory {
 
     /**
      * getScopeEmbeddingModel.
-     * 
+     *
      * @param scopeId scopeId
      * @return the result
      * @since 0.1.7
@@ -952,7 +952,7 @@ public class LongTermMemory {
 
     /**
      * getScopeLlm.
-     * 
+     *
      * @param scopeId scopeId
      * @return the result
      * @since 0.1.7
@@ -979,7 +979,7 @@ public class LongTermMemory {
 
     /**
      * createSemanticStoreWithEmbedding.
-     * 
+     *
      * @param scopeId scopeId
      * @return the result
      * @since 0.1.7
@@ -1035,7 +1035,7 @@ public class LongTermMemory {
 
     /**
      * checkMessages.
-     * 
+     *
      * @param messages messages
      * @return the result
      * @since 0.1.7
@@ -1062,7 +1062,7 @@ public class LongTermMemory {
 
     /**
      * getHistoryMessages.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param sessionId sessionId
@@ -1096,7 +1096,7 @@ public class LongTermMemory {
 
     /**
      * validateId.
-     * 
+     *
      * @param eventType eventType
      * @param scopeId scopeId
      * @return the result
@@ -1120,7 +1120,7 @@ public class LongTermMemory {
 
     /**
      * runMigration.
-     * 
+     *
      * @param migrateFunc migrateFunc
      * @param storeType storeType
      * @since 0.1.7
@@ -1142,7 +1142,7 @@ public class LongTermMemory {
 
     /**
      * toMemResults.
-     * 
+     *
      * @param searchData searchData
      * @param defaultType defaultType
      * @return the result
@@ -1167,7 +1167,7 @@ public class LongTermMemory {
     @SuppressWarnings("unchecked")
     /**
      * encryptApiKeyInMap.
-     * 
+     *
      * @param configMap configMap
      * @param cfgKey cfgKey
      * @since 0.1.7
@@ -1191,7 +1191,7 @@ public class LongTermMemory {
     @SuppressWarnings("unchecked")
     /**
      * decryptApiKeyInMap.
-     * 
+     *
      * @param configMap configMap
      * @param cfgKey cfgKey
      * @since 0.1.7
@@ -1214,7 +1214,7 @@ public class LongTermMemory {
 
     /**
      * CheckMessagesResult.
-     * 
+     *
      * @param hasHumanMsg hasHumanMsg
      * @param messages messages
      * @since 0.1.7

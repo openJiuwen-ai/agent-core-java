@@ -11,7 +11,7 @@ import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.memory.config.graph.EpisodeType;
 import com.openjiuwen.memory.graph.extraction.prompts.TemplateManager;
-import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
+import com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageBase;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import java.util.Map;
 
 /**
  * Prompt building and entity extraction orchestration by episode type.
- * 
+ *
  * @since 0.1.7
  */
 public final class ExtractionPrompts {
@@ -30,7 +30,7 @@ public final class ExtractionPrompts {
 
     /**
      * ExtractionPrompts.
-     * 
+     *
      * @since 0.1.7
      */
     private ExtractionPrompts() {
@@ -38,7 +38,7 @@ public final class ExtractionPrompts {
 
     /**
      * Public record PromptCall used by the Java parity implementation.
-     * 
+     *
      * @since 0.1.7
      */
     public record PromptCall(Map<String, Object> kwargs, PromptTemplate template, Map<String, Object> outputModel) {
@@ -46,7 +46,7 @@ public final class ExtractionPrompts {
 
     /**
      * extractEntityDeclaration.
-     * 
+     *
      * @param srcType srcType
      * @param content content
      * @param history history
@@ -82,7 +82,7 @@ public final class ExtractionPrompts {
 
     /**
      * extractEntityAttributes.
-     * 
+     *
      * @param entity entity
      * @param content content
      * @param history history
@@ -111,7 +111,7 @@ public final class ExtractionPrompts {
 
     /**
      * extractRelationDeclaration.
-     * 
+     *
      * @param relationTypes relationTypes
      * @param entities entities
      * @param referenceTime referenceTime
@@ -143,7 +143,7 @@ public final class ExtractionPrompts {
 
     /**
      * extractTimezone.
-     * 
+     *
      * @param content content
      * @param history history
      * @param description description
@@ -163,7 +163,7 @@ public final class ExtractionPrompts {
 
     /**
      * mergeExistingEntities.
-     * 
+     *
      * @param target target
      * @param sources sources
      * @param language language
@@ -196,7 +196,7 @@ public final class ExtractionPrompts {
 
     /**
      * dedupeEntityList.
-     * 
+     *
      * @param content content
      * @param candidateEntities candidateEntities
      * @param existingEntities existingEntities
@@ -223,7 +223,7 @@ public final class ExtractionPrompts {
 
     /**
      * filterRelationsForMerge.
-     * 
+     *
      * @param target target
      * @param relations relations
      * @param language language
@@ -252,7 +252,7 @@ public final class ExtractionPrompts {
 
     /**
      * dedupeRelationList.
-     * 
+     *
      * @param content content
      * @param relation relation
      * @param existingRelations existingRelations
@@ -292,7 +292,7 @@ public final class ExtractionPrompts {
 
     /**
      * formatNewEntities.
-     * 
+     *
      * @param entities entities
      * @param entityTypes entityTypes
      * @param startIdx startIdx
@@ -314,7 +314,7 @@ public final class ExtractionPrompts {
 
     /**
      * formatExistingRelations.
-     * 
+     *
      * @param relations relations
      * @param isIncludeTime isIncludeTime
      * @return the result
@@ -330,7 +330,7 @@ public final class ExtractionPrompts {
 
     /**
      * formatExistingRelationMaps.
-     * 
+     *
      * @param relations relations
      * @param isIncludeTime isIncludeTime
      * @return the result
@@ -356,7 +356,7 @@ public final class ExtractionPrompts {
 
     /**
      * toJson.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7

@@ -16,22 +16,22 @@ import java.util.Map;
 
 /**
  * Base LLM response model with multilingual schema helpers.
- * 
+ *
  * @since 0.1.7
  */
 public abstract class MultilingualBaseModel {
     private static final Map<String, Map<String, String>> MULTILINGUAL_DESCRIPTION = new LinkedHashMap<>();
 
     static {
-        com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageCn
+        com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageCn
                 .registerLanguage();
-        com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageEn
+        com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageEn
                 .registerLanguage();
     }
 
     /**
      * multilingualModelJsonSchema.
-     * 
+     *
      * @param modelClass modelClass
      * @param language language
      * @param shouldBeStrict shouldBeStrict
@@ -67,7 +67,7 @@ public abstract class MultilingualBaseModel {
 
     /**
      * registerDescriptions.
-     * 
+     *
      * @param language language
      * @param descriptions descriptions
      * @since 0.1.7
@@ -78,7 +78,7 @@ public abstract class MultilingualBaseModel {
 
     /**
      * responseFormat.
-     * 
+     *
      * @param modelClass modelClass
      * @param language language
      * @return the result
@@ -92,7 +92,7 @@ public abstract class MultilingualBaseModel {
 
     /**
      * readableSchema.
-     * 
+     *
      * @param modelClass modelClass
      * @param language language
      * @return the result
@@ -122,7 +122,7 @@ public abstract class MultilingualBaseModel {
     @SuppressWarnings("unchecked")
     /**
      * buildSchema.
-     * 
+     *
      * @param modelClass modelClass
      * @param descLookup descLookup
      * @return the result
@@ -154,7 +154,7 @@ public abstract class MultilingualBaseModel {
     @SuppressWarnings("unchecked")
     /**
      * schemaForType.
-     * 
+     *
      * @param type type
      * @param descLookup descLookup
      * @return the result

@@ -9,8 +9,8 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.SupportMemoryType;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.SupportMemoryType;
 import com.openjiuwen.memory.migration.operation.BaseOperation;
 
 import java.util.ArrayList;
@@ -21,7 +21,7 @@ import java.util.Set;
 
 /**
  * Vector store migrator.
- * 
+ *
  * @since 0.1.7
  */
 public class VectorMigrator {
@@ -31,7 +31,7 @@ public class VectorMigrator {
 
     /**
      * VectorMigrator.
-     * 
+     *
      * @param semanticStore semanticStore
      * @since 0.1.7
      */
@@ -41,7 +41,7 @@ public class VectorMigrator {
 
     /**
      * tryMigrate.
-     * 
+     *
      * @param entityKey entityKey
      * @param operations operations
      * @return the result
@@ -91,7 +91,7 @@ public class VectorMigrator {
 
     /**
      * findCollections.
-     * 
+     *
      * @param memType memType
      * @return the result
      * @since 0.1.7
@@ -114,7 +114,7 @@ public class VectorMigrator {
 
     /**
      * validateMemoryType.
-     * 
+     *
      * @param memType memType
      * @since 0.1.7
      */

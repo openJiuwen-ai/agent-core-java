@@ -10,8 +10,8 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
-import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageCn;
-import com.openjiuwen.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageEn;
+import com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageCn;
+import com.openjiuwen.memory.graph.extraction.prompts.entity.ExtractionPromptLanguageEn;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * Thread-safe prompt template manager for loading extraction prompts.
- * 
+ *
  * @since 0.1.7
  */
 public final class TemplateManager {
@@ -34,14 +34,14 @@ public final class TemplateManager {
 
     /**
      * ConcurrentHashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final Map<String, PromptTemplate> prompts = new ConcurrentHashMap<>();
 
     /**
      * TemplateManager.
-     * 
+     *
      * @since 0.1.7
      */
     private TemplateManager() {
@@ -53,7 +53,7 @@ public final class TemplateManager {
 
     /**
      * getInstance.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -70,7 +70,7 @@ public final class TemplateManager {
 
     /**
      * get.
-     * 
+     *
      * @param name name
      * @return the result
      * @since 0.1.7
@@ -81,7 +81,7 @@ public final class TemplateManager {
 
     /**
      * contains.
-     * 
+     *
      * @param key key
      * @return the result
      * @since 0.1.7
@@ -92,7 +92,7 @@ public final class TemplateManager {
 
     /**
      * registerInBulk.
-     * 
+     *
      * @param language language
      * @since 0.1.7
      */
@@ -119,7 +119,7 @@ public final class TemplateManager {
 
     /**
      * loadPrContent.
-     * 
+     *
      * @param content content
      * @return the result
      * @since 0.1.7

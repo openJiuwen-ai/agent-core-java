@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -1305,16 +1306,17 @@ public class TeamAgent implements DispatcherHost {
         TeamMemberContext member = new TeamMemberContext(memberName, context.getTeamId(), spec.getLifecycle(),
                 resolveLanguage());
         TeamExecutionContext execution = new TeamExecutionContext(workspace, sysOperation,
-                defaultTeamMemoryDir(context.getTeamId()).toString(), teamBackend, resolveExtractionModel());
+                defaultTeamMemoryDir(context.getTeamId()).toString(), teamBackend,
+                resolveExtractionModel().orElse(null));
         return TeamMemoryResolver.require(new TeamMemoryContext(memory, member, execution));
     }
 
-    private Model resolveExtractionModel() {
+    private Optional<Model> resolveExtractionModel() {
         Object configuredModel = deepAgent.getConfig().getModel();
         if (configuredModel instanceof Model model) {
-            return model;
+            return Optional.of(model);
         }
-        return null;
+        return Optional.empty();
     }
 
     private String resolvePersona(TeamMemberSpec fallbackLeader) {

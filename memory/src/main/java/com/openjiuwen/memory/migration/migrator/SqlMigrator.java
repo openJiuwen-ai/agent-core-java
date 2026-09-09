@@ -7,8 +7,8 @@ package com.openjiuwen.memory.migration.migrator;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
-import com.openjiuwen.memory.manage.mem_model.DbModel;
-import com.openjiuwen.memory.manage.mem_model.SqlDbStore;
+import com.openjiuwen.memory.manage.model.DbModel;
+import com.openjiuwen.memory.manage.model.SqlDbStore;
 import com.openjiuwen.memory.migration.operation.AddColumnOperation;
 import com.openjiuwen.memory.migration.operation.BaseOperation;
 import com.openjiuwen.memory.migration.operation.RenameColumnOperation;
@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
 /**
  * SQL schema migrator using JDBC. Simplified version of Python's Alembic-based SQLMigrator.
  * Supports add column, rename column, and update column type operations.
- * 
+ *
  * @since 0.1.7
  */
 public class SqlMigrator {
@@ -55,7 +55,7 @@ public class SqlMigrator {
 
     /**
      * SqlMigrator.
-     * 
+     *
      * @param sqlDb sqlDb
      * @since 0.1.7
      */
@@ -66,7 +66,7 @@ public class SqlMigrator {
 
     /**
      * validateTable.
-     * 
+     *
      * @param tableName tableName
      * @since 0.1.7
      */
@@ -95,7 +95,7 @@ public class SqlMigrator {
 
     /**
      * batchMigrate.
-     * 
+     *
      * @param migrations migrations
      * @return the result
      * @since 0.1.7
@@ -117,7 +117,7 @@ public class SqlMigrator {
 
     /**
      * tryMigrate.
-     * 
+     *
      * @param entityKey entityKey
      * @param operations operations
      * @return the result
@@ -201,7 +201,7 @@ public class SqlMigrator {
 
     /**
      * executeSqlOperation.
-     * 
+     *
      * @param conn conn
      * @param op op
      * @param dialect dialect
@@ -226,7 +226,7 @@ public class SqlMigrator {
 
     /**
      * executeAddColumn.
-     * 
+     *
      * @param conn conn
      * @param op op
      * @throws SQLException SQLException
@@ -250,7 +250,7 @@ public class SqlMigrator {
 
     /**
      * executeRenameColumn.
-     * 
+     *
      * @param conn conn
      * @param op op
      * @param dialect dialect
@@ -279,7 +279,7 @@ public class SqlMigrator {
 
     /**
      * executeUpdateColumnType.
-     * 
+     *
      * @param conn conn
      * @param op op
      * @param dialect dialect
@@ -312,7 +312,7 @@ public class SqlMigrator {
 
     /**
      * alterColumnTypeSqlite.
-     * 
+     *
      * @param conn conn
      * @param tableName tableName
      * @param columnName columnName
@@ -361,7 +361,7 @@ public class SqlMigrator {
 
     /**
      * getTableColumns.
-     * 
+     *
      * @param conn conn
      * @param tableName tableName
      * @return the result
@@ -391,7 +391,7 @@ public class SqlMigrator {
 
     /**
      * getRequiredColumn.
-     * 
+     *
      * @param conn conn
      * @param tableName tableName
      * @param columnName columnName
@@ -408,7 +408,7 @@ public class SqlMigrator {
 
     /**
      * buildColumnDefinition.
-     * 
+     *
      * @param column column
      * @param typeName typeName
      * @param columnName columnName
@@ -431,7 +431,7 @@ public class SqlMigrator {
 
     /**
      * normalizeTypeName.
-     * 
+     *
      * @param typeName typeName
      * @return the result
      * @since 0.1.7
@@ -442,7 +442,7 @@ public class SqlMigrator {
 
     /**
      * toSqlType.
-     * 
+     *
      * @param typeString typeString
      * @return the result
      * @since 0.1.7
@@ -469,7 +469,7 @@ public class SqlMigrator {
     @SuppressWarnings("unchecked")
     /**
      * castOperations.
-     * 
+     *
      * @param rawOperations rawOperations
      * @return the result
      * @since 0.1.7
@@ -493,7 +493,7 @@ public class SqlMigrator {
 
     /**
      * supportedTables.
-     * 
+     *
      * @return the result
      * @since 0.1.7
      */
@@ -507,7 +507,7 @@ public class SqlMigrator {
 
     /**
      * ColumnDefinition.
-     * 
+     *
      * @param name name
      * @param typeName typeName
      * @param size size
@@ -523,7 +523,7 @@ public class SqlMigrator {
 
     /**
      * updateMetaVersion.
-     * 
+     *
      * @param conn conn
      * @param tableName tableName
      * @param version version
@@ -550,7 +550,7 @@ public class SqlMigrator {
 
     /**
      * detectDialect.
-     * 
+     *
      * @param conn conn
      * @return the result
      * @since 0.1.7
@@ -579,7 +579,7 @@ public class SqlMigrator {
 
     /**
      * formatDefault.
-     * 
+     *
      * @param value value
      * @return the result
      * @since 0.1.7

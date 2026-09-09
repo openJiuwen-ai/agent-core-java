@@ -1,3 +1,6 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 
 package com.openjiuwen.memory.provider.remote;
 
@@ -11,10 +14,13 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * Tests memory provider lifecycle adapters.
+ *
+ * @since 0.1.7
  */
 class RemoteMemoryProviderTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -30,7 +36,7 @@ class RemoteMemoryProviderTest {
         Map<?, ?> payload = MAPPER.readValue(response, Map.class);
 
         assertThat(provider.isInitialized()).isTrue();
-        assertThat((Integer) payload.get("count")).isEqualTo(1);
+        assertThat(payload.get("count")).isEqualTo(1);
         assertThat(String.valueOf(payload.get("results"))).contains("likes coffee");
     }
 
@@ -67,12 +73,12 @@ class RemoteMemoryProviderTest {
 
         @Override
         public List<Map<String, Object>> searchMemories(String baseUrl, String apiKey, String query,
-                Map<String, Object> filters, boolean rerank, int topK) {
-            String needle = query.toLowerCase();
+                Map<String, Object> filters, boolean shouldRerank, int topK) {
+            String needle = query.toLowerCase(Locale.ROOT);
             List<Map<String, Object>> results = new ArrayList<>();
             for (Map<String, Object> memory : memories) {
                 String text = String.valueOf(memory.getOrDefault("memory", ""));
-                if (text.toLowerCase().contains(needle)) {
+                if (text.toLowerCase(Locale.ROOT).contains(needle)) {
                     results.add(Map.of("memory", text, "score", 0.95));
                 }
                 if (results.size() >= topK) {
@@ -84,7 +90,7 @@ class RemoteMemoryProviderTest {
 
         @Override
         public void addMemories(String baseUrl, String apiKey, List<Map<String, Object>> messages,
-                Map<String, Object> scope, boolean infer) {
+                Map<String, Object> scope, boolean shouldInfer) {
             for (Map<String, Object> message : messages) {
                 memories.add(Map.of("memory", String.valueOf(message.getOrDefault("content", ""))));
             }
@@ -98,17 +104,17 @@ class RemoteMemoryProviderTest {
         @Override
         public List<Map<String, Object>> search(String endpoint, String apiKey, String account, String user,
                 String agent, Map<String, Object> payload) {
-            String needle = String.valueOf(payload.getOrDefault("query", "")).toLowerCase();
+            String needle = String.valueOf(payload.getOrDefault("query", "")).toLowerCase(Locale.ROOT);
             List<Map<String, Object>> results = new ArrayList<>();
             for (Map<String, Object> memory : memories) {
                 String content = String.valueOf(memory.getOrDefault("abstract", ""));
-                if (content.toLowerCase().contains(needle)) {
+                if (content.toLowerCase(Locale.ROOT).contains(needle)) {
                     results.add(new LinkedHashMap<>(memory));
                 }
             }
             for (Map<String, Object> resource : resources) {
                 String content = String.valueOf(resource.getOrDefault("abstract", ""));
-                if (content.toLowerCase().contains(needle)) {
+                if (content.toLowerCase(Locale.ROOT).contains(needle)) {
                     results.add(new LinkedHashMap<>(resource));
                 }
             }
@@ -154,5 +160,4 @@ class RemoteMemoryProviderTest {
             return Map.of("status", "indexed", "uri", resource.get("uri"));
         }
     }
-
 }

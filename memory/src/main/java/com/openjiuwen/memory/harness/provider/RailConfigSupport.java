@@ -8,7 +8,13 @@ import com.openjiuwen.harness.harness_config.HarnessConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
+/**
+ * Shared configuration conversion helpers for Memory harness rail providers.
+ *
+ * @since 0.1.7
+ */
 final class RailConfigSupport {
     private RailConfigSupport() {
     }
@@ -21,25 +27,25 @@ final class RailConfigSupport {
     }
 
     static boolean booleanValue(Object value, boolean isDefaultValue) {
-        return value instanceof Boolean boolValue ? boolValue : isDefaultValue;
+        return value instanceof Boolean isBooleanValue ? isBooleanValue : isDefaultValue;
     }
 
     static String stringValue(Object value, String defaultValue) {
         return value instanceof String str ? str : defaultValue;
     }
 
-    static Object firstPresent(Map<String, Object> config, String... keys) {
+    static Optional<Object> firstPresent(Map<String, Object> config, String... keys) {
         for (String key : keys) {
             if (config.containsKey(key)) {
-                return config.get(key);
+                return Optional.ofNullable(config.get(key));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     static Map<String, Object> providerConfig(Map<String, Object> config) {
-        Object nested = firstPresent(config, "provider_config", "providerConfig", "config");
-        if (nested instanceof Map<?, ?> map) {
+        Optional<Object> nested = firstPresent(config, "provider_config", "providerConfig", "config");
+        if (nested.isPresent() && nested.get() instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (entry.getKey() != null) {

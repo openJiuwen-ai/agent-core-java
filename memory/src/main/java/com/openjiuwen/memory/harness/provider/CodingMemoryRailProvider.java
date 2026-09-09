@@ -50,7 +50,9 @@ public final class CodingMemoryRailProvider implements HarnessRailProvider {
 
     @Override
     public Map<String, Object> toConfig(Object rail) {
-        CodingMemoryRail memoryRail = (CodingMemoryRail) rail;
+        if (!(rail instanceof CodingMemoryRail memoryRail)) {
+            throw new IllegalArgumentException("Expected CodingMemoryRail configuration source");
+        }
         Map<String, Object> config = new LinkedHashMap<>();
         if (memoryRail.codingMemoryDir() != null && !memoryRail.codingMemoryDir().isBlank()) {
             config.put("coding_memory_dir", memoryRail.codingMemoryDir());

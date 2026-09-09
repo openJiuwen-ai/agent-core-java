@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.harness.rails.fixtures;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -13,6 +17,8 @@ import java.util.Map;
 /**
  * Minimal MCP stdio fixture that speaks NDJSON (one JSON object per line),
  * matching {@link com.openjiuwen.core.foundation.tool.mcp.client.StdioClient}.
+ *
+ * @since 0.1.7
  */
 public final class StdioMcpResourceServer {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -20,6 +26,12 @@ public final class StdioMcpResourceServer {
     private StdioMcpResourceServer() {
     }
 
+    /**
+     * Runs the fixture protocol loop on standard input and output.
+     *
+     * @param args unused command-line arguments
+     * @throws Exception when a frame cannot be read or written
+     */
     public static void main(String[] args) throws Exception {
         BufferedInputStream in = new BufferedInputStream(System.in);
         BufferedOutputStream out = new BufferedOutputStream(System.out);

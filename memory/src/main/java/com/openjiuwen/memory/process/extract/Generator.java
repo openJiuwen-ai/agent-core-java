@@ -10,12 +10,12 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.DataIdManager;
-import com.openjiuwen.memory.manage.mem_model.FragmentMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.SummaryUnit;
-import com.openjiuwen.memory.manage.mem_model.VariableUnit;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.DataIdManager;
+import com.openjiuwen.memory.manage.model.FragmentMemoryUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.SummaryUnit;
+import com.openjiuwen.memory.manage.model.VariableUnit;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,7 +24,7 @@ import java.util.Map;
 
 /**
  * Generates all memory units (variables, summary, fragment) from conversation messages.
- * 
+ *
  * @since 0.1.7
  */
 public class Generator {
@@ -34,7 +34,7 @@ public class Generator {
 
     /**
      * Generator.
-     * 
+     *
      * @param dataIdGenerator dataIdGenerator
      * @since 0.1.7
      */
@@ -44,7 +44,7 @@ public class Generator {
 
     /**
      * genAllMemory.
-     * 
+     *
      * @param kwargs kwargs
      * @return the result
      * @since 0.1.7
@@ -140,7 +140,7 @@ public class Generator {
 
     /**
      * categoriesToMemoryUnit.
-     * 
+     *
      * @param params params
      * @param messageMemId messageMemId
      * @param timestamp timestamp
@@ -158,7 +158,7 @@ public class Generator {
 
     /**
      * processExtractedData.
-     * 
+     *
      * @param variableResults variableResults
      * @return the result
      * @since 0.1.7
@@ -180,7 +180,7 @@ public class Generator {
 
     /**
      * processSummaryData.
-     * 
+     *
      * @param userId userId
      * @param messageMemId messageMemId
      * @param summary summary
@@ -196,7 +196,7 @@ public class Generator {
 
     /**
      * getFragmentMemoryUnits.
-     * 
+     *
      * @param userId userId
      * @param messageMemId messageMemId
      * @param memoryDict memoryDict
@@ -231,7 +231,7 @@ public class Generator {
 
     /**
      * normalizeFragmentContent.
-     * 
+     *
      * @param item item
      * @return the result
      * @since 0.1.7

@@ -8,17 +8,17 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.memory.manage.mem_model.BaseMemoryUnit;
-import com.openjiuwen.memory.manage.mem_model.MemoryType;
-import com.openjiuwen.memory.manage.mem_model.SemanticStore;
-import com.openjiuwen.memory.manage.mem_model.UserMemStore;
+import com.openjiuwen.memory.manage.model.BaseMemoryUnit;
+import com.openjiuwen.memory.manage.model.MemoryType;
+import com.openjiuwen.memory.manage.model.SemanticStore;
+import com.openjiuwen.memory.manage.model.UserMemStore;
 
 import java.util.List;
 import java.util.Map;
 
 /**
  * Orchestrates memory write operations across all memory type managers.
- * 
+ *
  * @since 0.1.7
  */
 public class WriteManager {
@@ -29,7 +29,7 @@ public class WriteManager {
 
     /**
      * WriteManager.
-     * 
+     *
      * @param managers managers
      * @param memStore memStore
      * @since 0.1.7
@@ -41,7 +41,7 @@ public class WriteManager {
 
     /**
      * Add memories of different types in batch.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memories memories
@@ -98,7 +98,7 @@ public class WriteManager {
 
     /**
      * Update a memory by ID (determines type from store).
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -119,7 +119,7 @@ public class WriteManager {
 
     /**
      * Delete a memory by ID (determines type from store).
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
@@ -139,7 +139,7 @@ public class WriteManager {
 
     /**
      * Delete all memories for a user across all types.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param semanticStore semanticStore
@@ -154,7 +154,7 @@ public class WriteManager {
 
     /**
      * getMemTypeFromStore.
-     * 
+     *
      * @param userId userId
      * @param scopeId scopeId
      * @param memId memId
