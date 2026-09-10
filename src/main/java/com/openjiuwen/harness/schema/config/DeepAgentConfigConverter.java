@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.SysOperation;
+import com.openjiuwen.harness.security.PermissionInterruptRailFactory;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
@@ -73,10 +74,7 @@ public final class DeepAgentConfigConverter {
         }
         target.setPermissionHost(legacy.getPermissionHost());
         if (legacy.getPermissions() != null) {
-            Map<String, Object> permissions = new LinkedHashMap<>();
-            permissions.put("enabled", true);
-            permissions.put("section", legacy.getPermissions());
-            target.setPermissions(permissions);
+            target.setPermissions(PermissionInterruptRailFactory.toConfigMap(legacy.getPermissions()));
         }
 
         List<Object> tools = new ArrayList<>();

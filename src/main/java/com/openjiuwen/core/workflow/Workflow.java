@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -903,7 +904,7 @@ public class Workflow {
 
             private void waitForExecution() {
                 try {
-                    executionFuture.get();
+                    executionFuture.get(TimeoutConstants.FUTURE_MS, TimeUnit.MILLISECONDS);
                 } catch (CancellationException e) {
                     RuntimeException error = executionError.get();
                     if (error != null) {
@@ -922,6 +923,12 @@ public class Workflow {
                         throw error;
                     }
                     throw wrapWorkflowException(new Exception(e.getCause()));
+                } catch (TimeoutException e) {
+                    Loggers.PERFORMANCE.warning(
+                            "Workflow.waitForExecution future get timeout after {}ms",
+                            TimeoutConstants.FUTURE_MS);
+                    throw buildWorkflowExecutionTimeout(
+                            String.valueOf(TimeoutConstants.FUTURE_MS / 1000.0d));
                 }
                 RuntimeException error = executionError.get();
                 if (error != null) {
@@ -1738,7 +1745,9 @@ public class Workflow {
     private long resolveReceiveTimeoutMillis(long configuredTimeoutMs, long executionDeadlineNanos) {
         long remainingExecutionMs = remainingExecutionMillis(executionDeadlineNanos);
         if (remainingExecutionMs < 0) {
-            return configuredTimeoutMs;
+            // No execution deadline: fall back to the framework default so the receive
+            // never blocks forever (and timeout errors report the value actually waited).
+            return configuredTimeoutMs > 0 ? configuredTimeoutMs : TimeoutConstants.BLOCKING_QUEUE_MS;
         }
         long cappedExecutionMs = Math.max(1L, remainingExecutionMs);
         if (configuredTimeoutMs <= 0) {

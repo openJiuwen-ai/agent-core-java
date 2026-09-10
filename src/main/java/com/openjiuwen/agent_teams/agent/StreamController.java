@@ -22,6 +22,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -118,6 +119,10 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
     }
 
     public CompletionStage<Void> startRound(Object content) {
+        if (state.isTeamCleaned() || isShutdownRequestedNow()) {
+            closeStream();
+            return CompletableFuture.completedFuture(null);
+        }
         if (resources.getHarness() == null || streamQueue == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -383,6 +388,10 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
             closeStream();
             return;
         }
+        if (isShutdownRequestedNow()) {
+            closeStream();
+            return;
+        }
         if (cancelRequested) {
             return;
         }
@@ -403,6 +412,18 @@ public class StreamController implements StreamControllerView, SpawnManager.Stre
         wakeMailboxIfInterruptCleared().toCompletableFuture().join();
         if (requestCompletionPollCallback != null) {
             requestCompletionPollCallback.get().toCompletableFuture().join();
+        }
+    }
+
+    private boolean isShutdownRequestedNow() {
+        TeamMember teamMember = state.getTeamMember();
+        if (teamMember == null) {
+            return false;
+        }
+        try {
+            return teamMember.status().toCompletableFuture().join() == MemberStatus.SHUTDOWN_REQUESTED;
+        } catch (CompletionException | CancellationException ignored) {
+            return false;
         }
     }
 

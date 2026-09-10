@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdChunkData;
@@ -30,7 +30,7 @@ import java.util.concurrent.Flow;
 public class AioShellProvider extends BaseShellProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("aio-shell-provider-io");
+            OpenJiuwenExecutors.newBoundedModulePool("aio-shell-provider-io", true);
 
     private final AioProviderSupport.AioHttpClient client;
     private final int timeoutSeconds;

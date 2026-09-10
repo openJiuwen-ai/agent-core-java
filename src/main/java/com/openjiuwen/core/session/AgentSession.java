@@ -184,6 +184,21 @@ public class AgentSession implements AgentSessionApi {
         return this;
     }
 
+    @Override
+    public void markPreRunDone() {
+        this.preRunDone = true;
+    }
+
+    @Override
+    public void markPostRunDone() {
+        this.postRunDone = true;
+    }
+
+    @Override
+    public void resetPostRunState() {
+        this.postRunDone = false;
+    }
+
     public AgentSession postRun() {
         if (postRunDone) {
             return this;

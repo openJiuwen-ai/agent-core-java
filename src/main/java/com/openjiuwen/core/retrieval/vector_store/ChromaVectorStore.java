@@ -7,7 +7,7 @@ package com.openjiuwen.core.retrieval.vector_store;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.query.QueryExpr;
@@ -46,7 +46,7 @@ public class ChromaVectorStore implements VectorStore {
     private static final String DEFAULT_DATABASE = "default_database";
     private static final int DEFAULT_BATCH_SIZE = 128;
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("chroma-retrieval-vector-store-io");
+            OpenJiuwenExecutors.newBoundedModulePool("chroma-retrieval-vector-store-io", true);
 
     private final VectorStoreConfig config;
     private final String collectionName;

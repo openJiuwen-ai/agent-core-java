@@ -94,9 +94,7 @@ public final class LogManager {
      * Get a logger by type. Creates one on-demand if not present.
      */
     public static LoggerProtocol getLogger(String logType) {
-        if (!initialized) {
-            initialize();
-        }
+        initialize();
         return LOGGERS.computeIfAbsent(logType, type -> {
             Map<String, Object> config = getCustomConfig(type, selectedBackend);
             return getDefaultLoggerFactory(selectedBackend != null ? selectedBackend : getConfiguredBackend())
@@ -106,9 +104,7 @@ public final class LogManager {
 
     /** Get all registered loggers. */
     public static Map<String, LoggerProtocol> getAllLoggers() {
-        if (!initialized) {
-            initialize();
-        }
+        initialize();
         return Map.copyOf(LOGGERS);
     }
 
@@ -178,15 +174,17 @@ public final class LogManager {
     }
 
     private static Map<String, Map<String, Object>> getAllConfigs(String backend) {
-        if (LogConfigProvider.provider != null) {
-            return LogConfigProvider.provider.get();
+        java.util.function.Supplier<Map<String, Map<String, Object>>> provider = LogConfigProvider.provider;
+        if (provider != null) {
+            return provider.get();
         }
         return LoggingDefaults.logConfig().getAllConfigs(backend);
     }
 
     private static Map<String, Object> getCustomConfig(String logType, String backend) {
-        if (LogConfigProvider.provider != null) {
-            Map<String, Map<String, Object>> configs = LogConfigProvider.provider.get();
+        java.util.function.Supplier<Map<String, Map<String, Object>>> provider = LogConfigProvider.provider;
+        if (provider != null) {
+            Map<String, Map<String, Object>> configs = provider.get();
             Map<String, Object> config = configs != null ? configs.get(logType) : null;
             if (config != null) {
                 return config;

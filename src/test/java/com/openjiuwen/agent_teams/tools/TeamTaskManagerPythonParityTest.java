@@ -603,13 +603,13 @@ class TeamTaskManagerPythonParityTest {
 
     private static void cancelAllMixedStatus(Fixture fixture) {
         created(join(fixture.manager.add("Pending", "Content")));
+        TeamTask completed = created(join(fixture.manager.add("Completed", "Content")));
+        join(fixture.manager.claim(completed.getTaskId()));
+        join(fixture.manager.complete(completed.getTaskId()));
         TeamTask claimed = created(join(fixture.manager.add("Claimed", "Content")));
         join(fixture.manager.claim(claimed.getTaskId()));
         TeamTask cancelled = created(join(fixture.manager.add("Cancelled", "Content")));
         join(fixture.manager.cancel(cancelled.getTaskId()));
-        TeamTask completed = created(join(fixture.manager.add("Completed", "Content")));
-        join(fixture.manager.claim(completed.getTaskId()));
-        join(fixture.manager.complete(completed.getTaskId()));
 
         assertThat(join(fixture.manager.cancelAllTasks(null))).hasSize(2);
     }
@@ -688,6 +688,7 @@ class TeamTaskManagerPythonParityTest {
     private static void getTasksByAssigneeWithClaimedTasks(Fixture fixture) {
         TeamTask task1 = created(join(fixture.manager.add("Task 1", "Content 1")));
         join(fixture.manager.claim(task1.getTaskId()));
+        join(fixture.manager.complete(task1.getTaskId()));
         TeamTask task2 = created(join(fixture.manager.add("Task 2", "Content 2")));
         join(fixture.manager.claim(task2.getTaskId()));
 

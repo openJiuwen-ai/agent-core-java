@@ -4,8 +4,7 @@
 
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
-
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.controller.schema.Event;
@@ -64,7 +63,7 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         List<Thread> threads = new ArrayList<>();
 
         for (Intent intent : intents) {
-            Thread t = VirtualThreadSupport.startThread(() -> {
+            Thread t = OpenJiuwenExecutors.newThread((() -> {
                 switch (intent.getIntentType()) {
                     case CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
                     case PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
@@ -75,7 +74,8 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
                     case MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
                     default -> processUnknownTaskIntent(intent, inputs.getSession());
                 }
-            });
+            }), "intent-handler-" + intent.getIntentType(), false);
+            t.start();
             threads.add(t);
         }
 

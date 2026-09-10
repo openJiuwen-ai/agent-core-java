@@ -46,6 +46,7 @@ public final class SpawnChildProcess {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP = new TypeReference<>() {
     };
+    private static final String TRUSTED_CLASS_PREFIX = "com.openjiuwen.";
     private static final AgentFactory DEFAULT_AGENT_FACTORY = SpawnChildProcess::createAgentReflectively;
     private static final RunnerExecutor DEFAULT_RUNNER_EXECUTOR = new DefaultRunnerExecutor();
 
@@ -368,6 +369,9 @@ public final class SpawnChildProcess {
 
     private static Object createAgentReflectively(ClassAgentSpawnConfig config) {
         String className = config.getAgentModule() + "." + config.getAgentClass();
+        if (!className.startsWith(TRUSTED_CLASS_PREFIX)) {
+            throw new IllegalArgumentException("Agent class is not trusted: " + className);
+        }
         try {
             Class<?> agentClass = Class.forName(className);
             Map<String, Object> initKwargs = config.getInitKwargs();

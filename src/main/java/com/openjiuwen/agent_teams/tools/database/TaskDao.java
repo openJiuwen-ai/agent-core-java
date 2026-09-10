@@ -100,6 +100,16 @@ public class TaskDao {
             String title,
             String content,
             String status) {
+        return createTask(taskId, teamName, title, content, status, null);
+    }
+
+    public CompletableFuture<Boolean> createTask(
+            String taskId,
+            String teamName,
+            String title,
+            String content,
+            String status,
+            String assignee) {
         return supplyAsyncWithSessionContext(() -> {
             synchronized (engine) {
                 try (PreparedStatement statement = connection().prepareStatement(
@@ -111,7 +121,7 @@ public class TaskDao {
                     statement.setString(3, title);
                     statement.setString(4, content);
                     statement.setString(5, status);
-                    statement.setString(6, null);
+                    statement.setString(6, blankToNull(assignee));
                     statement.setLong(7, DatabaseEngine.getCurrentTime());
                     statement.executeUpdate();
                     TEAM_LOGGER.info("Task %s created", taskId);
@@ -211,10 +221,13 @@ public class TaskDao {
                         return false;
                     }
                     if (task.getAssignee() != null) {
-                        TEAM_LOGGER.warning("Task %s is already claimed by member %s", taskId, task.getAssignee());
-                        return false;
-                    }
-                    if (!isValidTransition(task.getStatus(), TaskStatus.CLAIMED)) {
+                        boolean hasAssigned = memberName.equals(task.getAssignee())
+                                && Objects.equals(task.getStatus(), TaskStatus.PENDING.value());
+                        if (!hasAssigned) {
+                            TEAM_LOGGER.warning("Task %s is already claimed by member %s", taskId, task.getAssignee());
+                            return false;
+                        }
+                    } else if (!isValidTransition(task.getStatus(), TaskStatus.CLAIMED)) {
                         TEAM_LOGGER.error(
                                 "Invalid state transition for task %s: %s -> %s",
                                 taskId,
@@ -738,7 +751,7 @@ public class TaskDao {
                 statement.setString(3, spec.title());
                 statement.setString(4, spec.content());
                 statement.setString(5, spec.initialStatus());
-                statement.setString(6, null);
+                statement.setString(6, blankToNull(spec.assignee()));
                 statement.setLong(7, now);
                 statement.executeUpdate();
             } catch (SQLException exception) {
@@ -1095,6 +1108,10 @@ public class TaskDao {
                 throw new RuntimeException("Failed to ensure task session tables", exception);
             }
         }
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private Connection connection() {

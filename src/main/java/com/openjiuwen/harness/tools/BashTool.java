@@ -5,6 +5,10 @@
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.exception.SysOperationError;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,6 +21,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Public class BashTool used by the Java parity implementation.
@@ -94,7 +100,7 @@ public class BashTool {
                         () -> read(process.getInputStream()), processIoExecutor);
                 CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
                         () -> read(process.getErrorStream()), processIoExecutor);
-                int exitCode = process.onExit().join().exitValue();
+                int exitCode = awaitProcessExit(process, command);
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
                 int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
@@ -116,6 +122,27 @@ public class BashTool {
             }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+        }
+    }
+
+    private static int awaitProcessExit(Process process, String command) {
+        long joinMs = TimeoutConstants.processJoinMs();
+        try {
+            return process.onExit()
+                    .orTimeout(joinMs, TimeUnit.MILLISECONDS)
+                    .join()
+                    .exitValue();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof TimeoutException) {
+                Loggers.PERFORMANCE.warning(
+                        "BashTool process join timeout after {}ms, command='{}'",
+                        joinMs, command);
+                process.destroyForcibly();
+                throw new SysOperationError(
+                        StatusCode.SYS_OPERATION_PROCESS_JOIN_TIMEOUT,
+                        null, null, exception, Map.of("timeout", joinMs, "command", command));
+            }
+            throw exception;
         }
     }
 

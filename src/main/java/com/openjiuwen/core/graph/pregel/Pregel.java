@@ -106,6 +106,8 @@ public class Pregel {
                 return result;
             }
             throw interrupt;
+        } finally {
+            loop.shutdown();
         }
     }
 

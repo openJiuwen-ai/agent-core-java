@@ -12,6 +12,7 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.runner.callback.ToolCallEvents;
 import com.openjiuwen.core.session.SessionContextHolder;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -103,10 +104,7 @@ public class LocalFunction extends Tool {
         if (result instanceof Iterable<?> iterable) {
             return castIterator(iterable.iterator());
         }
-        throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
-                "method", "stream",
-                "reason", "func is not generator",
-                "card", String.valueOf(getCard()));
+        return Collections.<Object>singletonList(result).iterator();
     }
 
     /**

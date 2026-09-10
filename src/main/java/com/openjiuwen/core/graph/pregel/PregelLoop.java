@@ -121,6 +121,17 @@ public class PregelLoop {
         return executor;
     }
 
+    /**
+     * Shut down the internal task executor, releasing the worker threads held by this loop.
+     * Safe to call once after the loop has finished (normally or exceptionally); idempotent.
+     */
+    public void shutdown() {
+        if (executor != null) {
+            executor.shutdown();
+            executor = null;
+        }
+    }
+
     private boolean doRunStep() throws Exception {
         Loggers.GRAPH.debug("Start to run graph super-step[{}]", step);
         List<PregelNode> tasksToRun = new ArrayList<>();

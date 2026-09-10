@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.rails.security;
 
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
@@ -166,6 +168,18 @@ public class BaseSecurityRail extends DeepAgentRail {
                 message = securityReject.result() == null ? "Blocked by security rail" : String.valueOf(securityReject.result());
             }
             ctx.put("security_reject", securityReject);
+            // Surface the rejection to the LLM as the tool result/message; otherwise the
+            // skipped tool call yields a null result and the denial reason never reaches
+            // the model (Python parity: the deny reason is returned as the tool output).
+            Object rejectResult = securityReject.result() != null ? securityReject.result() : message;
+            ctx.put("tool_result", rejectResult);
+            Object toolMessage = securityReject.toolMessage();
+            if (toolMessage == null) {
+                toolMessage = new ToolMessage(String.valueOf(rejectResult),
+                        toolCallIdOf(ctx.get("tool_call")),
+                        String.valueOf(ctx.getValues().getOrDefault("tool_name", "")));
+            }
+            ctx.put("tool_msg", toolMessage);
             ctx.reject(message);
             return;
         }
@@ -217,6 +231,16 @@ public class BaseSecurityRail extends DeepAgentRail {
             map.forEach((key, item) -> result.put(String.valueOf(key), item));
         }
         return result;
+    }
+
+    private static String toolCallIdOf(Object toolCall) {
+        if (toolCall instanceof ToolCall call && call.getId() != null) {
+            return call.getId();
+        }
+        if (toolCall instanceof Map<?, ?> map && map.get("id") != null) {
+            return String.valueOf(map.get("id"));
+        }
+        return "";
     }
 
     private void runIfSupported(CallbackContext ctx, String event) {

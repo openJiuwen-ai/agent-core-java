@@ -6,7 +6,7 @@ package com.openjiuwen.agentevolving.signal;
 
 import com.openjiuwen.agentevolving.optimizer.LlmResilience;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 
@@ -28,7 +28,7 @@ import java.util.concurrent.CompletionStage;
 public class TeamSignalDetector {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("team-signal-detector-io");
+            OpenJiuwenExecutors.newBoundedModulePool("team-signal-detector-io", true);
 
     private static final String USER_REQUEST_PROMPT_EN = """
             Determine if the following user input contains improvement suggestions

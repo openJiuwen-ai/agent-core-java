@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.controller.modules;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -541,7 +540,9 @@ public class TaskScheduler {
 
                 lock.lock();
                 try {
-                    if (runningTasks.size() >= config.getMaxConcurrentTasks()) {
+                    if (config.getMaxConcurrentTasks() > 0
+                            && !OpenJiuwenExecutors.isVirtualThreadSupported()
+                            && runningTasks.size() >= config.getMaxConcurrentTasks()) {
                         Loggers.CONTROLLER.warning(
                                 "Reached max concurrent tasks limit ({}), waiting for next schedule",
                                 config.getMaxConcurrentTasks());
@@ -551,11 +552,13 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on a background thread.
+                    // Start task on a virtual thread (JDK 21) or platform thread (JDK 17)
                     String taskId = task.getTaskId();
-                    Thread virtualThread = VirtualThreadSupport.startThread("task-" + taskId, () -> executeTaskWrapper(taskId, session));
+                    Thread taskThread = OpenJiuwenExecutors.newThread(
+                            () -> executeTaskWrapper(taskId, session), "task-" + taskId, true);
+                    taskThread.start();
 
-                    runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
+                    runningTasks.put(taskId, new RunningTaskEntry(null, taskThread));
                 } finally {
                     lock.unlock();
                 }
@@ -617,15 +620,10 @@ public class TaskScheduler {
             schedulerFuture.cancel(true);
         }
         if (scheduler != null) {
-            scheduler.shutdown();
-            try {
-                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    scheduler.shutdownNow();
-                }
-            } catch (InterruptedException ex) {
-                scheduler.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+            // Route through OpenJiuwenExecutors.shutdown so the terminated
+            // pool is also deregistered from the static MANAGED_EXECUTORS
+            // registry instead of lingering forever.
+            OpenJiuwenExecutors.shutdown(scheduler);
         }
 
         // Wait for running tasks

@@ -6,8 +6,11 @@ package com.openjiuwen.core.common.clients;
 
 import com.openjiuwen.core.common.security.SslUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +58,7 @@ public class ConnectorPoolConfig {
     /**
      * Generate a unique key for this configuration.
      *
-     * @return a MD5 hash key that uniquely identifies this configuration
+     * @return a SHA-256 hash key that uniquely identifies this configuration
      */
     public String generateKey() {
         List<String> parts = new ArrayList<>();
@@ -72,16 +75,22 @@ public class ConnectorPoolConfig {
         }
         String keyStr = String.join("&", parts);
 
+        return sha256Hex(keyStr);
+    }
+
+    /**
+     * Hex-encoded SHA-256 digest used as a stable pool key.
+     *
+     * @param value canonical config string
+     * @return lowercase hex digest
+     */
+    protected static String sha256Hex(String value) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(keyStr.getBytes());
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : digest) {
-                hexString.append(String.format("%02x", b));
-            }
-            return hexString.toString();
-        } catch (Exception e) {
-            return Integer.toString(keyStr.hashCode());
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(bytes);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 not available", exception);
         }
     }
 

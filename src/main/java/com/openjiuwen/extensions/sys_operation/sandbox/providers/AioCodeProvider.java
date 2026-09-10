@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCodeChunkData;
@@ -32,7 +32,7 @@ import java.util.concurrent.SubmissionPublisher;
 public class AioCodeProvider extends BaseCodeProvider {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("aio-code-provider-io");
+            OpenJiuwenExecutors.newBoundedModulePool("aio-code-provider-io", true);
 
     private final SandboxEndpoint endpoint;
     private final SandboxGatewayConfig config;
@@ -123,7 +123,7 @@ public class AioCodeProvider extends BaseCodeProvider {
             String cwd,
             Map<String, Object> options) {
         SubmissionPublisher<ExecuteCodeStreamResult> publisher = new SubmissionPublisher<>();
-        VirtualThreadSupport.startThread("aio-code-provider-stream", () -> {
+        Thread streamThread = OpenJiuwenExecutors.newThread(() -> {
             if (code == null || code.isBlank()) {
                 publisher.submit(AioProviderSupport.buildCodeErrorResult(
                         "execute_code_stream",
@@ -216,7 +216,8 @@ public class AioCodeProvider extends BaseCodeProvider {
                     publisher.close();
                 }
             });
-        });
+        }, "aio-code-provider-stream", true);
+        streamThread.start();
         return publisher;
     }
 

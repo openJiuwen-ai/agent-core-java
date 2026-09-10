@@ -4,12 +4,13 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ContextWindow;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
@@ -71,6 +72,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.logging.Logger;
 
 /**
@@ -90,6 +94,10 @@ public class ReActAgent extends BaseAgent {
 
     /** Chunk size (characters) when wrapping non-stream responses as stream chunks. */
     private static final int STREAM_CHUNK_SIZE = 200;
+
+    /** JDK 17: bounded platform pool; JDK 21+: virtual thread per task. */
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("react-agent-stream", true);
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
     private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
@@ -1227,7 +1235,12 @@ public class ReActAgent extends BaseAgent {
         ModelContext context = contextEngine.createContext(null, session, config.getContextProcessors(), null, null);
         ModelContext.ToolPort contextReloader = context.reloaderTool();
         if (config.getContextEngineConfig().isEnableReload()) {
-            getAbilityManager().add(contextReloader);
+            Tool reloader = asSessionReloader(contextReloader);
+            if (reloader != null) {
+                getAbilityManager().add(reloader.getCard());
+                getAbilityManager().registerSessionTool(
+                        session == null ? null : session.getSessionId(), reloader);
+            }
         } else if (contextReloader != null) {
             getAbilityManager().remove(contextReloader.name());
         }
@@ -1236,6 +1249,50 @@ public class ReActAgent extends BaseAgent {
 
     public ModelContext _init_context(AgentSessionApi session) {
         return initContext(session);
+    }
+
+    private static Tool asSessionReloader(ModelContext.ToolPort port) {
+        if (port instanceof Tool tool) {
+            return tool;
+        }
+        if (port instanceof SessionModelContext.ReloaderTool reloader) {
+            return new ReloaderAbility(reloader);
+        }
+        return null;
+    }
+
+    private static final class ReloaderAbility extends Tool {
+        private final SessionModelContext.ReloaderTool delegate;
+
+        private ReloaderAbility(SessionModelContext.ReloaderTool delegate) {
+            super(cardOf(delegate));
+            this.delegate = delegate;
+        }
+
+        @Override
+        protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            Map<String, Object> safe = inputs == null ? Map.of() : inputs;
+            return delegate.reloadOriginalContextMessages(
+                    stringArg(safe.get("offload_handle")),
+                    stringArg(safe.get("offload_type")));
+        }
+
+        private static ToolCard cardOf(SessionModelContext.ReloaderTool reloader) {
+            ToolInfo info = reloader.toolInfo();
+            String name = info == null || info.getName() == null || info.getName().isBlank()
+                    ? reloader.name()
+                    : info.getName();
+            return ToolCard.builder()
+                    .id(name)
+                    .name(name)
+                    .description(info == null || info.getDescription() == null ? "" : info.getDescription())
+                    .inputParams(info == null || info.getParameters() == null ? Map.of() : info.getParameters())
+                    .build();
+        }
+
+        private static String stringArg(Object value) {
+            return value == null ? "" : String.valueOf(value);
+        }
     }
 
     @Override
@@ -1314,17 +1371,24 @@ public class ReActAgent extends BaseAgent {
             if (streaming) {
                 ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
             }
+            Queue<String> steeringQueue = null;
             if (inputs instanceof Map<?, ?> map) {
                 putExtra(ctx, "user_id", map.get("user_id"));
                 putExtra(ctx, "run_kind", map.get("run_kind"));
                 putExtra(ctx, "run_context", map.get("run_context"));
-                Object steeringQueue = map.get("_steering_queue");
-                if (steeringQueue instanceof Queue<?> queue) {
+                Object rawSteeringQueue = map.get("_steering_queue");
+                if (rawSteeringQueue instanceof Queue<?> queue) {
                     @SuppressWarnings("unchecked")
                     Queue<String> typedQueue = (Queue<String>) queue;
-                    ctx.bindSteeringQueue(typedQueue);
+                    steeringQueue = typedQueue;
                 }
             }
+            // String inputs and maps without _steering_queue used to leave the
+            // queue unbound, so rail pushSteering was silently dropped.
+            if (steeringQueue == null) {
+                steeringQueue = new ConcurrentLinkedQueue<>();
+            }
+            ctx.bindSteeringQueue(steeringQueue);
             initializationComplete = true;
             getAgentCallbackManager().execute(AgentCallbackEvent.BEFORE_INVOKE, ctx).toCompletableFuture().join();
             Object userInput = invokeInputs.getQuery();
@@ -1416,6 +1480,9 @@ public class ReActAgent extends BaseAgent {
                             break;
                         }
                         if (!(modelResult instanceof AssistantMessage aiMessage)) {
+                            if (ctx.hasPendingSteering()) {
+                                continue;
+                            }
                             invokeInputs.setResult(
                                     modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
                             break;
@@ -1751,9 +1818,24 @@ public class ReActAgent extends BaseAgent {
         boolean finalNeedCleanup = needCleanup;
         if (agentSession) {
             String streamThreadName = resolveStreamWorkerThreadName(inputs);
-            VirtualThreadSupport.startThread(
-                    streamThreadName,
-                    () -> runStreamingInvoke(inputs, finalSession, finalNeedCleanup));
+            try {
+                STREAM_EXECUTOR.submit(() -> {
+                    Thread worker = Thread.currentThread();
+                    String previousName = worker.getName();
+                    worker.setName(streamThreadName);
+                    try {
+                        runStreamingInvoke(inputs, finalSession, finalNeedCleanup);
+                    } finally {
+                        worker.setName(previousName);
+                    }
+                });
+            } catch (RejectedExecutionException exception) {
+                writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
+                if (finalNeedCleanup) {
+                    contextEngine.saveContexts(finalSession);
+                }
+                closeStreamAndCommit(finalSession);
+            }
             return finalSession.streamIterator();
         }
         try {
@@ -1880,15 +1962,10 @@ public class ReActAgent extends BaseAgent {
                 continue;
             }
             String role = "";
-            String content = "";
             if (message instanceof BaseMessage baseMessage) {
                 role = baseMessage.getRole() != null ? baseMessage.getRole() : "";
-                content = String.valueOf(baseMessage.getContent());
-            } else {
-                content = String.valueOf(message);
             }
-            String escaped = content.replace("\\", "\\\\").replace("\"", "\\\"");
-            Loggers.AGENT.info("{\"role\": \"" + role + "\", \"content\": \"" + escaped + "\"}");
+            Loggers.AGENT.info("logLlmMessage role=" + role);
         }
     }
 
@@ -1900,13 +1977,10 @@ public class ReActAgent extends BaseAgent {
         if (aiMessage == null) {
             return;
         }
-        String content = aiMessage.getContent() instanceof String text ? text : String.valueOf(aiMessage.getContent());
-        if (content != null && !content.isEmpty()) {
-            Loggers.AGENT.info("[LLM] <<< response: content=" + content);
-        }
+        Loggers.AGENT.info("[LLM] <<< response: role=assistant");
         if (aiMessage.getToolCalls() != null) {
             for (ToolCall tc : aiMessage.getToolCalls()) {
-                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName() + "(" + tc.getArguments() + ")");
+                Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName());
             }
         }
     }

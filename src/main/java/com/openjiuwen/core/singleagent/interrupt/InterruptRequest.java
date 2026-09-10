@@ -9,6 +9,8 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +20,9 @@ import java.util.Map;
  * {@code openjiuwen/core/single_agent/interrupt/response.py}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class InterruptRequest {
+public class InterruptRequest implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
     @JsonProperty("message")
     private String message = "";
 

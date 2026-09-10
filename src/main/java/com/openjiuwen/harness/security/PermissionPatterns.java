@@ -8,7 +8,6 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -131,13 +130,49 @@ public final class PermissionPatterns {
             }
             data.put("permissions", deepCopyMap(permissions));
             Yaml yaml = new Yaml();
-            try (Writer writer = Files.newBufferedWriter(configYamlPath)) {
-                yaml.dump(data, writer);
-            }
+            stageAndMove(configYamlPath, yaml.dump(data));
             return true;
         } catch (IOException ignored) {
             return false;
         }
+    }
+
+    /**
+     * Merge path-level "always allow" accesses into {@code file_guard.paths}.
+     *
+     * <p>Mirrors Python {@code merge_file_guard_access_allows} +
+     * {@code merge_file_guard_path_rule}: the access path itself is trusted (no parent
+     * roll-up) and the read/write/exec axes are derived from the access action
+     * (write&#x21d2;read+write allow, exec&#x21d2;read+exec allow, read&#x21d2;read allow).
+     * Existing entries for the same path are escalated toward {@code allow} without
+     * downgrading any previously granted axis.
+     *
+     * @param permissions permissions section (not mutated)
+     * @param accesses    extracted path accesses
+     * @return merged permissions plus a flag indicating whether anything changed
+     */
+    public static PermissionsMergeResult mergeFileGuardAccessAllows(
+            Map<String, Object> permissions,
+            List<PathAccessExtractor.PathAccess> accesses
+    ) {
+        Map<String, Object> merged = deepCopyMap(permissions);
+        if (accesses == null || accesses.isEmpty()) {
+            return new PermissionsMergeResult(merged, false);
+        }
+        boolean isChanged = false;
+        for (PathAccessExtractor.PathAccess access : accesses) {
+            if (access == null || access.getPath() == null) {
+                continue;
+            }
+            String pathNorm = normalizeGuardPath(access.getPath());
+            if (pathNorm.isEmpty()) {
+                continue;
+            }
+            String[] axes = axesForFileGuardAction(access.getAction());
+            mergeFileGuardPathRule(merged, pathNorm, axes, "prefix");
+            isChanged = true;
+        }
+        return new PermissionsMergeResult(merged, isChanged);
     }
 
     public static PermissionsMergeResult mergeExternalDirectoryAllowIntoPermissions(
@@ -527,6 +562,119 @@ public final class PermissionPatterns {
 
     private static String safeId(String input) {
         return Integer.toHexString(input.hashCode());
+    }
+
+    // ---------- file-guard allow persistence ----------
+
+    private static String[] axesForFileGuardAction(FileGuardAction action) {
+        if (action == FileGuardAction.WRITE) {
+            return new String[]{"allow", "allow", "ask"};
+        }
+        if (action == FileGuardAction.EXEC) {
+            return new String[]{"allow", "ask", "allow"};
+        }
+        return new String[]{"allow", "ask", "ask"};
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void mergeFileGuardPathRule(
+            Map<String, Object> permissions,
+            String pathNorm,
+            String[] axes,
+            String match
+    ) {
+        String read = axes[0];
+        String write = axes[1];
+        String exec = axes[2];
+        Map<String, Object> fileGuard = castMap(permissions.get("file_guard"));
+        fileGuard.put("enabled", true);
+        List<Object> paths = castList(fileGuard, "paths");
+        fileGuard.put("paths", paths);
+        permissions.put("file_guard", fileGuard);
+
+        for (int i = 0; i < paths.size(); i++) {
+            if (!(paths.get(i) instanceof Map<?, ?> existingRaw)) {
+                continue;
+            }
+            String existingPath = normalizeGuardPath(existingRaw.get("path"));
+            if (!existingPath.equals(pathNorm)) {
+                continue;
+            }
+            Map<String, Object> existing = (Map<String, Object>) existingRaw;
+            Map<String, Object> mergedEntry = new LinkedHashMap<>(existing);
+            mergedEntry.put("path", pathNorm);
+            mergedEntry.put("read", escalateAxisTowardAllow(existing.get("read"), read));
+            mergedEntry.put("write", escalateAxisTowardAllow(existing.get("write"), write));
+            mergedEntry.put("exec", escalateAxisTowardAllow(existing.get("exec"), exec));
+            Object existingMatch = existing.get("match");
+            mergedEntry.put("match", existingMatch == null || String.valueOf(existingMatch).isEmpty()
+                    ? match : String.valueOf(existingMatch));
+            paths.set(i, mergedEntry);
+            return;
+        }
+
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("path", pathNorm);
+        entry.put("read", read);
+        entry.put("write", write);
+        entry.put("exec", exec);
+        entry.put("match", match);
+        paths.add(entry);
+    }
+
+    private static String escalateAxisTowardAllow(Object oldLevel, String newLevel) {
+        if ("allow".equals(newLevel)) {
+            return "allow";
+        }
+        if (oldLevel != null) {
+            String text = oldLevel.toString();
+            if ("allow".equals(text) || "ask".equals(text) || "deny".equals(text)) {
+                return text;
+            }
+        }
+        return newLevel;
+    }
+
+    private static String normalizeGuardPath(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = value.toString().replace("\\", "/");
+        while (text.length() > 1 && text.endsWith("/")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text;
+    }
+
+    /**
+     * Stage the rendered YAML in a temp file and atomically move it over the target,
+     * so a failure never leaves a half-written agent config.
+     *
+     * @param target destination config path
+     * @param content YAML text to persist
+     * @throws IOException when the temp file cannot be written or moved
+     */
+    private static void stageAndMove(Path target, String content) throws IOException {
+        Path absolute = target.toAbsolutePath().normalize();
+        Path parent = absolute.getParent();
+        Path temp = Files.createTempFile(parent, ".permissions-", ".tmp");
+        try {
+            Files.writeString(temp, content, java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, absolute,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException moveEx) {
+                Files.move(temp, absolute, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException ex) {
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException ignored) {
+                // Best-effort cleanup of the staged temp file.
+            }
+            throw ex;
+        }
     }
 
     @SuppressWarnings("unchecked")

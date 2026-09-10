@@ -9,7 +9,7 @@ import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.HttpUpstrea
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.JavaNetGatewayHttpTransport;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.RetryPolicy;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -27,7 +27,7 @@ import java.util.concurrent.CompletableFuture;
 public class JudgeScorer implements com.openjiuwen.agentevolving.agent_rl.online.gateway.trajectory.JudgeScorer {
 
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("judge-scorer-io");
+            OpenJiuwenExecutors.newBoundedModulePool("judge-scorer-io", true);
 
     private final String judgeUrl;
     private final String judgeModel;

@@ -5,7 +5,8 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -24,7 +25,6 @@ import java.util.Objects;
 @Data
 @SuperBuilder
 @NoArgsConstructor
-@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseMessage implements Serializable {
 
@@ -44,13 +44,39 @@ public class BaseMessage implements Serializable {
 
     public BaseMessage(String role, Object content) {
         this.role = role;
-        this.content = content != null ? content : "";
+        this.content = normalizeContent(content, false);
         this.metadata = new LinkedHashMap<>();
     }
 
     public BaseMessage(String role, String content, String name) {
         this(role, (Object) content);
         this.name = name;
+    }
+
+    public BaseMessage(String role, Object content, String name, Map<String, Object> metadata) {
+        this.role = role;
+        this.content = normalizeContent(content, true);
+        this.name = name;
+        this.metadata = copyMetadata(metadata);
+    }
+
+    public void setContent(Object content) {
+        this.content = normalizeContent(content, true);
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = copyMetadata(metadata);
+    }
+
+    private static Object normalizeContent(Object content, boolean allowNull) {
+        if (content == null) {
+            return allowNull ? null : "";
+        }
+        return SerializationUtils.requireSerializable(content, "content");
+    }
+
+    private static Map<String, Object> copyMetadata(Map<String, Object> metadata) {
+        return metadata == null ? null : new LinkedHashMap<>(metadata);
     }
 
     public Map<String, Object> modelDump() {

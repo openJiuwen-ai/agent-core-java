@@ -12,8 +12,8 @@ class LocaleStringsTest {
 
     @Test
     void chineseAndEnglishLocaleTablesShareTheSameKeys() {
-        assertThat(CnLocaleStrings.getAll()).hasSize(55);
-        assertThat(EnLocaleStrings.getAll()).hasSize(55);
+        assertThat(CnLocaleStrings.getAll()).hasSize(56);
+        assertThat(EnLocaleStrings.getAll()).hasSize(56);
         assertThat(CnLocaleStrings.getAll().keySet()).containsExactlyInAnyOrderElementsOf(EnLocaleStrings.getAll().keySet());
     }
 

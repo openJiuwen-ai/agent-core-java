@@ -4,12 +4,12 @@
 
 package com.openjiuwen.extensions.store.db;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.store.BaseDbStore;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import javax.sql.DataSource;
 
@@ -22,7 +22,8 @@ import javax.sql.DataSource;
  */
 public class GaussDbStore extends BaseDbStore<DataSource> {
 
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("gauss-db-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("gauss-db-store-io", true);
 
     private final DataSource dataSource;
 

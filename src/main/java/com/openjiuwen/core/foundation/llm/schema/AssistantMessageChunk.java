@@ -64,11 +64,17 @@ public class AssistantMessageChunk extends AssistantMessage {
         LinkedHashMap<Object, ToolCall> bucket = new LinkedHashMap<>();
         if (left != null) {
             for (ToolCall toolCall : left) {
+                if (isVacuousFragment(toolCall)) {
+                    continue;
+                }
                 bucket.put(keyOf(toolCall), copyToolCall(toolCall));
             }
         }
         if (right != null) {
             for (ToolCall incoming : right) {
+                if (isVacuousFragment(incoming)) {
+                    continue;
+                }
                 Object key = keyOf(incoming);
                 ToolCall exist = bucket.get(key);
                 if (exist != null) {
@@ -87,7 +93,11 @@ public class AssistantMessageChunk extends AssistantMessage {
                     continue;
                 }
                 // Python: merge with last when either side lacks id (streaming deltas).
-                if (!bucket.isEmpty() && isFunctionTool(incoming) && missingId(incoming)) {
+                // Only when the incoming fragment carries no explicit index: a distinct
+                // index marks a separate parallel call and must never merge into the
+                // previous one, even when both sides lack an id.
+                if (!bucket.isEmpty() && isFunctionTool(incoming) && missingId(incoming)
+                        && incoming.getIndex() == null) {
                     ToolCall last = lastValue(bucket);
                     if (isFunctionTool(last)) {
                         appendFragment(last, incoming);
@@ -142,6 +152,17 @@ public class AssistantMessageChunk extends AssistantMessage {
             base.setIndex(incoming.getIndex());
         }
         base.setArguments(orEmpty(base.getArguments()) + orEmpty(incoming.getArguments()));
+    }
+
+    private static boolean isVacuousFragment(ToolCall toolCall) {
+        if (toolCall == null) {
+            return true;
+        }
+        boolean noId = toolCall.getId() == null || toolCall.getId().isEmpty();
+        boolean noName = toolCall.getName() == null || toolCall.getName().isEmpty();
+        boolean noIndex = toolCall.getIndex() == null;
+        boolean noArgs = toolCall.getArguments() == null || toolCall.getArguments().isEmpty();
+        return noId && noName && noIndex && noArgs;
     }
 
     private static boolean isPureArgumentsFragment(ToolCall toolCall) {

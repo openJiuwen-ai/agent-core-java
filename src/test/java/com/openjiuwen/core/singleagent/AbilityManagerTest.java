@@ -771,6 +771,67 @@ class AbilityManagerTest {
         assertTrue(workflows.get(manager).getClass().getName().contains("Synchronized"));
     }
 
+    @Test
+    void sessionToolOverridesSharedInstanceForEachSession() {
+        AbilityManager manager = new AbilityManager();
+        String toolName = "reload_original_context_messages";
+        LocalFunction shared = new LocalFunction(
+                ToolCard.builder().id("shared-" + toolName).name(toolName).description("shared").build(),
+                inputs -> "shared");
+        LocalFunction sessionA = new LocalFunction(
+                ToolCard.builder().id("a-" + toolName).name(toolName).description("a").build(),
+                inputs -> "session-a");
+        LocalFunction sessionB = new LocalFunction(
+                ToolCard.builder().id("b-" + toolName).name(toolName).description("b").build(),
+                inputs -> "session-b");
+        Runner.resourceMgr().addTool(shared, null);
+        try {
+            manager.add(shared.getCard());
+            manager.registerSessionTool("sess-a", sessionA);
+            manager.registerSessionTool("sess-b", sessionB);
+
+            List<AbilityManager.ExecutionResult> resultA = manager.execute(
+                    null,
+                    ToolCall.builder().id("tc-a").name(toolName).arguments("{}").build(),
+                    AgentSession.createAgentSession("sess-a", null, null),
+                    false,
+                    null,
+                    null);
+            List<AbilityManager.ExecutionResult> resultB = manager.execute(
+                    null,
+                    ToolCall.builder().id("tc-b").name(toolName).arguments("{}").build(),
+                    AgentSession.createAgentSession("sess-b", null, null),
+                    false,
+                    null,
+                    null);
+
+            assertEquals("session-a", String.valueOf(resultA.get(0).result()));
+            assertEquals("session-b", String.valueOf(resultB.get(0).result()));
+
+            manager.unregisterSessionTool("sess-a");
+            List<AbilityManager.ExecutionResult> afterUnregister = manager.execute(
+                    null,
+                    ToolCall.builder().id("tc-a2").name(toolName).arguments("{}").build(),
+                    AgentSession.createAgentSession("sess-a", null, null),
+                    false,
+                    null,
+                    null);
+            assertEquals("shared", String.valueOf(afterUnregister.get(0).result()));
+
+            manager.clearAllSessionTools();
+            List<AbilityManager.ExecutionResult> afterClear = manager.execute(
+                    null,
+                    ToolCall.builder().id("tc-b2").name(toolName).arguments("{}").build(),
+                    AgentSession.createAgentSession("sess-b", null, null),
+                    false,
+                    null,
+                    null);
+            assertEquals("shared", String.valueOf(afterClear.get(0).result()));
+        } finally {
+            Runner.resourceMgr().removeTool(shared.getCard().getId(), null, TagMatchStrategy.ALL, true);
+        }
+    }
+
     private static final class ChildLoggerWrapper extends ParentLoggerWrapper {
         private ChildLoggerWrapper(Object delegate) {
             super(delegate);

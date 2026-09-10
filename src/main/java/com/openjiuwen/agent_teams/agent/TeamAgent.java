@@ -286,9 +286,10 @@ public class TeamAgent implements CoordinationKernel.KernelHost, AgentLifecycleH
 
     @Override
     public CompletionStage<Void> deliverInput(Object content, boolean useSteer) {
-        // USER_INPUT / fresh user turns must clear the post-clean_team latch (#59 §3.5).
+        // Latch is cleared only by USER_INPUT (AgentLifecycleHandler). POLL/TASK
+        // must not reopen a cleaned team.
         if (streamController != null && streamController.isTeamCleaned()) {
-            streamController.resetTeamCleaned();
+            return CompletableFuture.completedFuture(null);
         }
         if (isAgentRunning()) {
             return useSteer ? steer(String.valueOf(content)) : followUp(String.valueOf(content));

@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.GraphError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.utils.DictUtils;
@@ -34,6 +37,8 @@ import java.util.function.Consumer;
  */
 public class StreamProcessor {
 
+    static final Object TIMEOUT_SENTINEL = new Object();
+
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final long MILLIS_PER_SECOND = 1000L;
 
@@ -63,34 +68,55 @@ public class StreamProcessor {
     public void run(ComponentAbility ability) {
         Set<String> handledSources = new HashSet<>();
         Map<String, Set<String>> sourcePathMap = new LinkedHashMap<>();
-        while (true) {
-            StreamPayload payload;
-            try {
-                payload = queue.take();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+        boolean timedOut = false;
+        try {
+            while (true) {
+                StreamPayload payload;
+                try {
+                    payload = pollPayload();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (payload == null) {
+                    timedOut = true;
+                    break;
+                }
 
-            Object message = payload.getMessage();
-            String sourceKey = getUniqueSourceKey(payload);
-            if (isEndMessage(message)) {
-                String sourceId = getProducerId(message);
-                handledSources.add(sourceKey);
-                closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+                Object message = payload.getMessage();
+                String sourceKey = getUniqueSourceKey(payload);
+                if (isEndMessage(message)) {
+                    String sourceId = getProducerId(message);
+                    handledSources.add(sourceKey);
+                    closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+
+                    if (allSourceGroupsFinished(handledSources)) {
+                        closeAllQueues(sourceId);
+                    }
+                } else {
+                    closeInactiveGroupSources(sourceKey);
+                    routeMessageValue(message, sourceKey, sourcePathMap);
+                }
 
                 if (allSourceGroupsFinished(handledSources)) {
-                    closeAllQueues(sourceId);
+                    break;
                 }
-            } else {
-                closeInactiveGroupSources(sourceKey);
-                routeMessageValue(message, sourceKey, sourcePathMap);
             }
-
-            if (allSourceGroupsFinished(handledSources)) {
-                break;
+        } finally {
+            if (timedOut) {
+                closeAllQueuesWithTimeout();
             }
         }
+    }
+
+    private StreamPayload pollPayload() throws InterruptedException {
+        StreamPayload payload = queue.poll(TimeoutConstants.BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
+        if (payload == null) {
+            Loggers.PERFORMANCE.warning(
+                    "StreamProcessor main loop queue poll timeout after {}ms, node_id={}",
+                    TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
+        }
+        return payload;
     }
 
     /**
@@ -209,6 +235,14 @@ public class StreamProcessor {
         }
     }
 
+    void closeAllQueuesWithTimeout() {
+        for (List<BlockingQueue<Object>> destinations : processorQueues.values()) {
+            for (BlockingQueue<Object> destination : destinations) {
+                destination.offer(TIMEOUT_SENTINEL);
+            }
+        }
+    }
+
     private void putEndFrame(String sourceId, Collection<BlockingQueue<Object>> destinations) {
         SessionUtils.EndFrame endFrame = new SessionUtils.EndFrame(sourceId);
         for (BlockingQueue<Object> destination : destinations) {
@@ -240,9 +274,16 @@ public class StreamProcessor {
                     Object message = pollNextMessage(iteratorQueue, useTimeout);
                     if (message == null) {
                         LOGGER.warning("Receive chunk timeout {}ms of [{}.{}]",
-                                timeoutMillis, nodeId, keyPath);
+                                useTimeout ? timeoutMillis : TimeoutConstants.BLOCKING_QUEUE_MS, nodeId, keyPath);
                         done = true;
                         return false;
+                    }
+                    if (message == TIMEOUT_SENTINEL) {
+                        done = true;
+                        throw new GraphError(
+                                StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT,
+                                Map.of("timeout", TimeoutConstants.BLOCKING_QUEUE_MS,
+                                        "source", nodeId + "." + keyPath));
                     }
                     if (message instanceof SessionUtils.EndFrame) {
                         LOGGER.debug("Receive EndFrame chunk of [{}.{}]", nodeId, keyPath);
@@ -279,7 +320,13 @@ public class StreamProcessor {
         if (useTimeout) {
             return iteratorQueue.poll(timeoutMillis, TimeUnit.MILLISECONDS);
         }
-        return iteratorQueue.take();
+        Object message = iteratorQueue.poll(TimeoutConstants.BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
+        if (message == null) {
+            Loggers.PERFORMANCE.warning(
+                    "StreamProcessor iterator queue poll timeout after {}ms, node_id={}",
+                    TimeoutConstants.BLOCKING_QUEUE_MS, nodeId);
+        }
+        return message;
     }
 
     private boolean pathHasDeclaredSource(String referencePath) {

@@ -6,15 +6,15 @@ package com.openjiuwen.core.foundation.store;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * Mirrors Python's {@code CollectionSchema} in
@@ -44,7 +44,7 @@ public class CollectionSchema {
                 continue;
             }
             if (firstPrimary != null) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "collection can have at most one primary key field, primary_field="
@@ -58,13 +58,13 @@ public class CollectionSchema {
     public CollectionSchema addField(FieldSchema field) {
         for (FieldSchema existing : fields) {
             if (existing.getName().equals(field.getName())) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg", "field name already exists, field=" + field.getName()
                 );
             }
             if (existing.isPrimary() && field.isPrimary()) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "collection can have at most one primary key field, primary_field="

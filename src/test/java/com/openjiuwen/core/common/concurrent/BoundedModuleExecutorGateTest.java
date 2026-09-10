@@ -7,6 +7,7 @@ package com.openjiuwen.core.common.concurrent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,7 @@ class BoundedModuleExecutorGateTest {
     @Timeout(20)
     @DisplayName("有界模块池在 burst 提交下不超过配置 max-size")
     void boundedModulePoolCapsThreadCountUnderBurst() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         System.setProperty(GATE_POOL_MAX_PROPERTY, "4");
         System.setProperty(GATE_POOL_QUEUE_PROPERTY, "256");
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("gate-burst-test", false);
@@ -102,6 +104,7 @@ class BoundedModuleExecutorGateTest {
     @Timeout(10)
     @DisplayName("pregel-task 模块池默认上限为 32（I-B 整改）")
     void pregelTaskModulePoolHasBoundedDefaultMaxSize() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
         executorsToClose.add(executor);
         assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
@@ -112,6 +115,7 @@ class BoundedModuleExecutorGateTest {
     @Timeout(10)
     @DisplayName("pregel-task max-size 可通过系统属性覆盖")
     void pregelTaskModulePoolMaxSizeIsConfigurable() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         System.setProperty(PREGEL_MAX_PROPERTY, "6");
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("pregel-task", false);
         executorsToClose.add(executor);
@@ -122,6 +126,7 @@ class BoundedModuleExecutorGateTest {
     @Timeout(20)
     @DisplayName("burst 负载下堆使用不应因无界线程膨胀而失控")
     void burstLoadDoesNotAllocateUnboundedThreadStacks() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         System.setProperty(GATE_POOL_MAX_PROPERTY, "4");
         System.setProperty(GATE_POOL_QUEUE_PROPERTY, "256");
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("gate-burst-test", false);

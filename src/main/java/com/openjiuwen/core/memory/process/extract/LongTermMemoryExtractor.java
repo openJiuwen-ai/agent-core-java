@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.memory.process.extract;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -38,7 +38,7 @@ public final class LongTermMemoryExtractor {
     private static final int DEFAULT_RETRIES = 3;
     private static final DateTimeFormatter MONTH_DAY_FORMAT = DateTimeFormatter.ofPattern("MM.dd");
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("long-term-memory-extractor-io");
+            OpenJiuwenExecutors.newBoundedModulePool("long-term-memory-extractor-io", true);
 
     private LongTermMemoryExtractor() {
     }

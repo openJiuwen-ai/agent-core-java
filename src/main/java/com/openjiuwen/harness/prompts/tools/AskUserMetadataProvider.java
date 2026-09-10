@@ -17,13 +17,13 @@ public final class AskUserMetadataProvider implements ToolMetadataProvider {
     private static final Map<String, String> DESCRIPTION = Map.of(
             "cn",
             """
-            鍚戠敤鎴锋彁闂互鏀堕泦淇℃伅銆佹緞娓呮涔夋垨鍋氬嚭鍐崇瓥銆傛敮鎸?-4涓棶棰橈紝姣忎釜闂2-4涓€夐」銆?
+            向用户提问以收集信息、澄清歧义或做出决策。支持1-4个问题，每个问题2-4个选项。
 
-            浣曟椂涓诲姩浣跨敤锛氶渶姹傛ā绯娿€佸绉嶆柟妗堝彲閫夈€佹秹鍙婄敤鎴峰亸濂芥椂锛屽簲涓诲姩璇㈤棶鑰岄潪鍋囪銆?
+            何时主动使用：需求模糊、多种方案可选、涉及用户偏好时，应主动询问而非假设。
 
-            銆愮姝€戦€夐」涓坊鍔?鍏朵粬'銆?鑷畾涔?绛夊厹搴曢€夐」锛岀郴缁熷凡鑷姩鎻愪緵銆?
-            銆愭帹鑽愩€戝皢鎺ㄨ崘閫夐」鏀剧涓€浣嶏紝label鏈熬鍔?锛堟帹鑽愶級'銆?
-            preview瀛楁浠呯敤浜庡崟閫夐棶棰樼殑瑙嗚姣旇緝鍦烘櫙銆?
+            【禁止】选项中添加'其他'、'自定义'等兜底选项，系统已自动提供。
+            【推荐】将推荐选项放第一位，label末尾加'（推荐）'。
+            preview字段仅用于单选问题的视觉比较场景。
             """,
             "en",
             """
@@ -31,7 +31,7 @@ public final class AskUserMetadataProvider implements ToolMetadataProvider {
 
             When to use proactively: Ask when requirements are vague, multiple approaches exist, or user preferences matter. Don't assume.
 
-            FORBIDDEN: Adding 'Other', 'Custom' etc. as options 鈥?system provides this automatically.
+            FORBIDDEN: Adding 'Other', 'Custom' etc. as options — system provides this automatically.
             RECOMMENDED: Place recommended option first, append '(Recommended)' to its label.
             Preview field is only for single-select questions with visual comparison needs.
             """
@@ -101,35 +101,35 @@ public final class AskUserMetadataProvider implements ToolMetadataProvider {
     private static Map<String, Map<String, String>> createParams() {
         Map<String, Map<String, String>> params = new LinkedHashMap<>();
         params.put("questions", Map.of(
-                "cn", "鍚戠敤鎴锋彁鍑虹殑闂鍒楄〃锛?-4涓級",
+                "cn", "向用户提出的问题列表（1-4个）",
                 "en", "Questions to ask the user (1-4 questions)"
         ));
         params.put("header", Map.of(
-                "cn", "闂鐨勭畝鐭爣棰樻垨鏍囩",
+                "cn", "问题的简短标题或标签",
                 "en", "A short label or tag for the question (max 12 chars)"
         ));
         params.put("question", Map.of(
-                "cn", "瀹屾暣鐨勯棶棰樻枃鏈?",
+                "cn", "完整的问题文本",
                 "en", "The complete question to ask"
         ));
         params.put("options", Map.of(
-                "cn", "鍙€夌瓟妗堝垪琛紙2-4涓級",
+                "cn", "可选答案列表（2-4个）",
                 "en", "Available choices for this question (2-4 options)"
         ));
         params.put("options_label", Map.of(
-                "cn", "閫夐」鏄剧ず鏂囨湰锛?-5涓瘝锛?",
+                "cn", "选项显示文本（1-5个词）",
                 "en", "The display text for this option (1-5 words)."
         ));
         params.put("options_description", Map.of(
-                "cn", "閫夐」璇︾粏璇存槑",
+                "cn", "选项详细说明",
                 "en", "Explanation of what this option means or what will happen if chosen."
         ));
         params.put("options_preview", Map.of(
-                "cn", "鍙€夌殑棰勮鍐呭锛岀敤浜嶶I妯″瀷銆佷唬鐮佺墖娈垫垨瑙嗚姣旇緝銆備粎鍦ㄥ崟閫夐棶棰樹腑鏀寔銆?",
+                "cn", "可选的预览内容，用于UI模型、代码片段或视觉比较。仅在单选问题中支持。",
                 "en", "Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons. Only supported for single-select questions."
         ));
         params.put("multi_select", Map.of(
-                "cn", "鏄惁鍏佽澶氶€?",
+                "cn", "是否允许多选",
                 "en", "Set to true to allow the user to select multiple options instead of just one."
         ));
         return params;

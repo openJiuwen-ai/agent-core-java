@@ -36,6 +36,26 @@ public interface AgentSessionApi {
         return this;
     }
 
+    /**
+     * Mark that this session has already completed {@code preRun} for the current invocation.
+     */
+    default void markPreRunDone() {
+    }
+
+    /**
+     * Mark that this session has already completed {@code postRun} for the current invocation.
+     */
+    default void markPostRunDone() {
+    }
+
+    /**
+     * Clear the post-run flag so a reused session still runs {@code postRun}
+     * on the next invocation. Copying a stale POST-done flag into the next
+     * run skips stream close and checkpoint commit.
+     */
+    default void resetPostRunState() {
+    }
+
     default void closeStream() {
     }
 

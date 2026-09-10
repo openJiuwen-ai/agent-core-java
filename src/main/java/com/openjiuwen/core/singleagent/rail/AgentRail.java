@@ -18,6 +18,7 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/core/single_agent/rail/base.py}.</p>
  */
 public abstract class AgentRail {
+    /** Execution priority; a higher value runs before lower-priority callbacks. */
     private int priority = 50;
 
     public void init(BaseAgent agent) {

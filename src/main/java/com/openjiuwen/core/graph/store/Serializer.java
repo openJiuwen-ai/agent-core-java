@@ -20,6 +20,7 @@ import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
@@ -697,6 +698,17 @@ public abstract class Serializer {
 
     public static final class JavaSerializer extends Serializer {
 
+        /**
+         * JEP 290 deserialization allowlist for Java native data.
+         *
+         * <p>Only application classes under {@code com.openjiuwen} and core JDK data
+         * types (language, util, time, math) may be deserialized; every other
+         * class is rejected to prevent gadget-driven arbitrary code execution
+         * when the serialized bytes originate from an untrusted source.
+         */
+        private static final String DESERIALIZATION_ALLOWLIST =
+                "com.openjiuwen.**;java.lang.**;java.util.**;java.time.**;java.math.**;!*";
+
         @Override
         public TypedBytes dumpsTyped(Object obj) {
             try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -716,6 +728,7 @@ public abstract class Serializer {
             }
             try (ByteArrayInputStream bis = new ByteArrayInputStream(data.data());
                  ObjectInputStream ois = new ObjectInputStream(bis)) {
+                ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(DESERIALIZATION_ALLOWLIST));
                 return ois.readObject();
             } catch (IOException | ClassNotFoundException e) {
                 throw new IllegalStateException("Failed to deserialize Java payload", e);

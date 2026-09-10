@@ -6,6 +6,8 @@ package com.openjiuwen.core.session.interaction;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.utils.SerializationUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
@@ -39,7 +41,7 @@ public class InteractiveInput implements Serializable {
             );
         }
         this.userInputs = new LinkedHashMap<>();
-        this.rawInputs = rawInputs;
+        this.rawInputs = SerializationUtils.requireSerializable(rawInputs, "rawInputs");
     }
 
     public Map<String, Object> getUserInputs() {
@@ -47,7 +49,7 @@ public class InteractiveInput implements Serializable {
     }
 
     public void setUserInputs(Map<String, Object> userInputs) {
-        this.userInputs = userInputs;
+        this.userInputs = userInputs == null ? null : new LinkedHashMap<>(userInputs);
     }
 
     public Object getRawInputs() {
@@ -55,7 +57,7 @@ public class InteractiveInput implements Serializable {
     }
 
     public void setRawInputs(Object rawInputs) {
-        this.rawInputs = rawInputs;
+        this.rawInputs = rawInputs == null ? null : SerializationUtils.requireSerializable(rawInputs, "rawInputs");
     }
 
     public void update(String nodeId, Object value) {
@@ -73,6 +75,6 @@ public class InteractiveInput implements Serializable {
                     "value is none or node_id is none"
             );
         }
-        userInputs.put(nodeId, value);
+        userInputs.put(nodeId, SerializationUtils.requireSerializable(value, "value"));
     }
 }

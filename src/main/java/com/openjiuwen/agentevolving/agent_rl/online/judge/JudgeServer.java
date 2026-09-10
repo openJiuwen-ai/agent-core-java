@@ -3,13 +3,13 @@
  */
 
 package com.openjiuwen.agentevolving.agent_rl.online.judge;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.HttpUpstreamGatewayClient;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.JavaNetGatewayHttpTransport;
 import com.openjiuwen.agentevolving.agent_rl.online.gateway.upstream.RetryPolicy;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
@@ -52,7 +52,7 @@ public final class JudgeServer implements AutoCloseable {
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         this.server.createContext("/healthz", this::handleHealthz);
         this.server.createContext("/score", this::handleScore);
-        this.server.setExecutor(VirtualThreadSupport.newThreadPerTaskExecutor());
+        this.server.setExecutor(OpenJiuwenExecutors.newBoundedModulePool("judge-server", true));
     }
 
     public static JudgeServer start(String host, int port, JudgeConfig config) throws IOException {

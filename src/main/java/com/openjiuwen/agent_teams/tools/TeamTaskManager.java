@@ -78,6 +78,10 @@ public class TeamTaskManager {
             TaskStatus.COMPLETED.value(),
             TaskStatus.CANCELLED.value()
     );
+    private static final Set<String> ACTIVE_TASK_STATUSES = Set.of(
+            TaskStatus.CLAIMED.value(),
+            TaskStatus.PLAN_APPROVED.value()
+    );
 
     private final String teamName;
     private final String memberName;
@@ -163,6 +167,10 @@ public class TeamTaskManager {
         this.leaderMemberName = trimToEmpty(leaderMemberName);
     }
 
+    public String getMemberName() {
+        return memberName;
+    }
+
     public void configurePlanStorage(Path plansDir, String teamPlanId) {
         if (plansDir != null) {
             this.plansDir = plansDir;
@@ -183,11 +191,12 @@ public class TeamTaskManager {
                 String content = stringValue(taskSpec.get("content"));
                 String taskId = emptyToNull(stringValue(taskSpec.get("task_id")));
                 List<String> dependencies = stringList(taskSpec.get("dependencies"));
+                String assignee = emptyToNull(stringValue(taskSpec.get("assignee")));
                 if (title.isEmpty() || content.isEmpty()) {
                     TEAM_LOGGER.warning("Skipping invalid task: %s", taskSpec);
                     continue;
                 }
-                TaskCreateResult result = addSync(title, content, taskId, dependencies);
+                TaskCreateResult result = addSync(title, content, taskId, dependencies, assignee);
                 if (result.ok()) {
                     createdTasks.add(result);
                 } else {
@@ -210,7 +219,16 @@ public class TeamTaskManager {
             String content,
             String taskId,
             List<String> dependencies) {
-        return supplyStage(() -> addSync(title, content, taskId, dependencies));
+        return add(title, content, taskId, dependencies, null);
+    }
+
+    public CompletionStage<TaskCreateResult> add(
+            String title,
+            String content,
+            String taskId,
+            List<String> dependencies,
+            String assignee) {
+        return supplyStage(() -> addSync(title, content, taskId, dependencies, assignee));
     }
 
     public CompletionStage<TaskCreateResult> addWithPriority(
@@ -219,28 +237,53 @@ public class TeamTaskManager {
             String taskId,
             List<String> dependencies,
             List<String> dependentTaskIds) {
+        return addWithPriority(title, content, taskId, dependencies, dependentTaskIds, null);
+    }
+
+    public CompletionStage<TaskCreateResult> addWithPriority(
+            String title,
+            String content,
+            String taskId,
+            List<String> dependencies,
+            List<String> dependentTaskIds,
+            String assignee) {
         return supplyStage(() -> {
+            String ownerError = validateAssignee(assignee);
+            if (ownerError != null) {
+                return TaskCreateResult.fail(ownerError);
+            }
             String nextTaskId = firstNonBlank(taskId, UUID.randomUUID().toString());
+            List<TaskDao.DependencyEdge> edges = new ArrayList<>();
+            if (dependencies != null) {
+                for (String dependency : dependencies) {
+                    edges.add(new TaskDao.DependencyEdge(nextTaskId, dependency));
+                }
+            }
+            if (dependentTaskIds != null) {
+                for (String dependentTaskId : dependentTaskIds) {
+                    edges.add(new TaskDao.DependencyEdge(dependentTaskId, nextTaskId));
+                }
+            }
             String status = dependencies != null && !dependencies.isEmpty()
                     ? TaskStatus.BLOCKED.value()
                     : TaskStatus.PENDING.value();
-            boolean success = join(database.addTaskWithBidirectionalDependencies(
-                    nextTaskId,
+            GraphMutationResult mutation = join(database.mutateDependencyGraph(
                     teamName,
-                    title,
-                    content,
-                    status,
-                    dependencies,
-                    dependentTaskIds
+                    List.of(new NewTaskSpec(nextTaskId, title, content, status, assignee)),
+                    edges
             ));
-            if (!success) {
+            if (!mutation.ok()) {
                 return TaskCreateResult.fail(
                         "Failed to create prioritized task " + nextTaskId
                                 + " (circular dependency, missing dependent task, or task_id collision)"
                 );
             }
-            publishTaskEvent(taskCreatedEvent(nextTaskId, status), "Task created event for " + nextTaskId, true);
-            return TaskCreateResult.success(new TeamTask(nextTaskId, teamName, title, content, status, null, null));
+            TeamTask created = createdTask(nextTaskId, title, content, status, assignee);
+            publishTaskEvent(
+                    taskCreatedEvent(nextTaskId, created.getStatus()),
+                    "Task created event for " + nextTaskId,
+                    true);
+            return TaskCreateResult.success(created);
         });
     }
 
@@ -349,6 +392,10 @@ public class TeamTaskManager {
                                 + "; reset the task before reassigning to " + assignee
                 );
             }
+            String busyTaskId = getOtherActiveTaskIdSync(assignee, taskId);
+            if (busyTaskId != null) {
+                return busyMemberFailure(assignee, busyTaskId);
+            }
             boolean success = join(database.claimTask(taskId, assignee));
             if (!success) {
                 return TaskOpResult.fail(
@@ -399,11 +446,28 @@ public class TeamTaskManager {
                 TEAM_LOGGER.debug("Task %s already claimed by %s; no-op", taskId, memberName);
                 return TaskOpResult.success();
             }
+            if (Objects.equals(task.getAssignee(), memberName)
+                    && Objects.equals(task.getStatus(), TaskStatus.PENDING.value())) {
+                String busyAssigned = getOtherActiveTaskIdSync(memberName, taskId);
+                if (busyAssigned != null) {
+                    return busyMemberFailure(memberName, busyAssigned);
+                }
+                boolean hasStarted = join(database.claimTask(taskId, memberName));
+                if (!hasStarted) {
+                    return TaskOpResult.fail("Task " + taskId + " could not be started for " + memberName);
+                }
+                publishTaskEvent(taskClaimedEvent(taskId, memberName), "Task claimed event for " + taskId, true);
+                return TaskOpResult.success();
+            }
             if (task.getAssignee() != null) {
                 return TaskOpResult.fail(
                         "Task " + taskId + " is already claimed by " + task.getAssignee()
                                 + ", " + memberName + " cannot claim it"
                 );
+            }
+            String busyTaskId = getOtherActiveTaskIdSync(memberName, taskId);
+            if (busyTaskId != null) {
+                return busyMemberFailure(memberName, busyTaskId);
             }
             if (!isValidTaskTransition(task.getStatus(), TaskStatus.CLAIMED)) {
                 return TaskOpResult.fail(
@@ -599,11 +663,35 @@ public class TeamTaskManager {
         return readPlanIndex(planId);
     }
 
+    /**
+     * Returns another in-progress task id for {@code targetMemberName}, excluding {@code excludeTaskId}.
+     *
+     * @param targetMemberName member whose active tasks are inspected
+     * @param excludeTaskId task id to ignore
+     * @return completion stage with the other active task id, or {@code null} when none
+     */
+    public CompletionStage<String> getOtherActiveTaskId(String targetMemberName, String excludeTaskId) {
+        return supplyStage(() -> getOtherActiveTaskIdSync(targetMemberName, excludeTaskId));
+    }
+
     private TaskCreateResult addSync(String title, String content, String taskId, List<String> dependencies) {
+        return addSync(title, content, taskId, dependencies, null);
+    }
+
+    private TaskCreateResult addSync(
+            String title,
+            String content,
+            String taskId,
+            List<String> dependencies,
+            String assignee) {
+        String ownerError = validateAssignee(assignee);
+        if (ownerError != null) {
+            return TaskCreateResult.fail(ownerError);
+        }
         String nextTaskId = firstNonBlank(taskId, UUID.randomUUID().toString());
         String status = TaskStatus.PENDING.value();
         if (dependencies != null && !dependencies.isEmpty()) {
-            List<NewTaskSpec> newTasks = List.of(new NewTaskSpec(nextTaskId, title, content, status));
+            List<NewTaskSpec> newTasks = List.of(new NewTaskSpec(nextTaskId, title, content, status, assignee));
             List<TaskDao.DependencyEdge> edges = dependencies.stream()
                     .map(depId -> new TaskDao.DependencyEdge(nextTaskId, depId))
                     .toList();
@@ -619,16 +707,20 @@ public class TeamTaskManager {
             }
             TEAM_LOGGER.debug("Added task %s with dependencies: %s", nextTaskId, dependencies);
         } else {
-            boolean success = join(database.createTask(nextTaskId, teamName, title, content, status));
-            if (!success) {
+            boolean isSuccess = join(database.createTask(nextTaskId, teamName, title, content, status, assignee));
+            if (!isSuccess) {
                 return TaskCreateResult.fail(
                         "Failed to create task " + nextTaskId + " (likely a task_id collision)"
                 );
             }
         }
 
-        publishTaskEvent(taskCreatedEvent(nextTaskId, status), "Task created event for " + nextTaskId, true);
-        return TaskCreateResult.success(new TeamTask(nextTaskId, teamName, title, content, status, null, null));
+        TeamTask created = createdTask(nextTaskId, title, content, status, assignee);
+        publishTaskEvent(
+                taskCreatedEvent(nextTaskId, created.getStatus()),
+                "Task created event for " + nextTaskId,
+                true);
+        return TaskCreateResult.success(created);
     }
 
     private Map<String, Object> submitPlanSync(
@@ -1232,6 +1324,48 @@ public class TeamTaskManager {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    private String validateAssignee(String assignee) {
+        if (assignee == null || assignee.isBlank()) {
+            return null;
+        }
+        if (!leaderMemberName.isEmpty() && assignee.equals(leaderMemberName)) {
+            return "Task assignee '" + assignee + "' is the team leader; assign tasks to teammates";
+        }
+        if (join(database.getMember(assignee, teamName)).isEmpty()) {
+            return "assignee " + assignee + " not found in team " + teamName
+                    + "; spawn_member must run before create_task with assignee";
+        }
+        return null;
+    }
+
+    private TeamTask createdTask(String taskId, String title, String content, String status, String assignee) {
+        TeamTask stored = join(get(taskId)).orElse(null);
+        if (stored != null) {
+            return stored;
+        }
+        return new TeamTask(taskId, teamName, title, content, status, emptyToNull(assignee), null);
+    }
+
+    private String getOtherActiveTaskIdSync(String targetMemberName, String excludeTaskId) {
+        List<TeamTask> owned = join(database.getTasksByAssignee(teamName, targetMemberName, null));
+        for (TeamTask ownedTask : owned) {
+            if (excludeTaskId != null && excludeTaskId.equals(ownedTask.getTaskId())) {
+                continue;
+            }
+            if (ACTIVE_TASK_STATUSES.contains(ownedTask.getStatus())) {
+                return ownedTask.getTaskId();
+            }
+        }
+        return null;
+    }
+
+    private static TaskOpResult busyMemberFailure(String member, String busyTaskId) {
+        return TaskOpResult.fail(
+                "Member '" + member + "' already has an active task " + busyTaskId
+                        + "; complete or reset it first"
+        );
+    }
+
     private static String emptyToNull(String value) {
         return value == null || value.isEmpty() ? null : value;
     }
@@ -1289,7 +1423,18 @@ public class TeamTaskManager {
                     String title,
                     String content,
                     String status) {
-                return taskDao.createTask(taskId, teamName, title, content, status);
+                return createTask(taskId, teamName, title, content, status, null);
+            }
+
+            @Override
+            public CompletionStage<Boolean> createTask(
+                    String taskId,
+                    String teamName,
+                    String title,
+                    String content,
+                    String status,
+                    String assignee) {
+                return taskDao.createTask(taskId, teamName, title, content, status, assignee);
             }
 
             @Override
@@ -1407,7 +1552,18 @@ public class TeamTaskManager {
                     String title,
                     String content,
                     String status) {
-                return database.createTask(taskId, teamName, title, content, status);
+                return createTask(taskId, teamName, title, content, status, null);
+            }
+
+            @Override
+            public CompletionStage<Boolean> createTask(
+                    String taskId,
+                    String teamName,
+                    String title,
+                    String content,
+                    String status,
+                    String assignee) {
+                return database.createTask(taskId, teamName, title, content, status, assignee);
             }
 
             @Override
@@ -1522,12 +1678,32 @@ public class TeamTaskManager {
      * {@code openjiuwen/agent_teams/tools/task_manager.py}.</p>
      */
     public interface TeamTaskDatabase {
+        /**
+         * Create a task row. Overloads without {@code assignee} leave the task unassigned.
+         *
+         * @param taskId task id
+         * @param teamName team name
+         * @param title task title
+         * @param content task body
+         * @param status initial status
+         * @return whether the row was created
+         */
+        default CompletionStage<Boolean> createTask(
+                String taskId,
+                String teamName,
+                String title,
+                String content,
+                String status) {
+            return createTask(taskId, teamName, title, content, status, null);
+        }
+
         CompletionStage<Boolean> createTask(
                 String taskId,
                 String teamName,
                 String title,
                 String content,
-                String status);
+                String status,
+                String assignee);
 
         CompletionStage<GraphMutationResult> mutateDependencyGraph(
                 String teamName,

@@ -7,9 +7,12 @@ package com.openjiuwen.core.common.concurrent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -20,10 +23,60 @@ import java.util.concurrent.TimeUnit;
 
 class OpenJiuwenExecutorsTest {
     @Test
-    @DisplayName("DeepAgent stream 模块池默认 max(32, CPU×8) 且可配置")
+    @DisplayName("任务并发默认值与 I/O 池上限对齐")
+    void defaultTaskConcurrencyMatchesIoBoundMaxSize() {
+        assertThat(OpenJiuwenExecutors.defaultTaskConcurrency())
+                .isEqualTo(Math.max(40, Runtime.getRuntime().availableProcessors() * 8));
+        assertThat(OpenJiuwenExecutors.isVirtualThreadSupported())
+                .isEqualTo(VirtualThreadSupport.isSupported());
+    }
+
+    @Test
+    @DisplayName("JDK 21 普通业务执行器使用虚拟线程")
+    void boundedModulePoolUsesVirtualThreadsOnJdk21() throws Exception {
+        Assumptions.assumeTrue(OpenJiuwenExecutors.isVirtualThreadSupported());
+        ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
+        try {
+            assertThat(executor).isNotInstanceOf(ThreadPoolExecutor.class);
+            Boolean virtual = executor.submit(() -> isVirtual(Thread.currentThread())).get(2, TimeUnit.SECONDS);
+            assertThat(virtual).isTrue();
+            String threadName = executor.submit(() -> Thread.currentThread().getName()).get(2, TimeUnit.SECONDS);
+            assertThat(threadName).startsWith("deep-agent-stream-");
+        } finally {
+            OpenJiuwenExecutors.shutdown(executor);
+        }
+    }
+
+    @Test
+    @DisplayName("单线程执行器在 JDK 21 仍保持平台线程串行语义")
+    void singleThreadExecutorStaysOnPlatformThreads() throws Exception {
+        ExecutorService executor = OpenJiuwenExecutors.newSingleThreadExecutor("single-thread-serial", true);
+        try {
+            assertThat(executor).isInstanceOf(ThreadPoolExecutor.class);
+            Boolean virtual = executor.submit(() -> isVirtual(Thread.currentThread())).get(2, TimeUnit.SECONDS);
+            assertThat(virtual).isFalse();
+        } finally {
+            OpenJiuwenExecutors.shutdown(executor);
+        }
+    }
+
+    @Test
+    @DisplayName("newThread 在 JDK 21 返回未启动的虚拟线程")
+    void newThreadMatchesRuntimeCapability() {
+        Thread thread = OpenJiuwenExecutors.newThread(() -> {
+        }, "new-thread-test", true);
+        assertThat(thread.getName()).isEqualTo("new-thread-test");
+        assertThat(isVirtual(thread))
+                .isEqualTo(OpenJiuwenExecutors.isVirtualThreadSupported());
+        assertThat(thread.isAlive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("DeepAgent stream 模块池默认 max(40, CPU×8) 且可配置")
     void deepAgentStreamPoolUsesCpuScaledDefaultMaxSize() throws Exception {
-        int expectedDefault = OpenJiuwenExecutors.defaultDeepAgentStreamMaxSize();
-        assertThat(expectedDefault).isEqualTo(Math.max(32, Runtime.getRuntime().availableProcessors() * 8));
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
+        int expectedDefault = OpenJiuwenExecutors.defaultIoBoundMaxSize();
+        assertThat(expectedDefault).isEqualTo(Math.max(40, Runtime.getRuntime().availableProcessors() * 8));
 
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("deep-agent-stream", true);
         try {
@@ -50,6 +103,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("有界模块池使用统一命名且最大线程数可配置")
     void boundedModulePoolUsesPrefixAndRespectsMaxSize() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         System.setProperty("openjiuwen.executor.executor-bounded-test.max-size", "2");
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("executor-bounded-test", 8, 16, true);
         try {
@@ -67,6 +121,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("有界队列模块池 core=max，避免 core=0 单 worker 串行陷阱")
     void boundedQueueModulePoolUsesCoreEqualToMaxSize() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         ExecutorService executor = OpenJiuwenExecutors.newBoundedModulePool("workflow-stream", true);
         try {
             ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
@@ -95,6 +150,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("模块池统一 core=max + ArrayBlockingQueue")
     void allModulePoolsUseArrayBlockingQueueWithCoreEqualsMax() {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         for (String prefix : List.of(
                 "pregel-task", "workflow-stream", "vertex-stream", "stream-actor",
                 "deep-agent-stream", "deep-agent-invoke", "spawn-process-manager"
@@ -135,6 +191,7 @@ class OpenJiuwenExecutorsTest {
     @Test
     @DisplayName("自定义线程池保留队列容量和拒绝策略")
     void customExecutorPreservesQueueAndRejectionPolicy() throws Exception {
+        Assumptions.assumeFalse(OpenJiuwenExecutors.isVirtualThreadSupported());
         CountDownLatch taskStarted = new CountDownLatch(1);
         CountDownLatch releaseTask = new CountDownLatch(1);
         ExecutorService executor = OpenJiuwenExecutors.newThreadPool("bounded-executor-test",
@@ -214,6 +271,19 @@ class OpenJiuwenExecutorsTest {
             latch.await();
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean isVirtual(Thread thread) {
+        try {
+            Method isVirtual = Thread.class.getMethod("isVirtual");
+            return Boolean.TRUE.equals(isVirtual.invoke(thread));
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Failed to access Thread.isVirtual", exception);
+        } catch (InvocationTargetException exception) {
+            throw new IllegalStateException("Failed to invoke Thread.isVirtual", exception.getTargetException());
         }
     }
 }

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -24,7 +25,13 @@ public class AsyncStreamQueue {
     public static final long DEFAULT_SEND_ATTEMPT_TIMEOUT_MS = 200L;
     public static final int DEFAULT_MAX_SEND_RETRIES = 5;
     public static final int DEFAULT_MAX_SIZE = 1024;
-    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = -1L;
+
+    /**
+     * Non-positive caller values no longer mean "block forever": {@link #receive(long)}
+     * always falls back to this timeout. Defaults to {@link TimeoutConstants#BLOCKING_QUEUE_MS}
+     * and can be overridden via {@code -Dopenjiuwen.timeout.blocking-queue-ms=...}.
+     */
+    public static final long DEFAULT_RECEIVE_TIMEOUT_MS = TimeoutConstants.BLOCKING_QUEUE_MS;
     public static final long DEFAULT_CLOSE_TIMEOUT_MS = 5000L;
 
     private static final LoggerProtocol SESSION_LOGGER = Loggers.SESSION;
@@ -128,10 +135,9 @@ public class AsyncStreamQueue {
             throw new RuntimeException("StreamQueue is already closed");
         }
 
+        long effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_RECEIVE_TIMEOUT_MS;
         try {
-            Object item = timeoutMs > 0
-                    ? streamQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
-                    : streamQueue.take();
+            Object item = streamQueue.poll(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
             if (item != null) {
                 taskDone();
                 SESSION_LOGGER.debug(

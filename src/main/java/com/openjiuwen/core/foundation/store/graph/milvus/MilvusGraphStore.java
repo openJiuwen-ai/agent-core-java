@@ -9,8 +9,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -91,7 +91,8 @@ public class MilvusGraphStore implements GraphStore {
 
     private static final LoggerProtocol STORE_LOGGER = Loggers.STORE;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-graph-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("milvus-graph-store-io", true);
     private static final Set<String> SIMILARITY_METRICS = Set.of("IP", "COSINE");
     private static final List<String> COLLECTIONS = List.of(
             GraphStoreConstants.ENTITY_COLLECTION,

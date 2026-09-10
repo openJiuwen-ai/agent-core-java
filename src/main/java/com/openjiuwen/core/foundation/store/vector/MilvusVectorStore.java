@@ -9,14 +9,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
 import com.openjiuwen.core.foundation.store.VectorDataType;
 import com.openjiuwen.core.foundation.store.VectorSearchResult;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
@@ -60,8 +62,6 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
-
 /**
  * Milvus vector store implementation.
  *
@@ -74,7 +74,8 @@ public class MilvusVectorStore extends BaseVectorStore {
             "openjiuwen/core/foundation/store/vector/milvus_vector_store.py";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("milvus-vector-store-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Logger LOGGER = Logger.getLogger(MilvusVectorStore.class.getName());
@@ -112,7 +113,9 @@ public class MilvusVectorStore extends BaseVectorStore {
         Object token = firstValue(safeKwargs, "milvus_token", "token");
         this.milvusToken = token == null ? null : String.valueOf(token);
         Object database = firstValue(safeKwargs, "database_name", "database", "db_name");
-        this.databaseName = database == null || String.valueOf(database).isBlank() ? "default" : String.valueOf(database);
+        this.databaseName = database == null || String.valueOf(database).isBlank()
+                ? "default"
+                : String.valueOf(database);
         this.clientKwargs = new LinkedHashMap<>(safeKwargs);
         this.closeClientOnClose = true;
     }
@@ -178,7 +181,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                     continue;
                 }
                 if (field.getDim() == null || field.getDim() <= 0) {
-                    throw buildError(
+                    throw ErrorHelper.buildError(
                             StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                             "error_msg",
                             "dim of vector field is missing, field=" + field.getName() + ", dim=" + field.getDim()
@@ -188,7 +191,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                 break;
             }
             if (vectorField == null) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema must contain at least one FLOAT_VECTOR field"
@@ -227,7 +230,11 @@ public class MilvusVectorStore extends BaseVectorStore {
         return CompletableFuture.supplyAsync(() -> {
             MilvusClientAdapter adapter = clientSync();
             if (!adapter.hasCollection(collectionName)) {
-                throw buildError(StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND, "collection_name", collectionName);
+                throw ErrorHelper.buildError(
+                        StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
+                        "collection_name",
+                        collectionName
+                );
             }
             CollectionDescription description = adapter.describeCollection(collectionName);
             CollectionSchema schema = new CollectionSchema(new ArrayList<>(),
@@ -316,7 +323,8 @@ public class MilvusVectorStore extends BaseVectorStore {
     }
 
     @Override
-    public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
+    public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids,
+            Map<String, Object> kwargs) {
         return CompletableFuture.runAsync(() -> {
             if (ids == null || ids.isEmpty()) {
                 LOGGER.warning("No IDs provided for deletion");
@@ -374,7 +382,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             }
             Object schemaVersion = metadata.get("schema_version");
             if (schemaVersion != null && (!(schemaVersion instanceof Number number) || number.intValue() < 0)) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema_version must be a non-negative integer, got " + schemaVersion
@@ -383,7 +391,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             try {
                 clientSync().describeCollection(collectionName);
             } catch (RuntimeException exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
                         "collection_name",
                         collectionName,
@@ -479,7 +487,7 @@ public class MilvusVectorStore extends BaseVectorStore {
         if (schema instanceof Map<?, ?> map) {
             return CollectionSchema.fromDict((Map<String, Object>) map);
         }
-        throw buildError(
+        throw ErrorHelper.buildError(
                 StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                 "error_msg",
                 "schema must be CollectionSchema or dict"
@@ -503,7 +511,8 @@ public class MilvusVectorStore extends BaseVectorStore {
             CollectionDescription description = clientSync().describeCollection(collectionName);
             for (FieldDescription field : description.fields()) {
                 if (field.dtype() == VectorDataType.FLOAT_VECTOR) {
-                    collectionMetadata.put(collectionName, new CollectionMetadata(null, field.name(), field.dim(), null));
+                    collectionMetadata.put(collectionName,
+                            new CollectionMetadata(null, field.name(), field.dim(), null));
                     return;
                 }
             }
@@ -644,7 +653,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                         intValue(property(operation, "newDimension", "new_dimension"), 0));
                 continue;
             }
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg",
                     "Unsupported operation type: " + kind
@@ -684,11 +693,11 @@ public class MilvusVectorStore extends BaseVectorStore {
     private void renameField(CollectionSchema schema, String oldFieldName, String newFieldName) {
         FieldSchema existing = schema.getField(oldFieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Old field '" + oldFieldName + "' does not exist");
         }
         if (schema.hasField(newFieldName)) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "New field '" + newFieldName + "' already exists");
         }
         existing.setName(newFieldName);
@@ -697,11 +706,11 @@ public class MilvusVectorStore extends BaseVectorStore {
     private void updateFieldType(CollectionSchema schema, String fieldName, VectorDataType newType) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() == VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Cannot update type of vector field '" + fieldName + "'");
         }
         existing.setDtype(newType);
@@ -710,11 +719,11 @@ public class MilvusVectorStore extends BaseVectorStore {
     private void updateVectorDim(CollectionSchema schema, String fieldName, int newDimension) {
         FieldSchema existing = schema.getField(fieldName);
         if (existing == null) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' does not exist");
         }
         if (existing.getDtype() != VectorDataType.FLOAT_VECTOR) {
-            throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Field '" + fieldName + "' is not a vector field");
         }
         existing.setDim(newDimension);
@@ -730,7 +739,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             case "bool", "boolean" -> VectorDataType.BOOL;
             case "json" -> VectorDataType.JSON;
             case "vector", "float_vector" -> VectorDataType.FLOAT_VECTOR;
-            default -> throw buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
+            default -> throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "Unknown type string: '" + type + "'");
         };
     }
@@ -1227,7 +1236,9 @@ public class MilvusVectorStore extends BaseVectorStore {
                 return hits;
             }
             for (SearchResp.SearchResult result : response.getSearchResults().get(0)) {
-                Map<String, Object> entity = result.getEntity() == null ? Map.of() : new LinkedHashMap<>(result.getEntity());
+                Map<String, Object> entity = result.getEntity() == null
+                        ? Map.of()
+                        : new LinkedHashMap<>(result.getEntity());
                 hits.add(new SearchHit(result.getId(), result.getPrimaryKey(),
                         result.getScore() == null ? null : result.getScore().doubleValue(), null, entity));
             }

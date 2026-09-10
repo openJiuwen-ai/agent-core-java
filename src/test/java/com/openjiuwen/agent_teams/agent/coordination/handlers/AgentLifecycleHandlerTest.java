@@ -57,14 +57,16 @@ class AgentLifecycleHandlerTest {
     }
 
     @Test
-    void userInputDeliversPayloadContentWithSteerDefault() {
+    void userInputClearsTeamCleanedLatchBeforeDeliver() {
         RecordingHost host = new RecordingHost();
-        AgentLifecycleHandler handler = newHandler(host, TeamRole.TEAMMATE, "dev", new RecordingPoll());
+        host.teamCleaned = true;
+        AgentLifecycleHandler handler = newHandler(host, TeamRole.LEADER, "leader", new RecordingPoll());
 
         handler.onUserInput(new InnerEventMessage(InnerEventType.USER_INPUT, Map.of("content", "hello")))
                 .toCompletableFuture()
                 .join();
 
+        assertEquals(1, host.resetCount);
         assertEquals("hello", host.deliveredContent);
         assertTrue(host.deliveredUseSteer);
     }
@@ -167,7 +169,7 @@ class AgentLifecycleHandlerTest {
     }
 
     private static AgentLifecycleHandler newHandler(
-            RecordingHost host,
+            DispatcherHost host,
             TeamRole role,
             String memberName,
             RecordingPoll poll
@@ -217,12 +219,25 @@ class AgentLifecycleHandlerTest {
         return event;
     }
 
-    private static final class RecordingHost implements DispatcherHost {
+    private static final class RecordingHost implements DispatcherHost, AgentLifecycleHandler.TeamAgentResetView {
         private Object deliveredContent;
         private boolean deliveredUseSteer;
+        private boolean teamCleaned;
+        private int resetCount;
         private int shutdownCount;
         private int resumeCount;
         private Object resumedInput;
+
+        @Override
+        public boolean isTeamCleaned() {
+            return teamCleaned;
+        }
+
+        @Override
+        public void resetTeamCleaned() {
+            resetCount++;
+            teamCleaned = false;
+        }
 
         @Override
         public boolean isAgentReady() {

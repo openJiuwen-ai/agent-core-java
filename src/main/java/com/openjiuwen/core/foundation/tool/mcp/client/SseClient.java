@@ -3,10 +3,10 @@
  */
 
 package com.openjiuwen.core.foundation.tool.mcp.client;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.auth.AuthCallback;
 import com.openjiuwen.core.foundation.tool.auth.AuthHeaderAndQueryProvider;
@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 
 /**
  * SSE transport based MCP client.
@@ -54,6 +55,8 @@ public class SseClient extends McpClient {
 
     private static final double DEFAULT_SSE_TIMEOUT_SECONDS = 60.0D;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ExecutorService SSE_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("mcp-sse", true);
 
     private final McpServerConfig config;
     private final String name;
@@ -400,7 +403,6 @@ public class SseClient extends McpClient {
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
-    private static final java.util.concurrent.ExecutorService SSE_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("mcp-sse");
     private static <T> CompletableFuture<T> runAsync(Callable<T> callable) {
         return CompletableFuture.supplyAsync(() -> {
             try {

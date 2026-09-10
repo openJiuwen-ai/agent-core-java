@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.store.vector;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -19,8 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * Mirrors Python's {@code openjiuwen.core.foundation.store.vector.utils} module in
@@ -65,7 +64,7 @@ public final class VectorStoreUtils {
         String normalizedType = typeStr.toLowerCase(Locale.ROOT).strip();
         VectorDataType dtype = TYPE_MAPPING.get(normalizedType);
         if (dtype == null) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Unknown type string: '" + typeStr + "'. Supported types: " + TYPE_MAPPING.keySet()
@@ -91,7 +90,7 @@ public final class VectorStoreUtils {
             } else if ("UpdateEmbeddingDimensionOperation".equals(kind)) {
                 newSchema = computeSchemaUpdateVectorDim(newSchema, operation);
             } else {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         ERROR_MSG,
                         "Unsupported operation type: " + kind
@@ -141,14 +140,14 @@ public final class VectorStoreUtils {
 
         CollectionSchema newSchema = CollectionSchema.fromDict(schema.toDict());
         if (!newSchema.hasField(oldFieldName)) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Old field '" + oldFieldName + "' does not exist"
             );
         }
         if (newSchema.hasField(newFieldName)) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "New field '" + newFieldName + "' already exists"
@@ -163,14 +162,14 @@ public final class VectorStoreUtils {
         CollectionSchema newSchema = CollectionSchema.fromDict(schema.toDict());
         FieldSchema field = newSchema.getField(fieldName);
         if (field == null) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Field '" + fieldName + "' does not exist"
             );
         }
         if (field.getDtype() == VectorDataType.FLOAT_VECTOR) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Cannot update type of vector field '" + fieldName + "'"
@@ -185,14 +184,14 @@ public final class VectorStoreUtils {
         CollectionSchema newSchema = CollectionSchema.fromDict(schema.toDict());
         FieldSchema field = newSchema.getField(fieldName);
         if (field == null) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Field '" + fieldName + "' does not exist"
             );
         }
         if (field.getDtype() != VectorDataType.FLOAT_VECTOR) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Field '" + fieldName + "' is not a vector field"
@@ -236,7 +235,7 @@ public final class VectorStoreUtils {
         }
 
         if (sequenceLength(newVector) != newDimension) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     ERROR_MSG,
                     "Generated vector length " + sequenceLength(newVector) + " does not match new_dim " + newDimension

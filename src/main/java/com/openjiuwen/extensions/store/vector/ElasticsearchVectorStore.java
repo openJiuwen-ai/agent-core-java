@@ -4,8 +4,9 @@
 
 package com.openjiuwen.extensions.store.vector;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -27,8 +28,6 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
-
 /**
  * Elasticsearch-based vector store implementation.
  *
@@ -39,7 +38,8 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
     public static final String METADATA_DOC_ID = "__collection_metadata__";
 
     private static final Logger LOGGER = Logger.getLogger(ElasticsearchVectorStore.class.getName());
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("elasticsearch-vector-store-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("elasticsearch-vector-store-io", true);
     private static final int DEFAULT_VECTOR_DIM = 768;
     private static final int DEFAULT_BATCH_SIZE = 500;
     private static final Map<String, String> ES_SIMILARITY_MAP = Map.of(
@@ -85,7 +85,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             CollectionSchema collectionSchema = normalizeSchema(schema);
             List<FieldSchema> vectorFields = collectionSchema.getVectorFields();
             if (vectorFields.isEmpty()) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema must contain at least one FLOAT_VECTOR field"
@@ -193,7 +193,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 }
                 return new CollectionSchema(fields, "Collection '" + collectionName + "'", false);
             } catch (RuntimeException exception) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_COLLECTION_NOT_FOUND,
                         null,
                         null,
@@ -425,7 +425,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             }
             Object version = metadata.get("schema_version");
             if (version != null && (!(version instanceof Number number) || number.intValue() < 0)) {
-                throw buildError(
+                throw ErrorHelper.buildError(
                         StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                         "error_msg",
                         "schema_version must be a non-negative integer, got " + version
@@ -540,7 +540,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
         if (schema instanceof Map<?, ?> schemaMap) {
             return CollectionSchema.fromDict((Map<String, Object>) schemaMap);
         }
-        throw buildError(
+        throw ErrorHelper.buildError(
                 StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                 "error_msg",
                 "schema must be CollectionSchema or dict"

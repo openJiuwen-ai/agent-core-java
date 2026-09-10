@@ -242,6 +242,11 @@ public class OpenAIEmbedding extends APIEmbedding {
         while (normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
+        // OpenAI-compatible endpoints accept either a base URL or the full
+        // embeddings endpoint; always target a single /embeddings layer.
+        if (!normalized.endsWith("/embeddings")) {
+            normalized = normalized + "/embeddings";
+        }
         return normalized;
     }
 

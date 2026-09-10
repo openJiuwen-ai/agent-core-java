@@ -111,6 +111,16 @@ public class AgentTeamSession implements AgentSessionApi {
         return this;
     }
 
+    @Override
+    public void markPreRunDone() {
+        this.preRunDone = true;
+    }
+
+    @Override
+    public void markPostRunDone() {
+        this.postRunDone = true;
+    }
+
     public AgentTeamSession postRun() {
         if (postRunDone) {
             return this;

@@ -32,7 +32,9 @@ public class ToolTrackingRail extends AgentRail {
     };
 
     public ToolTrackingRail() {
-        setPriority(5);
+        // Run before interrupt rails (priority 90) so the tool_call chunk is
+        // emitted even when the tool call is interrupted (issue #131).
+        setPriority(100);
     }
 
     public static Map<String, Object> buildToolResultPayload(String toolName, Object toolResult) {

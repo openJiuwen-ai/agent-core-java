@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.graph.stream_actor;
 
+import com.openjiuwen.core.common.exception.GraphError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import org.junit.jupiter.api.DisplayName;
@@ -104,6 +106,44 @@ class StreamProcessorTest {
         assertFalse(StreamProcessor.isEndMessage(Map.of("node", Map.of("value", "chunk"))));
         assertThrows(IllegalArgumentException.class, () -> StreamProcessor.getProducerId(Map.of()));
         assertThrows(IllegalArgumentException.class, () -> StreamProcessor.isEndMessage("invalid"));
+    }
+
+    @Test
+    @DisplayName("TIMEOUT_SENTINEL causes hasNext to throw GraphError")
+    void timeoutSentinelRaisesGraphError() {
+        StreamProcessor processor = new StreamProcessor(
+                "test-timeout",
+                List.of(List.of("producer-stream")),
+                0.0d);
+        Map<String, Object> generated = processor.generator(Map.of("value", "${producer.value}"), null);
+        Iterator<Object> valueIterator = iterator(generated, "value");
+        processor.closeAllQueuesWithTimeout();
+
+        GraphError thrown = assertThrows(GraphError.class, valueIterator::hasNext);
+        assertEquals(StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT, thrown.getStatus());
+        assertFalse(valueIterator.hasNext());
+    }
+
+    @Test
+    @DisplayName("closeAllQueuesWithTimeout offers TIMEOUT_SENTINEL to all consumer queues")
+    void closeAllQueuesWithTimeoutOffersTimeoutSentinel() {
+        StreamProcessor processor = new StreamProcessor(
+                "test-timeout-close-all",
+                List.of(List.of("producer-stream")),
+                0.0d);
+        Map<String, Object> generated = processor.generator(
+                Map.of("value", "${producer.value}", "other", "${producer.other}"),
+                null);
+        Iterator<Object> value = iterator(generated, "value");
+        Iterator<Object> other = iterator(generated, "other");
+        processor.closeAllQueuesWithTimeout();
+
+        GraphError first = assertThrows(GraphError.class, value::hasNext);
+        GraphError second = assertThrows(GraphError.class, other::hasNext);
+        assertEquals(StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT, first.getStatus());
+        assertEquals(StatusCode.STREAM_PROCESSOR_QUEUE_TIMEOUT, second.getStatus());
+        assertFalse(value.hasNext());
+        assertFalse(other.hasNext());
     }
 
     @SuppressWarnings("unchecked")

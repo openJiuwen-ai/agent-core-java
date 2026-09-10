@@ -15,41 +15,42 @@ import java.util.Map;
 public final class AudioPromptToolProviders {
 
     private static final Map<String, String> AUDIO_TRANSCRIPTION_DESCRIPTION = Map.of(
-            "cn", "杞啓鏈湴闊抽鏂囦欢鎴栧叕缃戦煶棰?URL锛屾彁鍙栭煶棰戜腑鐨勮闊虫枃鏈唴瀹广€?",
+            "cn", "转写本地音频文件或公网音频 URL，提取音频中的语音文本内容。",
             "en", "Transcribe a local audio file or public audio URL into text."
     );
 
     private static final Map<String, String> AUDIO_QUESTION_ANSWERING_DESCRIPTION = Map.of(
-            "cn", "鐞嗚В闊抽鍐呭骞跺洖绛旈棶棰橈紝閫傚悎璇煶銆佽璋堛€佹挱瀹㈠拰鏅€氶煶棰戝唴瀹瑰垎鏋愩€?",
+            "cn", "理解音频内容并回答问题，适合语音、访谈、播客和普通音频内容分析。",
             "en", "Understand audio content and answer questions about speech or general audio."
     );
 
     private static final Map<String, String> AUDIO_METADATA_DESCRIPTION = Map.of(
-            "cn", "璇嗗埆闊抽鏃堕暱锛屽苟鍦ㄩ厤缃簡 ACR 淇℃伅鏃跺皾璇曡瘑鍒瓕鏇叉爣棰樸€佹瓕鎵嬪拰鍙戝竷鏃堕棿銆?",
-            "en", "Inspect audio duration and optionally identify song metadata when ACR credentials are configured."
+            "cn", "识别音频时长，并在配置了 ACR 信息时尝试识别歌曲标题、歌手和发布时间。",
+            "en", "Inspect audio duration and optionally identify song metadata when ACR credentials "
+                    + "are configured. This tool cannot transcribe speech or answer questions about spoken content."
     );
 
     private static final Map<String, Map<String, String>> AUDIO_TRANSCRIPTION_PARAMS = Map.of(
             "audio_path_or_url", Map.of(
-                    "cn", "鏈湴闊抽璺緞鎴栧叕缃?http(s) 闊抽 URL锛屼笉鏀寔 sandbox-only 璺緞",
+                    "cn", "本地音频路径或公网 http(s) 音频 URL，不支持 sandbox-only 路径",
                     "en", "Local audio path or public http(s) audio URL; sandbox-only paths are not supported"
             )
     );
 
     private static final Map<String, Map<String, String>> AUDIO_QUESTION_ANSWERING_PARAMS = Map.of(
             "audio_path_or_url", Map.of(
-                    "cn", "鏈湴闊抽璺緞鎴栧叕缃?http(s) 闊抽 URL锛屼笉鏀寔 sandbox-only 璺緞",
+                    "cn", "本地音频路径或公网 http(s) 音频 URL，不支持 sandbox-only 路径",
                     "en", "Local audio path or public http(s) audio URL; sandbox-only paths are not supported"
             ),
             "question", Map.of(
-                    "cn", "瑕佸熀浜庨煶棰戝唴瀹瑰洖绛旂殑闂",
+                    "cn", "要基于音频内容回答的问题",
                     "en", "Question to answer based on the audio content"
             )
     );
 
     private static final Map<String, Map<String, String>> AUDIO_METADATA_PARAMS = Map.of(
             "audio_path_or_url", Map.of(
-                    "cn", "鏈湴闊抽璺緞鎴栧叕缃?http(s) 闊抽 URL锛屼笉鏀寔 sandbox-only 璺緞",
+                    "cn", "本地音频路径或公网 http(s) 音频 URL，不支持 sandbox-only 路径",
                     "en", "Local audio path or public http(s) audio URL; sandbox-only paths are not supported"
             )
     );

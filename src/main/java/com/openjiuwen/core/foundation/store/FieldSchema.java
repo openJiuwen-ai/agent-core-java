@@ -6,14 +6,14 @@ package com.openjiuwen.core.foundation.store;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-
-import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 
 /**
  * Mirrors Python's {@code FieldSchema} in
@@ -75,13 +75,13 @@ public class FieldSchema {
 
     private void validateDim() {
         if (dim != null && dim <= 0) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "dim of vector field is invalid, field=" + name + ", dim=" + dim
             );
         }
         if (dtype == VectorDataType.FLOAT_VECTOR && dim == null) {
-            throw buildError(
+            throw ErrorHelper.buildError(
                     StatusCode.STORE_VECTOR_SCHEMA_INVALID,
                     "error_msg", "dim of vector field is missing, field=" + name + ", dim=" + dim
             );
@@ -117,7 +117,9 @@ public class FieldSchema {
     }
 
     public static FieldSchema fromDict(Map<String, Object> data) {
-        String dtypeValue = Objects.toString(data.getOrDefault("type", data.getOrDefault("dtype", "VARCHAR")), "VARCHAR");
+        String dtypeValue = Objects.toString(
+                data.getOrDefault("type", data.getOrDefault("dtype", "VARCHAR")),
+                "VARCHAR");
         Object elementTypeValue = data.get("element_type");
         return new FieldSchema(
                 (String) data.get("name"),

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -76,10 +77,21 @@ public class AgentCallbackContext {
         steeringQueue = queue;
     }
 
+    /**
+     * Returns whether a steering queue has been bound to this context.
+     *
+     * @return {@code true} when {@link #pushSteering(String)} can enqueue messages
+     */
+    public boolean hasSteeringQueue() {
+        return steeringQueue != null;
+    }
+
     public void pushSteering(String message) {
         if (steeringQueue != null) {
             steeringQueue.offer(message);
+            return;
         }
+        Loggers.AGENT.warning("pushSteering dropped message because no steering queue is bound");
     }
 
     public List<String> drainSteering() {

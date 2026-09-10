@@ -132,6 +132,9 @@ public class LongTermMemory {
 
     public static void resetInstance() {
         synchronized (LongTermMemory.class) {
+            if (instance != null) {
+                instance.closeAllScopeEmbeddings();
+            }
             instance = null;
         }
     }
@@ -353,7 +356,7 @@ public class LongTermMemory {
 
         String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
         join(kvStore.set(configKey, writeJson(encryptedConfig)));
-        scopeEmbedding.remove(scopeId);
+        closeAndRemoveScopeEmbedding(scopeId);
         return CompletableFuture.completedFuture(true);
     }
 
@@ -393,7 +396,7 @@ public class LongTermMemory {
         try {
             join(kvStore.delete(TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId)));
             scopeConfig.remove(scopeId);
-            scopeEmbedding.remove(scopeId);
+            closeAndRemoveScopeEmbedding(scopeId);
             MEMORY_LOGGER.debug("Successfully deleted configuration. event_type={}, scope_id={}",
                     LogEventType.MEMORY_DELETE.getValue(), scopeId);
             return true;
@@ -1002,6 +1005,24 @@ public class LongTermMemory {
         MEMORY_LOGGER.error("No embedding model available. event_type={}, scope_id={}",
                 LogEventType.MEMORY_RETRIEVE.getValue(), scopeId);
         return null;
+    }
+
+    private void closeAndRemoveScopeEmbedding(String scopeId) {
+        Embedding removed = scopeEmbedding.remove(scopeId);
+        if (removed != null) {
+            try {
+                removed.close();
+            } catch (RuntimeException exception) {
+                MEMORY_LOGGER.warning("Failed to close scope embedding model. event_type={}, scope_id={}",
+                        LogEventType.MEMORY_STORE.getValue(), scopeId);
+            }
+        }
+    }
+
+    private void closeAllScopeEmbeddings() {
+        for (String scopeId : scopeEmbedding.keySet()) {
+            closeAndRemoveScopeEmbedding(scopeId);
+        }
     }
 
     private Model getScopeLlm(String scopeId) {

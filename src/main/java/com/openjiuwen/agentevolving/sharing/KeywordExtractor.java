@@ -8,7 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentevolving.checkpointing.EvolutionPatch;
 import com.openjiuwen.agentevolving.optimizer.LlmResilience;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -39,7 +39,7 @@ public class KeywordExtractor {
     private static final String LANGUAGE_CN = "cn";
     private static final String LANGUAGE_EN = "en";
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("keyword-extractor-io");
+            OpenJiuwenExecutors.newBoundedModulePool("keyword-extractor-io", true);
     private static final Map<String, String> PROMPTS = Map.of(
             LANGUAGE_CN,
             """

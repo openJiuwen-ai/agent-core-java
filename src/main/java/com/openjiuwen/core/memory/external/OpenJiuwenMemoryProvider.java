@@ -6,7 +6,7 @@ package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -63,7 +63,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("openjiuwen-memory-io");
+            OpenJiuwenExecutors.newBoundedModulePool("openjiuwen-memory-io", true);
     private static final String DEFAULT_ID = "__default__";
 
     private final Map<String, Object> config;

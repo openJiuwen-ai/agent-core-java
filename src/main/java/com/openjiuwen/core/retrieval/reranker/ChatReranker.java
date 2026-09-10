@@ -7,10 +7,10 @@ package com.openjiuwen.core.retrieval.reranker;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.OpenJiuwenVersion;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
 import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
@@ -37,7 +37,8 @@ import java.util.concurrent.CompletableFuture;
 public class ChatReranker extends StandardReranker {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("chat-reranker-io");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            OpenJiuwenExecutors.newBoundedModulePool("chat-reranker-io", true);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 

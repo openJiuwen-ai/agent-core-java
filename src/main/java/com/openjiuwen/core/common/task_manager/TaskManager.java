@@ -5,6 +5,10 @@
 package com.openjiuwen.core.common.task_manager;
 
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
 
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
@@ -236,7 +240,15 @@ public class TaskManager {
             try {
                 TaskResult result;
                 if (timeout == null) {
-                    result = queue.take();
+                    result = queue.poll(TimeoutConstants.BLOCKING_QUEUE_MS, TimeUnit.MILLISECONDS);
+                    if (result == null) {
+                        Loggers.PERFORMANCE.warning(
+                                "TaskManager.asCompleted queue poll timeout after {}ms",
+                                TimeoutConstants.BLOCKING_QUEUE_MS);
+                        throw new ExecutionError(
+                                StatusCode.TASK_MANAGER_QUEUE_TIMEOUT,
+                                Map.of("timeout", TimeoutConstants.BLOCKING_QUEUE_MS));
+                    }
                 } else {
                     long remainingNanos = deadline - System.nanoTime();
                     if (remainingNanos <= 0L) {
@@ -475,7 +487,7 @@ public class TaskManager {
             }
             try {
                 Object result = timeout == null
-                        ? task.waitResult().get()
+                        ? task.waitForResult()
                         : task.waitResult().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
                 results.add(result);
             } catch (Exception exception) {

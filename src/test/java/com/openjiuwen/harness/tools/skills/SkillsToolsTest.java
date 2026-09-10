@@ -57,6 +57,21 @@ class SkillsToolsTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void listSkillFallsBackToAllWhenRouterMatchesNothing() throws Exception {
+        SkillDescriptor alpha = new SkillDescriptor("alpha", "Alpha skill", tempDir.toString(), Map.of());
+        SkillDescriptor beta = new SkillDescriptor("beta", "Beta skill", tempDir.toString(), Map.of());
+        ListSkillTool tool = new ListSkillTool(() -> List.of(alpha, beta), (query, skills) -> List.of());
+
+        ToolOutput output = (ToolOutput) tool.invoke(Map.of("query", "no match"), Map.of());
+
+        Map<String, Object> data = (Map<String, Object>) output.getData();
+        assertEquals("all", data.get("mode"));
+        assertTrue(String.valueOf(data.get("message")).contains("fallback to all skills"));
+        assertEquals(2, ((List<?>) data.get("skills")).size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void skillToolReadsDefaultSkillMarkdownAndReportsMissingSkill() throws Exception {
         Files.writeString(tempDir.resolve("SKILL.md"), "# Alpha", StandardCharsets.UTF_8);
         SkillDescriptor skill = new SkillDescriptor("alpha", "Alpha skill", tempDir.toString(), Map.of());

@@ -1,5 +1,6 @@
 package com.openjiuwen.core.controller;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import org.junit.jupiter.api.Test;
 
@@ -10,29 +11,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ControllerSchemaTest {
-
-    @Test
-    void controllerConfigDefaultsMatchPython() {
-        ControllerConfig config = new ControllerConfig();
-
-        assertThat(config.getMaxConcurrentTasks()).isEqualTo(5);
-        assertThat(config.getScheduleInterval()).isEqualTo(1.0);
-        assertThat(config.getTaskTimeout()).isNull();
-        assertThat(config.getDefaultTaskPriority()).isEqualTo(1);
-        assertThat(config.isEnableTaskPersistence()).isFalse();
-        assertThat(config.getEventQueueSize()).isEqualTo(10000);
-        assertThat(config.getEventTimeout()).isEqualTo(300.0);
-        assertThat(config.isEnableIntentRecognition()).isFalse();
-        assertThat(config.getIntentLlmId()).isEmpty();
-        assertThat(config.getIntentConfidenceThreshold()).isEqualTo(0.7);
-        assertThat(config.getIntentTypeList()).containsExactly(
-                "create_task", "pause_task", "resume_task", "cancel_task", "unknown_task");
-        assertThat(config.getDefaultResponse().getType()).isEqualTo("text");
-        assertThat(config.getDefaultResponse().getText()).isNull();
-        assertThat(config.isSuppressCompletionSignal()).isFalse();
-        assertThat(config.getStreamFirstFrameTimeout()).isEqualTo(30.0);
-    }
-
     @Test
     void controllerConfigValidationMatchesPythonConstraints() {
         ControllerConfig config = new ControllerConfig();

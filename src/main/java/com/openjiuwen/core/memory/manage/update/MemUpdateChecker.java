@@ -5,7 +5,7 @@
 package com.openjiuwen.core.memory.manage.update;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -34,7 +34,7 @@ public class MemUpdateChecker {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("mem-update-checker-io");
+            OpenJiuwenExecutors.newBoundedModulePool("mem-update-checker-io", true);
     private final PromptApplier promptApplier;
 
     public MemUpdateChecker() {

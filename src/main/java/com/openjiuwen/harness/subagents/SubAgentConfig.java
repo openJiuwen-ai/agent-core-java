@@ -37,6 +37,8 @@ public class SubAgentConfig {
     @Builder.Default
     private int maxIterations = 15;
     @Builder.Default
+    private int maxParallelToolCalls = 3;
+    @Builder.Default
     private boolean isTaskLoopEnabled = false;
     @Builder.Default
     private String factoryName = "";
@@ -159,6 +161,7 @@ public class SubAgentConfig {
      */
     public DeepAgentConfig toDeepAgentConfig() {
         return DeepAgentConfig.builder().systemPrompt(systemPrompt).maxIterations(maxIterations)
+                .maxParallelToolCalls(maxParallelToolCalls)
                 .isTaskLoopEnabled(isTaskLoopEnabled).language(language).tools(new ArrayList<>(tools))
                 .rails(new ArrayList<>(rails)).mcps(new ArrayList<>(mcps)).subagents(new ArrayList<>(subagents))
                 .skillDirectories(new ArrayList<>(skillDirectories)).skillMode(skillMode)

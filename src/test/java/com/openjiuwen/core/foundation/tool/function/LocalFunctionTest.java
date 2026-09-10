@@ -20,9 +20,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -164,11 +166,36 @@ class LocalFunctionTest {
     }
 
     @Test
-    void streamRejectsNonGeneratorFunction() {
-        LocalFunction tool = new LocalFunction(basicCard("single"), inputs -> "result");
+    void streamEmitsSingleChunkForNonGeneratorFunction() throws Exception {
+        AtomicInteger callCount = new AtomicInteger();
+        LocalFunction tool = new LocalFunction(basicCard("single"), inputs -> {
+            callCount.incrementAndGet();
+            return "result";
+        });
 
-        Throwable thrown = assertThrows(Throwable.class, () -> tool.stream(Map.of()));
-        assertTrue(thrown.getMessage().contains("func is not generator"));
+        Iterator<Object> stream = tool.stream(Map.of());
+        assertTrue(stream.hasNext());
+        assertEquals("result", stream.next());
+        assertFalse(stream.hasNext());
+        assertEquals(1, callCount.get());
+    }
+
+    @Test
+    void streamEmitsSingleNullChunkForNullResult() throws Exception {
+        AtomicInteger callCount = new AtomicInteger();
+        LocalFunction tool = new LocalFunction(basicCard("null"), inputs -> {
+            callCount.incrementAndGet();
+            return null;
+        });
+
+        Iterator<Object> stream = tool.stream(Map.of());
+        List<Object> collected = new ArrayList<>();
+        while (stream.hasNext()) {
+            collected.add(stream.next());
+        }
+        assertEquals(1, collected.size());
+        assertEquals(null, collected.get(0));
+        assertEquals(1, callCount.get());
     }
 
     private static ToolCard basicCard(String name) {

@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.constants.TimeoutConstants;
+import com.openjiuwen.core.common.exception.ExecutionError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.Loggers;
+
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 
@@ -76,13 +82,21 @@ public class Task {
 
     public Object waitForResult() throws Exception {
         try {
-            return doneFuture.get();
+            return doneFuture.get(TimeoutConstants.FUTURE_MS, TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof Exception checkedException) {
                 throw checkedException;
             }
             throw new RuntimeException(cause);
+        } catch (TimeoutException exception) {
+            Loggers.PERFORMANCE.warning(
+                    "Task.waitForResult future get timeout after {}ms, task_id={}",
+                    TimeoutConstants.FUTURE_MS, taskId);
+            cancel(false, "wait_for_future_timeout", "task_manager");
+            throw new ExecutionError(
+                    StatusCode.TASK_WAIT_FOR_FUTURE_TIMEOUT,
+                    Map.of("timeout", TimeoutConstants.FUTURE_MS, "task_id", taskId));
         }
     }
 

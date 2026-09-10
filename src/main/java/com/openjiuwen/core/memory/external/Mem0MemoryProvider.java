@@ -6,7 +6,7 @@ package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.ArrayList;
@@ -67,7 +67,7 @@ public class Mem0MemoryProvider extends MemoryProvider {
     private static final double BREAKER_COOLDOWN_SECS = 120.0;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("mem0-memory-io");
+            OpenJiuwenExecutors.newBoundedModulePool("mem0-memory-io", true);
 
     private String apiKey;
     private String userId;

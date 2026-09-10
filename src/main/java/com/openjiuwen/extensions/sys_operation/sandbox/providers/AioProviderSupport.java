@@ -4,7 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -312,14 +312,15 @@ final class AioProviderSupport {
 
     static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
         SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
-        VirtualThreadSupport.startThread("aio-provider-publisher", () -> {
+        Thread publisherThread = OpenJiuwenExecutors.newThread(() -> {
             try {
                 emitter.accept(publisher);
                 publisher.close();
             } catch (Throwable throwable) {
                 publisher.closeExceptionally(throwable);
             }
-        });
+        }, "aio-provider-publisher", true);
+        publisherThread.start();
         return publisher;
     }
 

@@ -65,6 +65,49 @@ class MessageChunkTest {
     }
 
     @Test
+    void assistantChunkMergeKeepsParallelCallsWithDistinctIndexesSeparate() {
+        // Parallel tool calls whose fragments carry distinct indexes but no id
+        // must not be merged into each other (issue: previous fallback merged
+        // any id-less function fragment into the last call).
+        AssistantMessageChunk left = AssistantMessageChunk.builder()
+                .role("assistant")
+                .toolCalls(List.of(ToolCall.builder().type("function").name("a").arguments("{").index(0).build()))
+                .build();
+        AssistantMessageChunk right = AssistantMessageChunk.builder()
+                .role("assistant")
+                .toolCalls(List.of(ToolCall.builder().type("function").name("b").arguments("}").index(1).build()))
+                .build();
+
+        AssistantMessageChunk merged = left.merge(right);
+
+        assertEquals(2, merged.getToolCalls().size());
+        assertEquals("a", merged.getToolCalls().get(0).getName());
+        assertEquals("{", merged.getToolCalls().get(0).getArguments());
+        assertEquals("b", merged.getToolCalls().get(1).getName());
+        assertEquals("}", merged.getToolCalls().get(1).getArguments());
+    }
+
+    @Test
+    void assistantChunkMergeStillMergesIndexlessStreamingDeltaIntoLastCall() {
+        // Python parity: when neither fragment carries id or index, an incoming
+        // fragment is a streaming delta of the most recent call.
+        AssistantMessageChunk left = AssistantMessageChunk.builder()
+                .role("assistant")
+                .toolCalls(List.of(ToolCall.builder().type("function").name("a").arguments("{").build()))
+                .build();
+        AssistantMessageChunk right = AssistantMessageChunk.builder()
+                .role("assistant")
+                .toolCalls(List.of(ToolCall.builder().type("function").name("a").arguments("}").build()))
+                .build();
+
+        AssistantMessageChunk merged = left.merge(right);
+
+        assertEquals(1, merged.getToolCalls().size());
+        assertEquals("a", merged.getToolCalls().get(0).getName());
+        assertEquals("{}", merged.getToolCalls().get(0).getArguments());
+    }
+
+    @Test
     void assistantChunkMergeHandlesContentToolCallsReasoningAndFinishReason() {
         AssistantMessageChunk left = AssistantMessageChunk.builder()
                 .role("assistant")

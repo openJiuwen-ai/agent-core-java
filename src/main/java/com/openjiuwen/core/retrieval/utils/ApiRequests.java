@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.retrieval.utils;
 
-import com.openjiuwen.core.common.VirtualThreadSupport;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -34,7 +34,7 @@ public final class ApiRequests {
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
     private static final Random RANDOM = new Random();
     private static final java.util.concurrent.Executor IO_EXECUTOR =
-            VirtualThreadSupport.newThreadPerTaskExecutor("api-requests-io");
+            OpenJiuwenExecutors.newBoundedModulePool("api-requests-io", true);
 
     private ApiRequests() {
     }

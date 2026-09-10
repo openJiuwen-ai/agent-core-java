@@ -301,6 +301,52 @@ class TeamToolsTest {
         assertThat(humanNames).containsExactly("view_task", "member_complete_task", "send_message");
     }
 
+    @Test
+    void createTaskAcceptsOptionalAssigneeAndKeepsPending() {
+        InMemoryTeamDatabase database = new InMemoryTeamDatabase();
+        database.createTeam("team-a", "Team A", "leader", "desc", "prompt").join();
+        database.createMember(
+                "worker",
+                "team-a",
+                "worker",
+                "{}",
+                MemberStatus.READY.value(),
+                TeamRole.TEAMMATE.value(),
+                "desc",
+                ExecutionStatus.IDLE.value(),
+                MemberMode.BUILD_MODE.value(),
+                "prompt",
+                "{}"
+        ).join();
+        RecordingMessager messager = new RecordingMessager();
+        TeamBackend backend = backend(database, messager, MemberMode.BUILD_MODE, List.of(), true, true, List.of());
+        TeamTools.TaskCreateTool tool = new TeamTools.TaskCreateTool(backend, TeamToolLocales.makeTranslator("en"));
+
+        ToolOutput created = tool.invoke(Map.of(
+                "tasks", List.of(Map.of(
+                        "title", "Assigned work",
+                        "content", "do it",
+                        "assignee", "worker"
+                ))
+        )).toCompletableFuture().join();
+        ToolOutput missing = tool.invoke(Map.of(
+                "tasks", List.of(Map.of(
+                        "title", "Ghost",
+                        "content", "no one",
+                        "assignee", "ghost"
+                ))
+        )).toCompletableFuture().join();
+
+        assertThat(created.isSuccess()).isTrue();
+        assertThat(created.getData()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) created.getData();
+        assertThat(data.get("assignee")).isEqualTo("worker");
+        assertThat(data.get("status")).isEqualTo(TaskStatus.PENDING.value());
+        assertThat(missing.isSuccess()).isFalse();
+        assertThat(missing.getError()).contains("ghost");
+    }
+
     private TeamBackend backend(
             InMemoryTeamDatabase database,
             RecordingMessager messager,

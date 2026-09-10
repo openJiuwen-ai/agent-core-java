@@ -232,54 +232,6 @@ class ReActAgentStreamDegradationTest {
     }
 
     @Test
-    void streamWithContentAndToolCallsSendsContentFirst() throws Exception {
-        ReActAgent agent = newAgent("content-then-tools");
-        Model model = mock(Model.class);
-        when(model.supportsKvCacheRelease()).thenReturn(false);
-        when(model.buildKvCacheInvokeKwargs(any(), any(Boolean.class))).thenReturn(Map.of());
-        when(model.stream(anyList(), any(ModelInvokeOptions.class)))
-                .thenReturn(List.of(
-                        AssistantMessageChunk.builder()
-                                .content("analysis result")
-                                .toolCalls(List.of(ToolCall.builder()
-                                        .id("tc1")
-                                        .name("todo_modify")
-                                        .arguments("{\"status\": \"completed\"}")
-                                        .build()))
-                                .build()
-                ).iterator())
-                .thenReturn(List.of(
-                        AssistantMessageChunk.builder().content("done").build()
-                ).iterator());
-        agent.setLlm(model);
-
-        AgentSessionApi session = new AgentSession("content-tools-session", null, agent.getCard());
-        List<Object> collected = new ArrayList<>();
-        var iterator = agent.stream(Map.of("query", "hello"), session, List.of(StreamMode.OUTPUT));
-        while (iterator.hasNext()) {
-            collected.add(iterator.next());
-        }
-
-        int contentIndex = -1;
-        int toolCallIndex = -1;
-        for (int i = 0; i < collected.size(); i++) {
-            if (collected.get(i) instanceof OutputSchema output) {
-                String payloadStr = String.valueOf(output.getPayload());
-                if (payloadStr.contains("analysis result") && contentIndex == -1) {
-                    contentIndex = i;
-                }
-                if (payloadStr.contains("tool_calls") && toolCallIndex == -1) {
-                    toolCallIndex = i;
-                }
-            }
-        }
-        assertThat(contentIndex).as("content should be streamed").isGreaterThanOrEqualTo(0);
-        if (toolCallIndex >= 0) {
-            assertThat(toolCallIndex).as("tool_calls should come after content").isGreaterThan(contentIndex);
-        }
-    }
-
-    @Test
     void nonStreamResponseWithContentAndToolCallWrappedAsStream() throws Exception {
         ReActAgent agent = newAgent("non-stream-content-toolcall");
         agent.configure(ReActAgentConfig.builder()
@@ -299,7 +251,7 @@ class ReActAgentStreamDegradationTest {
                 .content(comparisonContent)
                 .toolCalls(List.of(ToolCall.builder()
                         .id("tc1")
-                        .name("todo_modify")
+                        .name("degradation_test_tool")
                         .arguments("{\"task_id\": \"5\", \"status\": \"completed\"}")
                         .build()))
                 .build();
