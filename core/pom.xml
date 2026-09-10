@@ -27,6 +27,7 @@
         <logback.version>1.5.37</logback.version>
         <log4j.version>2.26.1</log4j.version>
         <lombok.version>1.18.32</lombok.version>
+        <bouncy-castle.version>1.85</bouncy-castle.version>
         <commons-codec.version>1.20.0</commons-codec.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <failureaccess.version>1.0.2</failureaccess.version>
@@ -86,6 +87,21 @@
                 <version>${open-telemetry.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcutil-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
