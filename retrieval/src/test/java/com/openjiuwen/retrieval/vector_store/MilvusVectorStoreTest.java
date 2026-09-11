@@ -13,8 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.gson.JsonObject;
-import com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation;
-import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 
@@ -199,8 +197,8 @@ class MilvusVectorStoreTest {
         when(iterator.next()).thenReturn(List.of(row), List.of());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
-        store.updateSchema("kb_chunks", List.of(new AddScalarFieldOperation(new OperationMetadata(2, "add field"),
-                "user_profile", "nickname", "string", "unknown")));
+        store.updateSchema("kb_chunks", List.of(Map.of("type", "add_field", "field_name", "nickname",
+                "field_type", "string", "default_value", "unknown")));
 
         ArgumentCaptor<CreateCollectionReq> createCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
         verify(client).createCollection(createCaptor.capture());

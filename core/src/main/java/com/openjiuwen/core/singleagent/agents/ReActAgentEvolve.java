@@ -17,8 +17,6 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.memory.LongTermMemory;
-import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.operator.Operator;
 import com.openjiuwen.core.operator.llm_call.LLMCallOperator;
 import com.openjiuwen.core.operator.tool_call.ToolCallOperator;
@@ -36,6 +34,7 @@ import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
+import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -94,7 +93,7 @@ public class ReActAgentEvolve extends BaseAgent {
      */
     private void initMemoryScope() {
         if (config.getMemScopeId() != null && !config.getMemScopeId().isEmpty()) {
-            LongTermMemory.getInstance().setScopeConfig(config.getMemScopeId(), new MemoryScopeConfig());
+            MemoryRuntimeResolver.require().configureScope(config.getMemScopeId());
         }
     }
 

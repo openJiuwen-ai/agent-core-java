@@ -10,13 +10,13 @@ import java.util.Map;
 
 /**
  * Foundation-store Milvus adapter.
- * 
+ *
  * @since 0.1.7
  */
 public class MilvusVectorStore extends AbstractRetrievalVectorStoreAdapter {
     /**
      * MilvusVectorStore.
-     * 
+     *
      * @param options options
      * @since 0.1.7
      */
@@ -32,5 +32,15 @@ public class MilvusVectorStore extends AbstractRetrievalVectorStoreAdapter {
                         ? AdapterOptions.stringOption(options, "milvus_token", "milvusToken", null)
                         : null,
                 AdapterOptions.indexType(options)));
+    }
+
+    /**
+     * Wraps an existing Milvus retrieval store as a foundation vector store.
+     *
+     * @param delegate retrieval store to wrap
+     * @since 0.1.7
+     */
+    public MilvusVectorStore(com.openjiuwen.retrieval.vector_store.MilvusVectorStore delegate) {
+        super(delegate);
     }
 }

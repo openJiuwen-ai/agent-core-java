@@ -7,13 +7,16 @@ package com.openjiuwen.harness.subagents;
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
+import com.openjiuwen.harness.harness_config.HarnessConfigBuilder;
 import com.openjiuwen.harness.rails.AgentModeRail;
-import com.openjiuwen.harness.rails.CodingMemoryRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.interrupt.AskUserRail;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.workspace.Workspace;
 
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -106,10 +109,7 @@ public final class CodeAgentFactory {
                     .factoryName(CODE_AGENT_FACTORY_NAME).executionMode("ephemeral").role("coding")
                     .metadata(Map.of("requires_ask_user", true, "requires_confirm_interrupt", true,
                             "supports_coding_memory", true, "enable_task_planning", true))
-                    .rails(SubAgentRailMergeSupport.mergeRails(
-                            List.of(new SysOperationRail(), new AgentModeRail(), new AskUserRail(),
-                                    new ConfirmInterruptRail(List.of("switch_mode")), buildCodingMemoryRail(kwargs)),
-                            kwargs))
+                    .rails(SubAgentRailMergeSupport.mergeRails(buildDefaultRails(kwargs), kwargs))
                     .subagents(List.of(ExploreAgentFactory.buildExploreAgentConfig(isResolved),
                             PlanAgentFactory.buildPlanAgentConfig(isResolved)))
                     .restrictToWorkDir(false).factoryKwargs(kwargs).build();
@@ -118,20 +118,32 @@ public final class CodeAgentFactory {
     }
 
     /**
-     * buildCodingMemoryRail.
+     * buildDefaultRails.
      * 
      * @param factoryKwargs factoryKwargs
      * @return the result
      * @since 0.1.7
      */
-    private static CodingMemoryRail buildCodingMemoryRail(Map<String, Object> factoryKwargs) {
+    private static List<Object> buildDefaultRails(Map<String, Object> factoryKwargs) {
+        List<Object> rails = new ArrayList<>(List.of(new SysOperationRail(), new AgentModeRail(), new AskUserRail(),
+                new ConfirmInterruptRail(List.of("switch_mode"))));
+        Map<String, Object> memoryConfig = codingMemoryConfig(factoryKwargs);
+        HarnessConfigBuilder.createOptionalRail("coding_memory", Path.of(""), memoryConfig).ifPresent(rails::add);
+        return rails;
+    }
+
+    private static Map<String, Object> codingMemoryConfig(Map<String, Object> factoryKwargs) {
+        Map<String, Object> config = new LinkedHashMap<>();
         Object configured = factoryKwargs != null ? factoryKwargs.get("embedding_config") : null;
         if (configured instanceof EmbeddingConfig embeddingConfig) {
-            String codingMemoryDir = stringValue(factoryKwargs.get("coding_memory_dir"));
-            boolean isProactive = booleanValue(factoryKwargs.get("coding_memory_proactive"), true);
-            return new CodingMemoryRail(codingMemoryDir, embeddingConfig, isProactive);
+            config.put("embedding_config", embeddingConfig);
         }
-        return new CodingMemoryRail();
+        String codingMemoryDir = stringValue(factoryKwargs.get("coding_memory_dir"));
+        if (codingMemoryDir != null) {
+            config.put("coding_memory_dir", codingMemoryDir);
+        }
+        config.put("isProactive", booleanValue(factoryKwargs.get("coding_memory_proactive"), true));
+        return config;
     }
 
     /**

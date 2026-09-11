@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.process.extract.ExtractMemoryParams
+# com.openjiuwen.memory.process.extract.ExtractMemoryParams
 
 ## 类 ExtractMemoryParams
 

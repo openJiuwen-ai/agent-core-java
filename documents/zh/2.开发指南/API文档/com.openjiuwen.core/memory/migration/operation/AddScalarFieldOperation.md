@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation
+# com.openjiuwen.memory.migration.operation.AddScalarFieldOperation
 
 ## 类 AddScalarFieldOperation
 

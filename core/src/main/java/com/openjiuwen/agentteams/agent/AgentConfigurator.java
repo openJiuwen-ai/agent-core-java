@@ -6,12 +6,13 @@ package com.openjiuwen.agentteams.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openjiuwen.agentteams.TeamPaths;
+import com.openjiuwen.agentteams.memory.TeamMemory;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.messager.MessagerFactory;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
-import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntries;
+import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
@@ -23,7 +24,6 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.memory.team.TeamMemoryManager;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentKind;
@@ -61,7 +61,7 @@ public class AgentConfigurator {
     private DeepAgent deepAgent;
     private TeamBackend teamBackend;
     private Messager messager;
-    private TeamMemoryManager memoryManager;
+    private TeamMemory memoryManager;
 
     /**
      * Create an AgentConfigurator bound to the given agent card.
@@ -162,7 +162,7 @@ public class AgentConfigurator {
      * @return the memory manager, or null if not yet set up
      * @since 0.1.7
      */
-    public TeamMemoryManager getMemoryManager() {
+    public TeamMemory getMemoryManager() {
         return memoryManager;
     }
 

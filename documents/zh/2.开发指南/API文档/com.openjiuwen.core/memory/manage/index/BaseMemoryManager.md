@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.manage.index.BaseMemoryManager
+# com.openjiuwen.memory.manage.index.BaseMemoryManager
 
 ## 类 BaseMemoryManager
 
@@ -6,7 +6,7 @@
 public abstract class BaseMemoryManager
 ```
 
-`BaseMemoryManager` 是 `com.openjiuwen.core.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`BaseMemoryManager` 是 `com.openjiuwen.memory.manage.index` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

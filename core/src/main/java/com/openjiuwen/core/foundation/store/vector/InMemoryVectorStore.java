@@ -4,8 +4,8 @@
 
 package com.openjiuwen.core.foundation.store.vector;
 
-import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.RetrievalValidation;
+import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.spi.store.vector.BaseVectorStore;
 import com.openjiuwen.spi.store.vector.CollectionSchema;
@@ -26,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 0.1.7
  */
 public class InMemoryVectorStore extends BaseVectorStore {
+    private static final String DEFAULT_VECTOR_FIELD = "embedding";
+
     private final com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore delegate;
     private final Map<String, CollectionSchema> schemas = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> collectionMetadata = new ConcurrentHashMap<>();
@@ -73,6 +75,10 @@ public class InMemoryVectorStore extends BaseVectorStore {
 
     @Override
     public CollectionSchema getSchema(String collectionName, Map<String, Object> kwargs) {
+        CollectionSchema cachedSchema = schemas.get(collectionName);
+        if (cachedSchema != null) {
+            return cachedSchema;
+        }
         CollectionSchema backendSchema = delegate.getSchema(collectionName);
         schemas.put(collectionName, backendSchema);
         return backendSchema;
@@ -84,7 +90,7 @@ public class InMemoryVectorStore extends BaseVectorStore {
         if (kwargs != null && kwargs.get("batch_size") instanceof Number number) {
             batchSize = number.intValue();
         }
-        delegate.withCollection(collectionName).add(docs, batchSize, kwargs);
+        delegate.withCollection(collectionName).add(toBackendDocs(collectionName, docs), batchSize, kwargs);
     }
 
     @Override
@@ -205,10 +211,31 @@ public class InMemoryVectorStore extends BaseVectorStore {
         return CollectionSchema.fromFields(
                 List.of(FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256)
                                 .build(),
-                        FieldSchema.builder().name("embedding").dtype(VectorDataType.FLOAT_VECTOR).dim(1536).build(),
+                        FieldSchema.builder().name(DEFAULT_VECTOR_FIELD).dtype(VectorDataType.FLOAT_VECTOR).dim(1536)
+                                .build(),
                         FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build(),
                         FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()),
                 "Default adapter schema", false);
+    }
+
+    private List<Map<String, Object>> toBackendDocs(String collectionName, List<Map<String, Object>> docs) {
+        CollectionSchema schema = schemas.get(collectionName);
+        String sourceVectorField = schema == null
+                ? DEFAULT_VECTOR_FIELD
+                : schema.getVectorFields().stream().findFirst().map(FieldSchema::getName)
+                        .orElse(delegate.getVectorField());
+        if (sourceVectorField.equals(delegate.getVectorField())) {
+            return docs;
+        }
+        List<Map<String, Object>> backendDocs = new ArrayList<>();
+        for (Map<String, Object> doc : docs) {
+            Map<String, Object> backendDoc = new LinkedHashMap<>(doc);
+            if (doc.containsKey(sourceVectorField)) {
+                backendDoc.put(delegate.getVectorField(), doc.get(sourceVectorField));
+            }
+            backendDocs.add(backendDoc);
+        }
+        return backendDocs;
     }
 
     private static List<VectorSearchResult> mapSearchResults(List<SearchResult> results) {

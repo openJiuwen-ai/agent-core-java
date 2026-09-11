@@ -223,12 +223,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Bouncy Castle (Encryption); version pinned in dependencyManagement -->
-        <dependency>
-            <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk18on</artifactId>
-        </dependency>
-
         <dependency>
             <groupId>org.apache.pulsar</groupId>
             <artifactId>pulsar-client</artifactId>

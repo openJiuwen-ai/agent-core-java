@@ -1,4 +1,4 @@
-# com.openjiuwen.core.memory.common.DistributedLock
+# com.openjiuwen.memory.common.DistributedLock
 
 ## 类 DistributedLock
 
@@ -6,7 +6,7 @@
 public class DistributedLock implements AutoCloseable
 ```
 
-`DistributedLock` 是 `com.openjiuwen.core.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
+`DistributedLock` 是 `com.openjiuwen.memory.common` 包下的公开类型，文档按 Java 源码列出其公开成员与签名。
 
 ## 字段
 

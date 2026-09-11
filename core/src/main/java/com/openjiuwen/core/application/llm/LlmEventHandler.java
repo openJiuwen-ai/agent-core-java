@@ -33,7 +33,6 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
@@ -91,7 +90,6 @@ public class LlmEventHandler extends EventHandler {
     private final boolean enableSummaryMemory;
     private final boolean enableMemVariables;
     private final boolean enableMemory;
-    private final LongTermMemory longTermMemoryInstance;
 
     /**
      * LlmEventHandler.
@@ -112,7 +110,6 @@ public class LlmEventHandler extends EventHandler {
                 || agentConfig.getAgentMemoryConfig().isMemoryTypeEnabled("episodic_memory");
         this.enableMemory = memoryScopeId != null && !memoryScopeId.isEmpty()
                 && (enableLongTermMem || isEnableFragmentMemory || enableSummaryMemory || enableMemVariables);
-        this.longTermMemoryInstance = LongTermMemory.getInstance();
     }
 
     // ==================== EventHandler Implementation ====================

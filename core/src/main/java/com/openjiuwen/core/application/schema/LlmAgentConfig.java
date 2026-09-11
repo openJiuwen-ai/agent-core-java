@@ -9,7 +9,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -43,7 +43,7 @@ public class LlmAgent extends ControllerAgent
 **说明**
 
 - 自动执行 `preRun()` / `postRun()` 生命周期。
-- 当启用记忆且输入中包含 `user_id` 时，会异步将用户消息与回答写入 `LongTermMemory`。
+- 当启用记忆且输入中包含 `user_id` 时，会通过已安装的 Memory 实现异步写入用户消息与回答。
 
 ### `public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes)`
 

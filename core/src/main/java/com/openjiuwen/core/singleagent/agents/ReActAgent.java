@@ -20,8 +20,6 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
-import com.openjiuwen.core.memory.LongTermMemory;
-import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
@@ -50,6 +48,7 @@ import com.openjiuwen.core.singleagent.rail.RailExecutor;
 import com.openjiuwen.core.singleagent.rail.SteeringQueue;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.task_loop.LoopQueues;
+import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -132,7 +131,7 @@ public class ReActAgent extends BaseAgent {
      */
     private void initMemoryScope() {
         if (config.getMemScopeId() != null && !config.getMemScopeId().isEmpty()) {
-            LongTermMemory.getInstance().setScopeConfig(config.getMemScopeId(), new MemoryScopeConfig());
+            MemoryRuntimeResolver.require().configureScope(config.getMemScopeId());
         }
     }
 
@@ -1838,7 +1837,8 @@ public class ReActAgent extends BaseAgent {
      * @param agentSession agentSession
      * @param aiMessage non-stream AssistantMessage
      * @param startIndex starting chunk index
-     * @param sendContent whether to send content as stream chunks; if false, only tool_calls and usage_metadata are sent
+     * @param sendContent whether to send content as stream chunks; if false, only tool_calls and usage_metadata are
+     *                    sent
      * @since 0.1.7
      */
     private void writeNonStreamAsStreamChunks(AgentSessionApi agentSession, AssistantMessage aiMessage,

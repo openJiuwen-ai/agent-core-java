@@ -16,10 +16,9 @@ import com.openjiuwen.core.controller.ControllerConfig;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
@@ -30,14 +29,16 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowUtils;
+import com.openjiuwen.spi.memory.MemoryRuntime;
+import com.openjiuwen.spi.memory.MemoryRuntimeResolver;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.LinkedHashMap;
-import java.util.Objects;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 /**
  * LLM Agent - ReAct style Agent based on ControllerAgent.
@@ -56,7 +57,7 @@ import java.util.NoSuchElementException;
  */
 public class LlmAgent extends ControllerAgent {
     private final LlmAgentConfig agentConfig;
-    private final LongTermMemory longTermMemoryInstance;
+    private final MemoryRuntime memoryRuntime;
     private final boolean enableMemory;
 
     /**
@@ -74,12 +75,12 @@ public class LlmAgent extends ControllerAgent {
                     "LlmAgent requires REACT_CONTROLLER, got " + agentConfig.getControllerType());
         }
         this.agentConfig = agentConfig;
-        this.longTermMemoryInstance = LongTermMemory.getInstance();
 
         String memoryScopeId = agentConfig.getMemoryScopeId();
         this.enableMemory = memoryScopeId != null && !memoryScopeId.isEmpty()
                 && (agentConfig.getAgentMemoryConfig().isEnableLongTermMem()
                         || !agentConfig.getAgentMemoryConfig().getMemVariables().isEmpty());
+        this.memoryRuntime = enableMemory ? MemoryRuntimeResolver.require() : null;
 
         // Set up the LlmEventHandler on the controller
         LlmEventHandler eventHandler = new LlmEventHandler(agentConfig, getContextEngine());
@@ -539,7 +540,7 @@ public class LlmAgent extends ControllerAgent {
         }
 
         if (!messageList.isEmpty()) {
-            longTermMemoryInstance.addMessages(messageList, agentConfig.getAgentMemoryConfig(), userId,
+            memoryRuntime.addMessages(messageList, agentConfig.getAgentMemoryConfig(), userId,
                     agentConfig.getMemoryScopeId(), sessionId);
         }
     }

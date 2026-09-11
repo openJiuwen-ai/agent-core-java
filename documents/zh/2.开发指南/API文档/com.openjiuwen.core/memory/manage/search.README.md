@@ -1,6 +1,6 @@
 ﻿# search
 
-`com.openjiuwen.core.memory.manage.search` 提供记忆检索入口与参数模型，负责把查询条件转换为管理层可执行的搜索请求。
+`com.openjiuwen.memory.manage.search` 提供记忆检索入口与参数模型，负责把查询条件转换为管理层可执行的搜索请求。
 
 ## 核心类型
 
