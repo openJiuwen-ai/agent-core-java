@@ -4,6 +4,7 @@ package com.openjiuwen.core.singleagent.agents;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -114,7 +115,7 @@ class ReActAgentTest {
 
     @Test
     void testDefaultConfig() {
-        ReActAgentConfig config = (ReActAgentConfig) agent.getConfig();
+        ReActAgentConfig config = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
         assertThat(config).isNotNull();
         assertThat(config.getMaxIterations()).isEqualTo(5);
         assertThat(config.getModelProvider()).isEqualTo("openai");
@@ -128,7 +129,7 @@ class ReActAgentTest {
     @Test
     void testContextEngineRefreshesAfterMutableConfigUpdate() {
         Object initialEngine = agent.getContextEngine();
-        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
 
         mutableConfig.configureContextEngine(2, 1, false);
 
@@ -161,7 +162,7 @@ class ReActAgentTest {
 
     @Test
     void testInvokeRefreshesContextEngineAfterMutableConfigUpdate() {
-        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
         mutableConfig.configureContextEngine(2, 1, false);
         TestSession session = new TestSession("mutable-invoke");
 
@@ -182,7 +183,8 @@ class ReActAgentTest {
         ReActAgentConfig newConfig = ReActAgentConfig.builder().modelName("gpt-4").maxIterations(10).build();
 
         agent.configure(newConfig);
-        assertThat(((ReActAgentConfig) agent.getConfig()).getModelName()).isEqualTo("gpt-4");
+        ReActAgentConfig actualConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
+        assertThat(actualConfig.getModelName()).isEqualTo("gpt-4");
     }
 
     @Test
@@ -201,7 +203,7 @@ class ReActAgentTest {
     @Test
     void testConfigureRefreshesContextEngineForSameMutableConfigInstance() {
         Object initialEngine = agent.getContextEngine();
-        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+        ReActAgentConfig mutableConfig = assertInstanceOf(ReActAgentConfig.class, agent.getConfig());
         mutableConfig.configureContextEngine(10, 2, true);
 
         agent.configure(mutableConfig);
