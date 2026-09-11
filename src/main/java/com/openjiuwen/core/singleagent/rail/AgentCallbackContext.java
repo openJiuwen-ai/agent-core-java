@@ -225,14 +225,14 @@ public class AgentCallbackContext {
          * @return a new context
          */
         public AgentCallbackContext build() {
-            AgentCallbackContext context = new AgentCallbackContext();
+            AgentCallbackContext callbackContext = new AgentCallbackContext();
             if (inputs != null) {
-                context.setInputs(inputs);
+                callbackContext.setInputs(inputs);
             }
             if (extra != null) {
-                context.setExtra(extra);
+                callbackContext.setExtra(extra);
             }
-            return context;
+            return callbackContext;
         }
     }
 }

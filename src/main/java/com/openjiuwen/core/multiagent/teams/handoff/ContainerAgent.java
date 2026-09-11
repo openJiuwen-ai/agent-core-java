@@ -224,7 +224,8 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session);
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession);
     }
 
     @Override

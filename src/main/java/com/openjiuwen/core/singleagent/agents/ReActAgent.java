@@ -73,7 +73,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -1247,7 +1246,8 @@ public class ReActAgent extends BaseAgent {
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session);
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession);
     }
 
     public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
@@ -1734,7 +1734,8 @@ public class ReActAgent extends BaseAgent {
 
     @Override
     public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
-        return stream(inputs, (AgentSessionApi) session, streamModes);
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
     }
 
     private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {

@@ -126,7 +126,14 @@ public class ReActAgentEvolve extends ReActAgent {
     }
 
     private ReActAgentConfig reactConfig() {
-        return (ReActAgentConfig) getConfig();
+        Object agentConfig = getConfig();
+        if (agentConfig instanceof ReActAgentConfig reactAgentConfig) {
+            return reactAgentConfig;
+        }
+        if (agentConfig == null) {
+            return null;
+        }
+        throw new IllegalStateException("ReActAgentEvolve requires ReActAgentConfig");
     }
 
     private static List<Map<String, Object>> toPromptTemplate(List<?> value) {

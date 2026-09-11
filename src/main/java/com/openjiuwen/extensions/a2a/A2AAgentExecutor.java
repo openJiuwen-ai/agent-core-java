@@ -206,7 +206,7 @@ public class A2AAgentExecutor {
         return result;
     }
 
-    private static TaskStatus resolvePublishedStatus(AgentResult result, boolean finalResult) {
+    private static TaskStatus resolvePublishedStatus(AgentResult result, boolean isFinal) {
         TaskStatus status = result.getStatus();
         if (status != null) {
             return status;
@@ -218,7 +218,7 @@ public class A2AAgentExecutor {
         if ("interrupt".equals(resultType)) {
             return TaskStatus.INPUT_REQUIRED;
         }
-        return finalResult ? TaskStatus.COMPLETED : TaskStatus.WORKING;
+        return isFinal ? TaskStatus.COMPLETED : TaskStatus.WORKING;
     }
 
     private static String readResultType(AgentResult result) {

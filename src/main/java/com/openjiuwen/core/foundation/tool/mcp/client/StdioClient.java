@@ -111,11 +111,7 @@ public class StdioClient implements McpClient {
     }
 
     private void cleanupFailedConnect() {
-        try {
-            disconnect(McpServerConfig.NO_TIMEOUT);
-        } catch (Exception closeError) {
-            Loggers.TOOL.error("Stdio cleanup after connection failure failed: {}", closeError.getMessage());
-        }
+        disconnect(McpServerConfig.NO_TIMEOUT);
     }
 
     private boolean sleepBeforeRetry(int attemptIndex) {

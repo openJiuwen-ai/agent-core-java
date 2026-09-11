@@ -275,11 +275,13 @@ public abstract class BaseAgent implements AgentCallbackFirer {
     }
 
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session);
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession);
     }
 
     public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
-        return stream(inputs, (AgentSessionApi) session, streamModes);
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
     }
 
     /**

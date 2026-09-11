@@ -96,7 +96,6 @@ public class EditSafetyRail extends AgentRail {
         if (!result.available() || result.returnCode() == 0 || result.output().isBlank()) {
             return;
         }
-        LOGGER.info("ruff check failed for " + filePath);
         context.pushSteering("ruff check found issues in '" + filePath + "':\n"
                 + result.output() + "\nPlease fix these issues.");
     }
