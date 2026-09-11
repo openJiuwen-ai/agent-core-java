@@ -20,7 +20,7 @@ public class ReActAgent extends BaseAgent
 |---|---|
 | `@Override public BaseAgent configure(Object configObj)` | 用新的 `ReActAgentConfig` 更新模型、上下文和记忆相关配置。 |
 | `@Override public Object getConfig()` | 返回当前 `ReActAgentConfig`。 |
-| `public ContextEngine getContextEngine()` | 返回当前上下文引擎。 |
+| `public ContextEngine getContextEngine()` | 返回当前上下文引擎；若上下文配置已原地修改，会先按新配置重建引擎。 |
 | `@Override public Object invoke(Object inputs, Session session)` | 执行一次 ReAct 调用，并在工具调用完成或达到最大轮次后返回结果。 |
 | `@Override public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes)` | 执行流式调用，并从 `AgentSessionApi` 的流迭代器返回结果。 |
 
@@ -29,3 +29,4 @@ public class ReActAgent extends BaseAgent
 - 相关测试：`AgentCallbackManagerTest`、`ReActAgentConfigTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`。
 - 调用流程按“推理 -> 行动 -> 观察 -> 重复”循环执行，直到模型不再返回 `toolCalls` 或达到 `maxIterations`。
 - 输入支持 `Map`（读取 `query` 与可选 `conversation_id`）或 `String`；`invoke` 返回包含 `output` 和 `result_type` 的结果 `Map`。
+- `ReActAgentConfig` 保持可变以兼容现有用法。通过 `getConfig()` 原地修改上下文配置后，下一次读取上下文引擎或执行请求时会自动应用新配置；请勿在正在执行的请求中修改配置。

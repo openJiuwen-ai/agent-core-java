@@ -12,7 +12,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -123,6 +125,56 @@ class ReActAgentTest {
         assertThat(agent.getContextEngine()).isNotNull();
     }
 
+    @Test
+    void testContextEngineRefreshesAfterMutableConfigUpdate() {
+        Object initialEngine = agent.getContextEngine();
+        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+
+        mutableConfig.configureContextEngine(2, 1, false);
+
+        assertThat(agent.getContextEngine()).isNotSameAs(initialEngine);
+        ModelContext context = agent.getContextEngine().createContext("mutable-config", new TestSession("mutable"));
+        context.addMessages(List.of(new UserMessage("first"), new UserMessage("second"), new UserMessage("third")));
+        assertThat(context.getMessages()).extracting(BaseMessage::getContent)
+                .containsExactly("second", "third");
+    }
+
+    @Test
+    void testContextEngineIsReusedWhenMutableConfigIsUnchanged() {
+        assertThat(agent.getContextEngine()).isSameAs(agent.getContextEngine());
+    }
+
+    @Test
+    void testContextEngineRefreshesAfterNestedConfigMapUpdate() {
+        Map<String, Integer> modelWindowTokens = new HashMap<>();
+        modelWindowTokens.put("model-a", 1000);
+        ContextEngineConfig contextConfig = ContextEngineConfig.builder()
+                .modelContextWindowTokens(modelWindowTokens)
+                .build();
+        agent.configure(ReActAgentConfig.builder().contextEngineConfig(contextConfig).build());
+        ContextEngine initialEngine = agent.getContextEngine();
+
+        modelWindowTokens.put("model-a", 2000);
+
+        assertThat(agent.getContextEngine()).isNotSameAs(initialEngine);
+    }
+
+    @Test
+    void testInvokeRefreshesContextEngineAfterMutableConfigUpdate() {
+        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+        mutableConfig.configureContextEngine(2, 1, false);
+        TestSession session = new TestSession("mutable-invoke");
+
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "first"), session))
+                .isInstanceOf(IllegalStateException.class);
+
+        ModelContext context = agent.getContextEngine().getContext(null, session.getSessionId());
+        assertThat(context).isNotNull();
+        context.addMessages(List.of(new UserMessage("second"), new UserMessage("third")));
+        assertThat(context.getMessages()).extracting(BaseMessage::getContent)
+                .containsExactly("second", "third");
+    }
+
     // ========== Configure ==========
 
     @Test
@@ -144,6 +196,17 @@ class ReActAgentTest {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
         BaseAgent result = agent.configure(config);
         assertThat(result).isSameAs(agent);
+    }
+
+    @Test
+    void testConfigureRefreshesContextEngineForSameMutableConfigInstance() {
+        Object initialEngine = agent.getContextEngine();
+        ReActAgentConfig mutableConfig = (ReActAgentConfig) agent.getConfig();
+        mutableConfig.configureContextEngine(10, 2, true);
+
+        agent.configure(mutableConfig);
+
+        assertThat(agent.getContextEngine()).isNotSameAs(initialEngine);
     }
 
     @Test
