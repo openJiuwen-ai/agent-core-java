@@ -16,6 +16,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -74,6 +76,68 @@ class ToolManagerTest {
         assertSame(tool, manager.removeTool("tool-1"));
         assertNull(manager.getTool("tool-1"));
         assertEquals("tool", manager.kind());
+    }
+
+    @Test
+    void addToolRegistersDistinctIdsConcurrently() throws Exception {
+        ToolManager manager = new ToolManager();
+        int workers = 32;
+        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int index = 0; index < workers; index++) {
+                String toolId = "tool-" + index;
+                futures.add(executor.submit(() -> {
+                    start.await(1, TimeUnit.SECONDS);
+                    manager.addTool(toolId, new EchoTool(toolId));
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+            for (int index = 0; index < workers; index++) {
+                assertNotNull(manager.getTool("tool-" + index));
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void addToolRejectsDuplicateIdAtomicallyUnderContention() throws Exception {
+        ToolManager manager = new ToolManager();
+        int workers = 16;
+        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger successes = new AtomicInteger();
+        AtomicInteger duplicates = new AtomicInteger();
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int index = 0; index < workers; index++) {
+                futures.add(executor.submit(() -> {
+                    start.await(1, TimeUnit.SECONDS);
+                    try {
+                        manager.addTool("shared", new EchoTool("shared"));
+                        successes.incrementAndGet();
+                    } catch (IllegalArgumentException ignored) {
+                        duplicates.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+            assertEquals(1, successes.get());
+            assertEquals(workers - 1, duplicates.get());
+            assertNotNull(manager.getTool("shared"));
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -149,6 +213,39 @@ class ToolManagerTest {
         assertEquals(1, clientB.connectCount);
         assertEquals(List.of("srv-a"), manager.getMcpServerIds("alpha-srv"));
         assertEquals(List.of("srv-b"), manager.getMcpServerIds("beta-srv"));
+    }
+
+    @Test
+    void addToolServerIndexesSharedServerNameConcurrently() throws Exception {
+        ToolManager manager = new ToolManager(config ->
+                new FakeMcpClient(List.of(mcpCard("tool", config.getServerId(), "shared"))));
+        int workers = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int index = 0; index < workers; index++) {
+                String serverId = "srv-" + index;
+                futures.add(executor.submit(() -> {
+                    start.await(1, TimeUnit.SECONDS);
+                    manager.addToolServer(serverConfig(serverId, "shared")).toCompletableFuture().join();
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+            assertEquals(workers, manager.getMcpServerIds("shared").size());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void getMcpServerIdsReturnsEmptyForNullName() {
+        ToolManager manager = new ToolManager();
+        assertEquals(List.of(), manager.getMcpServerIds(null));
     }
 
     @Test

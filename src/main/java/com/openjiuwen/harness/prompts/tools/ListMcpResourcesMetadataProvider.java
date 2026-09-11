@@ -21,27 +21,12 @@ public final class ListMcpResourcesMetadataProvider implements ToolMetadataProvi
         DESCRIPTIONS.put("cn", "列出指定 MCP 服务器上可用的资源列表。");
         DESCRIPTIONS.put("en", "List available resources exposed by the specified MCP server.");
 
-        Map<String, Object> cnSchema = new LinkedHashMap<>();
-        cnSchema.put("type", "object");
-        cnSchema.put("properties", Map.of(
-                "server_id", Map.of(
-                        "type", "string",
-                        "description", "MCP 服务器的 server_id"
-                )
-        ));
-        cnSchema.put("required", Arrays.asList("server_id"));
-        INPUT_PARAMS.put("cn", cnSchema);
-
-        Map<String, Object> enSchema = new LinkedHashMap<>();
-        enSchema.put("type", "object");
-        enSchema.put("properties", Map.of(
-                "server_id", Map.of(
-                        "type", "string",
-                        "description", "The server_id of the MCP server"
-                )
-        ));
-        enSchema.put("required", Arrays.asList("server_id"));
-        INPUT_PARAMS.put("en", enSchema);
+        INPUT_PARAMS.put("cn", schema(
+                "MCP 服务器的 server_id",
+                "MCP 服务器的 server_name；未提供 server_id 时按名称解析"));
+        INPUT_PARAMS.put("en", schema(
+                "The server_id of the MCP server",
+                "The server_name of the MCP server; used when server_id is omitted"));
     }
 
     @Override
@@ -57,5 +42,17 @@ public final class ListMcpResourcesMetadataProvider implements ToolMetadataProvi
     @Override
     public Map<String, Object> getInputParams(String language) {
         return INPUT_PARAMS.getOrDefault(language, INPUT_PARAMS.get("cn"));
+    }
+
+    private static Map<String, Object> schema(String serverIdDescription, String serverNameDescription) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("server_id", Map.of("type", "string", "description", serverIdDescription));
+        properties.put("server_name", Map.of("type", "string", "description", serverNameDescription));
+
+        Map<String, Object> inputSchema = new LinkedHashMap<>();
+        inputSchema.put("type", "object");
+        inputSchema.put("properties", properties);
+        inputSchema.put("required", Arrays.asList("server_id"));
+        return inputSchema;
     }
 }

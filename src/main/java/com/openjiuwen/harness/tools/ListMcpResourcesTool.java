@@ -11,6 +11,7 @@ import com.openjiuwen.harness.prompts.tools.HarnessPromptToolsPackage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Lists resources exposed by an MCP server.
@@ -21,12 +22,12 @@ import java.util.Map;
 public class ListMcpResourcesTool extends AbstractHarnessTool {
 
     private final McpResourceLister resourceLister;
+    private final Function<String, List<String>> serverNameResolver;
     private final String language;
     private final String agentId;
 
     public ListMcpResourcesTool(McpResourceLister resourceLister) {
-        this(toolCard("list_mcp_resources", "ListMcpResourcesTool", "List MCP resources for a server."),
-                resourceLister, "cn", null);
+        this(resourceLister, ignored -> List.of());
     }
 
     public ListMcpResourcesTool(String language, String agentId) {
@@ -36,13 +37,24 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
                         normalizeLanguage(language),
                         agentId),
                 serverId -> toList(Runner.resourceMgr().listMcpResources(serverId).toCompletableFuture().join()),
+                ListMcpResourcesTool::lookupMcpServerIds,
                 normalizeLanguage(language),
                 agentId);
     }
 
-    private ListMcpResourcesTool(ToolCard card, McpResourceLister resourceLister, String language, String agentId) {
+    ListMcpResourcesTool(McpResourceLister resourceLister, Function<String, List<String>> serverNameResolver) {
+        this(toolCard("list_mcp_resources", "ListMcpResourcesTool", "List MCP resources for a server."),
+                resourceLister, serverNameResolver, "cn", null);
+    }
+
+    private ListMcpResourcesTool(ToolCard card,
+                                 McpResourceLister resourceLister,
+                                 Function<String, List<String>> serverNameResolver,
+                                 String language,
+                                 String agentId) {
         super(card);
         this.resourceLister = resourceLister;
+        this.serverNameResolver = serverNameResolver;
         this.language = normalizeLanguage(language);
         this.agentId = agentId;
     }
@@ -57,7 +69,10 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
 
     @Override
     protected Object invokeInternal(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String serverId = stringValue(inputs == null ? null : inputs.get("server_id"));
+        String serverId = resolveServerId(inputs);
+        if (serverId == null) {
+            return ToolOutput.failure("server not found");
+        }
         if (serverId.isBlank()) {
             return ToolOutput.failure("server_id is required");
         }
@@ -74,6 +89,26 @@ public class ListMcpResourcesTool extends AbstractHarnessTool {
         } catch (Exception exception) {
             return ToolOutput.failure(exception.getMessage());
         }
+    }
+
+    private String resolveServerId(Map<String, Object> inputs) {
+        String serverId = stringValue(inputs == null ? null : inputs.get("server_id")).trim();
+        if (!serverId.isBlank()) {
+            return serverId;
+        }
+        String serverName = stringValue(inputs == null ? null : inputs.get("server_name")).trim();
+        if (serverName.isBlank()) {
+            return "";
+        }
+        List<String> ids = serverNameResolver == null ? List.of() : serverNameResolver.apply(serverName);
+        if (ids == null || ids.isEmpty()) {
+            return null;
+        }
+        return ids.get(0);
+    }
+
+    private static List<String> lookupMcpServerIds(String serverName) {
+        return Runner.resourceMgr().getMcpServerIds(serverName);
     }
 
     private static String normalizeLanguage(String language) {

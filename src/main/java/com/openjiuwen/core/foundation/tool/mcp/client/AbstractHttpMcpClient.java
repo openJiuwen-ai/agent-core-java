@@ -67,17 +67,15 @@ abstract class AbstractHttpMcpClient implements McpClient {
 
     /**
      * Performs the MCP initialize handshake with retries.
-     * On failure, rolls {@code connected} back to {@code false} and returns {@code false}.
+     * Marks {@code connected} only after initialize and {@code notifications/initialized} succeed.
      */
     @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         int maxAttempts = Math.max(0, retryTimes);
         for (int i = 0; i <= maxAttempts; i++) {
-            this.connected = true;
             try {
-                callRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
-                        Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
-                sendNotification("notifications/initialized", Map.of(), timeout);
+                handshake(timeout);
+                this.connected = true;
                 return true;
             } catch (InterruptedException e) {
                 this.connected = false;
@@ -95,6 +93,12 @@ abstract class AbstractHttpMcpClient implements McpClient {
             }
         }
         return false;
+    }
+
+    private void handshake(float timeout) throws IOException, InterruptedException {
+        executeRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
+                Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
+        executeNotification("notifications/initialized", Map.of(), timeout);
     }
 
     @Override
@@ -179,6 +183,17 @@ abstract class AbstractHttpMcpClient implements McpClient {
     protected Map<String, Object> callRpc(String method, Map<String, Object> params, float timeout)
             throws IOException, InterruptedException {
         ensureConnected();
+        return executeRpc(method, params, timeout);
+    }
+
+    protected void sendNotification(String method, Map<String, Object> params, float timeout)
+            throws IOException, InterruptedException {
+        ensureConnected();
+        executeNotification(method, params, timeout);
+    }
+
+    Map<String, Object> executeRpc(String method, Map<String, Object> params, float timeout)
+            throws IOException, InterruptedException {
         long requestId = requestCounter.incrementAndGet();
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("jsonrpc", "2.0");
@@ -204,9 +219,8 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return wrapped;
     }
 
-    protected void sendNotification(String method, Map<String, Object> params, float timeout)
+    void executeNotification(String method, Map<String, Object> params, float timeout)
             throws IOException, InterruptedException {
-        ensureConnected();
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("jsonrpc", "2.0");
         requestBody.put("method", method);

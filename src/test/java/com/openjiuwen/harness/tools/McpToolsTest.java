@@ -103,6 +103,39 @@ class McpToolsTest {
     }
 
     @Test
+    void listMcpResourcesResolvesServerNameToServerId() throws Exception {
+        RecordingLister lister = new RecordingLister(List.of());
+        ListMcpResourcesTool tool = new ListMcpResourcesTool(lister, name -> List.of("resolved-id"));
+
+        ToolOutput output = invokeList(tool, linkedMap("server_name", "weather"));
+
+        assertTrue(output.isSuccess());
+        assertEquals(List.of("resolved-id"), lister.serverIds);
+    }
+
+    @Test
+    void listMcpResourcesPrefersServerIdOverServerName() throws Exception {
+        RecordingLister lister = new RecordingLister(List.of());
+        ListMcpResourcesTool tool = new ListMcpResourcesTool(lister, name -> List.of("from-name"));
+
+        invokeList(tool, linkedMap("server_id", "from-id", "server_name", "weather"));
+
+        assertEquals(List.of("from-id"), lister.serverIds);
+    }
+
+    @Test
+    void listMcpResourcesUnknownServerNameReturnsError() throws Exception {
+        RecordingLister lister = new RecordingLister(List.of());
+        ListMcpResourcesTool tool = new ListMcpResourcesTool(lister, name -> List.of());
+
+        ToolOutput output = invokeList(tool, linkedMap("server_name", "missing"));
+
+        assertFalse(output.isSuccess());
+        assertTrue(output.getError().contains("server not found"));
+        assertEquals(List.of(), lister.serverIds);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void listMcpResourcesResourceWithoutAttributesFallsBackToString() throws Exception {
         Object plain = new Object();

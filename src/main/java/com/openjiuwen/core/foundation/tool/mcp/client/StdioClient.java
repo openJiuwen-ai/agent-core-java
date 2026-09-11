@@ -75,20 +75,54 @@ public class StdioClient implements McpClient {
 
     @Override
     public boolean connect(int retryTimes, float timeout) {
+        int maxAttempts = Math.max(0, retryTimes);
+        for (int i = 0; i <= maxAttempts; i++) {
+            ConnectAttempt attempt = tryConnectOnce(timeout);
+            if (attempt == ConnectAttempt.SUCCESS) {
+                return true;
+            }
+            if (attempt == ConnectAttempt.STOP || i >= maxAttempts) {
+                return false;
+            }
+            if (!sleepBeforeRetry(i)) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private ConnectAttempt tryConnectOnce(float timeout) {
         try {
             StdioServerParameters serverParameters = buildServerParameters();
             session = sessionFactory.open(serverParameters);
             session.initialize(timeout);
             disconnected = false;
             Loggers.TOOL.info("Stdio client connected successfully");
-            return true;
+            return ConnectAttempt.SUCCESS;
+        } catch (InterruptedException interrupted) {
+            Loggers.TOOL.error("Stdio connection failed: {}", interrupted.getMessage());
+            cleanupFailedConnect();
+            return ConnectAttempt.STOP;
         } catch (Exception error) {
             Loggers.TOOL.error("Stdio connection failed: {}", error.getMessage());
-            try {
-                disconnect(McpServerConfig.NO_TIMEOUT);
-            } catch (Exception closeError) {
-                Loggers.TOOL.error("Stdio cleanup after connection failure failed: {}", closeError.getMessage());
-            }
+            cleanupFailedConnect();
+            return ConnectAttempt.RETRY;
+        }
+    }
+
+    private void cleanupFailedConnect() {
+        try {
+            disconnect(McpServerConfig.NO_TIMEOUT);
+        } catch (Exception closeError) {
+            Loggers.TOOL.error("Stdio cleanup after connection failure failed: {}", closeError.getMessage());
+        }
+    }
+
+    private boolean sleepBeforeRetry(int attemptIndex) {
+        try {
+            Thread.sleep(100L * (attemptIndex + 1));
+            return true;
+        } catch (InterruptedException interrupted) {
             return false;
         }
     }
@@ -358,6 +392,12 @@ public class StdioClient implements McpClient {
             }
         }
         return result;
+    }
+
+    private enum ConnectAttempt {
+        SUCCESS,
+        RETRY,
+        STOP
     }
 
     /**

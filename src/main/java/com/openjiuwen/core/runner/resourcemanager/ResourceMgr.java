@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
@@ -771,6 +772,20 @@ public class ResourceMgr {
     public Object getMcpClient(String serverId) {
         validateResourceId(serverId, "mcp server");
         return toolManager.getMcpClient(serverId);
+    }
+
+    /**
+     * Returns registered MCP server ids that share {@code serverName}.
+     *
+     * @param serverName MCP server display name
+     * @return matching server ids, or an empty list when the name is blank or unknown
+     * @since 0.1.14
+     */
+    public List<String> getMcpServerIds(String serverName) {
+        if (serverName == null || serverName.isBlank()) {
+            return List.of();
+        }
+        return toolManager.getMcpServerIds(serverName);
     }
 
     public CompletionStage<Object> listMcpResources(String serverId) {
@@ -1583,7 +1598,7 @@ public class ResourceMgr {
         sysOperationManager = resourceRegistry.sysOperationManager();
         tagMgr = new TagMgr();
         tagManager = tagMgr;
-        idToCard = new LinkedHashMap<>();
+        idToCard = new ConcurrentHashMap<>();
     }
 
     private enum ResourceKind {

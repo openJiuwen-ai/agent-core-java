@@ -166,11 +166,7 @@ public class A2AAgentExecutor {
                     lastChunk));
         }
 
-        TaskStatus status = safeResult.getStatus();
-        if (status == null) {
-            status = finalResult ? TaskStatus.COMPLETED : TaskStatus.WORKING;
-        }
-        TaskStatus finalStatus = status;
+        TaskStatus finalStatus = resolvePublishedStatus(safeResult, finalResult);
         boolean terminal = finalResult || HALT_STATUSES.contains(finalStatus);
 
         return chain.thenCompose(ignored -> {
@@ -208,6 +204,63 @@ public class A2AAgentExecutor {
             result.add(A2ATransformer.toA2aPart(part));
         }
         return result;
+    }
+
+    private static TaskStatus resolvePublishedStatus(AgentResult result, boolean finalResult) {
+        TaskStatus status = result.getStatus();
+        if (status != null) {
+            return status;
+        }
+        String resultType = readResultType(result);
+        if ("error".equals(resultType)) {
+            return TaskStatus.FAILED;
+        }
+        if ("interrupt".equals(resultType)) {
+            return TaskStatus.INPUT_REQUIRED;
+        }
+        return finalResult ? TaskStatus.COMPLETED : TaskStatus.WORKING;
+    }
+
+    private static String readResultType(AgentResult result) {
+        String fromMetadata = stringResultType(result.getMetadata());
+        if (!fromMetadata.isEmpty()) {
+            return fromMetadata;
+        }
+        for (Artifact artifact : result.getArtifacts()) {
+            String fromArtifact = readArtifactResultType(artifact);
+            if (!fromArtifact.isEmpty()) {
+                return fromArtifact;
+            }
+        }
+        return "";
+    }
+
+    private static String readArtifactResultType(Artifact artifact) {
+        String fromMetadata = stringResultType(artifact.getMetadata());
+        if (!fromMetadata.isEmpty()) {
+            return fromMetadata;
+        }
+        for (Part part : artifact.getParts()) {
+            String fromPart = stringResultType(part.getMetadata());
+            if (!fromPart.isEmpty()) {
+                return fromPart;
+            }
+            if (part.getData() instanceof Map<?, ?> data) {
+                String fromData = stringResultType(data);
+                if (!fromData.isEmpty()) {
+                    return fromData;
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String stringResultType(Map<?, ?> source) {
+        if (source == null || !source.containsKey("result_type")) {
+            return "";
+        }
+        Object value = source.get("result_type");
+        return value == null ? "" : String.valueOf(value);
     }
 
     private static Map<String, Object> emptyToNull(Map<String, Object> metadata) {

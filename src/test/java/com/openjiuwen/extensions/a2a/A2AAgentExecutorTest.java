@@ -146,6 +146,46 @@ class A2AAgentExecutorTest {
         assertThat(lastStatus(new ArrayList<>(queue.getEvents()))).isEqualTo(A2aTaskState.TASK_STATE_CANCELED);
     }
 
+    @Test
+    void executeFailsWhenStatusIsNullAndResultTypeIsError() {
+        A2AAgentExecutor executor = new A2AAgentExecutor(payload ->
+                CompletableFuture.completedFuture(resultWithType("error")));
+        InMemoryEventQueue queue = new InMemoryEventQueue();
+
+        executor.execute(request("task-error-type", "conv-error-type", "hello"), queue)
+                .toCompletableFuture()
+                .join();
+
+        assertThat(lastStatus(new ArrayList<>(queue.getEvents()))).isEqualTo(A2aTaskState.TASK_STATE_FAILED);
+    }
+
+    @Test
+    void executeRequiresInputWhenStatusIsNullAndResultTypeIsInterrupt() {
+        A2AAgentExecutor executor = new A2AAgentExecutor(payload ->
+                CompletableFuture.completedFuture(resultWithType("interrupt")));
+        InMemoryEventQueue queue = new InMemoryEventQueue();
+
+        executor.execute(request("task-interrupt-type", "conv-interrupt-type", "hello"), queue)
+                .toCompletableFuture()
+                .join();
+
+        assertThat(lastStatus(new ArrayList<>(queue.getEvents())))
+                .isEqualTo(A2aTaskState.TASK_STATE_INPUT_REQUIRED);
+    }
+
+    @Test
+    void executeCompletesWhenStatusIsNullAndResultTypeIsAbsent() {
+        A2AAgentExecutor executor = new A2AAgentExecutor(payload ->
+                CompletableFuture.completedFuture(resultWithType(null)));
+        InMemoryEventQueue queue = new InMemoryEventQueue();
+
+        executor.execute(request("task-null-status", "conv-null-status", "hello"), queue)
+                .toCompletableFuture()
+                .join();
+
+        assertThat(lastStatus(new ArrayList<>(queue.getEvents()))).isEqualTo(A2aTaskState.TASK_STATE_COMPLETED);
+    }
+
     private static RequestContext request(String taskId, String contextId, String text) {
         A2aPart part = new A2aPart();
         part.setText(text);
@@ -164,6 +204,15 @@ class A2AAgentExecutorTest {
         AgentResult result = new AgentResult();
         result.setStatus(status);
         result.setArtifacts(List.of(artifact));
+        return result;
+    }
+
+    private static AgentResult resultWithType(String resultType) {
+        AgentResult result = new AgentResult();
+        result.setArtifacts(List.of(artifact("artifact-type", "typed")));
+        if (resultType != null) {
+            result.setMetadata(Map.of("result_type", resultType));
+        }
         return result;
     }
 

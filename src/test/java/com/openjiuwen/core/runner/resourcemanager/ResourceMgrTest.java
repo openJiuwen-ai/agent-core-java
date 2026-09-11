@@ -577,6 +577,15 @@ class ResourceMgrTest {
     }
 
     @Test
+    void getMcpServerIdsReturnsEmptyForBlankOrUnknownName() {
+        ResourceMgr manager = new ResourceMgr();
+
+        assertEquals(List.of(), manager.getMcpServerIds(null));
+        assertEquals(List.of(), manager.getMcpServerIds(""));
+        assertEquals(List.of(), manager.getMcpServerIds("unknown"));
+    }
+
+    @Test
     void mcpResourceOperationsUseTimeoutAwareClientMethods() {
         ResourceMgr manager = new ResourceMgr();
         TimeoutOnlyMcpClient client = new TimeoutOnlyMcpClient();
