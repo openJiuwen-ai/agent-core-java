@@ -43,7 +43,7 @@ class MemoryRailTest {
         AgentCallbackContext context = contextWithQuery("hello", "u1");
         context.getExtra().put("is_resume", true);
 
-        rail(memory).beforeInvoke(context).toCompletableFuture().join();
+        rail(memory).beforeInvoke(context);
 
         assertFalse(context.getExtra().containsKey("memory_variables"));
         assertFalse(memory.getVariablesCalled);
@@ -58,7 +58,7 @@ class MemoryRailTest {
         memory.summaryMems = List.of(mem("summary one"));
         AgentCallbackContext context = contextWithQuery("hello", "u1");
 
-        rail(memory).beforeInvoke(context).toCompletableFuture().join();
+        rail(memory).beforeInvoke(context);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> memoryVariables = (Map<String, Object>) context.getExtra().get("memory_variables");
@@ -80,7 +80,7 @@ class MemoryRailTest {
         memory.searchError = new IllegalStateException("search failed");
         AgentCallbackContext context = contextWithQuery("hello", "u1");
 
-        rail(memory).beforeInvoke(context).toCompletableFuture().join();
+        rail(memory).beforeInvoke(context);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> memoryVariables = (Map<String, Object>) context.getExtra().get("memory_variables");
@@ -99,7 +99,7 @@ class MemoryRailTest {
                 "output", "done"
         )));
 
-        rail(memory).afterInvoke(context).toCompletableFuture().join();
+        rail(memory).afterInvoke(context);
 
         assertTrue(memory.addMessagesCalled);
         assertEquals("u1", memory.addUserId);
@@ -119,7 +119,7 @@ class MemoryRailTest {
         InvokeInputs inputs = (InvokeInputs) context.getInputs();
         inputs.setResult(new LinkedHashMap<>(Map.of("result_type", "interrupt")));
 
-        rail(memory).afterInvoke(context).toCompletableFuture().join();
+        rail(memory).afterInvoke(context);
 
         assertFalse(memory.addMessagesCalled);
     }

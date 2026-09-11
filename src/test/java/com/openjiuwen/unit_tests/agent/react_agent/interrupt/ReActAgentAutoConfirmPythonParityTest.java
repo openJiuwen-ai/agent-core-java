@@ -132,7 +132,7 @@ class ReActAgentAutoConfirmPythonParityTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invokeMap(ScriptedAutoConfirmAgent agent, MemorySession session,
                                                  Map<String, Object> inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, session).toCompletableFuture().join();
+        return (Map<String, Object>) agent.invoke(inputs, session);
     }
 
     private static void assertAnswer(Map<String, Object> result) {

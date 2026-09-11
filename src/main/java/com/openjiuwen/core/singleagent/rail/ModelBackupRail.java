@@ -9,12 +9,10 @@ import com.openjiuwen.core.foundation.llm.Model;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Model backup rail for fallback on model exception.
  *
- * <p>Mirrors Python's {@code ModelBackupRail} in
  * {@code openjiuwen/core/single_agent/rail/model_backup.py}.</p>
  */
 public class ModelBackupRail extends AgentRail {
@@ -28,12 +26,11 @@ public class ModelBackupRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+    public void onModelException(AgentCallbackContext context) {
         if (context != null && index < backupModels.size() && setLlm(context.getAgent(), backupModels.get(index))) {
             index++;
             context.requestRetry(0);
         }
-        return completed();
     }
 
     public List<Model> getBackupModels() {

@@ -117,7 +117,7 @@ public class TrajectoryCollector {
 
     private static void invokeAgent(Object agent, Map<String, Object> inputs, AgentSession session) {
         if (agent instanceof BaseAgent baseAgent) {
-            await(baseAgent.invoke(inputs, session));
+            baseAgent.invoke(inputs, session);
             return;
         }
         Method invoke = findInvokeMethod(agent, 2);

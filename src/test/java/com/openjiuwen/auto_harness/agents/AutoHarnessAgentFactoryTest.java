@@ -29,8 +29,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -346,10 +344,9 @@ class AutoHarnessAgentFactoryTest {
         private boolean called;
 
         @Override
-        public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+        public void beforeModelCall(AgentCallbackContext context) {
             called = true;
             assertNotNull(context.getInputs());
-            return CompletableFuture.completedFuture(null);
         }
     }
 }

@@ -77,7 +77,7 @@ class ContextProcessorRailTest {
         ContextProcessorRail rail = new ContextProcessorRail();
         AgentCallbackContext ctx = new AgentCallbackContext();
 
-        rail.beforeModelCall(ctx).toCompletableFuture().join();
+        rail.beforeModelCall(ctx);
 
         assertThat(ctx.getExtra()).containsEntry("offload_section_enabled", true);
     }
@@ -96,8 +96,8 @@ class ContextProcessorRailTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(null);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return null;
         }
 
         @Override

@@ -135,8 +135,8 @@ class SkillUseRailPythonParityTest {
         agent.registerRail(rail).join();
 
         Set<String> toolNames = agent.getAbilityManager().getTools().keySet();
-        assertThat(toolNames).contains("SkillTool", "ListSkillTool");
-        assertThat(rail.getOwnedToolNames()).contains("SkillTool", "ListSkillTool");
+        assertThat(toolNames).contains("skill_tool", "list_skill");
+        assertThat(rail.getOwnedToolNames()).contains("skill_tool", "list_skill");
         assertThat(rail.getOwnedToolIds()).contains("skill_tool", "list_skill");
     }
 

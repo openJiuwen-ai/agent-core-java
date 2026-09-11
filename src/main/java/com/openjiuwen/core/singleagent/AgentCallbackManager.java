@@ -90,6 +90,17 @@ public class AgentCallbackManager {
         return registerRail(rail, agent);
     }
 
+    /**
+     * Whether {@code rail} is registered on the global callback framework.
+     *
+     * @param rail the rail to look up
+     * @return {@code true} if the rail is currently registered
+     * @since 0.1.15
+     */
+    public boolean isRailRegistered(AgentRail rail) {
+        return rail != null && railCallbacks.containsKey(rail);
+    }
+
     public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
         if (rail == null) {
             return CompletableFuture.completedFuture(this);

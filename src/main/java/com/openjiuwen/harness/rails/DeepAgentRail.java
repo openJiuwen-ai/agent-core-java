@@ -12,6 +12,7 @@ import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
+import java.lang.reflect.Method;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,27 +21,63 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
 /**
- * DeepAgent rail base. Extends {@link AgentRail} like Python
- * {@code openjiuwen/harness/rails/base.py} and 730.
+ * DeepAgent rail base. Extends {@link AgentRail} like 930
+ * {@code openjiuwen/harness/rails/DeepAgentRail.java}.
  *
- * <p>Subclass hooks stay on {@link CallbackContext} for the existing Java
- * rails. Inner ReAct events adapt {@link AgentCallbackContext} onto those
- * hooks. Outer invoke / task-iteration still call the {@code CallbackContext}
- * methods directly so they are not double-fired on the inner agent.</p>
+ * <p>Subclass hooks may override {@link AgentRail}'s {@code void} methods, or
+ * keep the existing {@link CallbackContext} methods. Inner ReAct only receives
+ * model/tool adapters so outer invoke / task-iteration are not double-fired.</p>
  */
-public class DeepAgentRail extends AgentRail {
+public abstract class DeepAgentRail extends AgentRail {
 
     private static final Set<String> INPUT_KEYS = Set.of(
             "tool_call", "tool_name", "tool_args", "tool_result", "tool_msg",
             "messages", "tools", "model_context", "response"
     );
 
+    private static final Set<AgentCallbackEvent> INNER_CALLBACK_EVENTS = Set.of(
+            AgentCallbackEvent.BEFORE_MODEL_CALL,
+            AgentCallbackEvent.AFTER_MODEL_CALL,
+            AgentCallbackEvent.ON_MODEL_EXCEPTION,
+            AgentCallbackEvent.BEFORE_TOOL_CALL,
+            AgentCallbackEvent.AFTER_TOOL_CALL,
+            AgentCallbackEvent.ON_TOOL_EXCEPTION
+    );
+
     private DeepAgent owner;
     private Object workspace;
     private Object sysOperation;
 
-    public DeepAgentRail() {
+    protected DeepAgentRail() {
         setPriority(100);
+    }
+
+    /**
+     * Default priority used when a subclass does not call {@link #setPriority(int)}.
+     *
+     * @return priority value
+     */
+    public int priority() {
+        return super.getPriority();
+    }
+
+    @Override
+    public int getPriority() {
+        return priority();
+    }
+
+    @Override
+    public void init(Object agent) {
+        if (agent instanceof DeepAgent deepAgent) {
+            init(deepAgent);
+        }
+    }
+
+    @Override
+    public void uninit(Object agent) {
+        if (agent instanceof DeepAgent deepAgent) {
+            uninit(deepAgent);
+        }
     }
 
     public void init(DeepAgent agent) {
@@ -100,39 +137,41 @@ public class DeepAgentRail extends AgentRail {
     public void afterTaskIteration(CallbackContext ctx) {
     }
 
-    @Override
-    public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
-        return forward(context, this::beforeModelCall);
-    }
-
-    @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
-        return forward(context, this::afterModelCall);
-    }
-
-    @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
-        return forward(context, this::beforeToolCall);
-    }
-
-    @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
-        return forward(context, this::afterToolCall);
-    }
-
     /**
      * Inner ReAct only gets model/tool hooks, matching Python {@code _BRIDGE_EVENTS}.
      */
     @Override
     public Map<AgentCallbackEvent, AgentCallback> getCallbacks() {
-        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(AgentCallbackEvent.class);
-        callbacks.put(AgentCallbackEvent.BEFORE_MODEL_CALL, this::beforeModelCall);
-        callbacks.put(AgentCallbackEvent.AFTER_MODEL_CALL, this::afterModelCall);
-        callbacks.put(AgentCallbackEvent.ON_MODEL_EXCEPTION, this::onModelException);
-        callbacks.put(AgentCallbackEvent.BEFORE_TOOL_CALL, this::beforeToolCall);
-        callbacks.put(AgentCallbackEvent.AFTER_TOOL_CALL, this::afterToolCall);
-        callbacks.put(AgentCallbackEvent.ON_TOOL_EXCEPTION, this::onToolException);
+        Map<AgentCallbackEvent, AgentCallback> callbacks = new EnumMap<>(super.getCallbacks());
+        addCallbackContextAdapter(callbacks, AgentCallbackEvent.BEFORE_MODEL_CALL, "beforeModelCall",
+                this::beforeModelCall);
+        addCallbackContextAdapter(callbacks, AgentCallbackEvent.AFTER_MODEL_CALL, "afterModelCall",
+                this::afterModelCall);
+        addCallbackContextAdapter(callbacks, AgentCallbackEvent.BEFORE_TOOL_CALL, "beforeToolCall",
+                this::beforeToolCall);
+        addCallbackContextAdapter(callbacks, AgentCallbackEvent.AFTER_TOOL_CALL, "afterToolCall",
+                this::afterToolCall);
+        callbacks.keySet().retainAll(INNER_CALLBACK_EVENTS);
         return callbacks;
+    }
+
+    private void addCallbackContextAdapter(Map<AgentCallbackEvent, AgentCallback> callbacks,
+                                           AgentCallbackEvent event,
+                                           String methodName,
+                                           Consumer<CallbackContext> hook) {
+        if (callbacks.containsKey(event) || !isCallbackContextOverridden(methodName)) {
+            return;
+        }
+        callbacks.put(event, context -> forward(context, hook));
+    }
+
+    private boolean isCallbackContextOverridden(String methodName) {
+        try {
+            Method method = this.getClass().getMethod(methodName, CallbackContext.class);
+            return method.getDeclaringClass() != DeepAgentRail.class;
+        } catch (NoSuchMethodException ex) {
+            return false;
+        }
     }
 
     private CompletionStage<Void> forward(AgentCallbackContext context, Consumer<CallbackContext> hook) {
@@ -155,54 +194,76 @@ public class DeepAgentRail extends AgentRail {
 
     private static void putInputs(Map<String, Object> values, Object inputs) {
         if (inputs instanceof Map<?, ?> map) {
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (entry.getKey() != null) {
-                    values.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-            }
+            putMapInputs(values, map);
             return;
         }
         if (inputs instanceof ToolCallInputs toolInputs) {
-            values.put("tool_call", toolInputs.getToolCall());
-            values.put("tool_name", toolInputs.getToolName());
-            values.put("tool_args", toolInputs.getToolArgs());
-            values.put("tool_result", toolInputs.getToolResult());
-            values.put("tool_msg", toolInputs.getToolMsg());
+            putToolCallInputs(values, toolInputs);
             return;
         }
         if (inputs instanceof ModelCallInputs modelInputs) {
-            values.put("messages", modelInputs.getMessages());
-            values.put("tools", modelInputs.getTools());
-            values.put("model_context", modelInputs.getModelContext());
-            values.put("response", modelInputs.getResponse());
+            putModelCallInputs(values, modelInputs);
         }
+    }
+
+    private static void putMapInputs(Map<String, Object> values, Map<?, ?> map) {
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null) {
+                values.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+    }
+
+    private static void putToolCallInputs(Map<String, Object> values, ToolCallInputs toolInputs) {
+        values.put("tool_call", toolInputs.getToolCall());
+        values.put("tool_name", toolInputs.getToolName());
+        values.put("tool_args", toolInputs.getToolArgs());
+        values.put("tool_result", toolInputs.getToolResult());
+        values.put("tool_msg", toolInputs.getToolMsg());
+    }
+
+    private static void putModelCallInputs(Map<String, Object> values, ModelCallInputs modelInputs) {
+        values.put("messages", modelInputs.getMessages());
+        values.put("tools", modelInputs.getTools());
+        values.put("model_context", modelInputs.getModelContext());
+        values.put("response", modelInputs.getResponse());
     }
 
     private static void applyCallbackContext(AgentCallbackContext context, CallbackContext callback) {
         if (context == null || callback == null) {
             return;
         }
-        Map<String, Object> extra = context.getExtra();
-        if (extra == null) {
-            extra = new LinkedHashMap<>();
-            context.setExtra(extra);
-            extra = context.getExtra();
-        }
+        Map<String, Object> extra = ensureExtra(context);
         for (Map.Entry<String, Object> entry : callback.getValues().entrySet()) {
             if (entry.getValue() == null || INPUT_KEYS.contains(entry.getKey())) {
                 continue;
             }
             extra.put(entry.getKey(), entry.getValue());
         }
-        if (callback.isRejected()) {
-            extra.put("_skip_tool", Boolean.TRUE);
-            extra.put("rejected", Boolean.TRUE);
-            if (callback.getRejectionMessage() != null) {
-                extra.put("error", callback.getRejectionMessage());
-            }
-        }
+        applyRejection(extra, callback);
         applyToolCallRewrites(context.getInputs(), callback);
         applyForceFinish(context, callback);
+    }
+
+    private static Map<String, Object> ensureExtra(AgentCallbackContext context) {
+        Map<String, Object> extra = context.getExtra();
+        if (extra != null) {
+            return extra;
+        }
+        extra = new LinkedHashMap<>();
+        context.setExtra(extra);
+        return context.getExtra();
+    }
+
+    private static void applyRejection(Map<String, Object> extra, CallbackContext callback) {
+        if (!callback.isRejected()) {
+            return;
+        }
+        extra.put("_skip_tool", Boolean.TRUE);
+        extra.put("rejected", Boolean.TRUE);
+        if (callback.getRejectionMessage() != null) {
+            extra.put("error", callback.getRejectionMessage());
+        }
     }
 
     private static void applyToolCallRewrites(Object inputs, CallbackContext callback) {

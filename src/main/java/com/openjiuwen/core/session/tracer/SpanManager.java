@@ -93,6 +93,19 @@ public class SpanManager {
     public void endSpan() {
     }
 
+    /**
+     * Clear all spans from this manager.
+     *
+     * <p>Called when the owning session is cleaned up to release span
+     * references and prevent accumulation across sessions.</p>
+     *
+     * @since 0.1.15
+     */
+    public void clear() {
+        order.clear();
+        sessionSpans.clear();
+    }
+
     public Span getLastSpan() {
         String[] snapshot = order.toArray(new String[0]);
         if (snapshot.length == 0) {

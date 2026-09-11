@@ -65,13 +65,13 @@ class MockLlmAgentPythonParityTest {
         MemoryRail rail = memoryRail(memory);
         AgentCallbackContext context = contextWithQuery("Hello", "user_001", "conv_mem");
 
-        rail.beforeInvoke(context).toCompletableFuture().join();
+        rail.beforeInvoke(context);
         assertThat(memory.searchUserMemCalled).isTrue();
         assertThat(memory.searchUserMemQuery).isEqualTo("Hello");
         assertThat(memory.searchUserMemUserId).isEqualTo("user_001");
 
         ((InvokeInputs) context.getInputs()).setResult(answerResult("Hello! I remember you."));
-        rail.afterInvoke(context).toCompletableFuture().join();
+        rail.afterInvoke(context);
         assertThat(memory.addMessagesCalled).isTrue();
         assertThat(memory.addedMessages).extracting(BaseMessage::getRole).containsExactly("user", "assistant");
         assertThat(memory.addedMessages).extracting(BaseMessage::getContentAsString)
@@ -86,9 +86,9 @@ class MockLlmAgentPythonParityTest {
         MemoryRail rail = memoryRail(memory);
         AgentCallbackContext context = contextWithQuery("q", "user_001", "conv_mi");
 
-        rail.beforeInvoke(context).toCompletableFuture().join();
+        rail.beforeInvoke(context);
         ((InvokeInputs) context.getInputs()).setResult(Map.of("result_type", "interrupt"));
-        rail.afterInvoke(context).toCompletableFuture().join();
+        rail.afterInvoke(context);
 
         assertThat(memory.searchUserMemCalled).isTrue();
         assertThat(memory.addMessagesCalled).isFalse();

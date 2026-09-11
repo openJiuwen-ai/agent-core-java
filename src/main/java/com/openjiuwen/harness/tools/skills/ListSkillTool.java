@@ -28,7 +28,7 @@ public class ListSkillTool extends AbstractHarnessTool {
     }
 
     public ListSkillTool(Supplier<List<SkillDescriptor>> skillsSupplier, SkillRouter skillRouter) {
-        super(toolCard("list_skill", "ListSkillTool", "List all enabled skills or relevant skills for a task."));
+        super(toolCard("list_skill", "list_skill", "List all enabled skills or relevant skills for a task."));
         this.skillsSupplier = skillsSupplier;
         this.skillRouter = skillRouter;
     }

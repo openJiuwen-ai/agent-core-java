@@ -84,7 +84,7 @@ class ReActAgentPromptBuilderTest {
         Map<String, Object> result = (Map<String, Object>) agent.invoke(
                 Map.of("query", "hello", "conversation_id", "prompt-builder-session"),
                 new com.openjiuwen.core.session.AgentGroupSession("prompt-builder-session")
-        ).toCompletableFuture().join();
+        );
 
         assertThat(result.get("result_type")).isEqualTo("answer");
         assertThat(result.get("output")).isEqualTo("base prompt\n\nbusiness rules");

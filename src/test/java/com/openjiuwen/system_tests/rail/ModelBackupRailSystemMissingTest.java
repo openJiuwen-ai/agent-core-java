@@ -87,9 +87,7 @@ class ModelBackupRailSystemMissingTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invoke(ReActAgent agent, Map<String, Object> inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, new MemorySession("test_session"))
-                .toCompletableFuture()
-                .join();
+        return (Map<String, Object>) agent.invoke(inputs, new MemorySession("test_session"));
     }
 
     private static Map<String, Object> addToolSchema() {

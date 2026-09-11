@@ -431,7 +431,7 @@ public class Trainer {
             Map<String, Object> inputs = new LinkedHashMap<>(caseValue.getInputs());
             inputs.put("conversation_id", caseValue.getCaseId());
             try {
-                Object result = agent.invoke(inputs, session).toCompletableFuture().join();
+                Object result = agent.invoke(inputs, session);
                 return new PredictionAndSession(toPredictionMap(result), session);
             } catch (RuntimeException exception) {
                 return new PredictionAndSession(

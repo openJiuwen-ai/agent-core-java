@@ -98,7 +98,7 @@ class ReActAgentTest {
         ReActAgent agent = agentWithFakeModel(new AssistantMessage("done"));
         MemorySession session = new MemorySession("session-1");
 
-        Object result = agent.invoke(Map.of("query", "hi"), session).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "hi"), session);
 
         assertInstanceOf(Map.class, result);
         assertEquals("done", ((Map<?, ?>) result).get("output"));
@@ -120,9 +120,7 @@ class ReActAgentTest {
         config.setMaxIterations(1);
         agent.configure(config);
 
-        Object result = agent.invoke(Map.of("query", "hi"), new MemorySession("session-2"))
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(Map.of("query", "hi"), new MemorySession("session-2"));
 
         assertInstanceOf(Map.class, result);
         assertEquals("direct", ((Map<?, ?>) result).get("output"));
@@ -229,12 +227,12 @@ class ReActAgentTest {
                 CompletableFuture.completedFuture(Map.of("Authorization", "Bearer consume-secret")));
         AgentRail observerRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+            public void afterModelCall(AgentCallbackContext context) {
                 ModelCallInputs inputs = (ModelCallInputs) context.getInputs();
                 headersAfterCall.set(inputs.getRequestHeaders());
                 extraAfterCall.set(new LinkedHashMap<>(context.getExtra()));
                 responseAfterCall.set(inputs.getResponse());
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         agent.registerRail(headersRail).toCompletableFuture().join();
@@ -287,11 +285,11 @@ class ReActAgentTest {
         });
         AgentRail retryRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+            public void onModelException(AgentCallbackContext context) {
                 if (retryRequested.compareAndSet(false, true)) {
                     context.requestRetry(0);
                 }
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         agent.registerRail(headersRail).toCompletableFuture().join();
@@ -326,20 +324,20 @@ class ReActAgentTest {
         });
         AgentRail retryObserverRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+            public void onModelException(AgentCallbackContext context) {
                 firstAttemptHeadersOnException.set(((ModelCallInputs) context.getInputs()).getRequestHeaders());
                 if (retryRequested.compareAndSet(false, true)) {
                     context.requestRetry(0);
                 }
-                return CompletableFuture.completedFuture(null);
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+            public void afterModelCall(AgentCallbackContext context) {
                 if (context.getRetryAttempt() == 0) {
                     firstAttemptHeadersAfterCall.set(((ModelCallInputs) context.getInputs()).getRequestHeaders());
                 }
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         agent.registerRail(headersRail).toCompletableFuture().join();
@@ -379,28 +377,28 @@ class ReActAgentTest {
         headersRail.setPriority(100);
         AgentRail abortRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 if (abortFirstAttempt.compareAndSet(true, false)) {
                     throw new AbortError("abort first model attempt");
                 }
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         abortRail.setPriority(50);
         AgentRail retryObserverRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+            public void onModelException(AgentCallbackContext context) {
                 exceptionHeaders.add(((ModelCallInputs) context.getInputs()).getRequestHeaders());
                 if (retryRequested.compareAndSet(false, true)) {
                     context.requestRetry(0);
                 }
-                return CompletableFuture.completedFuture(null);
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+            public void afterModelCall(AgentCallbackContext context) {
                 afterHeaders.add(((ModelCallInputs) context.getInputs()).getRequestHeaders());
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         retryObserverRail.setPriority(10);

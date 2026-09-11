@@ -99,9 +99,9 @@ class BaseAgentInstanceRailTest {
         }
 
         @Override
-        public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+        public void beforeInvoke(AgentCallbackContext context) {
             calls.add(marker);
-            return CompletableFuture.completedFuture(null);
+            return;
         }
     }
 }

@@ -102,7 +102,7 @@ class SupervisorAgentTest {
                 .containsEntry("delegate_a", first)
                 .containsEntry("delegate_b", second);
 
-        ReActAgentConfig config = supervisor.getConfig();
+        ReActAgentConfig config = (ReActAgentConfig) supervisor.getConfig();
         assertThat(config.getModelClientConfig()).isSameAs(clientConfig);
         assertThat(config.getModelConfigObj()).isSameAs(requestConfig);
         assertThat(config.getModelProvider()).isEqualTo("OpenAI");

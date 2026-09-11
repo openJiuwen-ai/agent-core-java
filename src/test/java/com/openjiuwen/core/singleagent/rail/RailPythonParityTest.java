@@ -312,7 +312,7 @@ class RailPythonParityTest {
         agent.registerRail(rail).toCompletableFuture().join();
 
         assertThrows(CompletionException.class,
-                () -> agent.invoke(Map.of("query", "test"), null).toCompletableFuture().join());
+                () -> agent.invoke(Map.of("query", "test"), null));
 
         assertThat(rail.events).contains("before_invoke", "after_invoke");
     }
@@ -322,7 +322,7 @@ class RailPythonParityTest {
         LogRail rail = new LogRail();
         agent.registerRail(rail).toCompletableFuture().join();
 
-        Object result = agent.invoke(Map.of("query", "hello"), null).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "hello"), null);
 
         assertThat(result).isEqualTo(mapOf("result_type", "answer", "output", "ok"));
         assertThat(rail.events).contains("before_invoke", "after_invoke");
@@ -346,9 +346,9 @@ class RailPythonParityTest {
         List<List<Object>> seenMessages = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 seenMessages.add(((ModelCallInputs) context.getInputs()).getMessages());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         ModelCallInputs inputs = new ModelCallInputs();
@@ -370,9 +370,9 @@ class RailPythonParityTest {
         List<Object> captured = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+            public void afterInvoke(AgentCallbackContext context) {
                 captured.add(context.getInputs());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         InvokeInputs inputs = new InvokeInputs();
@@ -392,9 +392,9 @@ class RailPythonParityTest {
         List<Object> captured = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+            public void beforeInvoke(AgentCallbackContext context) {
                 captured.add(context.getInputs());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         InvokeInputs inputs = new InvokeInputs();
@@ -410,11 +410,11 @@ class RailPythonParityTest {
         TestAgent agent = newAgent();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 ModelCallInputs inputs = (ModelCallInputs) context.getInputs();
                 ((BaseMessage) inputs.getMessages().get(0)).setContent("preview only");
                 context.getExtra().put("builder_final", "builder final");
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         ModelCallInputs inputs = new ModelCallInputs();
@@ -432,9 +432,9 @@ class RailPythonParityTest {
         List<Object> captured = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 captured.add(context.getInputs());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         ModelCallInputs inputs = new ModelCallInputs();
@@ -454,15 +454,15 @@ class RailPythonParityTest {
         List<Object> capturedResult = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+            public void beforeToolCall(AgentCallbackContext context) {
                 ((ToolCallInputs) context.getInputs()).setToolArgs("{\"a\":2,\"b\":5}");
-                return completed();
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+            public void afterToolCall(AgentCallbackContext context) {
                 capturedResult.add(((ToolCallInputs) context.getInputs()).getToolResult());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         ToolCallInputs inputs = toolInputs("mock_call_add", "add", "{\"a\":1,\"b\":1}");
@@ -480,9 +480,9 @@ class RailPythonParityTest {
         List<Object> captured = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+            public void beforeToolCall(AgentCallbackContext context) {
                 captured.add(context.getInputs());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         ToolCallInputs inputs = toolInputs("mock_call_add", "add", "{\"a\":1,\"b\":2}");
@@ -501,15 +501,15 @@ class RailPythonParityTest {
         List<Map.Entry<String, Object>> afterCalls = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+            public void beforeToolCall(AgentCallbackContext context) {
                 beforeCalls.add(toolCallId(context));
-                return completed();
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+            public void afterToolCall(AgentCallbackContext context) {
                 afterCalls.add(Map.entry(toolCallId(context), ((ToolCallInputs) context.getInputs()).getToolResult()));
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
 
@@ -538,9 +538,9 @@ class RailPythonParityTest {
         List<String> failedCalls = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> onToolException(AgentCallbackContext context) {
+            public void onToolException(AgentCallbackContext context) {
                 failedCalls.add(toolCallId(context));
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         context(agent, toolInputs("mock_call_ok", "add", "{\"a\":1,\"b\":2}"))
@@ -628,15 +628,15 @@ class RailPythonParityTest {
         List<Map<String, Object>> captured = new ArrayList<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 context.requestForceFinish(expected);
-                return completed();
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+            public void afterInvoke(AgentCallbackContext context) {
                 captured.add(((InvokeInputs) context.getInputs()).getResult());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         InvokeInputs invokeInputs = new InvokeInputs();
@@ -694,7 +694,7 @@ class RailPythonParityTest {
         context.setInputs(inputs);
         context.getExtra().put("user_id", "user_001");
 
-        rail.beforeInvoke(context).toCompletableFuture().join();
+        rail.beforeInvoke(context);
         Map<String, Object> variables = (Map<String, Object>) context.getExtra().get("memory_variables");
         List<BaseMessage> firstPrompt = renderMemoryPrompt(variables);
         List<BaseMessage> secondPrompt = renderMemoryPrompt(variables);
@@ -795,7 +795,7 @@ class RailPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             CompletableFuture<Object> future = new CompletableFuture<>();
             InvokeInputs invokeInputs = new InvokeInputs();
             if (inputs instanceof Map<?, ?> map && map.containsKey("query")) {
@@ -818,7 +818,7 @@ class RailPythonParityTest {
             } finally {
                 context.fire(AgentCallbackEvent.AFTER_INVOKE);
             }
-            return future;
+            return future.join();
         }
 
         @Override
@@ -831,51 +831,51 @@ class RailPythonParityTest {
         private final List<String> events = new ArrayList<>();
 
         @Override
-        public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+        public void beforeInvoke(AgentCallbackContext context) {
             events.add("before_invoke");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+        public void afterInvoke(AgentCallbackContext context) {
             events.add("after_invoke");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+        public void beforeModelCall(AgentCallbackContext context) {
             events.add("before_model_call");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+        public void afterModelCall(AgentCallbackContext context) {
             events.add("after_model_call");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+        public void onModelException(AgentCallbackContext context) {
             events.add("on_model_exception");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+        public void beforeToolCall(AgentCallbackContext context) {
             events.add("before_tool_call");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+        public void afterToolCall(AgentCallbackContext context) {
             events.add("after_tool_call");
-            return completed();
+            return;
         }
 
         @Override
-        public CompletionStage<Void> onToolException(AgentCallbackContext context) {
+        public void onToolException(AgentCallbackContext context) {
             events.add("on_tool_exception");
-            return completed();
+            return;
         }
     }
 
@@ -890,17 +890,17 @@ class RailPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+        public void beforeInvoke(AgentCallbackContext context) {
             order.add(name);
-            return completed();
+            return;
         }
     }
 
     private static final class ExtraWriterRail extends AgentRail {
         @Override
-        public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+        public void beforeInvoke(AgentCallbackContext context) {
             context.getExtra().put("writer_was_here", true);
-            return completed();
+            return;
         }
     }
 
@@ -908,9 +908,9 @@ class RailPythonParityTest {
         private boolean sawWriter;
 
         @Override
-        public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+        public void beforeModelCall(AgentCallbackContext context) {
             sawWriter = Boolean.TRUE.equals(context.getExtra().get("writer_was_here"));
-            return completed();
+            return;
         }
     }
 

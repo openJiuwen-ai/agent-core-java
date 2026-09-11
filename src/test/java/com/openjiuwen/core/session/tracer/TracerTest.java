@@ -91,4 +91,26 @@ class TracerTest {
 
         assertNull(tracer.getWorkflowSpan("invoke-unknown", ""));
     }
+
+    @Test
+    void clearReleasesAgentAndWorkflowSpans() {
+        Tracer tracer = new Tracer();
+        tracer.init(null);
+        tracer.registerWorkflowSpanManager("parent-node");
+        tracer.getTracerAgentSpanManager().createAgentSpan();
+        tracer.trigger(TracerHandlerName.TRACER_WORKFLOW.getValue(), "on_invoke", Map.of(
+                "invoke_id", "invoke-clear",
+                "parent_node_id", "parent-node",
+                "on_invoke_data", Map.of("chunk", "payload")
+        ));
+
+        assertNotNull(tracer.getWorkflowSpan("invoke-clear", "parent-node"));
+        assertNotNull(tracer.getTracerAgentSpanManager().getLastSpan());
+
+        tracer.clear();
+
+        assertTrue(tracer.getTracerWorkflowSpanManagerDict().isEmpty());
+        assertNull(tracer.getTracerAgentSpanManager().getLastSpan());
+        assertNull(tracer.getWorkflowSpan("invoke-clear", "parent-node"));
+    }
 }

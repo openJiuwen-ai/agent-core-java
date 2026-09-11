@@ -41,9 +41,7 @@ class ReActAgentStreamingMissingTest {
         ReActAgent agent = agentWithModel("agent_stream_llm_output", modelClient);
         MemorySession session = new MemorySession("sess_stream_001");
 
-        Object result = agent.invoke(Map.of("query", "hi"), session, Map.of("_streaming", true))
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(Map.of("query", "hi"), session, Map.of("_streaming", true));
 
         Map<String, Object> resultMap = assertMap(result);
         assertThat(resultMap).containsEntry("result_type", "answer");
@@ -73,9 +71,7 @@ class ReActAgentStreamingMissingTest {
         );
         ReActAgent agent = agentWithModel("agent_no_session", modelClient);
 
-        Object result = agent.invoke(Map.of("query", "hello"), null)
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(Map.of("query", "hello"), null);
 
         Map<String, Object> resultMap = assertMap(result);
         assertThat(resultMap).containsEntry("result_type", "answer");

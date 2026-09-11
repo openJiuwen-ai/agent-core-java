@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -27,6 +29,7 @@ public class TaskLoopController extends Controller {
     public static final String DEFAULT_SESSION_ID = "default";
 
     private final LoopQueues interactionQueues = new LoopQueues();
+    private final ConcurrentMap<String, LoopQueues> sessionStates = new ConcurrentHashMap<>();
     private CompletableFuture<Map<String, Object>> roundCompletion = new CompletableFuture<>();
 
     public LoopQueues getInteractionQueues() {
@@ -86,6 +89,7 @@ public class TaskLoopController extends Controller {
      * @return list of steering messages
      */
     public List<String> drainSteering(String sessionId) {
+        trackSession(sessionId);
         return drainSteering();
     }
 
@@ -96,17 +100,45 @@ public class TaskLoopController extends Controller {
      * @return list of follow-up messages
      */
     public List<String> drainFollowUp(String sessionId) {
+        trackSession(sessionId);
         return drainFollowUp();
     }
 
     /**
      * Get interaction queues for a given session.
      *
-     * @param sessionId the session id (ignored in this implementation)
+     * <p>Non-default sessions are tracked so {@link #clearSession} / {@link #clearAllSessions}
+     * can drop them. Queue contents stay on the shared default queues so the
+     * event handler wiring is unchanged.</p>
+     *
+     * @param sessionId the session id
      * @return the interaction queues
      */
     public LoopQueues getInteractionQueues(String sessionId) {
+        trackSession(sessionId);
         return getInteractionQueues();
+    }
+
+    /**
+     * Drop per-session tracking for a non-default session.
+     *
+     * @param sessionId session id
+     * @since 0.1.15
+     */
+    public void clearSession(String sessionId) {
+        if (sessionId == null || DEFAULT_SESSION_ID.equals(sessionId)) {
+            return;
+        }
+        sessionStates.remove(sessionId);
+    }
+
+    /**
+     * Drop every tracked session except the default one.
+     *
+     * @since 0.1.15
+     */
+    public void clearAllSessions() {
+        sessionStates.keySet().removeIf(id -> !DEFAULT_SESSION_ID.equals(id));
     }
 
     /**
@@ -132,6 +164,7 @@ public class TaskLoopController extends Controller {
      * @param message   the follow-up message
      */
     public void enqueueFollowUp(String sessionId, String message) {
+        trackSession(sessionId);
         enqueueFollowUp(message);
     }
 
@@ -142,6 +175,7 @@ public class TaskLoopController extends Controller {
      * @param message   the steering message
      */
     public void enqueueSteering(String sessionId, String message) {
+        trackSession(sessionId);
         if (message != null && !message.isBlank()) {
             interactionQueues.pushSteer(message);
         }
@@ -149,5 +183,16 @@ public class TaskLoopController extends Controller {
 
     public boolean hasFollowUp() {
         return interactionQueues.hasFollowUp();
+    }
+
+    private void trackSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank() || DEFAULT_SESSION_ID.equals(sessionId)) {
+            return;
+        }
+        sessionStates.putIfAbsent(sessionId, interactionQueues);
+    }
+
+    int trackedSessionCount() {
+        return sessionStates.size();
     }
 }

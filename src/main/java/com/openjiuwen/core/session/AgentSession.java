@@ -195,6 +195,16 @@ public class AgentSession implements AgentSessionApi {
     }
 
     @Override
+    public boolean isPreRunDone() {
+        return preRunDone;
+    }
+
+    @Override
+    public boolean isPostRunDone() {
+        return postRunDone;
+    }
+
+    @Override
     public void resetPostRunState() {
         this.postRunDone = false;
     }

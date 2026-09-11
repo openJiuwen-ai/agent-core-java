@@ -32,7 +32,7 @@ class SkillEvaluatorSystemPythonParityTest {
         MockReActAgent mockAgent = new MockReActAgent();
         evaluator.setAgent(mockAgent);
 
-        Object result = evaluator.getAgent().invoke(Map.of(), null).toCompletableFuture().join();
+        Object result = evaluator.getAgent().invoke(Map.of(), null);
         MockFs fs = mockAgent.fs();
 
         assertThat(result).isEqualTo("Evaluation complete.");
@@ -81,19 +81,19 @@ class SkillEvaluatorSystemPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             return invoke(inputs, session, Map.of());
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
+        public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
             fs.addFile(
                     SAMPLE_REPORT_FILENAME,
                     "# Skill Evaluation Report\n\n"
                             + "## Summary\nSkill evaluated successfully.\n\n"
                             + "## Score\n9/10\n"
             );
-            return CompletableFuture.completedFuture("Evaluation complete.");
+            return "Evaluation complete.";
         }
     }
 }

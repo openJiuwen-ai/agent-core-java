@@ -40,7 +40,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Configures context-engine processors for a DeepAgent/ReAct agent.
@@ -118,35 +117,30 @@ public class ContextProcessorRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+    public void beforeInvoke(AgentCallbackContext context) {
         fixIncompleteToolContext(context);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+    public void beforeModelCall(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
         maybeInjectOffloadSection(context);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+    public void afterModelCall(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+    public void afterToolCall(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+    public void onModelException(AgentCallbackContext context) {
         refreshTaskStateRuntime(context);
         fixIncompleteToolContext(context);
-        return completed();
     }
 
     public List<ContextEngine.ProcessorSpec> getAllProcessors() {

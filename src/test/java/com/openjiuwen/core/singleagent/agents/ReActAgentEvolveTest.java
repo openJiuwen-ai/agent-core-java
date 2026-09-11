@@ -76,7 +76,7 @@ class ReActAgentEvolveTest {
 
         agent.onLlmParameterUpdated("system_prompt", prompt);
 
-        assertEquals(prompt, agent.getConfig().getPromptTemplate());
+        assertEquals(prompt, reactConfig(agent).getPromptTemplate());
     }
 
     @Test
@@ -86,18 +86,18 @@ class ReActAgentEvolveTest {
         agent.onLlmParameterUpdated("system_prompt", "String prompt");
 
         assertEquals(List.of(Map.of("role", "system", "content", "String prompt")),
-                agent.getConfig().getPromptTemplate());
+                reactConfig(agent).getPromptTemplate());
     }
 
     @Test
     void llmParameterUpdateIgnoresNonSystemPromptTarget() {
         ReActAgentEvolve agent = newAgent("test_agent", "Test agent");
         List<Map<String, Object>> prompt = List.of(Map.of("role", "system", "content", "Original"));
-        agent.getConfig().setPromptTemplate(prompt);
+        reactConfig(agent).setPromptTemplate(prompt);
 
         agent.onLlmParameterUpdated("user_prompt", "ignored");
 
-        assertEquals(prompt, agent.getConfig().getPromptTemplate());
+        assertEquals(prompt, reactConfig(agent).getPromptTemplate());
     }
 
     @Test
@@ -119,6 +119,10 @@ class ReActAgentEvolveTest {
         agent.onToolParameterUpdated("tool_description", "not a dict");
 
         assertTrue(agent.getOperators().containsKey("react_tool"));
+    }
+
+    private static ReActAgentConfig reactConfig(ReActAgentEvolve agent) {
+        return (ReActAgentConfig) agent.getConfig();
     }
 
     private static ReActAgentEvolve newAgent(String name, String description) {

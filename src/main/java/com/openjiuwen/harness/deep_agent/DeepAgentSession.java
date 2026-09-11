@@ -94,6 +94,16 @@ public class DeepAgentSession implements AgentSessionApi {
     }
 
     @Override
+    public boolean isPreRunDone() {
+        return facade.isPreRunDone();
+    }
+
+    @Override
+    public boolean isPostRunDone() {
+        return facade.isPostRunDone();
+    }
+
+    @Override
     public void resetPostRunState() {
         facade.resetPostRunState();
     }

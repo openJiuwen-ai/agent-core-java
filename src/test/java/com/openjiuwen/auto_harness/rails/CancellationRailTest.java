@@ -38,7 +38,7 @@ class CancellationRailTest {
         AgentCallbackContext context = new AgentCallbackContext();
         rail.bind(orchestrator);
 
-        rail.beforeToolCall(context).toCompletableFuture().join();
+        rail.beforeToolCall(context);
 
         assertThat(context.hasForceFinishRequest()).isFalse();
     }
@@ -51,7 +51,7 @@ class CancellationRailTest {
         rail.bind(orchestrator);
         orchestrator.cancel();
 
-        rail.beforeToolCall(context).toCompletableFuture().join();
+        rail.beforeToolCall(context);
 
         assertForceFinishPayload(context);
     }
@@ -64,7 +64,7 @@ class CancellationRailTest {
         rail.bind(orchestrator);
         orchestrator.cancel();
 
-        rail.afterModelCall(context).toCompletableFuture().join();
+        rail.afterModelCall(context);
 
         assertForceFinishPayload(context);
     }

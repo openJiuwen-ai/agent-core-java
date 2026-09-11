@@ -73,7 +73,7 @@ class ControllerAgentTest {
         ControllerAgent agent = new ControllerAgent(card(), controller);
         FakeSession session = new FakeSession("session-1");
 
-        Object result = agent.invoke("hello", session).toCompletableFuture().join();
+        Object result = agent.invoke("hello", session);
 
         assertEquals("invoked", result);
         assertSame(session, controller.session);

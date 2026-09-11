@@ -54,7 +54,7 @@ class ReActAgentSkillToolExecutionTest {
                 .build()).toCompletableFuture().join();
         agent.activateSkill("EchoSkill", session);
 
-        agent.invoke(Map.of("query", "echo"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "echo"), session);
 
         assertThat(echoTool.invokedText).isEqualTo("hello");
     }

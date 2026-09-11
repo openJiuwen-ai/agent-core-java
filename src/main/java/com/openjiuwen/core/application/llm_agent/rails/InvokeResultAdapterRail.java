@@ -16,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletionStage;
 
 /**
  * AFTER_INVOKE rail that converts raw ReActAgent results to legacy LLMAgent output.
@@ -33,12 +32,11 @@ public class InvokeResultAdapterRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+    public void afterInvoke(AgentCallbackContext context) {
         Object rawResult = readResult(context);
         if (rawResult instanceof Map<?, ?> result) {
             context.getExtra().put(INVOKE_RESULT_KEY, convertDictToSchema(result));
         }
-        return completed();
     }
 
     private Object readResult(AgentCallbackContext context) {

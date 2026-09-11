@@ -147,11 +147,11 @@ class ReActAgentInterruptMissingTest {
                             List.of(new AbilityManager.ExecutionResult("workflow completed", toolMessage("c1")))));
             MemorySession session = new MemorySession("sess_resume_001");
 
-            Object first = agent.invoke(Map.of("query", "start"), session).toCompletableFuture().join();
+            Object first = agent.invoke(Map.of("query", "start"), session);
             assertThat(first).isInstanceOf(Map.class);
             assertThat(((Map<?, ?>) first).get("result_type")).isEqualTo("interrupt");
 
-            Object second = agent.invoke(Map.of("query", "user feedback"), session).toCompletableFuture().join();
+            Object second = agent.invoke(Map.of("query", "user feedback"), session);
             assertThat(second).isInstanceOf(Map.class);
             assertThat(((Map<?, ?>) second).get("result_type")).isEqualTo("answer");
             assertThat(((Map<?, ?>) second).get("output")).asString().contains("Resume complete!");
@@ -177,13 +177,13 @@ class ReActAgentInterruptMissingTest {
                                     new AbilityManager.ExecutionResult("wf_b done", toolMessage("c2")))));
             MemorySession session = new MemorySession("sess_multi_001");
 
-            Object first = agent.invoke(Map.of("query", "start"), session).toCompletableFuture().join();
+            Object first = agent.invoke(Map.of("query", "start"), session);
             assertThat(((Map<?, ?>) first).get("result_type")).isEqualTo("interrupt");
 
-            Object second = agent.invoke(Map.of("query", "feedback for c1"), session).toCompletableFuture().join();
+            Object second = agent.invoke(Map.of("query", "feedback for c1"), session);
             assertThat(((Map<?, ?>) second).get("result_type")).isEqualTo("interrupt");
 
-            Object third = agent.invoke(Map.of("query", "feedback for c2"), session).toCompletableFuture().join();
+            Object third = agent.invoke(Map.of("query", "feedback for c2"), session);
             assertThat(((Map<?, ?>) third).get("result_type")).isEqualTo("answer");
             assertThat(((Map<?, ?>) third).get("output")).asString().contains("Both workflows done!");
 

@@ -11,6 +11,7 @@ import com.openjiuwen.core.runner.mq.InvokeQueueMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueInMemory;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
 import com.openjiuwen.core.session.AgentGroupSession;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.BaseAgent;
 
@@ -256,9 +257,14 @@ public abstract class BaseGroupController {
 
         Loggers.MULTI_AGENT.info("BaseGroupController: Streaming message to agent {}", agentId);
 
+        AgentSession childSession = AgentSession.createAgentSession(
+                event.getConversationId(),
+                null,
+                agent.getCard()
+        );
         try {
             List<Object> chunks = new ArrayList<>();
-            Iterator<Object> streamIter = agent.stream(inputs, null, null);
+            Iterator<Object> streamIter = agent.stream(inputs, childSession, null);
             while (streamIter.hasNext()) {
                 Object chunk = streamIter.next();
                 chunks.add(chunk);

@@ -50,32 +50,31 @@ public class EditSafetyRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+    public void beforeToolCall(AgentCallbackContext context) {
         ToolCallInputs inputs = toolInputs(context);
         if (inputs == null || !WRITE_TOOLS.contains(inputs.getToolName())) {
-            return completed();
+            return;
         }
         String filePath = stringValue(normalizeToolArgs(inputs.getToolArgs()).get("file_path"));
         if (filePath.isBlank() || EditScope.isAllowedRepoEditPath(filePath)) {
-            return completed();
+            return;
         }
         String normalized = EditScope.normalizeRepoPath(filePath);
         LOGGER.warning("Blocked out-of-scope write: " + (normalized.isBlank() ? filePath : normalized));
         rejectTool(context, inputs, "Out-of-scope edit blocked. Only `openjiuwen/harness/**`, "
                 + "`openjiuwen/core/**`, `tests/**`, `examples/**`, `docs/en/**`, and `docs/zh/**` "
                 + "may be modified. Rejected path: '" + (normalized.isBlank() ? filePath : normalized) + "'.");
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+    public void afterToolCall(AgentCallbackContext context) {
         ToolCallInputs inputs = toolInputs(context);
         if (inputs == null || !WRITE_TOOLS.contains(inputs.getToolName())) {
-            return completed();
+            return;
         }
         String filePath = stringValue(normalizeToolArgs(inputs.getToolArgs()).get("file_path"));
         if (filePath.isBlank()) {
-            return completed();
+            return;
         }
         String normalized = EditScope.normalizeRepoPath(filePath);
         editedFiles.add(normalized.isBlank() ? filePath : normalized);
@@ -85,17 +84,21 @@ public class EditSafetyRail extends AgentRail {
                     + " files (limit is " + maxFiles + "). Keep changes minimal and focused.");
         }
         if (!filePath.endsWith(".py")) {
-            return completed();
+            return;
         }
         context.getExtra().put("ruff_checked_path", filePath);
-        return ruffChecker.check(filePath).thenAccept(result -> {
-            if (!result.available() || result.returnCode() == 0 || result.output().isBlank()) {
-                return;
-            }
-            LOGGER.info("ruff check failed for " + filePath);
-            context.pushSteering("ruff check found issues in '" + filePath + "':\n"
-                    + result.output() + "\nPlease fix these issues.");
-        });
+        ruffChecker.check(filePath).thenAccept(result -> applyRuffSteering(context, filePath, result))
+                .toCompletableFuture()
+                .join();
+    }
+
+    private static void applyRuffSteering(AgentCallbackContext context, String filePath, RuffResult result) {
+        if (!result.available() || result.returnCode() == 0 || result.output().isBlank()) {
+            return;
+        }
+        LOGGER.info("ruff check failed for " + filePath);
+        context.pushSteering("ruff check found issues in '" + filePath + "':\n"
+                + result.output() + "\nPlease fix these issues.");
     }
 
     public void reset() {

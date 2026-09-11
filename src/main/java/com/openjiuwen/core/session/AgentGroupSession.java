@@ -52,6 +52,41 @@ public class AgentGroupSession implements AgentSessionApi {
     }
 
     @Override
+    public void markPreRunDone() {
+        inner.markPreRunDone();
+    }
+
+    @Override
+    public void markPostRunDone() {
+        inner.markPostRunDone();
+    }
+
+    @Override
+    public boolean isPreRunDone() {
+        return inner.isPreRunDone();
+    }
+
+    @Override
+    public boolean isPostRunDone() {
+        return inner.isPostRunDone();
+    }
+
+    @Override
+    public void copyPreRunState(AgentSessionApi source) {
+        inner.copyPreRunState(source);
+    }
+
+    @Override
+    public void copyRunState(AgentSessionApi source) {
+        inner.copyRunState(source);
+    }
+
+    @Override
+    public void resetPostRunState() {
+        inner.resetPostRunState();
+    }
+
+    @Override
     public void closeStream() {
         inner.closeStream();
     }

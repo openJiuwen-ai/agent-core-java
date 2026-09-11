@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -39,7 +40,7 @@ class BaseAgentReactiveTest {
         RuntimeException invokeError;
         Iterator<Object> streamItems = List.<Object>of().iterator();
         Object capturedInputs;
-        AgentSession capturedSession;
+        AgentSessionApi capturedSession;
         List<StreamMode> capturedStreamModes;
         final AtomicReference<List<StreamMode>> lastStreamModes = new AtomicReference<>();
 
@@ -51,7 +52,7 @@ class BaseAgentReactiveTest {
         @Override public Object getConfig() { return null; }
 
         @Override
-        public Object invoke(Object inputs, AgentSession session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             capturedInputs = inputs;
             capturedSession = session;
             if (invokeError != null) throw invokeError;
@@ -59,7 +60,7 @@ class BaseAgentReactiveTest {
         }
 
         @Override
-        public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
+        public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
             capturedInputs = inputs;
             capturedSession = session;
             capturedStreamModes = streamModes;

@@ -168,8 +168,8 @@ class ObservabilityPythonParityTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(inputs);
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
+        rail.afterTaskIteration(context);
 
         TelemetrySpan span = findSpan(tracer, "deepagent.task_iteration.3");
         assertEquals(3, span.getAttributes().get(ObservabilitySemconv.DA_TASK_ITERATION));
@@ -187,8 +187,8 @@ class ObservabilityPythonParityTest {
         context.setInputs(inputs);
         context.setException(new ValueError("kaboom"));
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
+        rail.afterTaskIteration(context);
 
         TelemetrySpan span = findSpan(tracer, "deepagent.task_iteration.1");
         assertEquals(TelemetrySpan.StatusCode.ERROR, span.getStatusCode());

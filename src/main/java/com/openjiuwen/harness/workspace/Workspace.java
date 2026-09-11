@@ -60,6 +60,15 @@ public class Workspace {
         supplementMissingDefaults();
     }
 
+    /**
+     * Returns a builder for {@link Workspace}.
+     *
+     * @return a new builder
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public String getRootPath() {
         return rootPath;
     }
@@ -438,5 +447,44 @@ public class Workspace {
 
     private static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    /**
+     * Fluent builder matching the 930 Lombok {@code Workspace.builder()} surface.
+     */
+    public static final class Builder {
+        private String rootPath = "./";
+        private String language = "cn";
+
+        /**
+         * Sets the workspace root path.
+         *
+         * @param rootPath workspace root
+         * @return this builder
+         */
+        public Builder rootPath(String rootPath) {
+            this.rootPath = rootPath;
+            return this;
+        }
+
+        /**
+         * Sets the workspace language.
+         *
+         * @param language language code
+         * @return this builder
+         */
+        public Builder language(String language) {
+            this.language = language;
+            return this;
+        }
+
+        /**
+         * Builds a workspace from the collected fields.
+         *
+         * @return a new workspace
+         */
+        public Workspace build() {
+            return new Workspace(rootPath, language);
+        }
     }
 }

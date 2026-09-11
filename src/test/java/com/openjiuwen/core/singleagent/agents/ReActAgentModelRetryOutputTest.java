@@ -102,7 +102,7 @@ class ReActAgentModelRetryOutputTest {
         ReActAgent agent = agentWith(client);
         MemorySession session = new MemorySession("invoke-session");
 
-        Object result = agent.invoke(Map.of("query", "hello"), session).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "hello"), session);
 
         assertThat(client.invokeRetryListener).isNull();
         assertThat(result).isInstanceOf(Map.class);

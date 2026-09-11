@@ -22,7 +22,7 @@ public class ModelRequestHeadersRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+    public void beforeModelCall(AgentCallbackContext context) {
         if (context == null || !(context.getInputs() instanceof ModelCallInputs inputs)) {
             throw abort("Invalid model call inputs");
         }
@@ -61,7 +61,6 @@ public class ModelRequestHeadersRail extends AgentRail {
         } catch (RuntimeException exception) {
             throw abort("Request headers merge failed");
         }
-        return completed();
     }
 
     private static Map<String, String> copyAndValidateHeaders(Map<?, ?> headers) {

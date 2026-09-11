@@ -57,7 +57,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable<Object, Object
     @Override
     public Object invoke(Object inputs, BaseSession session, ModelContext context) {
         try {
-            return reactAgent.invoke(inputs, adaptSession(session)).toCompletableFuture().join();
+            return reactAgent.invoke(inputs, adaptSession(session));
         } catch (RuntimeException exception) {
             return executionError(exception);
         }

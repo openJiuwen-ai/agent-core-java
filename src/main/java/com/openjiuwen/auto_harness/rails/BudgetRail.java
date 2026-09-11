@@ -11,7 +11,6 @@ import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 
 import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.logging.Logger;
 
 /**
@@ -32,22 +31,21 @@ public class BudgetRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+    public void beforeToolCall(AgentCallbackContext context) {
         if (budget.isShouldStop()) {
             LOGGER.warning("Session budget exceeded");
             context.requestForceFinish(Map.of("reason", "Session budget exceeded"));
         }
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+    public void afterModelCall(AgentCallbackContext context) {
         if (!(context.getInputs() instanceof ModelCallInputs inputs) || inputs.getResponse() == null) {
-            return completed();
+            return;
         }
         Object usage = readProperty(inputs.getResponse(), "usage");
         if (usage == null) {
-            return completed();
+            return;
         }
         double inputTokens = readNumber(usage, "input_tokens", "inputTokens");
         double outputTokens = readNumber(usage, "output_tokens", "outputTokens");
@@ -60,21 +58,18 @@ public class BudgetRail extends AgentRail {
             LOGGER.warning("Cost budget exceeded");
             context.requestForceFinish(Map.of("reason", "Cost budget exceeded"));
         }
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> beforeTaskIteration(AgentCallbackContext context) {
+    public void beforeTaskIteration(AgentCallbackContext context) {
         LOGGER.info("CI gate rail: iteration starting");
         context.getExtra().put("ci_gate_iteration_started", true);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterTaskIteration(AgentCallbackContext context) {
+    public void afterTaskIteration(AgentCallbackContext context) {
         LOGGER.info("CI gate rail: iteration complete");
         context.getExtra().put("ci_gate_iteration_complete", true);
-        return completed();
     }
 
     private static double readNumber(Object target, String snakeName, String camelName) {

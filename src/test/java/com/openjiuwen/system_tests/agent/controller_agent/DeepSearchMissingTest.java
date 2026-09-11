@@ -85,10 +85,8 @@ class DeepSearchMissingTest {
         AgentSession session = new AgentSession("example_deepsearch", null, agent.getCard());
 
         ControllerOutput result = (ControllerOutput) agent.invoke(
-                        "甯垜鏌ユ壘鑺墖鐩稿叧鐮旂┒璁烘枃",
-                        session)
-                .toCompletableFuture()
-                .get(15, TimeUnit.SECONDS);
+                "甯垜鏌ユ壘鑺墖鐩稿叧鐮旂┒璁烘枃",
+                session);
         String fullOutput = collectText(result.getData());
 
         assertDeepSearchStages(fullOutput);

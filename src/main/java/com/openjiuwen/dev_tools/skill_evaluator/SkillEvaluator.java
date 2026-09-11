@@ -214,7 +214,7 @@ public class SkillEvaluator {
         if (Files.exists(resolvedDir)) {
             await(subAgent.registerSkill(resolvedDir.toString()));
         }
-        Object result = await(subAgent.invoke(userPrompt, (AgentSessionApi) null));
+        Object result = subAgent.invoke(userPrompt, (AgentSessionApi) null);
         return result == null ? null : String.valueOf(result);
     }
 

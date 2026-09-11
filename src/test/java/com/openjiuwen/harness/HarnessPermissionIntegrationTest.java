@@ -3,6 +3,7 @@ package com.openjiuwen.harness;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
+import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -48,6 +49,7 @@ class HarnessPermissionIntegrationTest {
 
         assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
+        assertThat(innerAgentHasPermissionRail(agent)).isTrue();
     }
 
     @Test
@@ -66,5 +68,18 @@ class HarnessPermissionIntegrationTest {
         assertThat(agent.isInitialized()).isTrue();
         assertThat(agent.getRails().stream().map(item -> item.getClass().getSimpleName()).toList())
                 .contains("SecurityRail", "PermissionInterruptRail");
+        assertThat(innerAgentHasPermissionRail(agent)).isTrue();
+    }
+
+    private static boolean innerAgentHasPermissionRail(DeepAgent agent) {
+        PermissionInterruptRail permissionRail = agent.getRails().stream()
+                .filter(PermissionInterruptRail.class::isInstance)
+                .map(PermissionInterruptRail.class::cast)
+                .findFirst()
+                .orElse(null);
+        if (permissionRail == null || agent.getAgent() == null) {
+            return false;
+        }
+        return agent.getAgent().getAgentCallbackManager().isRailRegistered(permissionRail);
     }
 }

@@ -13,6 +13,7 @@ import com.openjiuwen.auto_harness.rails.EditSafetyRail;
 import com.openjiuwen.auto_harness.rails.SecurityRail;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.AutoHarnessConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
@@ -42,7 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -636,59 +637,118 @@ public final class AutoHarnessAgentFactory {
         }
 
         @Override
+        public void init(DeepAgent agent) {
+            super.init(agent);
+            BaseAgent host = delegateHost(agent);
+            if (host != null) {
+                delegate.init(host);
+                return;
+            }
+            delegate.init((Object) agent);
+        }
+
+        @Override
+        public void uninit(DeepAgent agent) {
+            super.uninit(agent);
+            BaseAgent host = delegateHost(agent);
+            if (host != null) {
+                delegate.uninit(host);
+                return;
+            }
+            delegate.uninit((Object) agent);
+        }
+
+        @Override
         public void beforeInvoke(CallbackContext ctx) {
-            run(delegate.beforeInvoke(agentContext(ctx)), ctx);
+            forward(delegate::beforeInvoke, ctx);
         }
 
         @Override
         public void afterInvoke(CallbackContext ctx) {
-            run(delegate.afterInvoke(agentContext(ctx)), ctx);
+            forward(delegate::afterInvoke, ctx);
         }
 
         @Override
         public void beforeModelCall(CallbackContext ctx) {
-            run(delegate.beforeModelCall(agentContext(ctx)), ctx);
+            forward(delegate::beforeModelCall, ctx);
         }
 
         @Override
         public void afterModelCall(CallbackContext ctx) {
-            run(delegate.afterModelCall(agentContext(ctx)), ctx);
+            forward(delegate::afterModelCall, ctx);
         }
 
         @Override
         public void beforeToolCall(CallbackContext ctx) {
-            run(delegate.beforeToolCall(agentContext(ctx)), ctx);
+            forward(delegate::beforeToolCall, ctx);
         }
 
         @Override
         public void afterToolCall(CallbackContext ctx) {
-            run(delegate.afterToolCall(agentContext(ctx)), ctx);
+            forward(delegate::afterToolCall, ctx);
         }
 
         @Override
         public void beforeTaskIteration(CallbackContext ctx) {
-            run(delegate.beforeTaskIteration(agentContext(ctx)), ctx);
+            forward(delegate::beforeTaskIteration, ctx);
         }
 
         @Override
         public void afterTaskIteration(CallbackContext ctx) {
-            run(delegate.afterTaskIteration(agentContext(ctx)), ctx);
+            forward(delegate::afterTaskIteration, ctx);
         }
 
-        private static AgentCallbackContext agentContext(CallbackContext ctx) {
-            AgentCallbackContext bridged = new AgentCallbackContext();
-            bridged.setInputs(ctx == null ? Map.of() : ctx.getValues());
-            bridged.setExtra(ctx == null ? Map.of() : ctx.getValues());
-            return bridged;
+        @Override
+        public void beforeModelCall(AgentCallbackContext context) {
+            delegate.beforeModelCall(context);
         }
 
-        private static void run(CompletionStage<Void> stage, CallbackContext ctx) {
-            if (stage != null) {
-                stage.toCompletableFuture().join();
-            }
+        @Override
+        public void afterModelCall(AgentCallbackContext context) {
+            delegate.afterModelCall(context);
+        }
+
+        @Override
+        public void beforeToolCall(AgentCallbackContext context) {
+            delegate.beforeToolCall(context);
+        }
+
+        @Override
+        public void afterToolCall(AgentCallbackContext context) {
+            delegate.afterToolCall(context);
+        }
+
+        @Override
+        public void onModelException(AgentCallbackContext context) {
+            delegate.onModelException(context);
+        }
+
+        @Override
+        public void onToolException(AgentCallbackContext context) {
+            delegate.onToolException(context);
+        }
+
+        private void forward(Consumer<AgentCallbackContext> hook, CallbackContext ctx) {
+            hook.accept(agentContext(ctx));
             if (ctx != null) {
                 ctx.getValues().put("agent_rail_bridge", true);
             }
+        }
+
+        private static AgentCallbackContext agentContext(CallbackContext ctx) {
+            Map<String, Object> values = ctx == null ? new LinkedHashMap<>() : ctx.getValues();
+            AgentCallbackContext bridged = new AgentCallbackContext();
+            bridged.setInputs(values);
+            bridged.setExtra(values);
+            return bridged;
+        }
+
+        private static BaseAgent delegateHost(DeepAgent agent) {
+            if (agent == null) {
+                return null;
+            }
+            Object react = agent.reactAgent();
+            return react instanceof BaseAgent host ? host : null;
         }
     }
 }

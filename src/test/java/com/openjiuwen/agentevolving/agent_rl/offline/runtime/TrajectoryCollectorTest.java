@@ -105,7 +105,7 @@ class TrajectoryCollectorTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             invokedSession = session;
             registeredRail.getTrajectoryStore().save(trajectory("traj-1"), null);
             registeredRail.getTrajectoryStore().save(trajectory("traj-2"), null);
@@ -114,7 +114,7 @@ class TrajectoryCollectorTest {
                 failed.completeExceptionally(new IllegalStateException("boom"));
                 return failed;
             }
-            return CompletableFuture.completedFuture("ok");
+            return "ok";
         }
 
         @Override

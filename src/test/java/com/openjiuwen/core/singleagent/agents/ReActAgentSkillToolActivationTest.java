@@ -72,9 +72,7 @@ class ReActAgentSkillToolActivationTest {
                     .tools(List.of(tool("echoTool")))
                     .build()).toCompletableFuture().join();
 
-            Object result = agent.invoke(Map.of("query", "use skill"), new MemorySession("session-1"))
-                    .toCompletableFuture()
-                    .join();
+            Object result = agent.invoke(Map.of("query", "use skill"), new MemorySession("session-1"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
                     List.of("read_file"),
@@ -124,9 +122,7 @@ class ReActAgentSkillToolActivationTest {
                     .tools(List.of(tool("hiddenTool")))
                     .build()).toCompletableFuture().join();
 
-            Object result = agent.invoke(Map.of("query", "try hidden skill"), new MemorySession("session-failed-read"))
-                    .toCompletableFuture()
-                    .join();
+            Object result = agent.invoke(Map.of("query", "try hidden skill"), new MemorySession("session-failed-read"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
                     List.of("read_file"),
@@ -173,9 +169,7 @@ class ReActAgentSkillToolActivationTest {
                     .tools(List.of(tool("pathlessTool")))
                     .build()).toCompletableFuture().join();
 
-            Object result = agent.invoke(Map.of("query", "try pathless skill"), new MemorySession("session-pathless"))
-                    .toCompletableFuture()
-                    .join();
+            Object result = agent.invoke(Map.of("query", "try pathless skill"), new MemorySession("session-pathless"));
 
             assertThat(agent.toolNamesPerCall).containsExactly(
                     List.of("read_file"),

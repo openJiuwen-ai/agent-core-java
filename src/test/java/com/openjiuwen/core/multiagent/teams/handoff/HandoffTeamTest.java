@@ -134,10 +134,10 @@ class HandoffTeamTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             this.lastInput = inputs;
             this.lastSessionId = session == null ? "" : session.getSessionId();
-            return CompletableFuture.completedFuture(result);
+            return result;
         }
 
         @Override
@@ -165,7 +165,7 @@ class HandoffTeamTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             return new CompletableFuture<>();
         }
 

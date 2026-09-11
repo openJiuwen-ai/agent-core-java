@@ -15,7 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,9 +33,8 @@ class ModelRequestHeadersRailTest {
         ModelRequestHeadersRail rail = new ModelRequestHeadersRail(context ->
                 CompletableFuture.completedFuture(Map.of("Authorization", "custom-token")));
 
-        CompletionStage<Void> result = rail.beforeModelCall(contextWith(inputs));
+        rail.beforeModelCall(contextWith(inputs));
 
-        assertThat(result.toCompletableFuture()).isCompleted();
         assertThat(inputs.getRequestHeaders()).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "X-Trace-Id", "trace-1",
                 "Authorization", "custom-token"
@@ -54,13 +52,13 @@ class ModelRequestHeadersRailTest {
         });
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<CompletionStage<Void>> invocation = executor.submit(() -> rail.beforeModelCall(contextWith(inputs)));
+            Future<?> invocation = executor.submit(() -> rail.beforeModelCall(contextWith(inputs)));
             assertThat(providerCalled.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(invocation).isNotDone();
 
             providedHeaders.complete(Map.of("Authorization", "async-token"));
 
-            assertThat(invocation.get(5, TimeUnit.SECONDS).toCompletableFuture()).isCompleted();
+            invocation.get(5, TimeUnit.SECONDS);
             assertThat(inputs.getRequestHeaders()).containsEntry("Authorization", "async-token");
         } finally {
             executor.shutdownNow();

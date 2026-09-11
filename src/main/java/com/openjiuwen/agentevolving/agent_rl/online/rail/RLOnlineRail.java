@@ -92,17 +92,16 @@ public class RLOnlineRail extends EvolutionRail {
         }
     }
 
-    public CompletionStage<Void> beforeInvoke(AgentCallbackContext ctx) {
+    public void beforeInvoke(AgentCallbackContext ctx) {
         if (ctx != null && ctx.getInputs() instanceof InvokeInputs inputs) {
             ensureBuilder(ctx, inputs);
         }
         onBeforeInvoke(ctx);
-        return CompletableFuture.completedFuture(null);
     }
 
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext ctx) {
+    public void afterModelCall(AgentCallbackContext ctx) {
         if (builder == null || ctx == null || !(ctx.getInputs() instanceof ModelCallInputs inputs)) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
         Object response = inputs.getResponse();
         SplitResponse splitResponse = splitResponseTokenFields(response);
@@ -122,7 +121,6 @@ public class RLOnlineRail extends EvolutionRail {
                 .build();
         builder.recordStep(step);
         onAfterModelCall(ctx);
-        return CompletableFuture.completedFuture(null);
     }
 
     /**
@@ -163,21 +161,20 @@ public class RLOnlineRail extends EvolutionRail {
         lastStep.getMeta().put("tenant_id", tenantId);
     }
 
-    public CompletionStage<Void> onModelException(AgentCallbackContext ctx) {
+    public void onModelException(AgentCallbackContext ctx) {
         if (builder != null) {
             builder.getMeta().put("status", "invoke_error");
             builder.getMeta().put("exception", ctx != null ? String.valueOf(ctx.getException()) : "null");
         }
-        return CompletableFuture.completedFuture(null);
     }
 
-    public CompletionStage<Void> afterInvoke(AgentCallbackContext ctx) {
+    public void afterInvoke(AgentCallbackContext ctx) {
         if (builder == null) {
-            return CompletableFuture.completedFuture(null);
+            return;
         }
         Trajectory trajectory = builder.build();
         resetTrajectoryBuilder();
-        return runEvolution(trajectory, ctx, null);
+        runEvolution(trajectory, ctx, null).toCompletableFuture().join();
     }
 
     public CompletionStage<Void> safeRunEvolution(Map<String, Object> snapshot) {

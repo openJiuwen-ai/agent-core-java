@@ -27,9 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -226,7 +224,7 @@ class ContainerAgentPythonParityTest {
     private static void returnsEmptyForNonHandoffRequest() {
         TestableContainerAgent agent = agentWithResult(Map.of());
 
-        Object result = agent.invoke("not a request", null).toCompletableFuture().join();
+        Object result = agent.invoke("not a request", null);
 
         assertThat(result).isEqualTo(Map.of());
     }
@@ -249,7 +247,7 @@ class ContainerAgentPythonParityTest {
                 ignored -> coordinator
         );
 
-        agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null).toCompletableFuture().join();
+        agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null);
 
         assertThat(coordinator.doneFuture().join()).isEqualTo(Map.of("answer", "done"));
     }
@@ -264,9 +262,7 @@ class ContainerAgentPythonParityTest {
                 ignored -> coordinator
         );
 
-        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null)
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null);
 
         assertThat(result).isEqualTo(Map.of());
     }
@@ -281,9 +277,7 @@ class ContainerAgentPythonParityTest {
                 ignored -> coordinator
         );
 
-        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null)
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null);
 
         assertThat(result).isEqualTo(Map.of());
         assertThatThrownBy(() -> coordinator.doneFuture().join())
@@ -383,11 +377,11 @@ class ContainerAgentPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             if (result instanceof RuntimeException runtimeException) {
-                return CompletableFuture.failedFuture(runtimeException);
+                throw runtimeException;
             }
-            return CompletableFuture.completedFuture(result);
+            return result;
         }
 
         @Override

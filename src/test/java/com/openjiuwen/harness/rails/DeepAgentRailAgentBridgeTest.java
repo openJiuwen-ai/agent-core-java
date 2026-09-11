@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
@@ -24,12 +25,61 @@ class DeepAgentRailAgentBridgeTest {
 
     @Test
     void deepAgentRailIsAgentRail() {
-        assertThat(new DeepAgentRail()).isInstanceOf(AgentRail.class);
+        assertThat(new DeepAgentRail() {
+        }).isInstanceOf(AgentRail.class);
+    }
+
+    @Test
+    void emptyDeepAgentRailRegistersNoCallbacks() {
+        assertThat(new DeepAgentRail() {
+        }.getCallbacks()).isEmpty();
     }
 
     @Test
     void getCallbacksRegistersInnerLoopOnly() {
-        assertThat(new DeepAgentRail().getCallbacks())
+        DeepAgentRail rail = new DeepAgentRail() {
+            @Override
+            public void beforeInvoke(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void afterInvoke(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void beforeTaskIteration(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void afterTaskIteration(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void beforeModelCall(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void afterModelCall(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void onModelException(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void beforeToolCall(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void afterToolCall(AgentCallbackContext context) {
+            }
+
+            @Override
+            public void onToolException(AgentCallbackContext context) {
+            }
+        };
+
+        assertThat(rail.getCallbacks())
                 .containsKeys(
                         AgentCallbackEvent.BEFORE_MODEL_CALL,
                         AgentCallbackEvent.AFTER_MODEL_CALL,
@@ -55,7 +105,7 @@ class DeepAgentRailAgentBridgeTest {
         };
         rail.init(new DeepAgent());
 
-        rail.beforeModelCall(new AgentCallbackContext()).toCompletableFuture().join();
+        fire(rail, AgentCallbackEvent.BEFORE_MODEL_CALL, new AgentCallbackContext());
 
         assertThat(calls.get()).isEqualTo(1);
     }
@@ -79,7 +129,7 @@ class DeepAgentRailAgentBridgeTest {
         inputs.setToolArgs(Map.of("cmd", "ls"));
         context.setInputs(inputs);
 
-        rail.beforeToolCall(context).toCompletableFuture().join();
+        fire(rail, AgentCallbackEvent.BEFORE_TOOL_CALL, context);
 
         assertThat(toolName.get()).isEqualTo("bash");
         assertThat(toolArgs.get()).isEqualTo(Map.of("cmd", "ls"));
@@ -103,7 +153,7 @@ class DeepAgentRailAgentBridgeTest {
         inputs.setToolArgs(Map.of("cmd", "ls"));
         context.setInputs(inputs);
 
-        rail.beforeToolCall(context).toCompletableFuture().join();
+        fire(rail, AgentCallbackEvent.BEFORE_TOOL_CALL, context);
 
         assertThat(context.getExtra().get("_skip_tool")).isEqualTo(true);
         assertThat(inputs.getToolName()).isEqualTo("read_file");
@@ -123,7 +173,7 @@ class DeepAgentRailAgentBridgeTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(new ToolCallInputs());
 
-        rail.beforeToolCall(context).toCompletableFuture().join();
+        fire(rail, AgentCallbackEvent.BEFORE_TOOL_CALL, context);
 
         assertThat(context.getExtra().get("_skip_tool")).isEqualTo(Boolean.TRUE);
         assertThat(context.getExtra().get("error")).isEqualTo("[PERMISSION_DENIED] blocked");
@@ -144,8 +194,14 @@ class DeepAgentRailAgentBridgeTest {
         inputs.setMessages(List.of("hello"));
         context.setInputs(inputs);
 
-        rail.beforeModelCall(context).toCompletableFuture().join();
+        fire(rail, AgentCallbackEvent.BEFORE_MODEL_CALL, context);
 
         assertThat(messages.get()).isEqualTo(List.of("hello"));
+    }
+
+    private static void fire(DeepAgentRail rail, AgentCallbackEvent event, AgentCallbackContext context) {
+        AgentCallback callback = rail.getCallbacks().get(event);
+        assertThat(callback).isNotNull();
+        callback.handle(context).toCompletableFuture().join();
     }
 }

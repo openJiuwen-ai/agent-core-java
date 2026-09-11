@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Executable for ReActAgentComp workflow component.
@@ -30,7 +29,6 @@ import java.util.concurrent.CompletionStage;
  * for use within a workflow graph. Collect and transform are not supported —
  * the component only supports batch-in/batch-out and batch-in/stream-out.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.react.ReActAgentCompExecutable}.
  *
  * @since 1.0.0
  */
@@ -66,9 +64,6 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         com.openjiuwen.core.session.AgentSessionApi agentSession = toAgentSession(session);
         Object result = reactAgent.invoke(inputs, agentSession);
-        if (result instanceof CompletionStage<?> stage) {
-            result = stage.toCompletableFuture().join();
-        }
         if (result instanceof Map<?, ?> map) {
             return map;
         }
@@ -90,8 +85,7 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
 
         // 同步执行 ReActAgent 的流式 invoke，输出会写入 collectManager
         try {
-            reactAgent.invoke(inputs, agentSession, Map.of("_streaming", true))
-                    .toCompletableFuture().join();
+            reactAgent.invoke(inputs, agentSession, Map.of("_streaming", true));
         } catch (RuntimeException exception) {
             writeInvokeResultToStream(emitter, exception);
         } finally {

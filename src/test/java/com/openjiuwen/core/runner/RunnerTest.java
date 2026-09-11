@@ -425,9 +425,9 @@ class RunnerTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             lastSession = session;
-            return java.util.concurrent.CompletableFuture.completedFuture(inputs);
+            return inputs;
         }
 
         @Override

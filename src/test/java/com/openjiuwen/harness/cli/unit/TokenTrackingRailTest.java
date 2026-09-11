@@ -26,7 +26,7 @@ class TokenTrackingRailTest {
     void tracksUsage() {
         TokenTrackingRail tracker = new TokenTrackingRail();
 
-        tracker.afterModelCall(contextWithUsage(usage(100, 50))).toCompletableFuture().join();
+        tracker.afterModelCall(contextWithUsage(usage(100, 50)));
 
         assertEquals(100L, tracker.getTotalInputTokens());
         assertEquals(50L, tracker.getTotalOutputTokens());
@@ -37,8 +37,8 @@ class TokenTrackingRailTest {
     void accumulatesAcrossCalls() {
         TokenTrackingRail tracker = new TokenTrackingRail();
 
-        tracker.afterModelCall(contextWithUsage(usage(100, 50))).toCompletableFuture().join();
-        tracker.afterModelCall(contextWithUsage(usage(200, 80))).toCompletableFuture().join();
+        tracker.afterModelCall(contextWithUsage(usage(100, 50)));
+        tracker.afterModelCall(contextWithUsage(usage(200, 80)));
 
         Map<String, Long> summary = tracker.getSummary();
         assertEquals(300L, summary.get("input_tokens"));
@@ -51,7 +51,7 @@ class TokenTrackingRailTest {
     void handlesMissingUsage() {
         TokenTrackingRail tracker = new TokenTrackingRail();
 
-        tracker.afterModelCall(contextWithResponse(new LinkedHashMap<>())).toCompletableFuture().join();
+        tracker.afterModelCall(contextWithResponse(new LinkedHashMap<>()));
 
         assertEquals(0L, tracker.getTotalInputTokens());
         assertEquals(0L, tracker.getTotalOutputTokens());
@@ -64,7 +64,7 @@ class TokenTrackingRailTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(Map.of());
 
-        tracker.afterModelCall(context).toCompletableFuture().join();
+        tracker.afterModelCall(context);
 
         assertEquals(1L, tracker.getCallCount());
         assertEquals(0L, tracker.getTotalInputTokens());
@@ -88,7 +88,7 @@ class TokenTrackingRailTest {
                 Map.of("input_tokens", 12, "output_tokens", 7)
         );
 
-        tracker.afterModelCall(contextWithResponse(response)).toCompletableFuture().join();
+        tracker.afterModelCall(contextWithResponse(response));
 
         assertEquals(12L, tracker.getTotalInputTokens());
         assertEquals(7L, tracker.getTotalOutputTokens());

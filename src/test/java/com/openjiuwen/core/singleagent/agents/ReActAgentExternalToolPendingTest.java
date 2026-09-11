@@ -62,7 +62,7 @@ class ReActAgentExternalToolPendingTest {
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("pending-session");
 
-        Object result = agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "read frontend"), session);
 
         Map<String, Object> resultMap = objectMap(result);
         assertThat(resultMap).containsEntry("result_type", "external_tool_call_required");
@@ -81,9 +81,9 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("pending-new-query-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
 
-        Object result = agent.invoke(Map.of("query", "new user turn"), session).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "new user turn"), session);
 
         assertThat(objectMap(result))
                 .containsEntry("result_type", "error")
@@ -102,7 +102,7 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("invalid-resume-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
         assertThat(agent.modelCallCount()).isEqualTo(1);
 
         assertInvalidResumeKeepsPending(agent, session, normalToolInvokes,
@@ -133,12 +133,12 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         WorkflowInterruptingAgent agent = workflowInterruptingPendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("resume-workflow-interrupt-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
         int contextUpdatesBeforeResume = session.contextUpdateCount();
 
         Object result = agent.invoke(Map.of(
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session).toCompletableFuture().join();
+        ), session);
 
         assertThat(objectMap(result)).containsEntry("result_type", "interrupt");
         assertThat(normalToolInvokes).hasValue(1);
@@ -152,11 +152,11 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = normalFirstMultimodalPendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("resume-multimodal-order-session");
-        agent.invoke(Map.of("query", "read image and frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read image and frontend"), session);
 
         agent.invoke(Map.of(
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session).toCompletableFuture().join();
+        ), session);
 
         List<BaseMessage> messages = agent.modelMessages().get(1);
         int normalToolIndex = indexOfToolMessage(messages, "call-normal");
@@ -172,13 +172,11 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("streaming-resume-tool-results-session");
-        agent.invoke(Map.of("query", "read frontend"), session, Map.of("_streaming", true))
-                .toCompletableFuture()
-                .join();
+        agent.invoke(Map.of("query", "read frontend"), session, Map.of("_streaming", true));
 
         agent.invoke(Map.of(
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session, Map.of("_streaming", true)).toCompletableFuture().join();
+        ), session, Map.of("_streaming", true));
 
         assertThat(outputToolCallIds(outputsOfType(session, "tool_result")))
                 .containsExactly("call-external", "call-normal");
@@ -189,7 +187,7 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("resume-force-finish-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
         Map<String, Object> forced = new LinkedHashMap<>(Map.of(
                 "output", "forced after resume tools",
                 "result_type", "answer"
@@ -203,7 +201,7 @@ class ReActAgentExternalToolPendingTest {
 
         Object result = agent.invoke(Map.of(
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session).toCompletableFuture().join();
+        ), session);
 
         assertThat(objectMap(result)).isEqualTo(forced);
         assertThat(normalToolInvokes).hasValue(1);
@@ -216,11 +214,11 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("valid-resume-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
 
         Object result = agent.invoke(Map.of(
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session).toCompletableFuture().join();
+        ), session);
 
         assertThat(normalToolInvokes).hasValue(1);
         assertThat(objectMap(result))
@@ -243,12 +241,12 @@ class ReActAgentExternalToolPendingTest {
         AtomicInteger normalToolInvokes = new AtomicInteger();
         ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
         MemorySession session = new MemorySession("resume-query-session");
-        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        agent.invoke(Map.of("query", "read frontend"), session);
 
         agent.invoke(Map.of(
                 "query", "this resume query must not be appended",
                 "external_tool_results", List.of(externalResult("call-external", "from browser"))
-        ), session).toCompletableFuture().join();
+        ), session);
 
         assertThat(agent.modelMessages().get(1).stream()
                 .filter(UserMessage.class::isInstance)
@@ -260,7 +258,7 @@ class ReActAgentExternalToolPendingTest {
                                                  MemorySession session,
                                                  AtomicInteger normalToolInvokes,
                                                  Map<String, Object> inputs) {
-        Object result = agent.invoke(inputs, session).toCompletableFuture().join();
+        Object result = agent.invoke(inputs, session);
 
         Map<String, Object> resultMap = objectMap(result);
         assertThat(resultMap).containsEntry("result_type", "error");

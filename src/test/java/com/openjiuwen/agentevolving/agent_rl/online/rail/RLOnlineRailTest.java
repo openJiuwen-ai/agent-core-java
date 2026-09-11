@@ -78,14 +78,14 @@ class RLOnlineRailTest {
         MockAgent agent = new MockAgent();
 
         InvokeInputs firstInvoke = invokeInputs("same-session", "q1");
-        rail.beforeInvoke(context(agent, firstInvoke)).toCompletableFuture().join();
-        rail.afterModelCall(context(agent, modelInputs("q1", "a1"))).toCompletableFuture().join();
-        rail.afterInvoke(context(agent, firstInvoke)).toCompletableFuture().join();
+        rail.beforeInvoke(context(agent, firstInvoke));
+        rail.afterModelCall(context(agent, modelInputs("q1", "a1")));
+        rail.afterInvoke(context(agent, firstInvoke));
 
         InvokeInputs secondInvoke = invokeInputs("same-session", "q2");
-        rail.beforeInvoke(context(agent, secondInvoke)).toCompletableFuture().join();
-        rail.afterModelCall(context(agent, modelInputs("q2", "a2"))).toCompletableFuture().join();
-        rail.afterInvoke(context(agent, secondInvoke)).toCompletableFuture().join();
+        rail.beforeInvoke(context(agent, secondInvoke));
+        rail.afterModelCall(context(agent, modelInputs("q2", "a2")));
+        rail.afterInvoke(context(agent, secondInvoke));
 
         assertThat(uploader.batches).hasSize(2);
         assertThat(uploader.batches).extracting(batch -> batch.getSamples().size()).containsExactly(1, 1);
@@ -99,13 +99,11 @@ class RLOnlineRailTest {
         MockAgent agent = new MockAgent();
 
         InvokeInputs invoke = invokeInputs("same-session", "q");
-        rail.beforeInvoke(context(agent, invoke)).toCompletableFuture().join();
+        rail.beforeInvoke(context(agent, invoke));
         for (int index = 0; index < 201; index++) {
-            rail.afterModelCall(context(agent, modelInputs("q" + index, "a" + index)))
-                    .toCompletableFuture()
-                    .join();
+            rail.afterModelCall(context(agent, modelInputs("q" + index, "a" + index)));
         }
-        rail.afterInvoke(context(agent, invoke)).toCompletableFuture().join();
+        rail.afterInvoke(context(agent, invoke));
 
         assertThat(uploader.batches).hasSize(1);
         assertThat(uploader.batches.get(0).getSamples()).hasSize(201);
@@ -170,8 +168,8 @@ class RLOnlineRailTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(null);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return null;
         }
 
         @Override

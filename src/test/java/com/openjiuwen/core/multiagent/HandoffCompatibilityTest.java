@@ -164,8 +164,8 @@ class HandoffCompatibilityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(output);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return output;
         }
 
         @Override

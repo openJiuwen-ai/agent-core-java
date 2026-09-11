@@ -30,7 +30,6 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Rail that manages agent root span and LLM child span lifecycles.
@@ -78,10 +77,10 @@ public class OtelRail extends AgentRail {
     // ------------------------------------------------------------------
 
     @Override
-    public CompletionStage<Void> beforeInvoke(AgentCallbackContext ctx) {
+    public void beforeInvoke(AgentCallbackContext ctx) {
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         TraceAgentSpan rootSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
@@ -100,18 +99,17 @@ public class OtelRail extends AgentRail {
         kwargs.put("inputs", inputsDict);
         kwargs.put("instance_info", instanceInfo);
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_chain_start", kwargs);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterInvoke(AgentCallbackContext ctx) {
+    public void afterInvoke(AgentCallbackContext ctx) {
         Object rootObj = ctx.getExtra().remove(OTEL_ROOT_SPAN_KEY);
         if (!(rootObj instanceof TraceAgentSpan rootSpan)) {
-            return completed();
+            return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         if (ctx.getException() != null) {
@@ -129,7 +127,6 @@ public class OtelRail extends AgentRail {
             kwargs.put("outputs", Map.of("outputs", result != null ? result : ""));
             tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_chain_end", kwargs);
         }
-        return completed();
     }
 
     // ------------------------------------------------------------------
@@ -137,10 +134,10 @@ public class OtelRail extends AgentRail {
     // ------------------------------------------------------------------
 
     @Override
-    public CompletionStage<Void> beforeModelCall(AgentCallbackContext ctx) {
+    public void beforeModelCall(AgentCallbackContext ctx) {
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         TraceAgentSpan rootSpan = rootSpanFrom(ctx);
@@ -164,22 +161,21 @@ public class OtelRail extends AgentRail {
         kwargs.put("inputs", inputsDict);
         kwargs.put("instance_info", instanceInfo);
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_start", kwargs);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext ctx) {
+    public void afterModelCall(AgentCallbackContext ctx) {
         // When exception is set, the error path (onModelException) has already consumed the span.
         if (ctx.getException() != null) {
-            return completed();
+            return;
         }
         Object spanObj = ctx.getExtra().remove(OTEL_LLM_SPAN_KEY);
         if (!(spanObj instanceof TraceAgentSpan llmSpan)) {
-            return completed();
+            return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Map<String, Object> outputsDict = new HashMap<>();
         if (ctx.getInputs() instanceof ModelCallInputs modelCallInputs) {
@@ -202,25 +198,23 @@ public class OtelRail extends AgentRail {
         kwargs.put("outputs", outputsDict);
         Tracer tracer = tracerOpt.get();
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_end", kwargs);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> onModelException(AgentCallbackContext ctx) {
+    public void onModelException(AgentCallbackContext ctx) {
         Object spanObj = ctx.getExtra().remove(OTEL_LLM_SPAN_KEY);
         if (!(spanObj instanceof TraceAgentSpan llmSpan)) {
-            return completed();
+            return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("span", llmSpan);
         kwargs.put("error", ctx.getException());
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_llm_error", kwargs);
-        return completed();
     }
 
     // ------------------------------------------------------------------
@@ -228,10 +222,10 @@ public class OtelRail extends AgentRail {
     // ------------------------------------------------------------------
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext ctx) {
+    public void beforeToolCall(AgentCallbackContext ctx) {
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         TraceAgentSpan rootSpan = rootSpanFrom(ctx);
@@ -259,22 +253,21 @@ public class OtelRail extends AgentRail {
         kwargs.put("inputs", inputsDict);
         kwargs.put("instance_info", instanceInfo);
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_start", kwargs);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext ctx) {
+    public void afterToolCall(AgentCallbackContext ctx) {
         // When exception is set, the error path (onToolException) consumes the span.
         if (ctx.getException() != null) {
-            return completed();
+            return;
         }
         Object spanObj = ctx.getExtra().remove(OTEL_TOOL_SPAN_KEY);
         if (!(spanObj instanceof TraceAgentSpan toolSpan)) {
-            return completed();
+            return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         Map<String, Object> outputsDict = new HashMap<>();
@@ -286,25 +279,23 @@ public class OtelRail extends AgentRail {
         kwargs.put("span", toolSpan);
         kwargs.put("outputs", outputsDict);
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_end", kwargs);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> onToolException(AgentCallbackContext ctx) {
+    public void onToolException(AgentCallbackContext ctx) {
         Object spanObj = ctx.getExtra().remove(OTEL_TOOL_SPAN_KEY);
         if (!(spanObj instanceof TraceAgentSpan toolSpan)) {
-            return completed();
+            return;
         }
         Optional<Tracer> tracerOpt = getTracer(ctx);
         if (tracerOpt.isEmpty()) {
-            return completed();
+            return;
         }
         Tracer tracer = tracerOpt.get();
         Map<String, Object> kwargs = new HashMap<>();
         kwargs.put("span", toolSpan);
         kwargs.put("error", ctx.getException());
         tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_plugin_error", kwargs);
-        return completed();
     }
 
     // ------------------------------------------------------------------

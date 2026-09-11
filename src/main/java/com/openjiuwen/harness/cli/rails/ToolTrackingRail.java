@@ -18,13 +18,10 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Emits tool call and result chunks for CLI rendering.
  *
- * <p>Mirrors Python's {@code ToolTrackingRail} in
- * {@code openjiuwen/harness/cli/rails/tool_tracker.py}.</p>
  */
 public class ToolTrackingRail extends AgentRail {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -67,10 +64,10 @@ public class ToolTrackingRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+    public void beforeToolCall(AgentCallbackContext context) {
         AgentSessionApi session = context == null ? null : context.getSession();
         if (session == null) {
-            return completed();
+            return;
         }
 
         Object inputs = context.getInputs();
@@ -81,14 +78,13 @@ public class ToolTrackingRail extends AgentRail {
         payload.put("tool_name", toolName);
         payload.put("tool_args", toolArgs);
         session.writeStream(new OutputSchema("tool_call", 0, payload));
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext context) {
+    public void afterToolCall(AgentCallbackContext context) {
         AgentSessionApi session = context == null ? null : context.getSession();
         if (session == null) {
-            return completed();
+            return;
         }
 
         Object inputs = context.getInputs();
@@ -101,7 +97,6 @@ public class ToolTrackingRail extends AgentRail {
         payload.put("tool_args", toolArgs);
         payload.putAll(buildToolResultPayload(toolName, toolResult));
         session.writeStream(new OutputSchema("tool_result", 0, payload));
-        return completed();
     }
 
     private static Object normalizeToolArgs(Object toolArgs) {

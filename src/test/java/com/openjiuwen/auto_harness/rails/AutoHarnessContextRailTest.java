@@ -18,8 +18,6 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import org.junit.jupiter.api.Test;
 
@@ -55,7 +53,7 @@ class AutoHarnessContextRailTest {
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
         context.getExtra().put("system_prompt_builder", builder);
 
-        rail.beforeModelCall(context).toCompletableFuture().join();
+        rail.beforeModelCall(context);
 
         assertThat(context.getExtra()).doesNotContainKey("offload_section_enabled");
         assertThat(context.getExtra()).doesNotContainKey("task_state");
@@ -98,8 +96,8 @@ class AutoHarnessContextRailTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(null);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return null;
         }
 
         @Override

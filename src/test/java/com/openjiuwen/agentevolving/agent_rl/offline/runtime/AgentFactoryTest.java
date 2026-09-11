@@ -119,7 +119,7 @@ class AgentFactoryTest {
                 .containsEntry("frequencyPenalty", 0.4D);
 
         assertThat(agent.reactAgent()).isInstanceOf(ReActAgent.class);
-        ReActAgentConfig reactConfig = ((ReActAgent) agent.reactAgent()).getConfig();
+        ReActAgentConfig reactConfig = (ReActAgentConfig) ((ReActAgent) agent.reactAgent()).getConfig();
         assertThat(reactConfig.isLlmReturnTokenIds()).isTrue();
         assertThat(reactConfig.getModelClientConfig()).isSameAs(clientConfig);
         assertThat(reactConfig.getModelConfigObj()).isSameAs(requestConfig);

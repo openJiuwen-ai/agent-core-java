@@ -161,7 +161,7 @@ abstract class SystemTestSupport {
         Object result;
         try {
             if (agent instanceof BaseAgent baseAgent) {
-                result = baseAgent.invoke(inputs, session).toCompletableFuture().join();
+                result = baseAgent.invoke(inputs, session);
             } else {
                 result = invokeDeepAgentCompat(agent, inputs, session);
             }

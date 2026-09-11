@@ -731,7 +731,7 @@ public final class Runner {
                         return await(remoteAgent.invoke(asStringObjectMap(inputs)));
                     }
                     if (prepared.agent() instanceof BaseAgent baseAgent) {
-                        Object result = await(baseAgent.invoke(inputs, prepared.agentSession()));
+                        Object result = baseAgent.invoke(inputs, prepared.agentSession());
                         if (prepared.agentSessionFacade() != null) {
                             prepared.agentSessionFacade().postRun();
                         }

@@ -218,19 +218,19 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
         return this;
     }
 
-    public CompletionStage<Object> invoke(HandoffRequest inputs, AgentSessionApi session) {
+    public Object invoke(HandoffRequest inputs, AgentSessionApi session) {
         return invoke((Object) inputs, session);
     }
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+        return invoke(inputs, (AgentSessionApi) session);
     }
 
     @Override
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+    public Object invoke(Object inputs, AgentSessionApi session) {
         if (!(inputs instanceof HandoffRequest request)) {
-            return CompletableFuture.completedFuture(Map.of());
+            return Map.of();
         }
         String sessionId = request.getSessionId();
         HandoffOrchestrator coordinator = coordinatorLookup == null ? null : coordinatorLookup.apply(sessionId);
@@ -257,34 +257,23 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
             if (request.getSession() != null) {
                 targetStage = invokeTargetWithStream(targetAgent, agentInput, request.getSession());
             } else {
-                AgentSession agentSession = AgentSession.createAgentSession(
-                        sessionId == null || sessionId.isEmpty() ? null : sessionId,
-                        null,
-                        targetAgent.getCard()
-                );
-                AgentSessionApi apiSession = agentSession;
-                targetStage = targetAgent.invoke(agentInput, apiSession)
-                        .thenApply(result -> new TargetResult(
-                                targetAgent,
-                                result,
-                                HandoffSignal.extractHandoffSignal(result, agentSession)
-                        ));
+                targetStage = invokeTarget(targetAgent, agentInput, sessionId);
             }
         } catch (RuntimeException error) {
             targetStage = CompletableFuture.failedFuture(error);
         }
 
-        return targetStage.handle((targetResult, error) -> {
+        return awaitInvokePipeline(targetStage.handle((targetResult, error) -> {
             if (error != null) {
                 return handleTargetException(unwrap(error), coordinator, history, request);
             }
             return handleTargetResult(targetResult, coordinator, history, request);
-        }).thenCompose(Function.identity());
+        }).thenCompose(Function.identity()));
     }
 
     @Override
     public java.util.Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-        return List.of(invoke(inputs, session).toCompletableFuture().join()).iterator();
+        return List.of(invoke(inputs, session)).iterator();
     }
 
     protected CompletionStage<TargetResult> invokeTargetWithStream(BaseAgent targetAgent,
@@ -292,22 +281,57 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
                                                                    AgentTeamSession teamSession) {
         AgentSession agentSession = teamSession.createAgentSession(targetAgent.getCard(), null);
         injectContextHistory(agentSession, teamSession);
-        AgentSessionApi apiSession = agentSession;
-        return targetAgent.invoke(agentInput, apiSession)
-                .thenApply(result -> {
-                    if (result instanceof Map<?, ?>) {
-                        teamSession.writeStream(result);
-                    } else if (result instanceof List<?> values) {
-                        for (Object value : values) {
-                            if (value instanceof Map<?, ?>) {
-                                teamSession.writeStream(value);
-                            }
-                        }
-                    }
-                    saveAgentContext(targetAgent, agentSession);
-                    saveContextToTeamSession(agentSession, teamSession);
-                    return new TargetResult(targetAgent, result, HandoffSignal.extractHandoffSignal(result, agentSession));
-                });
+        return asInvokeStage(targetAgent.invoke(agentInput, agentSession)).thenApply(value -> {
+            writeTargetStream(teamSession, value);
+            saveAgentContext(targetAgent, agentSession);
+            saveContextToTeamSession(agentSession, teamSession);
+            return toTargetResult(targetAgent, value, agentSession);
+        });
+    }
+
+    private CompletionStage<TargetResult> invokeTarget(BaseAgent targetAgent, Object agentInput, String sessionId) {
+        AgentSession agentSession = AgentSession.createAgentSession(
+                sessionId == null || sessionId.isEmpty() ? null : sessionId,
+                null,
+                targetAgent.getCard()
+        );
+        return asInvokeStage(targetAgent.invoke(agentInput, agentSession))
+                .thenApply(value -> toTargetResult(targetAgent, value, agentSession));
+    }
+
+    private static TargetResult toTargetResult(BaseAgent targetAgent, Object result, AgentSession agentSession) {
+        return new TargetResult(targetAgent, result, HandoffSignal.extractHandoffSignal(result, agentSession));
+    }
+
+    private static Object awaitInvokePipeline(CompletionStage<Object> pipeline) {
+        CompletableFuture<Object> future = pipeline.toCompletableFuture();
+        if (future.isDone()) {
+            return future.join();
+        }
+        return future;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static CompletionStage<Object> asInvokeStage(Object result) {
+        if (result instanceof CompletionStage<?> stage) {
+            return (CompletionStage<Object>) stage;
+        }
+        return CompletableFuture.completedFuture(result);
+    }
+
+    private static void writeTargetStream(AgentTeamSession teamSession, Object result) {
+        if (result instanceof Map<?, ?>) {
+            teamSession.writeStream(result);
+            return;
+        }
+        if (!(result instanceof List<?> values)) {
+            return;
+        }
+        for (Object value : values) {
+            if (value instanceof Map<?, ?>) {
+                teamSession.writeStream(value);
+            }
+        }
     }
 
     protected void saveAgentContext(BaseAgent targetAgent, AgentSessionApi agentSession) {
