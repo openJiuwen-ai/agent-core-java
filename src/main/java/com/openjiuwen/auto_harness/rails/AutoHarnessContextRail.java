@@ -11,7 +11,6 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.context_engineer.ContextProcessorRail;
 
 import java.util.List;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Context processor rail without workspace/context prompt injection.
@@ -46,12 +45,10 @@ public class AutoHarnessContextRail extends ContextProcessorRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
-        return completed();
+    public void beforeModelCall(AgentCallbackContext context) {
     }
 
     @Override
     public void uninit(BaseAgent agent) {
-        // Python override is intentionally a no-op to preserve auto-harness prompt sections.
     }
 }

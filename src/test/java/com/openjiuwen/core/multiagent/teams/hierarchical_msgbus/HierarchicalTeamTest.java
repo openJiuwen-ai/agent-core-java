@@ -92,9 +92,9 @@ class HierarchicalTeamTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             lastInputs.set(inputs);
-            return CompletableFuture.completedFuture("supervised:" + inputs);
+            return "supervised:" + inputs;
         }
 
         @Override

@@ -32,7 +32,7 @@ class EditCheckRailPythonParityTest {
                 Map.of("file_path", "openjiuwen/auto_harness/schema.py")
         ));
 
-        rail.beforeToolCall(ctx).toCompletableFuture().join();
+        rail.beforeToolCall(ctx);
 
         assertThat(ctx.getExtra()).containsEntry("_skip_tool", true);
         Object result = ((ToolCallInputs) ctx.getInputs()).getToolResult();
@@ -48,7 +48,7 @@ class EditCheckRailPythonParityTest {
                 Map.of("file_path", "openjiuwen/harness/cli/ui/renderer.py")
         ));
 
-        rail.beforeToolCall(ctx).toCompletableFuture().join();
+        rail.beforeToolCall(ctx);
 
         assertThat(ctx.getExtra()).doesNotContainKey("_skip_tool");
     }
@@ -61,7 +61,7 @@ class EditCheckRailPythonParityTest {
                 Map.of("file_path", "openjiuwen/harness/cli/README.md")
         ));
 
-        rail.beforeToolCall(ctx).toCompletableFuture().join();
+        rail.beforeToolCall(ctx);
 
         assertThat(ctx.getExtra()).doesNotContainKey("_skip_tool");
     }
@@ -78,7 +78,7 @@ class EditCheckRailPythonParityTest {
         AgentCallbackContext ctx = context(toolInputs("write_file", Map.of("file_path", "src/foo.py")));
         ctx.bindSteeringQueue(steering);
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
 
         assertThat(checker.calls).isEqualTo(1);
         assertThat(steering).hasSize(1);
@@ -93,7 +93,7 @@ class EditCheckRailPythonParityTest {
         AgentCallbackContext ctx = context(toolInputs("edit_file", Map.of("file_path", "src/bar.py")));
         ctx.bindSteeringQueue(steering);
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
 
         assertThat(steering).isEmpty();
         assertThat(rail.editedFiles()).containsExactly("src/bar.py");
@@ -108,7 +108,7 @@ class EditCheckRailPythonParityTest {
         AgentCallbackContext ctx = context(toolInputs("write_file", Map.of("file_path", "README.md")));
         ctx.bindSteeringQueue(steering);
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
 
         assertThat(steering).isEmpty();
         assertThat(checker.calls).isZero();
@@ -122,7 +122,7 @@ class EditCheckRailPythonParityTest {
         AgentCallbackContext ctx = context(toolInputs("read_file", Map.of("file_path", "src/foo.py")));
         ctx.bindSteeringQueue(steering);
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
 
         assertThat(steering).isEmpty();
         assertThat(checker.calls).isZero();
@@ -136,7 +136,7 @@ class EditCheckRailPythonParityTest {
         AgentCallbackContext ctx = context(toolInputs("write_file", Map.of("file_path", "src/foo.py")));
         ctx.bindSteeringQueue(steering);
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
 
         assertThat(steering).isEmpty();
         assertThat(checker.calls).isEqualTo(1);
@@ -148,7 +148,7 @@ class EditCheckRailPythonParityTest {
                 CompletableFuture.completedFuture(new RuffResult(0, "", true)));
         AgentCallbackContext ctx = context(toolInputs("write_file", Map.of("file_path", "src/foo.py")));
 
-        rail.afterToolCall(ctx).toCompletableFuture().join();
+        rail.afterToolCall(ctx);
         assertThat(rail.editedFiles()).containsExactly("src/foo.py");
         rail.reset();
         assertThat(rail.editedFiles()).isEmpty();

@@ -57,7 +57,8 @@ class ReActAgentIterationLoggingTest {
 
         try (AgentLogCapture logs = new AgentLogCapture()) {
             assertThatThrownBy(() -> invokeMap(agent, Map.of("query", "hello")))
-                    .hasRootCauseMessage("model exploded");
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("model exploded");
 
             assertThat(logs.reactMessages()).containsExactly(
                     "ReAct iteration 1/2 started",
@@ -136,7 +137,8 @@ class ReActAgentIterationLoggingTest {
 
         try (AgentLogCapture logs = new AgentLogCapture()) {
             assertThatThrownBy(() -> invokeMap(agent, Map.of()))
-                    .hasRootCauseMessage("Input must contain 'query'");
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Input must contain 'query'");
 
             assertThat(logs.reactMessages()).containsExactly("ReActAgent invoke failed");
             assertThat(logs.record("ReActAgent invoke failed").getThrown())
@@ -312,9 +314,7 @@ class ReActAgentIterationLoggingTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invokeMap(ReActAgent agent, Object inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, new MemorySession())
-                .toCompletableFuture()
-                .join();
+        return (Map<String, Object>) agent.invoke(inputs, new MemorySession());
     }
 
     private static final class ScriptedAgent extends ReActAgent {

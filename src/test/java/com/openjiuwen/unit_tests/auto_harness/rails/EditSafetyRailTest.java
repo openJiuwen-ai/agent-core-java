@@ -28,7 +28,7 @@ class EditSafetyRailTest {
         EditSafetyRail rail = new EditSafetyRail();
         AgentCallbackContext ctx = context(toolInputs("write_file", Map.of("file_path", "openjiuwen/auto_harness/x.py")));
 
-        rail.beforeToolCall(ctx).toCompletableFuture().join();
+        rail.beforeToolCall(ctx);
 
         assertThat(ctx.getExtra()).containsEntry("_skip_tool", true);
         assertThat(((ToolCallInputs) ctx.getInputs()).getToolResult()).asString().contains("Out-of-scope");
@@ -44,8 +44,8 @@ class EditSafetyRailTest {
         AgentCallbackContext second = context(toolInputs("edit_file", Map.of("file_path", "tests/b.py")));
         second.bindSteeringQueue(steering);
 
-        rail.afterToolCall(first).toCompletableFuture().join();
-        rail.afterToolCall(second).toCompletableFuture().join();
+        rail.afterToolCall(first);
+        rail.afterToolCall(second);
 
         assertThat(rail.editedFiles()).hasSize(2);
         assertThat(steering).anySatisfy(message -> assertThat(message).contains("limit is 1"));

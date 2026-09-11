@@ -32,7 +32,7 @@ public class ReActAgentEvolve extends ReActAgent {
 
     public final void initOperators() {
         llmOp = new LLMCallOperator(
-                getConfig().getPromptTemplate(),
+                reactConfig().getPromptTemplate(),
                 "{{query}}",
                 false,
                 true,
@@ -86,9 +86,9 @@ public class ReActAgentEvolve extends ReActAgent {
             return;
         }
         if (value instanceof List<?> list) {
-            getConfig().setPromptTemplate(toPromptTemplate(list));
+            reactConfig().setPromptTemplate(toPromptTemplate(list));
         } else if (value instanceof String text) {
-            getConfig().setPromptTemplate(List.of(Map.of("role", "system", "content", text)));
+            reactConfig().setPromptTemplate(List.of(Map.of("role", "system", "content", text)));
         }
     }
 
@@ -125,8 +125,15 @@ public class ReActAgentEvolve extends ReActAgent {
         }
     }
 
-    public void _on_tool_parameter_updated(String target, Object value) {
-        onToolParameterUpdated(target, value);
+    private ReActAgentConfig reactConfig() {
+        Object agentConfig = getConfig();
+        if (agentConfig instanceof ReActAgentConfig reactAgentConfig) {
+            return reactAgentConfig;
+        }
+        if (agentConfig == null) {
+            return null;
+        }
+        throw new IllegalStateException("ReActAgentEvolve requires ReActAgentConfig");
     }
 
     private static List<Map<String, Object>> toPromptTemplate(List<?> value) {

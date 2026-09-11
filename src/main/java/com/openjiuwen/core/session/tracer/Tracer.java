@@ -87,6 +87,23 @@ public class Tracer implements Vertex.VertexTraceSink {
         this.streamWriterManager = streamWriterManager;
     }
 
+    /**
+     * Clear all span managers, releasing all span references.
+     *
+     * <p>Called when the owning session is cleaned up to prevent span
+     * accumulation across sessions. After clearing, the tracer should
+     * not be reused for new invocations.</p>
+     *
+     * @since 0.1.15
+     */
+    public void clear() {
+        tracerAgentSpanManager.clear();
+        for (SpanManager manager : tracerWorkflowSpanManagerDict.values()) {
+            manager.clear();
+        }
+        tracerWorkflowSpanManagerDict.clear();
+    }
+
     public void init(StreamWriterManager streamWriterManager, Object ignored) {
         init(streamWriterManager);
     }

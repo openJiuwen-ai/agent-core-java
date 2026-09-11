@@ -273,14 +273,13 @@ class AbilityManagerSupplementTest {
             private Object capturedInputs;
 
             @Override
-            public java.util.concurrent.CompletionStage<Void> beforeToolCall(AgentCallbackContext ctx) {
+            public void beforeToolCall(AgentCallbackContext ctx) {
                 capturedInputs = ctx.getInputs();
                 ctx.getExtra().put("_skip_tool", Boolean.TRUE);
                 if (ctx.getInputs() instanceof ToolCallInputs inputs) {
                     inputs.setToolResult("skipped");
                     inputs.setToolMsg(new ToolMessage("skipped", "tc-skip", "skip-tool"));
                 }
-                return completed();
             }
         }
 

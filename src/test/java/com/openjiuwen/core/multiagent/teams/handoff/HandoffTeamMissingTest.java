@@ -348,8 +348,8 @@ class HandoffTeamMissingTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(Map.of("agent", getCard().getId(), "input", inputs));
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return Map.of("agent", getCard().getId(), "input", inputs);
         }
 
         @Override

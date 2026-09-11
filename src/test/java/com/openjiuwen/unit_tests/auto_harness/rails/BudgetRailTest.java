@@ -28,7 +28,7 @@ class BudgetRailTest {
         BudgetRail rail = new BudgetRail(budget);
         AgentCallbackContext ctx = new AgentCallbackContext();
 
-        rail.beforeToolCall(ctx).toCompletableFuture().join();
+        rail.beforeToolCall(ctx);
 
         assertThat(ctx.hasForceFinishRequest()).isTrue();
     }
@@ -43,7 +43,7 @@ class BudgetRailTest {
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setInputs(inputs);
 
-        rail.afterModelCall(ctx).toCompletableFuture().join();
+        rail.afterModelCall(ctx);
 
         assertThat(ctx.hasForceFinishRequest()).isTrue();
     }
@@ -53,8 +53,8 @@ class BudgetRailTest {
         BudgetRail rail = new BudgetRail(new SessionBudgetController());
         AgentCallbackContext ctx = new AgentCallbackContext();
 
-        rail.beforeTaskIteration(ctx).toCompletableFuture().join();
-        rail.afterTaskIteration(ctx).toCompletableFuture().join();
+        rail.beforeTaskIteration(ctx);
+        rail.afterTaskIteration(ctx);
 
         assertThat(ctx.getExtra())
                 .containsEntry("ci_gate_iteration_started", true)

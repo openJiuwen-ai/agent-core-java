@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -36,11 +37,11 @@ public class ToolManager {
 
     private static final float DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS = 30.0F;
 
-    private final Map<String, Tool> tools = new LinkedHashMap<>();
-    private final Map<String, Object> compatibilityTools = new LinkedHashMap<>();
-    private final Map<String, List<String>> mcpServerNameToIds = new LinkedHashMap<>();
-    private final Map<String, McpServerResource> mcpServerResources = new LinkedHashMap<>();
-    private final Map<String, SysOpToolResource> sysOpResources = new LinkedHashMap<>();
+    private final Map<String, Tool> tools = new ConcurrentHashMap<>();
+    private final Map<String, Object> compatibilityTools = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> mcpServerNameToIds = new ConcurrentHashMap<>();
+    private final Map<String, McpServerResource> mcpServerResources = new ConcurrentHashMap<>();
+    private final Map<String, SysOpToolResource> sysOpResources = new ConcurrentHashMap<>();
     private final Map<String, ReentrantLock> mcpServerLocks = new ConcurrentHashMap<>();
     private final McpClientFactory mcpClientFactory;
 
@@ -61,10 +62,9 @@ public class ToolManager {
     }
 
     public void addTool(String toolId, Tool tool) {
-        if (tools.get(toolId) != null) {
+        if (tools.putIfAbsent(toolId, tool) != null) {
             throw new IllegalArgumentException("already exist tool " + toolId);
         }
-        tools.put(toolId, tool);
     }
 
     public void put(String toolId, Object tool) {
@@ -181,8 +181,7 @@ public class ToolManager {
                 }
                 connected = true;
                 List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime, operationTimeout);
-                mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), ignored -> new ArrayList<>())
-                        .add(serverConfig.getServerId());
+                indexMcpServerName(serverConfig);
                 return CompletableFuture.completedFuture(results);
             } catch (Exception error) {
                 if (connected && !mcpServerResources.containsKey(serverConfig.getServerId())) {
@@ -199,7 +198,29 @@ public class ToolManager {
     }
 
     public List<String> getMcpServerIds(String serverName) {
+        if (serverName == null) {
+            return List.of();
+        }
         return List.copyOf(mcpServerNameToIds.getOrDefault(serverName, List.of()));
+    }
+
+    private void indexMcpServerName(McpServerConfig serverConfig) {
+        String serverName = serverConfig.getServerName();
+        if (serverName == null) {
+            return;
+        }
+        mcpServerNameToIds.computeIfAbsent(serverName, ignored -> new CopyOnWriteArrayList<>())
+                .add(serverConfig.getServerId());
+    }
+
+    private void unindexMcpServerName(String serverName, String serverId) {
+        if (serverName == null) {
+            return;
+        }
+        mcpServerNameToIds.computeIfPresent(serverName, (ignored, ids) -> {
+            ids.remove(serverId);
+            return ids.isEmpty() ? null : ids;
+        });
     }
 
     public Object getMcpClient(String serverId) {
@@ -240,13 +261,7 @@ public class ToolManager {
         } catch (Exception ignored) {
         } finally {
             innerRemoveMcpTools(resource.toolIds());
-            List<String> ids = mcpServerNameToIds.get(resource.config().getServerName());
-            if (ids != null) {
-                ids.remove(serverId);
-                if (ids.isEmpty()) {
-                    mcpServerNameToIds.remove(resource.config().getServerName());
-                }
-            }
+            unindexMcpServerName(resource.config().getServerName(), serverId);
         }
         return CompletableFuture.completedFuture(List.copyOf(resource.toolIds()));
     }

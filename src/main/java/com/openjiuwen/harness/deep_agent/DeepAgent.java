@@ -37,14 +37,17 @@ import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
 import com.openjiuwen.core.multitenant.workspace.WorkspaceType;
 import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
@@ -56,11 +59,12 @@ import com.openjiuwen.auto_harness.infra.RuntimeExtensionLoader;
 import com.openjiuwen.auto_harness.schema.RuntimeExtensionArtifact;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
+import com.openjiuwen.harness.rails.TaskCompletionRail;
+import com.openjiuwen.harness.rails.TaskPlanningRail;
+import com.openjiuwen.harness.rails.security.PermissionInterruptRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
 import com.openjiuwen.harness.rails.subagent.SessionRail;
 import com.openjiuwen.harness.rails.subagent.SubagentRail;
-import com.openjiuwen.harness.rails.TaskCompletionRail;
-import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.harness_config.HarnessConfig;
 import com.openjiuwen.harness.harness_config.HarnessConfigBuilder;
 import com.openjiuwen.harness.harness_config.HarnessConfigLoader;
@@ -490,14 +494,16 @@ public class DeepAgent implements AutoCloseable {
         // Sync MCP servers already registered externally (e.g. ResourceMgr.addMcpServer).
         syncMcpServersFromResourceMgr();
         if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
-            var rail = PermissionFactory.buildPermissionInterruptRail(
+            PermissionInterruptRail rail = PermissionFactory.buildPermissionInterruptRail(
                     config.getPermissions(),
                     config.getPermissionHost(),
                     workspaceRootPath()
             );
             rail.init(this);
             registeredRails.add(rail);
-            bindDeepAgentRailToAgent(rail);
+            if (agent != null && railsBoundToAgent.add(rail)) {
+                agent.registerRail(rail).toCompletableFuture().join();
+            }
         }
         if (config.isEnableTaskLoop()) {
             ensureTaskLoopRuntime();
@@ -904,41 +910,31 @@ public class DeepAgent implements AutoCloseable {
             return runSingleRoundInvoke(normalized, session);
         }
         if (config.isEnableTaskLoop()) {
-            AgentSessionApi effectiveSession = session;
-            if (effectiveSession == null) {
-                String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
-                effectiveSession = new DeepAgentSession(requestLevelSessionId, null, card);
-            } else if (effectiveSession.getSessionId() != null && !effectiveSession.getSessionId().isBlank()) {
-                normalized.put("conversation_id", effectiveSession.getSessionId());
-            }
-            if (effectiveSession instanceof DeepAgentSession deepSession) {
-                TenantContext effectiveCtx = sessionTenantContext(session);
-                if (effectiveCtx == null || !effectiveCtx.isTenantAware()) {
-                    effectiveCtx = TenantContextHolder.getCurrentTenant();
-                }
-                if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
-                    deepSession.withTenantContext(effectiveCtx);
-                }
-                // Reused DeepAgentSession objects keep POST-done after the first
-                // run; clear it so this invocation still commits/closes.
-                deepSession.resetPostRunState();
-                if (session != null) {
-                    deepSession.markPreRunDone();
-                }
-                deepSession.preRun(normalized);
-            }
-            try {
-                return runTaskLoop(normalized, effectiveSession);
-            } finally {
-                if (effectiveSession instanceof DeepAgentSession deepSession) {
-                    deepSession.postRun();
-                    if (session != null) {
-                        session.markPreRunDone();
-                        session.markPostRunDone();
-                    }
-                }
-            }
+            return invokeWithTaskLoop(normalized, session);
         }
+        return buildDisabledTaskLoopResult(normalized);
+    }
+
+    private Map<String, Object> invokeWithTaskLoop(Map<String, Object> normalized, AgentSessionApi session) {
+        DeepAgentSession effectiveSession = newEffectiveSession(normalized, session, null);
+        applyEffectiveTenant(effectiveSession, session);
+        if (session != null) {
+            effectiveSession.copyPreRunState(session);
+        }
+        effectiveSession.preRun(normalized);
+        if (session != null) {
+            mergeSessionState(session, effectiveSession);
+        }
+        Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+        effectiveSession.postRun();
+        if (session != null) {
+            replaceSessionState(effectiveSession, session);
+            session.copyRunState(effectiveSession);
+        }
+        return result;
+    }
+
+    private Map<String, Object> buildDisabledTaskLoopResult(Map<String, Object> normalized) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("type", "deep_agent_result");
         result.put("agent_name", card.getName());
@@ -1112,91 +1108,63 @@ public class DeepAgent implements AutoCloseable {
         if (config.isEnableTaskLoop() && !resumeInput) {
             normalized.put("_collect_inner_stream", true);
         }
-        String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
-        DeepAgentSession effectiveSession;
-        if (session instanceof DeepAgentSession ds) {
-            effectiveSession = ds;
-        } else {
-            effectiveSession = new DeepAgentSession(
-                    requestLevelSessionId,
-                    session instanceof DeepAgentSession deep ? deep.getEnvs() : null,
-                    card,
-                    streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
-            );
-        }
-        TenantContext effectiveCtx = sessionTenantContext(session);
-        if (effectiveCtx == null || !effectiveCtx.isTenantAware()) {
-            effectiveCtx = TenantContextHolder.getCurrentTenant();
-        }
-        if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
-            effectiveSession.withTenantContext(effectiveCtx);
-        }
-        // Same-object reuse must drop a stale POST-done flag; a newly created
-        // internal session is already clean. Keep PRE-done when the caller
-        // already ran preRun, matching copyPreRunState on 830.
-        effectiveSession.resetPostRunState();
+        DeepAgentSession effectiveSession = newEffectiveSession(normalized, session, streamModes);
+        applyEffectiveTenant(effectiveSession, session);
         if (session != null) {
-            effectiveSession.markPreRunDone();
+            effectiveSession.copyPreRunState(session);
         }
         effectiveSession.preRun(normalized);
         if (session != null) {
             mergeSessionState(session, effectiveSession);
         }
         if (config.isEnableTaskLoop() && !resumeInput) {
-            try {
-                STREAM_EXECUTOR.execute(() -> {
-                    try {
-                        Map<String, Object> result = withDeepAgentInvokeLifecycle(
-                                normalized,
-                                () -> runTaskLoop(normalized, effectiveSession)
-                        );
-                        writeTopLevelStreamResult(effectiveSession, 0, result);
-                    } catch (Error error) {
-                        effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
-                                "output", error.getMessage() == null
-                                        ? error.getClass().getSimpleName()
-                                        : error.getMessage(),
-                                "result_type", "error"
-                        )));
-                    } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
-                            | IllegalStateException | UnsupportedOperationException | ClassCastException
-                            | NullPointerException | IndexOutOfBoundsException | NoSuchElementException
-                            | RejectedExecutionException | UncheckedIOException | SecurityException error) {
-                        effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
-                                "output", error.getMessage() == null
-                                        ? error.getClass().getSimpleName()
-                                        : error.getMessage(),
-                                "result_type", "error"
-                        )));
-                    } finally {
-                        try {
-                            if (session != null) {
-                                replaceSessionState(effectiveSession, session);
-                            }
-                        } finally {
-                            effectiveSession.postRun();
-                            if (session != null) {
-                                session.markPreRunDone();
-                                session.markPostRunDone();
-                            }
-                        }
-                    }
-                });
-            } catch (RejectedExecutionException rejected) {
-                effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
-                        "output", rejected.getMessage() == null
-                                ? rejected.getClass().getSimpleName()
-                                : rejected.getMessage(),
-                        "result_type", "error"
-                )));
-                effectiveSession.postRun();
-                if (session != null) {
-                    session.markPreRunDone();
-                    session.markPostRunDone();
-                }
-            }
-            return effectiveSession.streamIterator();
+            return streamTaskLoop(normalized, effectiveSession, session);
         }
+        return streamInvokeOnce(normalized, effectiveSession, session);
+    }
+
+    private java.util.Iterator<Object> streamTaskLoop(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
+        try {
+            STREAM_EXECUTOR.execute(() -> runStreamTaskLoop(normalized, effectiveSession, session));
+        } catch (RejectedExecutionException rejected) {
+            writeStreamError(effectiveSession, 0, rejected);
+            finishStreamSession(effectiveSession, session);
+        }
+        return effectiveSession.streamIterator();
+    }
+
+    private void runStreamTaskLoop(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
+        try {
+            Map<String, Object> result = withDeepAgentInvokeLifecycle(
+                    normalized,
+                    () -> runTaskLoop(normalized, effectiveSession)
+            );
+            writeTopLevelStreamResult(effectiveSession, 0, result);
+        } catch (Error error) {
+            writeStreamError(effectiveSession, 0, error);
+        } catch (BaseError | AgentInterrupt | CompletionException | IllegalArgumentException
+                | IllegalStateException | UnsupportedOperationException | ClassCastException
+                | NullPointerException | IndexOutOfBoundsException | NoSuchElementException
+                | RejectedExecutionException | UncheckedIOException | SecurityException error) {
+            writeStreamError(effectiveSession, 0, error);
+        } finally {
+            finishStreamSession(effectiveSession, session);
+        }
+    }
+
+    private java.util.Iterator<Object> streamInvokeOnce(
+            Map<String, Object> normalized,
+            DeepAgentSession effectiveSession,
+            AgentSessionApi session
+    ) {
         List<Object> outputs = new ArrayList<>();
         try {
             Map<String, Object> result = invokeWithLifecycle(normalized, session);
@@ -1205,29 +1173,36 @@ public class DeepAgent implements AutoCloseable {
                 | UnsupportedOperationException | ClassCastException | NullPointerException
                 | IndexOutOfBoundsException | NoSuchElementException | RejectedExecutionException
                 | UncheckedIOException | SecurityException ex) {
-            effectiveSession.writeStream(new OutputSchema("error", outputs.size(), Map.of(
-                    "output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
-                    "result_type", "error"
-            )));
+            writeStreamError(effectiveSession, outputs.size(), ex);
         } finally {
-            try {
-                // Copy before postRun so Runner does not checkpoint stale outer state.
-                if (session != null) {
-                    replaceSessionState(effectiveSession, session);
-                }
-            } finally {
-                effectiveSession.postRun();
-                if (session != null) {
-                    session.markPreRunDone();
-                    session.markPostRunDone();
-                }
-            }
+            finishStreamSession(effectiveSession, session);
         }
         java.util.Iterator<Object> iterator = effectiveSession.streamIterator();
         while (iterator.hasNext()) {
             outputs.add(iterator.next());
         }
         return outputs.iterator();
+    }
+
+    private void writeStreamError(AgentSessionApi session, int index, Throwable error) {
+        if (session == null || error == null) {
+            return;
+        }
+        String output = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+        session.writeStream(new OutputSchema("error", index, Map.of(
+                "output", output,
+                "result_type", "error"
+        )));
+    }
+
+    private void finishStreamSession(DeepAgentSession effectiveSession, AgentSessionApi session) {
+        if (session != null) {
+            replaceSessionState(effectiveSession, session);
+        }
+        effectiveSession.postRun();
+        if (session != null) {
+            session.copyRunState(effectiveSession);
+        }
     }
 
     /**
@@ -1745,6 +1720,21 @@ public class DeepAgent implements AutoCloseable {
                     agent.getContextEngine().clearContext(null, sessionId);
                 }
             }
+            clearSessionTracer(session);
+            if (loopController != null) {
+                loopController.clearSession(sessionId);
+            }
+        }
+    }
+
+    private static void clearSessionTracer(AgentSessionApi session) {
+        BaseSession inner = innerOf(session);
+        if (inner == null) {
+            return;
+        }
+        Object tracer = inner.tracer();
+        if (tracer instanceof Tracer typed) {
+            typed.clear();
         }
     }
 
@@ -1867,7 +1857,7 @@ public class DeepAgent implements AutoCloseable {
     private Object invokeReactAgent(Map<String, Object> effectiveInputs, AgentSessionApi session) {
         Object react = reactAgent();
         if (react instanceof ReActAgent reActAgent) {
-            return reActAgent.invoke(effectiveInputs, session).toCompletableFuture().join();
+            return reActAgent.invoke(effectiveInputs, session);
         }
         try {
             Method invoke = react.getClass().getMethod("invoke", Map.class, AgentSessionApi.class);
@@ -1901,7 +1891,7 @@ public class DeepAgent implements AutoCloseable {
     ) {
         DeepAgentSession innerSession = new DeepAgentSession(
                 String.valueOf(effectiveInputs.get("conversation_id")),
-                session instanceof DeepAgentSession deepSession ? deepSession.getEnvs() : null,
+                sessionEnvs(session),
                 card,
                 List.of(StreamMode.OUTPUT)
         );
@@ -1994,7 +1984,53 @@ public class DeepAgent implements AutoCloseable {
         if (session instanceof AgentSession agentSession) {
             return agentSession.getInner();
         }
+        if (session instanceof AgentTeamSession teamSession) {
+            return teamSession.getInner();
+        }
+        if (session instanceof AgentGroupSession groupSession) {
+            return groupSession.getInner();
+        }
         return null;
+    }
+
+    private static Map<String, Object> sessionEnvs(AgentSessionApi session) {
+        if (session instanceof DeepAgentSession deepSession) {
+            return deepSession.getEnvs();
+        }
+        if (session instanceof AgentSession agentSession) {
+            return agentSession.getEnvs();
+        }
+        if (session instanceof AgentTeamSession teamSession) {
+            return teamSession.getEnvs();
+        }
+        if (session instanceof AgentGroupSession groupSession) {
+            return groupSession.getEnvs();
+        }
+        return null;
+    }
+
+    private DeepAgentSession newEffectiveSession(
+            Map<String, Object> normalized,
+            AgentSessionApi session,
+            List<StreamMode> streamModes
+    ) {
+        String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
+        Map<String, Object> envs = sessionEnvs(session);
+        if (streamModes == null) {
+            return new DeepAgentSession(requestLevelSessionId, envs, card);
+        }
+        List<StreamMode> modes = streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes;
+        return new DeepAgentSession(requestLevelSessionId, envs, card, modes);
+    }
+
+    private void applyEffectiveTenant(DeepAgentSession effectiveSession, AgentSessionApi session) {
+        TenantContext effectiveCtx = sessionTenantContext(session);
+        if (effectiveCtx == null || !effectiveCtx.isTenantAware()) {
+            effectiveCtx = TenantContextHolder.getCurrentTenant();
+        }
+        if (effectiveCtx != null && effectiveCtx.isTenantAware()) {
+            effectiveSession.withTenantContext(effectiveCtx);
+        }
     }
 
     private void writeTopLevelStreamResult(AgentSessionApi session, int index, Map<String, Object> result) {
@@ -2238,6 +2274,9 @@ public class DeepAgent implements AutoCloseable {
             agent.getAbilityManager().clearAllSessionTools();
         }
         shutdown();
+        if (loopController != null) {
+            loopController.clearAllSessions();
+        }
     }
 
     /**

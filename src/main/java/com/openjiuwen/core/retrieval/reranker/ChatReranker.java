@@ -6,7 +6,6 @@ package com.openjiuwen.core.retrieval.reranker;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.OpenJiuwenVersion;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -71,10 +70,7 @@ public class ChatReranker extends StandardReranker {
                         HttpClient httpClient) {
         super(config, maxRetries, retryWait, extraHeaders, httpClient);
         this.logger = Loggers.RETRIEVAL;
-        this.logger.warning(
-                "ChatReranker support is experimental in openJiuwen %s, you have been warned.",
-                OpenJiuwenVersion.version()
-        );
+        this.logger.warning("ChatReranker support is experimental in openJiuwen, you have been warned.");
         if (!isValidYesNoIds(config.getYesNoIds())) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,

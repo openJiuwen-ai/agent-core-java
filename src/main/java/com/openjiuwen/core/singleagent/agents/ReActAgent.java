@@ -25,8 +25,11 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.operator.OperatorStream;
+import com.openjiuwen.core.session.AgentGroupSession;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.SessionContextHolder;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -55,6 +58,7 @@ import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.harness.task_loop.LoopQueues;
 
 import java.lang.reflect.Method;
 import java.nio.file.InvalidPathException;
@@ -69,11 +73,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.logging.Logger;
 
@@ -113,7 +115,6 @@ public class ReActAgent extends BaseAgent {
     private SystemPromptBuilder systemPromptBuilder = promptBuilder;
     private final ToolInterruptHandler hitlHandler;
     private boolean kvReleaseWarningLogged;
-    private boolean agentSession;
 
     public ReActAgent(AgentCard card) {
         super(card);
@@ -126,10 +127,6 @@ public class ReActAgent extends BaseAgent {
 
     public ReActAgentConfig createDefaultConfig() {
         return new ReActAgentConfig();
-    }
-
-    public ReActAgentConfig _create_default_config() {
-        return createDefaultConfig();
     }
 
     @Override
@@ -198,10 +195,6 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    public Model _get_llm() {
-        return getLlm();
-    }
-
     public void addPromptBuilderSection(String name, String content, int priority) {
         String text = content == null ? "" : content.strip();
         if (text.isEmpty()) {
@@ -218,10 +211,6 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         promptBuilder.addPersistentSection(new PromptSection(name, Map.of("cn", text, "en", text), priority));
-    }
-
-    public void add_prompt_builder_section(String name, String content, int priority) {
-        addPromptBuilderSection(name, content, priority);
     }
 
     public String buildRenderedSystemPrompt(Object inputs, Map<String, String> extraRenderFields) {
@@ -242,10 +231,6 @@ public class ReActAgent extends BaseAgent {
             }
         }
         return String.join("\n\n", rendered);
-    }
-
-    public String _build_rendered_system_prompt(Object inputs, Map<String, String> extraRenderFields) {
-        return buildRenderedSystemPrompt(inputs, extraRenderFields);
     }
 
     public void updateSkillPromptBuilderSection(String renderedSystemPrompt) {
@@ -294,10 +279,6 @@ public class ReActAgent extends BaseAgent {
                 AgentCallbackEvent.ON_MODEL_EXCEPTION,
                 () -> doRailedModelCall(ctx)
         );
-    }
-
-    public Object _railed_model_call(AgentCallbackContext ctx) {
-        return railedModelCall(ctx);
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
@@ -638,18 +619,9 @@ public class ReActAgent extends BaseAgent {
         return Optional.empty();
     }
 
-    public List<AbilityManager.ExecutionResult> _execute_tool_call(AgentCallbackContext ctx, List<ToolCall> toolCalls,
-                                                                   AgentSessionApi session, ModelContext context) {
-        return executeToolCall(ctx, toolCalls, session, context);
-    }
-
     public static List<UserMessage> buildMultimodalToolResultMessages(Object toolResult) {
         UserMessage message = buildMultimodalToolResultsMessage(List.of(toolResult));
         return message == null ? List.of() : List.of(message);
-    }
-
-    public static List<UserMessage> _build_multimodal_tool_result_messages(Object toolResult) {
-        return buildMultimodalToolResultMessages(toolResult);
     }
 
     public static UserMessage buildMultimodalToolResultsMessage(Iterable<?> toolResults) {
@@ -688,10 +660,6 @@ public class ReActAgent extends BaseAgent {
         return message;
     }
 
-    public static UserMessage _build_multimodal_tool_results_message(Iterable<?> toolResults) {
-        return buildMultimodalToolResultsMessage(toolResults);
-    }
-
     public static List<Map<String, Object>> iterMultimodalImageItems(Object toolResult) {
         Object data = readAttribute(toolResult, "data");
         if (!(data instanceof Map<?, ?> dataMap)) {
@@ -716,10 +684,6 @@ public class ReActAgent extends BaseAgent {
         return imageItems;
     }
 
-    public static List<Map<String, Object>> _iter_multimodal_image_items(Object toolResult) {
-        return iterMultimodalImageItems(toolResult);
-    }
-
     public boolean isInterrupted(Object toolResult) {
         Object normalized = normalizedToolResult(toolResult);
         if (normalized instanceof WorkflowOutput workflowOutput) {
@@ -735,10 +699,6 @@ public class ReActAgent extends BaseAgent {
             return false;
         }
         return normalized instanceof Map<?, ?> map && isInterruptMap(map);
-    }
-
-    public boolean _is_interrupted(Object toolResult) {
-        return isInterrupted(toolResult);
     }
 
     public List<String> extractComponentIds(Object toolResult) {
@@ -767,10 +727,6 @@ public class ReActAgent extends BaseAgent {
         return componentId == null ? List.of() : List.of(String.valueOf(componentId));
     }
 
-    public List<String> _extract_component_ids(Object toolResult) {
-        return extractComponentIds(toolResult);
-    }
-
     public String extractWorkflowId(ToolCall toolCall) {
         if (toolCall == null) {
             return "workflow";
@@ -788,10 +744,6 @@ public class ReActAgent extends BaseAgent {
             return toolCall.getName();
         }
         return toolCall.getId() == null || toolCall.getId().isBlank() ? "workflow" : toolCall.getId();
-    }
-
-    public String _extract_workflow_id(ToolCall toolCall) {
-        return extractWorkflowId(toolCall);
     }
 
     public InterruptionState afterExecuteToolCall(List<AbilityManager.ExecutionResult> results,
@@ -1203,10 +1155,6 @@ public class ReActAgent extends BaseAgent {
         return String.valueOf(userInput);
     }
 
-    public String _extract_user_text(Object userInput) {
-        return extractUserText(userInput);
-    }
-
     public InteractiveInput buildInteractiveInput(Object userQuery, List<String> componentIds) {
         if (userQuery instanceof InteractiveInput interactiveInput) {
             Set<String> providedIds = new HashSet<>(interactiveInput.getUserInputs().keySet());
@@ -1245,10 +1193,6 @@ public class ReActAgent extends BaseAgent {
             getAbilityManager().remove(contextReloader.name());
         }
         return context;
-    }
-
-    public ModelContext _init_context(AgentSessionApi session) {
-        return initContext(session);
     }
 
     private static Tool asSessionReloader(ModelContext.ToolPort port) {
@@ -1296,20 +1240,19 @@ public class ReActAgent extends BaseAgent {
     }
 
     @Override
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+    public Object invoke(Object inputs, AgentSessionApi session) {
         return invoke(inputs, session, Map.of());
     }
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
-        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession);
     }
 
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
-        if (!(inputs instanceof Map<?, ?>) && !(inputs instanceof String)) {
-            CompletableFuture<Object> failed = new CompletableFuture<>();
-            failed.completeExceptionally(new IllegalArgumentException("Input must be dict with 'query' or str"));
-            return failed;
+    public Object invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
+        if (inputs == null || (!(inputs instanceof Map) && !(inputs instanceof String))) {
+            throw new IllegalArgumentException("Input must be Map with 'query' or String");
         }
         Object query;
         String conversationId = null;
@@ -1332,20 +1275,14 @@ public class ReActAgent extends BaseAgent {
             activeSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
             needCleanup = true;
         }
-        try {
-            return CompletableFuture.completedFuture(innerInvoke(
-                    activeSession,
-                    inputs,
-                    query,
-                    needCleanup,
-                    conversationId,
-                    kwargs
-            ));
-        } catch (RuntimeException exception) {
-            CompletableFuture<Object> failed = new CompletableFuture<>();
-            failed.completeExceptionally(exception);
-            return failed;
-        }
+        return innerInvoke(
+                activeSession,
+                inputs,
+                query,
+                needCleanup,
+                conversationId,
+                kwargs
+        );
     }
 
     public Object innerInvoke(AgentSessionApi session, Object inputs, Object query, boolean needCleanup,
@@ -1374,8 +1311,10 @@ public class ReActAgent extends BaseAgent {
             Queue<String> steeringQueue = null;
             if (inputs instanceof Map<?, ?> map) {
                 putExtra(ctx, "user_id", map.get("user_id"));
-                putExtra(ctx, "run_kind", map.get("run_kind"));
-                putExtra(ctx, "run_context", map.get("run_context"));
+                copyInvokeExtra(map, ctx, "run_kind");
+                copyInvokeExtra(map, ctx, "run_context");
+                copyInvokeExtra(map, ctx, "is_follow_up");
+                copyInvokeExtra(map, ctx, "loop_queues");
                 Object rawSteeringQueue = map.get("_steering_queue");
                 if (rawSteeringQueue instanceof Queue<?> queue) {
                     @SuppressWarnings("unchecked")
@@ -1383,20 +1322,15 @@ public class ReActAgent extends BaseAgent {
                     steeringQueue = typedQueue;
                 }
             }
-            // String inputs and maps without _steering_queue used to leave the
-            // queue unbound, so rail pushSteering was silently dropped.
-            if (steeringQueue == null) {
-                steeringQueue = new ConcurrentLinkedQueue<>();
-            }
-            ctx.bindSteeringQueue(steeringQueue);
+            bindSteeringQueue(ctx, steeringQueue);
             initializationComplete = true;
-            getAgentCallbackManager().execute(AgentCallbackEvent.BEFORE_INVOKE, ctx).toCompletableFuture().join();
+            fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
             Object userInput = invokeInputs.getQuery();
             ExternalToolPendingState externalPending = loadExternalToolPendingState(session);
             boolean externalResume = externalPending != null && isExternalToolResumeInput(inputs);
             if (externalPending != null && !externalResume) {
                 invokeInputs.setResult(buildExternalToolResultsRequiredResult());
-                getAgentCallbackManager().execute(AgentCallbackEvent.AFTER_INVOKE, ctx).toCompletableFuture().join();
+                fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
                 Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
                 if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
                     writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
@@ -1559,7 +1493,7 @@ public class ReActAgent extends BaseAgent {
                     )));
                 }
             }
-            getAgentCallbackManager().execute(AgentCallbackEvent.AFTER_INVOKE, ctx).toCompletableFuture().join();
+            fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
             Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
             if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
                 if (result instanceof Map<?, ?> map) {
@@ -1728,15 +1662,7 @@ public class ReActAgent extends BaseAgent {
         return value instanceof ToolInterruptException || ToolInterruptHandler.isSubAgentInterrupt(value);
     }
 
-    public void writeInvokeResultToStream(Map<String, Object> result, AgentSessionApi session) {
-        writeInvokeResultToStreamInternal(result, session);
-    }
-
-    public void write_invoke_result_to_stream(Map<String, Object> result, AgentSessionApi session) {
-        writeInvokeResultToStream(result, session);
-    }
-
-    public void writeInvokeResultToStreamInternal(Map<String, Object> result, AgentSessionApi session) {
+    private void writeInvokeResultToStreamInternal(Map<String, Object> result, AgentSessionApi session) {
         writeInvokeResultToStreamInternal(result, session, null);
     }
 
@@ -1793,72 +1719,52 @@ public class ReActAgent extends BaseAgent {
         ));
     }
 
-    public void _write_invoke_result_to_stream(Map<String, Object> result, AgentSessionApi session) {
-        writeInvokeResultToStreamInternal(result, session);
-    }
-
     @Override
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-        boolean needCleanup = false;
-        AgentSessionApi activeSession = session;
-        if (activeSession == null) {
-            String conversationId = inputs instanceof Map<?, ?> map && map.get("conversation_id") != null
-                    ? String.valueOf(map.get("conversation_id"))
-                    : null;
-            activeSession = AgentSession.createAgentSession(
-                    conversationId == null || conversationId.isBlank() ? "default_session" : conversationId,
-                    null,
-                    getCard()
-            );
-            needCleanup = true;
+        if (session == null) {
+            throw new IllegalArgumentException("Session is required for streaming");
         }
-        agentSession = runsStreamInBackground(activeSession);
-        activeSession.preRun(inputs instanceof Map<?, ?> ? Map.of("inputs", inputs) : Map.of());
-        AgentSessionApi finalSession = activeSession;
-        boolean finalNeedCleanup = needCleanup;
-        if (agentSession) {
-            String streamThreadName = resolveStreamWorkerThreadName(inputs);
-            try {
-                STREAM_EXECUTOR.submit(() -> {
-                    Thread worker = Thread.currentThread();
-                    String previousName = worker.getName();
-                    worker.setName(streamThreadName);
-                    try {
-                        runStreamingInvoke(inputs, finalSession, finalNeedCleanup);
-                    } finally {
-                        worker.setName(previousName);
-                    }
-                });
-            } catch (RejectedExecutionException exception) {
-                writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
-                if (finalNeedCleanup) {
-                    contextEngine.saveContexts(finalSession);
-                }
-                closeStreamAndCommit(finalSession);
-            }
-            return finalSession.streamIterator();
+        session.preRun(streamPreRunPayload(inputs));
+        if (!runsStreamInBackground(session)) {
+            runStreamingInvoke(inputs, session, false);
+            return session.streamIterator();
         }
-        try {
-            invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
-        } catch (RuntimeException exception) {
-            writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
-        } finally {
-            if (finalNeedCleanup) {
-                contextEngine.saveContexts(finalSession);
-            }
-            closeStreamAndCommit(finalSession);
-        }
-        return finalSession.streamIterator();
+        return startBackgroundStream(inputs, session);
     }
 
     @Override
     public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
-        return stream(inputs, (AgentSessionApi) session, streamModes);
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
+    }
+
+    private Iterator<Object> startBackgroundStream(Object inputs, AgentSessionApi session) {
+        String streamThreadName = resolveStreamWorkerThreadName(inputs);
+        Future<?> streamFuture;
+        try {
+            streamFuture = STREAM_EXECUTOR.submit(() -> runNamedStreamingInvoke(inputs, session, streamThreadName));
+        } catch (RejectedExecutionException exception) {
+            writeInvokeResultToStreamInternal(buildErrorResult(exception), session);
+            closeStreamAndCommit(session);
+            return session.streamIterator();
+        }
+        return OperatorStream.wrap(session.streamIterator(), () -> streamFuture.cancel(true));
+    }
+
+    private void runNamedStreamingInvoke(Object inputs, AgentSessionApi session, String streamThreadName) {
+        Thread worker = Thread.currentThread();
+        String previousName = worker.getName();
+        worker.setName(streamThreadName);
+        try {
+            runStreamingInvoke(inputs, session, false);
+        } finally {
+            worker.setName(previousName);
+        }
     }
 
     private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession, boolean finalNeedCleanup) {
         try {
-            invoke(inputs, finalSession, Map.of("_streaming", true)).toCompletableFuture().join();
+            invoke(inputs, finalSession, Map.of("_streaming", true));
         } catch (RuntimeException exception) {
             writeInvokeResultToStreamInternal(buildErrorResult(exception), finalSession);
         } finally {
@@ -1869,17 +1775,23 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    private static Map<String, Object> streamPreRunPayload(Object inputs) {
+        if (inputs instanceof Map<?, ?>) {
+            return Map.of("inputs", inputs);
+        }
+        return Map.of();
+    }
+
     private static boolean runsStreamInBackground(AgentSessionApi session) {
-        return session instanceof AgentSession;
+        return session instanceof AgentSession
+                || session instanceof AgentTeamSession
+                || session instanceof AgentGroupSession
+                || "DeepAgentSession".equals(session.getClass().getSimpleName());
     }
 
     public void clearSession(String sessionId) {
         invokeStaticRunnerRelease(sessionId);
         contextEngine.clearContext(null, sessionId);
-    }
-
-    public void clear_session(String sessionId) {
-        clearSession(sessionId);
     }
 
     public boolean clearContextMessages(String sessionId, String contextId) {
@@ -1893,12 +1805,8 @@ public class ReActAgent extends BaseAgent {
         return true;
     }
 
-    public boolean clear_context_messages(String sessionId, String contextId) {
-        return clearContextMessages(sessionId, contextId);
-    }
-
     @Override
-    public ReActAgentConfig getConfig() {
+    public Object getConfig() {
         return config;
     }
 
@@ -1912,14 +1820,6 @@ public class ReActAgent extends BaseAgent {
 
     public SystemPromptBuilder getSystemPromptBuilder() {
         return systemPromptBuilder;
-    }
-
-    public boolean isAgentSession() {
-        return agentSession;
-    }
-
-    public ToolInterruptHandler getHitlHandler() {
-        return hitlHandler;
     }
 
     public boolean isKvReleaseWarningLogged() {
@@ -1949,10 +1849,6 @@ public class ReActAgent extends BaseAgent {
         return Objects.toString(name, "?") + "(" + truncate(Objects.toString(args, ""), 100) + ")";
     }
 
-    public static String _summarize_tool_call(Object toolCall) {
-        return summarizeToolCall(toolCall);
-    }
-
     public static void logLlmRequest(Object log, List<? extends Object> messages, List<? extends Object> tools) {
         if (messages == null) {
             return;
@@ -1969,10 +1865,6 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
-    public static void log_llm_request(Object log, List<? extends Object> messages, List<? extends Object> tools) {
-        logLlmRequest(log, messages, tools);
-    }
-
     public static void logLlmResponse(Object log, AssistantMessage aiMessage) {
         if (aiMessage == null) {
             return;
@@ -1983,10 +1875,6 @@ public class ReActAgent extends BaseAgent {
                 Loggers.AGENT.info("[LLM]   tool_call: " + tc.getName());
             }
         }
-    }
-
-    public static void log_llm_response(Object log, AssistantMessage aiMessage) {
-        logLlmResponse(log, aiMessage);
     }
 
     /**
@@ -2393,6 +2281,27 @@ public class ReActAgent extends BaseAgent {
         } catch (ReflectiveOperationException ignored) {
             // Runner may not be available in focused tests.
         }
+    }
+
+    private static void copyInvokeExtra(Map<?, ?> inputs, AgentCallbackContext ctx, String key) {
+        if (inputs.containsKey(key)) {
+            ctx.getExtra().put(key, inputs.get(key));
+        }
+    }
+
+    private static void bindSteeringQueue(AgentCallbackContext ctx, Queue<String> steeringQueue) {
+        Object queues = ctx.getExtra().get("loop_queues");
+        if (queues instanceof LoopQueues loopQueues) {
+            ctx.bindSteeringQueue(loopQueues.steering());
+            return;
+        }
+        if (steeringQueue != null) {
+            ctx.bindSteeringQueue(steeringQueue);
+            return;
+        }
+        LoopQueues autoQueue = new LoopQueues();
+        ctx.getExtra().put("loop_queues", autoQueue);
+        ctx.bindSteeringQueue(autoQueue.steering());
     }
 
     private static void putExtra(AgentCallbackContext ctx, String key, Object value) {

@@ -11,7 +11,6 @@ import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Token usage tracking rail for CLI status and cost summaries.
@@ -30,18 +29,18 @@ public class TokenTrackingRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+    public void afterModelCall(AgentCallbackContext context) {
         callCount++;
         Object response = readResponse(context);
         if (response == null) {
-            return completed();
+            return;
         }
         Object usage = readProperty(response, "usage");
         if (usage == null) {
             usage = readProperty(response, "usage_metadata");
         }
         if (usage == null) {
-            return completed();
+            return;
         }
         totalInputTokens += readTokenCount(usage, "prompt_tokens", "promptTokens", "input_tokens", "inputTokens");
         totalOutputTokens += readTokenCount(
@@ -51,7 +50,6 @@ public class TokenTrackingRail extends AgentRail {
                 "output_tokens",
                 "outputTokens"
         );
-        return completed();
     }
 
     public Map<String, Long> getSummary() {

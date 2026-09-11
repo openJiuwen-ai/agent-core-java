@@ -95,7 +95,7 @@ class HitlRailChainToolsMissingTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invoke(ScriptedChainAgent agent, MemorySession session,
                                               Map<String, Object> inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, session).toCompletableFuture().join();
+        return (Map<String, Object>) agent.invoke(inputs, session);
     }
 
     @SuppressWarnings("unchecked")

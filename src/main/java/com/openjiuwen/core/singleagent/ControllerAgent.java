@@ -19,7 +19,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -53,26 +52,24 @@ public class ControllerAgent extends BaseAgent {
     }
 
     @Override
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+    public Object invoke(Object inputs, AgentSessionApi session) {
         if (controller == null) {
-            return failed(new IllegalStateException(getClass().getSimpleName() + " has no controller"));
+            throw new IllegalStateException(getClass().getSimpleName() + " has no controller");
         }
         if (session == null) {
-            return failed(new IllegalArgumentException("session is required"));
+            throw new IllegalArgumentException("session is required");
         }
         Object result = invokeController("invoke", toInputEvent(inputs), session, null);
         if (result instanceof CompletionStage<?> stage) {
-            @SuppressWarnings("unchecked")
-            CompletionStage<Object> typedStage = (CompletionStage<Object>) stage;
-            return typedStage;
+            return stage.toCompletableFuture().join();
         }
-        return CompletableFuture.completedFuture(result);
+        return result;
     }
 
     @Override
     public Object invoke(Object inputs, AgentSession session) {
         AgentSessionApi apiSession = session;
-        return invoke(inputs, apiSession).toCompletableFuture().join();
+        return invoke(inputs, apiSession);
     }
 
     @Override
@@ -395,11 +392,5 @@ public class ControllerAgent extends BaseAgent {
 
     private enum NoMethod {
         INSTANCE
-    }
-
-    private static <T> CompletionStage<T> failed(Throwable throwable) {
-        CompletableFuture<T> failed = new CompletableFuture<>();
-        failed.completeExceptionally(throwable);
-        return failed;
     }
 }

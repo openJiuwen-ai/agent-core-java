@@ -247,14 +247,14 @@ class ContextProcessorRailPythonParityTest {
         ));
         AgentCallbackContext ctx = contextWithModelContext(modelContext);
 
-        rail.beforeInvoke(ctx).toCompletableFuture().join();
+        rail.beforeInvoke(ctx);
         assertEquals(List.of("tc"), placeholderIds(modelContext.addedMessages));
 
         MockModelContext modelContext2 = new MockModelContext(List.of(
                 assistant("call", tool("tc2", "t", "{}")),
                 new UserMessage("u")
         ));
-        rail.onModelException(contextWithModelContext(modelContext2)).toCompletableFuture().join();
+        rail.onModelException(contextWithModelContext(modelContext2));
         assertEquals(List.of("tc2"), placeholderIds(modelContext2.addedMessages));
     }
 
@@ -447,7 +447,7 @@ class ContextProcessorRailPythonParityTest {
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setSession(session);
 
-        new ContextProcessorRail().beforeModelCall(ctx).toCompletableFuture().join();
+        new ContextProcessorRail().beforeModelCall(ctx);
 
         assertEquals(5, session.lastUpdate.get("iteration"));
         assertEquals(List.of("follow1"), session.lastUpdate.get("pending_follow_ups"));
@@ -467,21 +467,21 @@ class ContextProcessorRailPythonParityTest {
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setSession(session);
 
-        new ContextProcessorRail().beforeModelCall(ctx).toCompletableFuture().join();
+        new ContextProcessorRail().beforeModelCall(ctx);
 
         assertEquals(10, session.lastUpdate.get("iteration"));
     }
 
     private void refreshTaskStateRuntimeNoSession() {
         AgentCallbackContext ctx = new AgentCallbackContext();
-        assertDoesNotThrow(() -> new ContextProcessorRail().beforeModelCall(ctx).toCompletableFuture().join());
+        assertDoesNotThrow(() -> new ContextProcessorRail().beforeModelCall(ctx));
     }
 
     private void beforeModelCallRefreshesState() {
         FakeSession session = new FakeSession(Map.of("iteration", 3));
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setSession(session);
-        new ContextProcessorRail().beforeModelCall(ctx).toCompletableFuture().join();
+        new ContextProcessorRail().beforeModelCall(ctx);
         assertEquals(3, session.lastUpdate.get("iteration"));
     }
 
@@ -489,7 +489,7 @@ class ContextProcessorRailPythonParityTest {
         FakeSession session = new FakeSession(Map.of("iteration", 4));
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setSession(session);
-        new ContextProcessorRail().afterModelCall(ctx).toCompletableFuture().join();
+        new ContextProcessorRail().afterModelCall(ctx);
         assertEquals(4, session.lastUpdate.get("iteration"));
     }
 
@@ -497,7 +497,7 @@ class ContextProcessorRailPythonParityTest {
         FakeSession session = new FakeSession(Map.of("iteration", 5));
         AgentCallbackContext ctx = new AgentCallbackContext();
         ctx.setSession(session);
-        new ContextProcessorRail().afterToolCall(ctx).toCompletableFuture().join();
+        new ContextProcessorRail().afterToolCall(ctx);
         assertEquals(5, session.lastUpdate.get("iteration"));
     }
 
@@ -585,14 +585,14 @@ class ContextProcessorRailPythonParityTest {
     private void offloadSectionInjectedWhenPresetEnabled() {
         ContextProcessorRail rail = initializedRail(new ContextProcessorRail());
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
-        rail.beforeModelCall(contextWithBuilder(builder)).toCompletableFuture().join();
+        rail.beforeModelCall(contextWithBuilder(builder));
         assertTrue(builder.hasSection("offload"));
     }
 
     private void offloadSectionNotInjectedWhenNoProcessors() {
         ContextProcessorRail rail = initializedRail(new ContextProcessorRail(null, false, null));
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
-        rail.beforeModelCall(contextWithBuilder(builder)).toCompletableFuture().join();
+        rail.beforeModelCall(contextWithBuilder(builder));
         assertFalse(builder.hasSection("offload"));
     }
 
@@ -600,7 +600,7 @@ class ContextProcessorRailPythonParityTest {
         ContextProcessorRail rail = initializedRail(new ContextProcessorRail(
                 List.of(spec("CustomProcessor", new DialogueCompressorConfig())), false, null));
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
-        rail.beforeModelCall(contextWithBuilder(builder)).toCompletableFuture().join();
+        rail.beforeModelCall(contextWithBuilder(builder));
         assertTrue(builder.hasSection("offload"));
     }
 
@@ -618,7 +618,7 @@ class ContextProcessorRailPythonParityTest {
 
     private void offloadSectionNotInjectedWhenBuilderIsNone() {
         ContextProcessorRail rail = initializedRail(new ContextProcessorRail());
-        assertDoesNotThrow(() -> rail.beforeModelCall(new AgentCallbackContext()).toCompletableFuture().join());
+        assertDoesNotThrow(() -> rail.beforeModelCall(new AgentCallbackContext()));
     }
 
     private void offloadSectionPriority() {
@@ -630,7 +630,7 @@ class ContextProcessorRailPythonParityTest {
         MockAgent agent = new MockAgent();
         rail.init(agent);
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
-        rail.beforeModelCall(contextWithBuilder(builder)).toCompletableFuture().join();
+        rail.beforeModelCall(contextWithBuilder(builder));
         assertTrue(builder.hasSection("offload"));
 
         rail.uninit(agent);
@@ -646,7 +646,7 @@ class ContextProcessorRailPythonParityTest {
         AgentCallbackContext ctx = contextWithBuilder(builder);
         ctx.setSession(session);
 
-        rail.beforeModelCall(ctx).toCompletableFuture().join();
+        rail.beforeModelCall(ctx);
 
         assertTrue(builder.hasSection("offload"));
         assertEquals(1, session.lastUpdate.get("iteration"));
@@ -655,7 +655,7 @@ class ContextProcessorRailPythonParityTest {
     private static PromptSection injectedOffloadSection(String language) {
         ContextProcessorRail rail = initializedRail(new ContextProcessorRail());
         SystemPromptBuilder builder = new SystemPromptBuilder(language);
-        rail.beforeModelCall(contextWithBuilder(builder)).toCompletableFuture().join();
+        rail.beforeModelCall(contextWithBuilder(builder));
         return builder.getSection("offload").orElseThrow();
     }
 
@@ -892,8 +892,8 @@ class ContextProcessorRailPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(null);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return null;
         }
 
         @Override

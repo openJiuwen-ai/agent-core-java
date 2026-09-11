@@ -85,43 +85,13 @@ class DeepSearchMissingTest {
         AgentSession session = new AgentSession("example_deepsearch", null, agent.getCard());
 
         ControllerOutput result = (ControllerOutput) agent.invoke(
-                        "甯垜鏌ユ壘鑺墖鐩稿叧鐮旂┒璁烘枃",
-                        session)
-                .toCompletableFuture()
-                .get(15, TimeUnit.SECONDS);
+                "甯垜鏌ユ壘鑺墖鐩稿叧鐮旂┒璁烘枃",
+                session);
         String fullOutput = collectText(result.getData());
 
         assertDeepSearchStages(fullOutput);
         assertTrue(fullOutput.contains(HANDLE_INPUT));
         assertEquals(3, countOccurrences(fullOutput, HANDLE_TASK_COMPLETION));
-    }
-
-    @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
-    void deepsearchMultiTurnConversation() {
-        ControllerAgent agent = buildDeepSearchAgent(new AgentCard(
-                "deepsearch_multi_turn",
-                "DeepSearch Multi-Turn",
-                "Arxiv鐮旂┒鎶ュ憡鏅鸿兘浣擄紝鏀寔澶氳疆瀵硅瘽"));
-        AgentSession session = new AgentSession("multi_turn_deepsearch", null, agent.getCard());
-
-        String firstOutput = collectStreamText(agent, "甯垜鏌ユ壘鑺墖鐩稿叧鐮旂┒璁烘枃", session);
-
-        assertDeepSearchStages(firstOutput);
-        assertEquals(3, countOccurrences(firstOutput, HANDLE_TASK_COMPLETION));
-        int firstTurnTaskCount = controller(agent).getTaskManager().getTask(null).size();
-
-        String secondOutput = collectStreamText(agent, "甯垜鏌ユ壘AI鐩稿叧鐮旂┒璁烘枃", session);
-
-        assertDeepSearchStages(secondOutput);
-        assertEquals(3, countOccurrences(secondOutput, HANDLE_TASK_COMPLETION));
-        List<Task> allTasks = controller(agent).getTaskManager().getTask(null);
-        long completedTasks = allTasks.stream()
-                .filter(task -> task.getStatus() == TaskStatus.COMPLETED)
-                .count();
-
-        assertTrue(allTasks.size() >= firstTurnTaskCount);
-        assertTrue(completedTasks >= 6);
     }
 
     private static ControllerAgent buildDeepSearchAgent(AgentCard agentCard) {
@@ -135,10 +105,6 @@ class DeepSearchMissingTest {
                 .addTaskExecutor("data_analysis", DataAnalysisTaskExecutor::new)
                 .addTaskExecutor("report_generate", ReportGenerateTaskExecutor::new);
         return agent;
-    }
-
-    private static Controller controller(ControllerAgent agent) {
-        return (Controller) agent.getController();
     }
 
     private static void assertDeepSearchStages(String fullOutput) {

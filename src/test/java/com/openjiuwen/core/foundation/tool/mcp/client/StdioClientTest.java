@@ -25,6 +25,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,12 +80,32 @@ class StdioClientTest {
 
     @Test
     void connectReturnsFalseWhenSessionCannotOpen() throws Exception {
+        AtomicInteger opens = new AtomicInteger();
         StdioClient client = new StdioClient(config(Map.of()),
                 parameters -> {
+                    opens.incrementAndGet();
                     throw new IllegalStateException("boom");
                 });
 
         assertFalse(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        assertEquals(2, opens.get());
+    }
+
+    @Test
+    void connectRetriesUntilSessionOpens() throws Exception {
+        AtomicInteger opens = new AtomicInteger();
+        FakeSession session = new FakeSession();
+        StdioClient client = new StdioClient(config(Map.of()),
+                parameters -> {
+                    if (opens.incrementAndGet() == 1) {
+                        throw new IllegalStateException("boom");
+                    }
+                    return session;
+                });
+
+        assertTrue(client.connect(1, McpServerConfig.NO_TIMEOUT));
+        assertEquals(2, opens.get());
+        assertTrue(session.initialized);
     }
 
     @Test

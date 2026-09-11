@@ -213,9 +213,7 @@ class ReActAgentToolLifecycleStreamTest {
         ));
         registerGlobalTool(agent, tool);
 
-        Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-session"))
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-session"));
 
         assertThat(result).isInstanceOf(Map.class);
         assertThat(result.toString()).doesNotContain("tool_call").doesNotContain("tool_result");
@@ -229,9 +227,7 @@ class ReActAgentToolLifecycleStreamTest {
         );
         registerGlobalTool(agent, tool);
 
-        Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-id-session"))
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(Map.of("query", "which env?"), new MemorySession("invoke-id-session"));
 
         assertThat(result).isInstanceOf(Map.class);
         assertThat(agent.getCapturedToolMessageIds()).hasSize(1);
@@ -274,9 +270,7 @@ class ReActAgentToolLifecycleStreamTest {
         );
         registerGlobalTool(agent, tool);
 
-        agent.invoke(Map.of("query", "repair args"), new MemorySession("repair-args-session"))
-                .toCompletableFuture()
-                .join();
+        agent.invoke(Map.of("query", "repair args"), new MemorySession("repair-args-session"));
 
         assertThat(agent.getCapturedAssistantArguments()).containsExactly("{\"query\":[1,2]}");
         assertThat(tool.lastInputs).isEqualTo(Map.of("query", List.of(1, 2)));

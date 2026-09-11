@@ -181,7 +181,7 @@ public class HierarchicalTeam extends BaseTeam {
         Object rootAgent = Runner.resourceMgr().getAgent(rootAgentId).toCompletableFuture().join();
         try {
             Object inputsWithSession = inputsWithSession(message, session.getSessionId());
-            Iterator<Object> iterator = streamIterator(rootAgent, inputsWithSession);
+            Iterator<Object> iterator = streamIterator(rootAgent, inputsWithSession, session);
             while (iterator.hasNext()) {
                 session.writeStream(iterator.next());
             }
@@ -195,7 +195,7 @@ public class HierarchicalTeam extends BaseTeam {
     private void writeRootStream(Object message, AgentTeamSession teamSession, String sessionId, Object rootAgent) {
         try {
             Object inputsWithSession = inputsWithSession(message, sessionId);
-            Iterator<Object> iterator = streamIterator(rootAgent, inputsWithSession);
+            Iterator<Object> iterator = streamIterator(rootAgent, inputsWithSession, teamSession);
             while (iterator.hasNext()) {
                 teamSession.writeStream(iterator.next());
             }
@@ -246,15 +246,15 @@ public class HierarchicalTeam extends BaseTeam {
         );
     }
 
-    private Iterator<Object> streamIterator(Object agent, Object inputs) {
+    private Iterator<Object> streamIterator(Object agent, Object inputs, AgentSessionApi session) {
         if (agent instanceof BaseAgent baseAgent) {
-            return baseAgent.stream(inputs, null, List.of(StreamMode.OUTPUT));
+            return baseAgent.stream(inputs, session, List.of(StreamMode.OUTPUT));
         }
-        Object result = invokeStreamMethod(agent, inputs);
+        Object result = invokeStreamMethod(agent, inputs, session);
         return toIterator(result);
     }
 
-    private Object invokeStreamMethod(Object agent, Object inputs) {
+    private Object invokeStreamMethod(Object agent, Object inputs, AgentSessionApi session) {
         if (agent == null) {
             throw ErrorHelper.buildError(
                     StatusCode.AGENT_TEAM_EXECUTION_ERROR,
@@ -266,8 +266,8 @@ public class HierarchicalTeam extends BaseTeam {
             try {
                 method.setAccessible(true);
                 Object value = switch (method.getParameterCount()) {
-                    case 3 -> method.invoke(agent, inputs, null, List.of(StreamMode.OUTPUT));
-                    case 2 -> method.invoke(agent, inputs, null);
+                    case 3 -> method.invoke(agent, inputs, session, List.of(StreamMode.OUTPUT));
+                    case 2 -> method.invoke(agent, inputs, session);
                     case 1 -> method.invoke(agent, inputs);
                     default -> null;
                 };

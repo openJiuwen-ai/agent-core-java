@@ -116,8 +116,8 @@ class HierarchicalTeamTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture("invoked:" + inputs);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return "invoked:" + inputs;
         }
 
         @Override

@@ -11,6 +11,7 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.task_loop.LoopQueues;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,15 +56,13 @@ class ReActAgentSteeringRegressionTest {
                 CompletableFuture.completedFuture(new AssistantMessage("done"))));
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> afterModelCall(AgentCallbackContext ctx) {
+            public void afterModelCall(AgentCallbackContext ctx) {
                 queueBoundSeen.add(ctx.hasSteeringQueue());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
 
-        agent.invoke("do something", new AgentSession("steering-string", null, agent.getCard()))
-                .toCompletableFuture()
-                .join();
+        agent.invoke("do something", new AgentSession("steering-string", null, agent.getCard()));
 
         assertThat(queueBoundSeen)
                 .as("String-invoke branch must auto-provision a steering queue")
@@ -81,20 +81,46 @@ class ReActAgentSteeringRegressionTest {
         }));
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> afterModelCall(AgentCallbackContext ctx) {
+            public void afterModelCall(AgentCallbackContext ctx) {
                 if (pushed.compareAndSet(false, true)) {
                     ctx.pushSteering("[STEERING] Continue");
                 }
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
 
-        agent.invoke("do something", new AgentSession("steering-continue", null, agent.getCard()))
-                .toCompletableFuture()
-                .join();
+        agent.invoke("do something", new AgentSession("steering-continue", null, agent.getCard()));
 
         assertThat(capturedRequests.size()).isGreaterThanOrEqualTo(2);
         assertThat(capturedRequests.get(1).stream().map(BaseMessage::getContent).map(String::valueOf))
                 .anyMatch(content -> content.contains("[STEERING] Continue"));
+    }
+
+    @Test
+    void mapInvokeBindsLoopQueuesSteering() {
+        agent.configure(new ReActAgentConfig().configureMaxIterations(1));
+        LoopQueues queues = new LoopQueues();
+        List<Boolean> queueBoundSeen = new ArrayList<>();
+        agent.setLlm(new Model((messages, options) ->
+                CompletableFuture.completedFuture(new AssistantMessage("done"))));
+        agent.registerRail(new AgentRail() {
+            @Override
+            public void afterModelCall(AgentCallbackContext ctx) {
+                queueBoundSeen.add(ctx.hasSteeringQueue());
+                ctx.pushSteering("live-steer");
+                return;
+            }
+        }).toCompletableFuture().join();
+
+        agent.invoke(
+                Map.of("query", "run", "loop_queues", queues),
+                new AgentSession("steering-map", null, agent.getCard())
+        );
+
+        assertThat(queueBoundSeen)
+                .as("Map-invoke branch with loop_queues must bind the steering queue")
+                .isNotEmpty()
+                .allMatch(bound -> bound);
+        assertThat(queues.steering()).contains("live-steer");
     }
 }

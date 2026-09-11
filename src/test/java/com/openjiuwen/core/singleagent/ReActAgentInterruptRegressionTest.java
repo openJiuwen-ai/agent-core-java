@@ -94,12 +94,12 @@ class ReActAgentInterruptRegressionTest {
         ReActAgent agent = newAgent("force-finish-agent");
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext ctx) {
+            public void beforeInvoke(AgentCallbackContext ctx) {
                 ctx.requestForceFinish(Map.of(
                         "output", "FORCE_FINISHED",
                         "result_type", "answer"
                 ));
-                return completed();
+                return;
             }
         });
 
@@ -107,7 +107,7 @@ class ReActAgentInterruptRegressionTest {
         Map<String, Object> result = (Map<String, Object>) agent.invoke(
                 Map.of("query", "ignored", "conversation_id", "force-finish-session"),
                 new AgentSession("force-finish-session", null, agent.getCard())
-        ).toCompletableFuture().join();
+        );
 
         assertEquals("FORCE_FINISHED", result.get("output"));
         assertEquals("answer", result.get("result_type"));
@@ -305,7 +305,7 @@ class ReActAgentInterruptRegressionTest {
         }
 
         @Override
-        public CompletionStage<Void> beforeToolCall(AgentCallbackContext ctx) {
+        public void beforeToolCall(AgentCallbackContext ctx) {
             Object rawToolCall = ctx.getExtra().get("tool_call");
             if (rawToolCall instanceof ToolCall toolCall) {
                 Object userInput = ctx.getExtra().get("user_input");
@@ -321,7 +321,7 @@ class ReActAgentInterruptRegressionTest {
                     ctx.getExtra().put("approved_args", "{\"response\":\"" + escaped + "\"}");
                 }
             }
-            return completed();
+            return;
         }
     }
 

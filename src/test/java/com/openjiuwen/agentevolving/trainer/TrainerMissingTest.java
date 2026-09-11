@@ -803,16 +803,16 @@ class TrainerMissingTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             if (failInvoke) {
                 CompletableFuture<Object> failed = new CompletableFuture<>();
                 failed.completeExceptionally(new RuntimeException("test error"));
                 return failed;
             }
             if (inputs instanceof Map<?, ?> map) {
-                return CompletableFuture.completedFuture(Map.of("output", map.get("query")));
+                return Map.of("output", map.get("query"));
             }
-            return CompletableFuture.completedFuture(Map.of("output", inputs));
+            return Map.of("output", inputs);
         }
 
         @Override

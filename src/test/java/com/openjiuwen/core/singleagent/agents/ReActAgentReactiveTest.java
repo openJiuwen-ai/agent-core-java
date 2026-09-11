@@ -45,7 +45,7 @@ class ReActAgentReactiveTest {
         agent.setLlm(model);
 
         AgentSessionApi session = newSession(agent, "react-invoke-session");
-        Object result = agent.invoke(Map.of("query", "hello"), session).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "hello"), session);
 
         assertThat(result).isInstanceOf(Map.class);
         Map<?, ?> output = (Map<?, ?>) result;

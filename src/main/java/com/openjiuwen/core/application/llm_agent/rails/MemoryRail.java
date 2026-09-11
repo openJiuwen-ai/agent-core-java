@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Agent rail that integrates long-term memory into the ReActAgent lifecycle.
@@ -64,14 +63,14 @@ public class MemoryRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+    public void beforeInvoke(AgentCallbackContext context) {
         if (context == null || isTruthy(context.getExtra().get("is_resume"))) {
-            return completed();
+            return;
         }
 
         String userId = stringValue(context.getExtra().get("user_id"));
         if (userId.isEmpty()) {
-            return completed();
+            return;
         }
 
         String query = readQuery(context.getInputs());
@@ -81,23 +80,22 @@ public class MemoryRail extends AgentRail {
 
         context.getExtra().put(MEMORY_VARIABLES_KEY, result);
         context.getExtra().put(ORIGINAL_QUERY_KEY, query);
-        return completed();
     }
 
     @Override
-    public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+    public void afterInvoke(AgentCallbackContext context) {
         if (context == null) {
-            return completed();
+            return;
         }
 
         String userId = stringValue(context.getExtra().get("user_id"));
         if (userId.isEmpty()) {
-            return completed();
+            return;
         }
 
         Map<String, Object> result = readResult(context.getInputs());
         if (result == null || !"answer".equals(result.get("result_type"))) {
-            return completed();
+            return;
         }
 
         String query = stringValue(context.getExtra().get(ORIGINAL_QUERY_KEY));
@@ -110,7 +108,7 @@ public class MemoryRail extends AgentRail {
             messageList.add(new AssistantMessage(output));
         }
         if (messageList.isEmpty()) {
-            return completed();
+            return;
         }
 
         String conversationId = readConversationId(context.getInputs());
@@ -130,7 +128,6 @@ public class MemoryRail extends AgentRail {
                 Loggers.MEMORY.exception("memory rail task [memory_rail_add_messages] failed", unwrap(throwable));
             }
         });
-        return completed();
     }
 
     private void loadVariables(String userId, Map<String, Object> result) {

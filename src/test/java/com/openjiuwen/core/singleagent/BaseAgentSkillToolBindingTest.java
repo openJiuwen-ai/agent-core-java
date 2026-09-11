@@ -231,7 +231,7 @@ class BaseAgentSkillToolBindingTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             throw new UnsupportedOperationException("not used");
         }
 

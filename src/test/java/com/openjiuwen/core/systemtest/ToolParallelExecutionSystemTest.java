@@ -68,7 +68,7 @@ class ToolParallelExecutionSystemTest extends SystemTestSupport {
             session.preRun(Map.of("inputs", inputs));
             Object result;
             try {
-                result = agent.invoke(inputs, session).toCompletableFuture().join();
+                result = agent.invoke(inputs, session);
             } finally {
                 session.postRun();
             }

@@ -9,7 +9,6 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.logging.Logger;
 
 /**
@@ -41,15 +40,14 @@ public class CancellationRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+    public void beforeToolCall(AgentCallbackContext context) {
         requestForceFinishWhenCancelled(context);
-        return completed();
+        return;
     }
 
     @Override
-    public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+    public void afterModelCall(AgentCallbackContext context) {
         requestForceFinishWhenCancelled(context);
-        return completed();
     }
 
     private void requestForceFinishWhenCancelled(AgentCallbackContext context) {

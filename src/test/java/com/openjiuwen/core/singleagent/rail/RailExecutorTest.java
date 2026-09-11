@@ -258,26 +258,8 @@ class RailExecutorTest {
         }
 
         @Override
-        public com.openjiuwen.core.singleagent.AgentCallbackManager getAgentCallbackManager() {
-            return new FirerCallbackManager(firer);
-        }
-    }
-
-    private static final class FirerCallbackManager extends com.openjiuwen.core.singleagent.AgentCallbackManager {
-        private final AgentCallbackFirer firer;
-
-        FirerCallbackManager(AgentCallbackFirer firer) {
-            super("stub-agent");
-            this.firer = firer;
-        }
-
-        @Override
-        public java.util.concurrent.CompletionStage<AgentCallbackContext> execute(
-                AgentCallbackEvent event, AgentCallbackContext context) {
-            if (firer != null && event != null) {
-                    firer.fireCallbackEvent(event, context);
-            }
-            return java.util.concurrent.CompletableFuture.completedFuture(context);
+        public void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx) {
+            firer.fireCallbackEvent(event, ctx);
         }
     }
 }

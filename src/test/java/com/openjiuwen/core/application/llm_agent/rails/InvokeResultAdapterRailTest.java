@@ -31,7 +31,7 @@ class InvokeResultAdapterRailTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(new InvokeInputs());
 
-        new InvokeResultAdapterRail().afterInvoke(context).toCompletableFuture().join();
+        new InvokeResultAdapterRail().afterInvoke(context);
 
         assertFalse(context.getExtra().containsKey(InvokeResultAdapterRail.INVOKE_RESULT_KEY));
     }
@@ -43,7 +43,7 @@ class InvokeResultAdapterRailTest {
                 "output", "done"
         ));
 
-        new InvokeResultAdapterRail().afterInvoke(context).toCompletableFuture().join();
+        new InvokeResultAdapterRail().afterInvoke(context);
 
         assertEquals(Map.of("output", "done", "result_type", "answer"),
                 context.getExtra().get(InvokeResultAdapterRail.INVOKE_RESULT_KEY));
@@ -53,7 +53,7 @@ class InvokeResultAdapterRailTest {
     void afterInvokeConvertsErrorResultWithMissingOutputToEmptyString() {
         AgentCallbackContext context = contextWithResult(Map.of("result_type", "error"));
 
-        new InvokeResultAdapterRail().afterInvoke(context).toCompletableFuture().join();
+        new InvokeResultAdapterRail().afterInvoke(context);
 
         assertEquals(Map.of("output", "", "result_type", "error"),
                 context.getExtra().get(InvokeResultAdapterRail.INVOKE_RESULT_KEY));
@@ -69,7 +69,7 @@ class InvokeResultAdapterRailTest {
                 "workflow_execution_state", new WorkflowState(List.of(first, second))
         ));
 
-        new InvokeResultAdapterRail().afterInvoke(context).toCompletableFuture().join();
+        new InvokeResultAdapterRail().afterInvoke(context);
 
         Object adapted = context.getExtra().get(InvokeResultAdapterRail.INVOKE_RESULT_KEY);
         assertEquals(List.of(second), adapted);
@@ -86,7 +86,7 @@ class InvokeResultAdapterRailTest {
                 "workflow_execution_state", Map.of("result", List.of(first, second))
         ));
 
-        new InvokeResultAdapterRail().afterInvoke(context).toCompletableFuture().join();
+        new InvokeResultAdapterRail().afterInvoke(context);
 
         assertEquals(List.of(first, second),
                 context.getExtra().get(InvokeResultAdapterRail.INVOKE_RESULT_KEY));

@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,7 +58,7 @@ class ContextEvolvingReActAgentTest {
         );
         TestAgent agent = new TestAgent(memoryService, true);
 
-        Object result = agent.invoke(Map.of("query", "solve task"), null).toCompletableFuture().join();
+        Object result = agent.invoke(Map.of("query", "solve task"), null);
 
         assertThat(memoryService.retrieveQueries).containsExactly("solve task");
         Map<String, Object> capturedInput = capturedInput(agent, 0);
@@ -80,8 +79,8 @@ class ContextEvolvingReActAgentTest {
         TestAgent agent = new TestAgent(memoryService, true);
         Map<String, Object> input = Map.of("query", "solve", "retrieval_query", "lookup");
 
-        agent.invoke(input, null).toCompletableFuture().join();
-        agent.invoke(input, null).toCompletableFuture().join();
+        agent.invoke(input, null);
+        agent.invoke(input, null);
 
         assertThat(memoryService.retrieveQueries).containsExactly("lookup");
         assertThat(agent.baseInputs).hasSize(2);
@@ -96,7 +95,7 @@ class ContextEvolvingReActAgentTest {
         );
         TestAgent agent = new TestAgent(memoryService, false);
 
-        agent.invoke("solve", null).toCompletableFuture().join();
+        agent.invoke("solve", null);
 
         Map<String, Object> capturedInput = capturedInput(agent, 0);
         assertThat(capturedInput)
@@ -111,7 +110,7 @@ class ContextEvolvingReActAgentTest {
         TestAgent agent = new TestAgent(memoryService, true);
         Map<String, Object> input = Map.of("note", "no query");
 
-        agent.invoke(input, null).toCompletableFuture().join();
+        agent.invoke(input, null);
 
         assertThat(memoryService.retrieveQueries).isEmpty();
         assertThat(agent.baseInputs).containsExactly(input);
@@ -127,7 +126,7 @@ class ContextEvolvingReActAgentTest {
                 "ground_truth", "truth",
                 "matts_mode", "none",
                 "matts_k", 5
-        ), null).toCompletableFuture().join();
+        ), null);
 
         assertThat(agent.baseInputs).hasSize(1);
         assertThat(capturedInput(agent, 0)).containsEntry("query", "Question: question");
@@ -197,12 +196,12 @@ class ContextEvolvingReActAgentTest {
         }
 
         @Override
-        protected CompletionStage<Object> invokeBase(Object inputs, AgentSessionApi session) {
+        protected Object invokeBase(Object inputs, AgentSessionApi session) {
             baseInputs.add(inputs);
-            return CompletableFuture.completedFuture(new LinkedHashMap<>(Map.of(
+            return new LinkedHashMap<>(Map.of(
                     "output", "answer with truth",
                     "result_type", "answer"
-            )));
+            ));
         }
     }
 

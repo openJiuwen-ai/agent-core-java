@@ -33,6 +33,10 @@ public class ModelCallInputs implements EventInputs {
 
     private Object response;
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public List<Object> getMessages() {
         return messages;
     }
@@ -96,5 +100,36 @@ public class ModelCallInputs implements EventInputs {
             return second == null;
         }
         return second != null && first.equalsIgnoreCase(second);
+    }
+
+    /**
+     * Fluent builder matching the 930 Lombok {@code ModelCallInputs.builder()} surface.
+     */
+    public static final class Builder {
+        private List<Object> messages;
+
+        /**
+         * Sets the model-call messages.
+         *
+         * @param messages messages to send
+         * @return this builder
+         */
+        public Builder messages(List<Object> messages) {
+            this.messages = messages;
+            return this;
+        }
+
+        /**
+         * Builds model-call inputs from the collected fields.
+         *
+         * @return a new inputs object
+         */
+        public ModelCallInputs build() {
+            ModelCallInputs inputs = new ModelCallInputs();
+            if (messages != null) {
+                inputs.setMessages(messages);
+            }
+            return inputs;
+        }
     }
 }

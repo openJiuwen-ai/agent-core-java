@@ -33,7 +33,8 @@ class McpMetadataProvidersTest {
         assertThat(provider.getDescription("cn")).isEqualTo("列出指定 MCP 服务器上可用的资源列表。");
         assertThat(provider.getDescription("en")).isEqualTo("List available resources exposed by the specified MCP server.");
         assertThat(schema.get("type")).isEqualTo("object");
-        assertThat(castMap(schema.get("properties")).keySet()).containsExactly("server_id");
+        assertThat(castMap(schema.get("properties")).keySet())
+                .containsExactly("server_id", "server_name");
         assertThat(castList(schema.get("required"))).containsExactly("server_id");
         assertThatCode(provider::validate).doesNotThrowAnyException();
     }

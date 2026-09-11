@@ -148,7 +148,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                 : normalizedInput.query();
         LOGGER.debug("Retrieving memories for query: {}", retrievalQuery);
 
-        return retrieveMemory(retrievalQuery).thenCompose(memoryLookup -> {
+        return retrieveMemory(retrievalQuery).thenApply(memoryLookup -> {
             Map<String, Object> augmentedInput = new LinkedHashMap<>(normalizedInput.values());
             if (memoryLookup.memoriesUsed() > 0 && !memoryLookup.memoryString().isEmpty()) {
                 if (injectMemoriesInContext) {
@@ -160,8 +160,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                     augmentedInput.put("memories_used", memoryLookup.memoriesUsed());
                 }
             }
-            return invokeBase(augmentedInput, session).thenApply(result -> attachMemoriesUsed(result,
-                    memoryLookup.memoriesUsed()));
+            return attachMemoriesUsed(invokeBase(augmentedInput, session), memoryLookup.memoriesUsed());
         });
     }
 
@@ -170,7 +169,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
     }
 
     @Override
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+    public Object invoke(Object inputs, AgentSessionApi session) {
         NormalizedInput normalizedInput = normalizeInput(inputs);
         if (normalizedInput.query().isEmpty()) {
             LOGGER.warn("No query provided in inputs");
@@ -184,16 +183,16 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                     Objects.toString(normalizedInput.values().getOrDefault("ground_truth", ""), ""),
                     parseInteger(normalizedInput.values().get("matts_k")),
                     String.valueOf(mattsModeValue)
-            );
+            ).toCompletableFuture().join();
         }
 
-        return invokeWithMemory(inputs, session);
+        return invokeWithMemory(inputs, session).toCompletableFuture().join();
     }
 
     /**
      * Isolates the parent ReAct call so tests can observe this class without real LLM calls.
      */
-    protected CompletionStage<Object> invokeBase(Object inputs, AgentSessionApi session) {
+    protected Object invokeBase(Object inputs, AgentSessionApi session) {
         return super.invoke(inputs, session);
     }
 

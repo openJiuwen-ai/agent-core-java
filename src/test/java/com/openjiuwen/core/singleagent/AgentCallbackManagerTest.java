@@ -82,8 +82,8 @@ class AgentCallbackManagerTest {
         InMemoryCallbackFramework global = new InMemoryCallbackFramework();
         AgentCallbackManager manager = new AgentCallbackManager("same-id", global);
 
-        manager.registerInstanceRail(new AgentRail() {
-        }, new Object()).toCompletableFuture().join();
+        manager.registerInstanceRail(markingRail("instance", new ArrayList<>()), new Object())
+                .toCompletableFuture().join();
 
         assertFalse(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE));
         assertTrue(manager.hasInstanceHooks(AgentCallbackEvent.BEFORE_INVOKE));
@@ -107,9 +107,9 @@ class AgentCallbackManagerTest {
             }
 
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext callbackContext) {
+            public void beforeInvoke(AgentCallbackContext callbackContext) {
                 calls.add("instance:" + callbackContext.getExtra().get("global-value"));
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
 
@@ -165,15 +165,15 @@ class AgentCallbackManagerTest {
         List<String> calls = new ArrayList<>();
         AgentRail instance = new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+            public void beforeInvoke(AgentCallbackContext context) {
                 calls.add("instance-before");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
 
             @Override
-            public CompletionStage<Void> afterInvoke(AgentCallbackContext context) {
+            public void afterInvoke(AgentCallbackContext context) {
                 calls.add("instance-after");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         AgentCallback globalCallback = context -> {
@@ -253,9 +253,9 @@ class AgentCallbackManagerTest {
             }
 
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+            public void beforeInvoke(AgentCallbackContext context) {
                 calls.add("rail-before");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
 
@@ -330,9 +330,9 @@ class AgentCallbackManagerTest {
         List<String> calls = new ArrayList<>();
         AgentRail instanceRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 calls.add("instance");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         try {
@@ -359,9 +359,9 @@ class AgentCallbackManagerTest {
         List<String> calls = new ArrayList<>();
         AgentRail instanceRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 calls.add("instance");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         try {
@@ -408,9 +408,9 @@ class AgentCallbackManagerTest {
         List<String> calls = new ArrayList<>();
         AgentRail instanceRail = new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+            public void beforeModelCall(AgentCallbackContext context) {
                 calls.add("instance");
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
         try {
@@ -520,9 +520,9 @@ class AgentCallbackManagerTest {
     private static AgentRail markingRail(String marker, List<String> calls) {
         return new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeInvoke(AgentCallbackContext context) {
+            public void beforeInvoke(AgentCallbackContext context) {
                 calls.add(marker);
-                return CompletableFuture.completedFuture(null);
+                return;
             }
         };
     }

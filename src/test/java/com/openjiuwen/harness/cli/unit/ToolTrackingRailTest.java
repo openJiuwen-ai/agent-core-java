@@ -37,7 +37,7 @@ class ToolTrackingRailTest {
         ToolCallInputs inputs = toolInputs("bash", "{\"command\":\"pwd\"}", null);
         AgentCallbackContext context = context(session, inputs);
 
-        new ToolTrackingRail().beforeToolCall(context).toCompletableFuture().join();
+        new ToolTrackingRail().beforeToolCall(context);
 
         OutputSchema output = session.onlyOutput();
         assertEquals("tool_call", output.getType());
@@ -52,7 +52,7 @@ class ToolTrackingRailTest {
         ReadFileResult result = new ReadFileResult("     1\tline1\n     2\tline2", 2);
         ToolCallInputs inputs = toolInputs("read_file", Map.of("file_path", "/tmp/a.txt"), result);
 
-        new ToolTrackingRail().afterToolCall(context(session, inputs)).toCompletableFuture().join();
+        new ToolTrackingRail().afterToolCall(context(session, inputs));
 
         Map<String, Object> payload = payload(session.onlyOutput());
         assertEquals("     1\tline1\n     2\tline2", payload.get("tool_result"));
@@ -65,7 +65,7 @@ class ToolTrackingRailTest {
         ReadFileResult result = new ReadFileResult("line".getBytes(StandardCharsets.UTF_8), "3");
         ToolCallInputs inputs = toolInputs("read_file", Map.of("file_path", "/tmp/a.txt"), result);
 
-        new ToolTrackingRail().afterToolCall(context(session, inputs)).toCompletableFuture().join();
+        new ToolTrackingRail().afterToolCall(context(session, inputs));
 
         Map<String, Object> payload = payload(session.onlyOutput());
         assertEquals("line", payload.get("tool_result"));
@@ -77,7 +77,7 @@ class ToolTrackingRailTest {
         RecordingSession session = new RecordingSession();
         ToolCallInputs inputs = toolInputs("bash", Map.of("command", "pwd"), new CommandResult("/tmp"));
 
-        new ToolTrackingRail().afterToolCall(context(session, inputs)).toCompletableFuture().join();
+        new ToolTrackingRail().afterToolCall(context(session, inputs));
 
         Map<String, Object> payload = payload(session.onlyOutput());
         assertTrue(String.valueOf(payload.get("tool_result")).contains("stdout='/tmp'"));
@@ -89,7 +89,7 @@ class ToolTrackingRailTest {
         RecordingSession session = new RecordingSession();
         ToolCallInputs inputs = toolInputs("bash", "{not-json", null);
 
-        new ToolTrackingRail().beforeToolCall(context(session, inputs)).toCompletableFuture().join();
+        new ToolTrackingRail().beforeToolCall(context(session, inputs));
 
         assertEquals("{not-json", payload(session.onlyOutput()).get("tool_args"));
     }
@@ -99,8 +99,8 @@ class ToolTrackingRailTest {
         ToolCallInputs inputs = toolInputs("bash", Map.of("command", "pwd"), null);
         AgentCallbackContext context = context(null, inputs);
 
-        new ToolTrackingRail().beforeToolCall(context).toCompletableFuture().join();
-        new ToolTrackingRail().afterToolCall(context).toCompletableFuture().join();
+        new ToolTrackingRail().beforeToolCall(context);
+        new ToolTrackingRail().afterToolCall(context);
     }
 
     @SuppressWarnings("unchecked")

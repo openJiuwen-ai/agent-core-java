@@ -29,7 +29,8 @@ class DeepAgentToolErrorConfigTest {
     }
 
     private static boolean runtimeShouldFailTaskOnToolError(DeepAgent agent) {
-        return ((ReActAgentConfig) agent.getAgent().getConfig()).isShouldFailTaskOnToolError();
+        Object config = agent.getAgent().getConfig();
+        return ((ReActAgentConfig) config).isShouldFailTaskOnToolError();
     }
 
     @Test

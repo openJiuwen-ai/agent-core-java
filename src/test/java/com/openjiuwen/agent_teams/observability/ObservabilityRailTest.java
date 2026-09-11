@@ -37,9 +37,9 @@ class ObservabilityRailTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(inputs);
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
         assertThat(context.getExtra()).containsKey(ObservabilityRail.SPAN_KEY);
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.afterTaskIteration(context);
 
         TelemetrySpan span = findSpan(tracer, "deepagent.task_iteration.3");
         assertThat(span.getAttributes())
@@ -62,8 +62,8 @@ class ObservabilityRailTest {
         context.setInputs(inputs);
         context.setException(error);
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
+        rail.afterTaskIteration(context);
 
         TelemetrySpan span = findSpan(tracer, "deepagent.task_iteration.1");
         assertThat(span.getStatusCode()).isEqualTo(TelemetrySpan.StatusCode.ERROR);
@@ -79,9 +79,9 @@ class ObservabilityRailTest {
         AgentCallbackContext context = new AgentCallbackContext();
         context.setInputs(Map.of("iteration", 4, "is_follow_up", false));
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
+        rail.afterTaskIteration(context);
+        rail.afterTaskIteration(context);
 
         TelemetrySpan span = findSpan(tracer, "deepagent.task_iteration.4");
         assertThat(span.getAttributes())
@@ -97,8 +97,8 @@ class ObservabilityRailTest {
         ObservabilityRail rail = new ObservabilityRail();
         AgentCallbackContext context = new AgentCallbackContext();
 
-        rail.beforeTaskIteration(context).toCompletableFuture().join();
-        rail.afterTaskIteration(context).toCompletableFuture().join();
+        rail.beforeTaskIteration(context);
+        rail.afterTaskIteration(context);
 
         assertThat(findSpan(tracer, "deepagent.task_iteration.0").isEnded()).isTrue();
     }

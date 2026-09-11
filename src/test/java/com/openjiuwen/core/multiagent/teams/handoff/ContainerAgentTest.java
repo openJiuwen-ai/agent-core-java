@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -149,9 +148,7 @@ class ContainerAgentTest {
                 Set.of(),
                 ignored -> coordinator);
 
-        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null)
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(new HandoffRequest("hi", List.of(), session), (AgentSessionApi) null);
 
         assertThat(result).isEqualTo(Map.of());
         assertThat(coordinator.doneFuture().join()).isEqualTo(Map.of("answer", "done"));
@@ -170,9 +167,7 @@ class ContainerAgentTest {
                 Set.of("b"),
                 ignored -> coordinator);
 
-        Object result = agent.invoke(new HandoffRequest("original", List.of(), session), (AgentSessionApi) null)
-                .toCompletableFuture()
-                .join();
+        Object result = agent.invoke(new HandoffRequest("original", List.of(), session), (AgentSessionApi) null);
 
         assertThat(result).isEqualTo(Map.of());
         assertThat(agent.publishedTopic).isEqualTo("container_b");
@@ -272,9 +267,9 @@ class ContainerAgentTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             this.lastInput = inputs;
-            return CompletableFuture.completedFuture(result);
+            return result;
         }
 
         @Override

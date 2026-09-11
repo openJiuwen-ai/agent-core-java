@@ -17,15 +17,13 @@ import java.util.function.Supplier;
 /**
  * Reads the content of a selected skill file.
  *
- * <p>Mirrors Python's {@code SkillTool} in
- * {@code openjiuwen/harness/tools/skills/skill_tool.py}.</p>
  */
 public class SkillTool extends AbstractHarnessTool {
 
     private final Supplier<List<SkillDescriptor>> skillsSupplier;
 
     public SkillTool(Supplier<List<SkillDescriptor>> skillsSupplier) {
-        super(toolCard("skill_tool", "SkillTool", "View the skill contents of a certain skill."));
+        super(toolCard("skill_tool", "skill_tool", "View the skill contents of a certain skill."));
         this.skillsSupplier = skillsSupplier;
     }
 

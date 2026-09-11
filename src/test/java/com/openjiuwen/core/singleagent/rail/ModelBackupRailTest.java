@@ -38,11 +38,11 @@ class ModelBackupRailTest {
         TestAgent agent = new TestAgent();
         AgentCallbackContext context = new AgentCallbackContext(agent);
 
-        rail.onModelException(context).toCompletableFuture().join();
+        rail.onModelException(context);
         RetryRequest firstRetry = context.consumeRetryRequest();
-        rail.onModelException(context).toCompletableFuture().join();
+        rail.onModelException(context);
         RetryRequest secondRetry = context.consumeRetryRequest();
-        rail.onModelException(context).toCompletableFuture().join();
+        rail.onModelException(context);
 
         assertThat(agent.getLlm()).isSameAs(second);
         assertThat(firstRetry).isNotNull();
@@ -57,7 +57,7 @@ class ModelBackupRailTest {
         ModelBackupRail rail = new ModelBackupRail(List.of());
         AgentCallbackContext context = new AgentCallbackContext(new TestAgent());
 
-        rail.onModelException(context).toCompletableFuture().join();
+        rail.onModelException(context);
 
         assertThat(context.consumeRetryRequest()).isNull();
         assertThat(rail.getIndex()).isZero();
@@ -88,8 +88,8 @@ class ModelBackupRailTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return CompletableFuture.completedFuture(null);
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return null;
         }
 
         @Override

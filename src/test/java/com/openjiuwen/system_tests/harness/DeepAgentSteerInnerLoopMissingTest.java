@@ -126,11 +126,11 @@ class DeepAgentSteerInnerLoopMissingTest {
         private final List<List<Object>> modelCallMessages = new ArrayList<>();
 
         @Override
-        public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+        public void beforeModelCall(AgentCallbackContext context) {
             if (context.getInputs() instanceof ModelCallInputs inputs) {
                 modelCallMessages.add(new ArrayList<>(inputs.getMessages()));
             }
-            return completed();
+            return;
         }
     }
 

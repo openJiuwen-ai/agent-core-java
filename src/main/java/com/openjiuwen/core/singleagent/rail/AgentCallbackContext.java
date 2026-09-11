@@ -42,10 +42,14 @@ public class AgentCallbackContext {
         this.agent = agent;
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public void fire(AgentCallbackEvent event) {
         this.event = event;
-        if (agent != null && agent.getAgentCallbackManager() != null) {
-            agent.getAgentCallbackManager().execute(event, this).toCompletableFuture().join();
+        if (agent instanceof AgentCallbackFirer) {
+            ((AgentCallbackFirer) agent).fireCallbackEvent(event, this);
         }
     }
 
@@ -184,5 +188,51 @@ public class AgentCallbackContext {
 
     public Queue<String> getSteeringQueue() {
         return steeringQueue;
+    }
+
+    /**
+     * Fluent builder matching the 930 Lombok {@code AgentCallbackContext.builder()} surface.
+     */
+    public static final class Builder {
+        private Object inputs;
+        private Map<String, Object> extra;
+
+        /**
+         * Sets the event inputs.
+         *
+         * @param inputs event inputs
+         * @return this builder
+         */
+        public Builder inputs(Object inputs) {
+            this.inputs = inputs;
+            return this;
+        }
+
+        /**
+         * Sets extra callback values.
+         *
+         * @param extra extra map
+         * @return this builder
+         */
+        public Builder extra(Map<String, Object> extra) {
+            this.extra = extra;
+            return this;
+        }
+
+        /**
+         * Builds a callback context from the collected fields.
+         *
+         * @return a new context
+         */
+        public AgentCallbackContext build() {
+            AgentCallbackContext callbackContext = new AgentCallbackContext();
+            if (inputs != null) {
+                callbackContext.setInputs(inputs);
+            }
+            if (extra != null) {
+                callbackContext.setExtra(extra);
+            }
+            return callbackContext;
+        }
     }
 }

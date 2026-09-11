@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
@@ -475,6 +476,28 @@ public class ResourceMgr {
         return result instanceof SysOperation sysOperation ? sysOperation : null;
     }
 
+    /**
+     * Looks up a sys-operation by id, optionally filtered by tag.
+     *
+     * @param sysOperationId sys-operation id
+     * @param tag optional tag filter
+     * @param tagMatchStrategy tag match strategy
+     * @return the sys-operation, or {@code null} when missing
+     */
+    public Object getSysOperation(String sysOperationId, Object tag,
+                                  com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (tag == null) {
+            return getSysOperation(sysOperationId);
+        }
+        Object result = innerGetResources(
+                sysOperationId == null || sysOperationId.isBlank() ? null : List.of(sysOperationId),
+                ResourceKind.SYS_OPERATION,
+                stringCollection(tag),
+                strategy(tagMatchStrategy),
+                null);
+        return result instanceof SysOperation sysOperation ? sysOperation : result;
+    }
+
     public Object getSysOpToolCards(String sysOperationId, Collection<String> operationNames,
                                     Collection<String> toolNames) {
         if (operationNames != null && operationNames.size() > 1 && toolNames != null && !toolNames.isEmpty()) {
@@ -512,6 +535,18 @@ public class ResourceMgr {
             return result.isEmpty() ? null : result.get(0);
         }
         return result;
+    }
+
+    /**
+     * Looks up sys-operation tool cards, accepting a scalar or collection for each filter.
+     *
+     * @param sysOperationId sys-operation id
+     * @param operationName operation name or collection
+     * @param toolName tool name or collection
+     * @return one {@link ToolCard}, a list of cards, or {@code null}
+     */
+    public Object getSysOpToolCards(String sysOperationId, Object operationName, Object toolName) {
+        return getSysOpToolCards(sysOperationId, stringCollection(operationName), stringCollection(toolName));
     }
 
     public List<ToolInfo> getToolInfos(Collection<String> toolIds, Collection<String> toolTypes,
@@ -737,6 +772,20 @@ public class ResourceMgr {
     public Object getMcpClient(String serverId) {
         validateResourceId(serverId, "mcp server");
         return toolManager.getMcpClient(serverId);
+    }
+
+    /**
+     * Returns registered MCP server ids that share {@code serverName}.
+     *
+     * @param serverName MCP server display name
+     * @return matching server ids, or an empty list when the name is blank or unknown
+     * @since 0.1.14
+     */
+    public List<String> getMcpServerIds(String serverName) {
+        if (serverName == null || serverName.isBlank()) {
+            return List.of();
+        }
+        return toolManager.getMcpServerIds(serverName);
     }
 
     public CompletionStage<Object> listMcpResources(String serverId) {
@@ -1549,7 +1598,7 @@ public class ResourceMgr {
         sysOperationManager = resourceRegistry.sysOperationManager();
         tagMgr = new TagMgr();
         tagManager = tagMgr;
-        idToCard = new LinkedHashMap<>();
+        idToCard = new ConcurrentHashMap<>();
     }
 
     private enum ResourceKind {

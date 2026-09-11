@@ -18,8 +18,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,8 +37,9 @@ class ReActAgentCompExecutableTest {
         ReActAgentCompExecutable executable = new ReActAgentCompExecutable(config);
 
         AgentCard card = executable.getReactAgent().getCard();
+        Object reactConfig = executable.getReactAgent().getConfig();
         assertSame(config, executable.getConfig());
-        assertSame(config, executable.getReactAgent().getConfig());
+        assertSame(config, reactConfig);
         assertEquals("react_agent_workflow_executable", card.getId());
         assertEquals("ReAct Agent Workflow Executable", card.getName());
         assertEquals("ReAct agent for workflow execution", card.getDescription());
@@ -138,13 +137,13 @@ class ReActAgentCompExecutableTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             invokeInputs = inputs;
             invokeSession = session;
             if (invokeException != null) {
-                return CompletableFuture.failedFuture(invokeException);
+                throw invokeException;
             }
-            return CompletableFuture.completedFuture(invokeResult);
+            return invokeResult;
         }
 
         @Override

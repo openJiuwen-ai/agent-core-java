@@ -12,7 +12,6 @@ import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 
 import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Opens and closes spans around outer task-loop iterations.
@@ -40,7 +39,7 @@ public class ObservabilityRail extends AgentRail {
     }
 
     @Override
-    public CompletionStage<Void> beforeTaskIteration(AgentCallbackContext context) {
+    public void beforeTaskIteration(AgentCallbackContext context) {
         try {
             AgentCallbackContext ctx = nonNullContext(context);
             Object inputs = ctx.getInputs();
@@ -56,16 +55,16 @@ public class ObservabilityRail extends AgentRail {
         } catch (Exception error) {
             TEAM_LOGGER.warning("otel rail before_task_iteration failed: {}", error);
         }
-        return completed();
+        return;
     }
 
     @Override
-    public CompletionStage<Void> afterTaskIteration(AgentCallbackContext context) {
+    public void afterTaskIteration(AgentCallbackContext context) {
         try {
             AgentCallbackContext ctx = nonNullContext(context);
             Object rawSpan = ctx.getExtra().remove(SPAN_KEY);
             if (!(rawSpan instanceof TelemetrySpan span)) {
-                return completed();
+                return;
             }
             Exception exception = ctx.getException();
             if (exception != null) {
@@ -78,7 +77,6 @@ public class ObservabilityRail extends AgentRail {
         } catch (Exception error) {
             TEAM_LOGGER.warning("otel rail after_task_iteration failed: {}", error);
         }
-        return completed();
     }
 
     private TelemetryTracer tracer() {

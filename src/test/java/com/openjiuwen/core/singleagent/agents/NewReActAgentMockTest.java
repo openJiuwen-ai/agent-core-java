@@ -122,8 +122,8 @@ class NewReActAgentMockTest {
         ReActAgent result = agent.configure(config);
 
         assertThat(result).isSameAs(agent);
-        assertThat(agent.getConfig().getModelName()).isEqualTo("gpt-4");
-        assertThat(agent.getConfig().getMaxIterations()).isEqualTo(10);
+        assertThat(reactConfig(agent).getModelName()).isEqualTo("gpt-4");
+        assertThat(reactConfig(agent).getMaxIterations()).isEqualTo(10);
     }
 
     @Test
@@ -298,20 +298,30 @@ class NewReActAgentMockTest {
     void invokeMissingQueryRaisesError() {
         ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("unused"));
 
-        assertThatThrownBy(() -> agent.invoke(Map.of("conversation_id", "test_session"), new MemorySession())
-                .toCompletableFuture()
-                .join())
-                .hasCauseInstanceOf(IllegalArgumentException.class)
-                .hasRootCauseMessage("Input must contain 'query'");
+        assertThatThrownBy(() -> agent.invoke(Map.of("conversation_id", "test_session"), new MemorySession()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Input must contain 'query'");
     }
 
     @Test
     void invokeInvalidInputRaisesError() {
         ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("unused"));
 
-        assertThatThrownBy(() -> agent.invoke(42, new MemorySession()).toCompletableFuture().join())
-                .hasCauseInstanceOf(IllegalArgumentException.class)
-                .hasRootCauseMessage("Input must be dict with 'query' or str");
+        assertThatThrownBy(() -> agent.invoke(42, new MemorySession()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Input must be Map with 'query' or String");
+        assertThatThrownBy(() -> agent.invoke(null, new MemorySession()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Input must be Map with 'query' or String");
+    }
+
+    @Test
+    void streamRequiresSession() {
+        ScriptedReActAgent agent = scriptedAgent(new AssistantMessage("unused"));
+
+        assertThatThrownBy(() -> agent.stream(Map.of("query", "hello"), null, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Session is required for streaming");
     }
 
     @Test
@@ -468,9 +478,9 @@ class NewReActAgentMockTest {
         assertThatThrownBy(agent::getLlm)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("model_client_config is required");
-        assertThat(agent.getConfig().getModelProvider()).isEqualTo("azure");
-        assertThat(agent.getConfig().getApiKey()).isEqualTo("key2");
-        assertThat(agent.getConfig().getApiBase()).isEqualTo("base2");
+        assertThat(reactConfig(agent).getModelProvider()).isEqualTo("azure");
+        assertThat(reactConfig(agent).getApiKey()).isEqualTo("key2");
+        assertThat(reactConfig(agent).getApiBase()).isEqualTo("base2");
     }
 
     @Test
@@ -481,7 +491,7 @@ class NewReActAgentMockTest {
         agent.configure(new ReActAgentConfig().configureContextEngine(null, 20, false, false));
 
         assertThat(agent.getContextEngine()).isNotSameAs(oldContextEngine);
-        assertThat(agent.getConfig().getContextEngineConfig().getDefaultWindowRoundNum()).isEqualTo(20);
+        assertThat(reactConfig(agent).getContextEngineConfig().getDefaultWindowRoundNum()).isEqualTo(20);
     }
 
     @Test
@@ -660,9 +670,9 @@ class NewReActAgentMockTest {
         AtomicReference<Object> captured = new AtomicReference<>();
         agent.registerRail(new AgentRail() {
             @Override
-            public CompletionStage<Void> beforeToolCall(AgentCallbackContext context) {
+            public void beforeToolCall(AgentCallbackContext context) {
                 captured.set(context.getInputs());
-                return completed();
+                return;
             }
         }).toCompletableFuture().join();
         MemorySession session = new MemorySession();
@@ -695,6 +705,10 @@ class NewReActAgentMockTest {
         assertThat(String.valueOf(results.get(0).toolMessage().getContent()))
                 .contains("Agent instance not found in resource_mgr: child_agent");
         assertThat(results.get(0).toolMessage().getToolCallId()).isEqualTo("call-1");
+    }
+
+    private static ReActAgentConfig reactConfig(ReActAgent agent) {
+        return (ReActAgentConfig) agent.getConfig();
     }
 
     private static ContextEngineConfig defaultContextConfig() {
@@ -757,9 +771,7 @@ class NewReActAgentMockTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invokeMap(ReActAgent agent, Object inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, new MemorySession())
-                .toCompletableFuture()
-                .join();
+        return (Map<String, Object>) agent.invoke(inputs, new MemorySession());
     }
 
     private static McpServerConfig mcpServer() {

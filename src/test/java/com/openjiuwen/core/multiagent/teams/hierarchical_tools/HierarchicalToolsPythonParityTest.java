@@ -975,9 +975,9 @@ class HierarchicalToolsPythonParityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             lastInvokeInputs.set(inputs);
-            return CompletableFuture.completedFuture("invoked:" + inputs);
+            return "invoked:" + inputs;
         }
 
         @Override

@@ -217,9 +217,7 @@ class ReActAgentRuntimeLoggingTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invokeMap(ReActAgent agent, Object inputs) {
-        return (Map<String, Object>) agent.invoke(inputs, new MemorySession())
-                .toCompletableFuture()
-                .join();
+        return (Map<String, Object>) agent.invoke(inputs, new MemorySession());
     }
 
     private static ToolCall toolCall(String id, String name, String arguments) {

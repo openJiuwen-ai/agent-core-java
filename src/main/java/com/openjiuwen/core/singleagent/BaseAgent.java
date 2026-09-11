@@ -14,6 +14,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackFirer;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.singleagent.skills.GitHubTree;
@@ -40,15 +41,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Base class for current single-agent implementations.
  *
- * <p>Mirrors Python's {@code BaseAgent} in
- * {@code openjiuwen/core/single_agent/base.py}.</p>
  */
-public abstract class BaseAgent {
+public abstract class BaseAgent implements AgentCallbackFirer {
     public static final String ACTIVE_SKILL_NAMES_STATE_KEY = "active_skill_names";
 
     private final AgentCard card;
@@ -68,7 +66,7 @@ public abstract class BaseAgent {
     }
 
     public void lazyInitSkill() {
-        String sysOperationId = readStringProperty(config, "getSysOperationId", "get_sys_operation_id");
+        String sysOperationId = readStringProperty(getConfig(), "getSysOperationId", "get_sys_operation_id");
         if (sysOperationId == null || sysOperationId.isBlank()) {
             return;
         }
@@ -157,10 +155,6 @@ public abstract class BaseAgent {
         }
     }
 
-    public CompletionStage<Boolean> register_skill(List<String> skillPaths) {
-        return registerSkill(skillPaths);
-    }
-
     public CompletionStage<Boolean> registerSkillTools(SkillToolBinding binding) {
         return registerSkillTools(List.of(binding));
     }
@@ -174,10 +168,6 @@ public abstract class BaseAgent {
         }
     }
 
-    public CompletionStage<Boolean> register_skill_tools(List<SkillToolBinding> bindings) {
-        return registerSkillTools(bindings);
-    }
-
     public CompletionStage<List<java.nio.file.Path>> registerRemoteSkills(String skillsDir,
                                                                           GitHubTree githubTree,
                                                                           String token) {
@@ -188,22 +178,10 @@ public abstract class BaseAgent {
         return CompletableFuture.completedFuture(skillUtil.registerRemoteSkills(skillsDir, githubTree, token));
     }
 
-    public CompletionStage<List<java.nio.file.Path>> register_remote_skills(String skillsDir,
-                                                                            GitHubTree githubTree,
-                                                                            String token) {
-        return registerRemoteSkills(skillsDir, githubTree, token);
-    }
-
     public CompletionStage<BaseAgent> registerCallback(AgentCallbackEvent event,
                                                        AgentCallback callback,
                                                        int priority) {
         return agentCallbackManager.registerCallback(event, callback, priority).thenApply(ignored -> this);
-    }
-
-    public CompletionStage<BaseAgent> register_callback(AgentCallbackEvent event,
-                                                        AgentCallback callback,
-                                                        int priority) {
-        return registerCallback(event, callback, priority);
     }
 
     public CompletionStage<BaseAgent> registerRail(AgentRail rail) {
@@ -260,37 +238,50 @@ public abstract class BaseAgent {
         return agentCallbackManager.execute(event, callbackContext).thenApply(ignored -> null);
     }
 
-    public CompletionStage<Void> _execute_callbacks(AgentCallbackEvent event,
-                                                    Map<String, Object> inputs,
-                                                    AgentSessionApi session,
-                                                    ModelContext context) {
-        return executeCallbacks(event, inputs, session, context);
+    /**
+     * Fire a callback event through the agent callback manager.
+     *
+     * @param event the event to fire
+     * @param ctx the callback context
+     * @since 0.1.7
+     */
+    @Override
+    public void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx) {
+        agentCallbackManager.execute(event, ctx).toCompletableFuture().join();
     }
 
-    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-        AgentSession typedSession = null;
-        return CompletableFuture.completedFuture(invoke(inputs, typedSession));
+    /**
+     * Batch execution. Subclasses implement this {@link AgentSessionApi} entry point.
+     *
+     * @param inputs agent input
+     * @param session session object
+     * @return agent output result
+     */
+    public Object invoke(Object inputs, AgentSessionApi session) {
+        throw new UnsupportedOperationException(
+                getClass().getName() + " does not implement invoke(Object, AgentSessionApi)");
     }
 
+    /**
+     * Stream execution. Default wraps {@link #invoke(Object, AgentSessionApi)}.
+     *
+     * @param inputs agent input
+     * @param session session object
+     * @param streamModes stream output modes
+     * @return iterator of stream output
+     */
     public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
-        AgentSession typedSession = null;
-        return stream(inputs, typedSession, streamModes);
-    }
-
-    public CompletionStage<Object> invoke(Map<?, ?> inputs, AgentSession session) {
-        return legacyInvokeStage(inputs, session);
-    }
-
-    public CompletionStage<Object> invoke(String inputs, AgentSession session) {
-        return legacyInvokeStage(inputs, session);
+        return List.<Object>of(invoke(inputs, session)).iterator();
     }
 
     public Object invoke(Object inputs, AgentSession session) {
-        throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, AgentSession)");
+        AgentSessionApi apiSession = session;
+        return invoke(inputs, apiSession);
     }
 
     public Iterator<Object> stream(Object inputs, AgentSession session, List<StreamMode> streamModes) {
-        return List.<Object>of(invoke(inputs, session)).iterator();
+        AgentSessionApi apiSession = session;
+        return stream(inputs, apiSession, streamModes);
     }
 
     /**
@@ -312,7 +303,7 @@ public abstract class BaseAgent {
      * @return Mono emitting the invocation result
      */
     public Mono<Object> invokeAsync(Object inputs, AgentSessionApi session) {
-        return ReactiveAdapters.fromCompletionStage(invoke(inputs, session));
+        return ReactiveAdapters.fromCallable(() -> invoke(inputs, session));
     }
 
     /**
@@ -337,18 +328,6 @@ public abstract class BaseAgent {
      */
     public Flux<Object> streamAsync(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
         return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, streamModes));
-    }
-
-    private CompletionStage<Object> legacyInvokeStage(Object inputs, AgentSession session) {
-        try {
-            Object result = invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
-            if (result instanceof Map<?, ?> resultMap) {
-                return new MapViewCompletedStage(resultMap);
-            }
-            return CompletableFuture.completedFuture(result);
-        } catch (RuntimeException exception) {
-            return MapViewCompletedStage.failed(exception);
-        }
     }
 
     public BaseAgent activateSkill(String skillName, AgentSessionApi session) {
@@ -441,10 +420,6 @@ public abstract class BaseAgent {
     }
 
     public AgentCallbackManager getAgentCallbackManager() {
-        return agentCallbackManager;
-    }
-
-    public AgentCallbackManager get_agent_callback_manager() {
         return agentCallbackManager;
     }
 
@@ -558,123 +533,5 @@ public abstract class BaseAgent {
             return null;
         }
         return skillName;
-    }
-
-    private static final class MapViewCompletedStage extends CompletableFuture<Object> implements Map<String, Object> {
-        private final Map<String, Object> delegate = new LinkedHashMap<>();
-
-        private MapViewCompletedStage(Map<?, ?> value) {
-            for (Map.Entry<?, ?> entry : value.entrySet()) {
-                delegate.put(String.valueOf(entry.getKey()), entry.getValue());
-            }
-            complete(value);
-        }
-
-        private MapViewCompletedStage() {
-        }
-
-        private static MapViewCompletedStage failed(Throwable error) {
-            MapViewCompletedStage stage = new MapViewCompletedStage();
-            stage.completeExceptionally(error);
-            return stage;
-        }
-
-        private void throwIfFailed() {
-            if (isCompletedExceptionally()) {
-                join();
-            }
-        }
-
-        @Override
-        public int size() {
-            throwIfFailed();
-            return delegate.size();
-        }
-
-        @Override
-        public boolean isEmpty() {
-            throwIfFailed();
-            return delegate.isEmpty();
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            throwIfFailed();
-            return delegate.containsKey(key);
-        }
-
-        @Override
-        public boolean containsValue(Object value) {
-            throwIfFailed();
-            return delegate.containsValue(value);
-        }
-
-        @Override
-        public Object get(Object key) {
-            throwIfFailed();
-            return delegate.get(key);
-        }
-
-        @Override
-        public Object put(String key, Object value) {
-            throwIfFailed();
-            return delegate.put(key, value);
-        }
-
-        @Override
-        public Object remove(Object key) {
-            throwIfFailed();
-            return delegate.remove(key);
-        }
-
-        @Override
-        public void putAll(Map<? extends String, ?> map) {
-            throwIfFailed();
-            delegate.putAll(map);
-        }
-
-        @Override
-        public void clear() {
-            throwIfFailed();
-            delegate.clear();
-        }
-
-        @Override
-        public Set<String> keySet() {
-            throwIfFailed();
-            return delegate.keySet();
-        }
-
-        @Override
-        public Collection<Object> values() {
-            throwIfFailed();
-            return delegate.values();
-        }
-
-        @Override
-        public Set<Entry<String, Object>> entrySet() {
-            throwIfFailed();
-            return delegate.entrySet();
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            throwIfFailed();
-            return delegate.equals(other);
-        }
-
-        @Override
-        public int hashCode() {
-            throwIfFailed();
-            return delegate.hashCode();
-        }
-
-        @Override
-        public String toString() {
-            if (isCompletedExceptionally()) {
-                return "MapViewCompletedStage[failed]";
-            }
-            return delegate.toString();
-        }
     }
 }

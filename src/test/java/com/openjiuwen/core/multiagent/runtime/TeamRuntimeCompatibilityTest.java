@@ -93,15 +93,14 @@ class TeamRuntimeCompatibilityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             @SuppressWarnings("unchecked")
             String task = String.valueOf(((Map<String, Object>) inputs).get("task"));
             AgentGroupSession groupSession = session instanceof AgentGroupSession api ? api : null;
-            return CompletableFuture.completedFuture(
-                    send(Map.of("task", task), "responder",
-                            session != null ? session.getSessionId() : null,
-                            null,
-                            groupSession));
+            return send(Map.of("task", task), "responder",
+                    session != null ? session.getSessionId() : null,
+                    null,
+                    groupSession);
         }
     }
 
@@ -119,11 +118,11 @@ class TeamRuntimeCompatibilityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             lastSessionId.set(session != null ? session.getSessionId() : null);
             @SuppressWarnings("unchecked")
             String task = String.valueOf(((Map<String, Object>) inputs).get("task"));
-            return CompletableFuture.completedFuture("ack:" + task);
+            return "ack:" + task;
         }
     }
 
@@ -144,10 +143,10 @@ class TeamRuntimeCompatibilityTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        public Object invoke(Object inputs, AgentSessionApi session) {
             lastInput.set(inputs);
             lastSessionId.set(session != null ? session.getSessionId() : null);
-            return CompletableFuture.completedFuture(output);
+            return output;
         }
     }
 }

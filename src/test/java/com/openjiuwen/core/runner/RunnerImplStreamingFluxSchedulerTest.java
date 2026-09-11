@@ -80,8 +80,8 @@ class RunnerImplStreamingFluxSchedulerTest {
         }
 
         @Override
-        public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
-            return java.util.concurrent.CompletableFuture.completedFuture("ok");
+        public Object invoke(Object inputs, AgentSessionApi session) {
+            return "ok";
         }
 
         @Override

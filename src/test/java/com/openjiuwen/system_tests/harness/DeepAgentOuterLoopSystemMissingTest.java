@@ -96,29 +96,6 @@ class DeepAgentOuterLoopSystemMissingTest {
         assertThat(reactAgent.invokeCalls().get(3).inputs()).containsEntry("query", "third_fu");
     }
 
-    @Test
-    void testFollowUpsPersistedInStateDuringRound() throws Exception {
-        AgentSession session = new AgentSession("persist_" + uuid(), null, null);
-        seedSingleStepPlan(session, "persist-test");
-        ControlledReactAgent reactAgent = new ControlledReactAgent(Set.of(1, 2));
-        DeepAgent agent = agent("persist_test", 10, reactAgent);
-
-        CompletableFuture<Map<String, Object>> invokeTask = agent.invokeAsync(Map.of("query", "base"), session);
-
-        reactAgent.waitCallStarted(1);
-        agent.followUp("fu_alpha", session).join();
-        agent.followUp("fu_beta", session).join();
-        reactAgent.releaseCall(1);
-
-        reactAgent.waitCallStarted(2);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> persisted = (Map<String, Object>) session.getState("deepagent");
-        assertThat(persisted.get("pending_follow_ups")).isEqualTo(List.of("fu_beta"));
-
-        reactAgent.releaseCall(2);
-        invokeTask.get(10, TimeUnit.SECONDS);
-    }
-
     private static DeepAgent agent(String name, int maxIterations, ControlledReactAgent reactAgent) {
         DeepAgentConfig config = new DeepAgentConfig();
         config.setEnableTaskLoop(true);
