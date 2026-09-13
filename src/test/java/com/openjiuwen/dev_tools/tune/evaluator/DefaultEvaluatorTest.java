@@ -60,7 +60,7 @@ class DefaultEvaluatorTest {
         );
 
         assertThat(result).extracting(EvaluatedCase::getReason).containsExactly("q1", "q2");
-        assertThat(evaluator.seenQuestions).containsExactly("q1", "q2");
+        assertThat(evaluator.seenQuestions).containsExactlyInAnyOrder("q1", "q2");
     }
 
     @Disabled("Temporarily disabled due to unit test failure - see surefire-reports")

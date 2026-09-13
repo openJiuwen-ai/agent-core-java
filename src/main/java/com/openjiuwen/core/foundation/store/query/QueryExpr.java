@@ -20,6 +20,10 @@ public abstract class QueryExpr {
 
     private static final Map<String, QueryLanguageDefinition> QUERY_EXPR_FUNCTIONS = new ConcurrentHashMap<>();
 
+    static {
+        QueryLanguageRegistry.registerBuiltinLanguages();
+    }
+
     public LogicalExpr and(QueryExpr other) {
         return new LogicalExpr("and", this, other);
     }

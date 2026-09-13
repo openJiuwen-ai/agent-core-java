@@ -59,7 +59,7 @@ class DeepAgentSpecTest {
 
     @Test
     void builtinToolSpecInjectsLanguageAndToolId() {
-        DeepAgentSpecPackage.registerToolType("custom", values -> Map.copyOf(values));
+        DeepAgentSpecRegistry.registerToolType("custom", values -> Map.copyOf(values));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> built = (Map<String, Object>) new BuiltinToolSpec("custom", Map.of("x", 1))
@@ -72,7 +72,7 @@ class DeepAgentSpecTest {
 
     @Test
     void subAgentBuildResolvesToolsRailsAndWorkspace() {
-        DeepAgentSpecPackage.registerToolType("subtool", values -> Map.copyOf(values));
+        DeepAgentSpecRegistry.registerToolType("subtool", values -> Map.copyOf(values));
         SubAgentSpec subAgent = new SubAgentSpec();
         subAgent.setAgentCard(new AgentCard("sub", "Sub", "desc"));
         subAgent.setSystemPrompt("help");

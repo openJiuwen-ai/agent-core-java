@@ -5,7 +5,7 @@
 package com.openjiuwen.agent_teams.prompts;
 
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 
 import java.util.Collection;
 import java.util.Map;
@@ -105,7 +105,7 @@ public final class TeamPlanAgent {
         if (subagents == null || subagents.isEmpty()) {
             return false;
         }
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         Set<String> builtinPrompts = Set.copyOf(DEFAULT_PLAN_AGENT_SYSTEM_PROMPT.values());
 
         for (Object candidate : subagents) {
@@ -127,7 +127,7 @@ public final class TeamPlanAgent {
     }
 
     public static AgentCard buildTeamPlanAgentCard(String language) {
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         return new AgentCard(null, "plan_agent", teamPlanAgentDescription(resolvedLanguage));
     }
 

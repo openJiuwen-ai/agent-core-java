@@ -31,7 +31,7 @@ public class TransportSpec {
     }
 
     public Object build() {
-        return TeamBlueprintPackage.buildTransport(type, params);
+        return TeamBlueprintRegistry.buildTransport(type, params);
     }
 
     public String getType() {

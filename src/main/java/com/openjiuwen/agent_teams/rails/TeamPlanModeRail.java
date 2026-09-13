@@ -7,7 +7,6 @@ package com.openjiuwen.agent_teams.rails;
 import com.openjiuwen.agent_teams.prompts.TeamPlanAgent;
 import com.openjiuwen.agent_teams.prompts.TeamPlanMode;
 import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentState;
 
@@ -38,7 +37,7 @@ public class TeamPlanModeRail {
     }
 
     public TeamPlanModeRail(String language) {
-        this.languageOverride = language == null ? null : HarnessPromptsPackage.resolveLanguage(language);
+        this.languageOverride = language == null ? null : SystemPromptBuilder.resolveLanguage(language);
     }
 
     public int getPriority() {
@@ -87,7 +86,7 @@ public class TeamPlanModeRail {
         if (languageOverride != null) {
             return languageOverride;
         }
-        return HarnessPromptsPackage.resolveLanguage(
+        return SystemPromptBuilder.resolveLanguage(
                 systemPromptBuilder == null ? null : systemPromptBuilder.getLanguage()
         );
     }

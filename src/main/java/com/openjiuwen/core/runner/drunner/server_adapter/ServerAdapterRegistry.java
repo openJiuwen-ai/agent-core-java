@@ -19,7 +19,7 @@ public final class ServerAdapterRegistry {
 
     private static final Map<String, ServerAdapterFactory> CUSTOM_SERVER_ADAPTERS = new ConcurrentHashMap<>();
     private static final Map<String, String> OFFICIAL_SERVER_ADAPTER_BOOTSTRAP = Map.of(
-            "A2A", "com.openjiuwen.extensions.a2a.A2APackage"
+            "A2A", "com.openjiuwen.extensions.a2a.A2AExtension"
     );
 
     private ServerAdapterRegistry() {

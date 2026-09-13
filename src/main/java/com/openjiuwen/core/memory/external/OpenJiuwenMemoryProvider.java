@@ -16,7 +16,7 @@ import com.openjiuwen.core.foundation.store.BaseKVStore;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.Embedding;
 import com.openjiuwen.core.foundation.store.EmbeddingConfig;
-import com.openjiuwen.core.foundation.store.FoundationStorePackage;
+import com.openjiuwen.core.foundation.store.VectorStoreRegistry;
 import com.openjiuwen.core.foundation.store.db.DefaultDbStore;
 import com.openjiuwen.core.foundation.store.kv.DbBasedKVStore;
 import com.openjiuwen.core.foundation.store.kv.InMemoryKVStore;
@@ -330,7 +330,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
         try {
             Map<String, Object> kwargs = new LinkedHashMap<>(vectorConfig);
             kwargs.remove("backend");
-            return FoundationStorePackage.createVectorStore(backend, kwargs);
+            return VectorStoreRegistry.createVectorStore(backend, kwargs);
         } catch (Exception exception) {
             Loggers.MEMORY.error("[OpenJiuwenMemoryProvider] Vector store creation failed ({}): {}",
                     backend, exception.getMessage());

@@ -82,7 +82,7 @@ class ChunkerRegistryPythonParityTest {
     }
 
     private static void getCharChunker() {
-        Chunker chunker = ChunkerPackage.getChunker("char", Map.of("chunk_size", 256, "chunk_overlap", 30));
+        Chunker chunker = ChunkerRegistry.getChunker("char", Map.of("chunk_size", 256, "chunk_overlap", 30));
 
         assertThat(chunker).isInstanceOf(CharChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(256);
@@ -90,14 +90,14 @@ class ChunkerRegistryPythonParityTest {
     }
 
     private static void getCharChunkerDefaults() {
-        Chunker chunker = ChunkerPackage.getChunker("char");
+        Chunker chunker = ChunkerRegistry.getChunker("char");
 
         assertThat(chunker).isInstanceOf(CharChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(512);
     }
 
     private static void getHybridChunker() {
-        Chunker chunker = ChunkerPackage.getChunker("hybrid", Map.of("chunk_size", 128, "chunk_overlap", 20));
+        Chunker chunker = ChunkerRegistry.getChunker("hybrid", Map.of("chunk_size", 128, "chunk_overlap", 20));
 
         assertThat(chunker).isInstanceOf(HybridChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(128);
@@ -105,7 +105,7 @@ class ChunkerRegistryPythonParityTest {
     }
 
     private static void getHybridChunkerDefaults() {
-        Chunker chunker = ChunkerPackage.getChunker("hybrid");
+        Chunker chunker = ChunkerRegistry.getChunker("hybrid");
 
         assertThat(chunker).isInstanceOf(HybridChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(512);
@@ -113,7 +113,7 @@ class ChunkerRegistryPythonParityTest {
 
     private static void getHybridWithCustomInner() {
         Chunker inner = new CharChunker(64, 10);
-        Chunker chunker = ChunkerPackage.getChunker("hybrid", ChunkerOptions.builder().innerChunker(inner).build());
+        Chunker chunker = ChunkerRegistry.getChunker("hybrid", Map.of("inner_chunker", inner));
 
         assertThat(chunker).isInstanceOf(HybridChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(64);
@@ -122,13 +122,13 @@ class ChunkerRegistryPythonParityTest {
     private static void getHybridWithNoSplitWhen() {
         Predicate<Document> predicate = document -> "special".equals(document.getMetadata().get("type"));
 
-        Chunker chunker = ChunkerPackage.getChunker("hybrid", Map.of("no_split_when", predicate));
+        Chunker chunker = ChunkerRegistry.getChunker("hybrid", Map.of("no_split_when", predicate));
 
         assertThat(chunker).isInstanceOf(HybridChunker.class);
     }
 
     private static void getUnknownChunker() {
-        assertThatThrownBy(() -> ChunkerPackage.getChunker("nonexistent"))
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker("nonexistent"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown chunker");
     }
@@ -136,7 +136,7 @@ class ChunkerRegistryPythonParityTest {
     private static void hybridUnknownKwargsWhenInnerProvided() {
         Chunker inner = new CharChunker(64, 50);
 
-        assertThatThrownBy(() -> ChunkerPackage.getChunker(
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker(
                 "hybrid",
                 Map.of("inner_chunker", inner, "bad_param", true)
         ))
@@ -145,7 +145,7 @@ class ChunkerRegistryPythonParityTest {
     }
 
     private static void hybridExtraKwargsPassedToInner() {
-        Chunker chunker = ChunkerPackage.getChunker(
+        Chunker chunker = ChunkerRegistry.getChunker(
                 "hybrid",
                 Map.of("chunk_size", 256, "chunk_overlap", 10)
         );
@@ -156,86 +156,94 @@ class ChunkerRegistryPythonParityTest {
     }
 
     private static void hybridInnerChunkerNotChunker() {
-        assertThatThrownBy(() -> ChunkerPackage.getChunker("hybrid", Map.of("inner_chunker", "not a chunker")))
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker("hybrid", Map.of("inner_chunker", "not a chunker")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("inner_chunker must be a Chunker instance");
     }
 
     private static void returnTypeValidation() {
         String name = testName("bad-return");
-        ChunkerPackage.registerChunker(name, options -> null);
+        ChunkerRegistry.registerChunker(name, options -> null);
 
-        assertThatThrownBy(() -> ChunkerPackage.getChunker(name))
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker(name))
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must return a Chunker instance");
     }
 
     private static void registerAndGet() {
         String name = testName("my-chunker");
 
-        ChunkerPackage.registerChunker(name, options -> new MyChunker());
-        Chunker chunker = ChunkerPackage.getChunker(name);
+        ChunkerRegistry.registerChunker(name, options -> new MyChunker());
+        Chunker chunker = ChunkerRegistry.getChunker(name);
 
         assertThat(chunker).isInstanceOf(MyChunker.class);
     }
 
     private static void registerDuplicateRaises() {
         String name = testName("dup");
-        ChunkerPackage.registerChunker(name, options -> new CharChunker());
+        ChunkerRegistry.registerChunker(name, options -> new CharChunker());
 
-        assertThatThrownBy(() -> ChunkerPackage.registerChunker(name, options -> new CharChunker()))
+        assertThatThrownBy(() -> ChunkerRegistry.registerChunker(name, options -> new CharChunker()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already registered");
     }
 
     private static void registerDuplicateWithOverwrite() {
         String name = testName("overwrite");
-        ChunkerPackage.registerChunker(name, options -> new CharChunker());
-        ChunkerPackage.registerChunker(name, options -> new MyChunker(), true);
+        ChunkerRegistry.registerChunker(name, options -> new CharChunker());
+        ChunkerRegistry.registerChunker(name, options -> new MyChunker(), true);
 
-        Chunker chunker = ChunkerPackage.getChunker(name);
+        Chunker chunker = ChunkerRegistry.getChunker(name);
 
         assertThat(chunker).isInstanceOf(MyChunker.class);
     }
 
     private static void registerEmptyName() {
-        assertThatThrownBy(() -> ChunkerPackage.registerChunker("", options -> new CharChunker()))
+        assertThatThrownBy(() -> ChunkerRegistry.registerChunker("", options -> new CharChunker()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-empty string");
     }
 
     private static void registerWhitespaceName() {
-        assertThatThrownBy(() -> ChunkerPackage.registerChunker("   ", options -> new CharChunker()))
+        assertThatThrownBy(() -> ChunkerRegistry.registerChunker("   ", options -> new CharChunker()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-empty string");
     }
 
     private static void builtinCharRegistered() {
-        assertThat(ChunkerPackage.chunkerRegistry()).containsKey("char");
+        assertThat(ChunkerRegistry.contains("char")).isTrue();
     }
 
     private static void builtinHybridRegistered() {
-        assertThat(ChunkerPackage.chunkerRegistry()).containsKey("hybrid");
+        assertThat(ChunkerRegistry.contains("hybrid")).isTrue();
     }
 
     private static void registerFactoryCallable() {
         String name = testName("factory");
-        ChunkerPackage.registerChunker(name, options -> new CharChunker(options.getChunkSize(), 50));
+        ChunkerRegistry.registerChunker(name, options -> new CharChunker(intValue(options, "chunk_size", 512), 50));
 
-        Chunker chunker = ChunkerPackage.getChunker(name, Map.of("chunk_size", 200));
+        Chunker chunker = ChunkerRegistry.getChunker(name, Map.of("chunk_size", 200));
 
         assertThat(chunker).isInstanceOf(CharChunker.class);
         assertThat(chunker.getChunkSize()).isEqualTo(200);
     }
 
     private static void overwriteBuiltinBlocked() {
-        assertThatThrownBy(() -> ChunkerPackage.registerChunker("char", options -> new CharChunker()))
+        assertThatThrownBy(() -> ChunkerRegistry.registerChunker("char", options -> new CharChunker()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already registered");
     }
 
     private static String testName(String suffix) {
         return "_test_" + suffix + "_" + RUN_ID;
+    }
+
+    private static int intValue(Map<String, Object> options, String key, int defaultValue) {
+        Object value = options == null ? null : options.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return defaultValue;
     }
 
     private static final class MyChunker extends Chunker {

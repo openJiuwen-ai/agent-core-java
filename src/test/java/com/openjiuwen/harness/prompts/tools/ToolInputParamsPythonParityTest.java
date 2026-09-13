@@ -68,7 +68,7 @@ class ToolInputParamsPythonParityTest {
     @Test
     void allRegisteredTools() {
         for (String name : registeredToolNames()) {
-            Map<String, Object> schema = HarnessPromptToolsPackage.getToolInputParams(name, "cn");
+            Map<String, Object> schema = ToolMetadataRegistry.getToolInputParams(name, "cn");
 
             assertEquals("object", schema.get("type"));
         }
@@ -78,20 +78,20 @@ class ToolInputParamsPythonParityTest {
     void unknownToolRaises() {
         assertThrows(
                 NoSuchElementException.class,
-                () -> HarnessPromptToolsPackage.getToolInputParams("nonexistent", "cn")
+                () -> ToolMetadataRegistry.getToolInputParams("nonexistent", "cn")
         );
     }
 
     @Test
     void registryMatchesDirectBuilder() {
         assertEquals(new BashMetadataProvider().getInputParams("cn"),
-                HarnessPromptToolsPackage.getToolInputParams("bash", "cn"));
+                ToolMetadataRegistry.getToolInputParams("bash", "cn"));
         assertEquals(new PowerShellMetadataProvider().getInputParams("cn"),
-                HarnessPromptToolsPackage.getToolInputParams("powershell", "cn"));
+                ToolMetadataRegistry.getToolInputParams("powershell", "cn"));
         assertEquals(new ImageOCRMetadataProvider().getInputParams("en"),
-                HarnessPromptToolsPackage.getToolInputParams("image_ocr", "en"));
+                ToolMetadataRegistry.getToolInputParams("image_ocr", "en"));
         assertEquals(new AudioPromptToolProviders.AudioMetadataMetadataProvider().getInputParams("en"),
-                HarnessPromptToolsPackage.getToolInputParams("audio_metadata", "en"));
+                ToolMetadataRegistry.getToolInputParams("audio_metadata", "en"));
     }
 
     @Test

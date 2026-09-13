@@ -19,7 +19,7 @@ import com.openjiuwen.agent_teams.models.ModelRouterConfig;
 import com.openjiuwen.agent_teams.team_workspace.TeamWorkspaceConfig;
 import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
 import com.openjiuwen.agent_teams.tools.database.DatabaseType;
-import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.tools.worktree.WorktreeConfig;
 
 import java.util.ArrayList;
@@ -91,7 +91,7 @@ public class TeamAgentSpec {
             throw new IllegalArgumentException("agents dict must contain a 'leader' key");
         }
 
-        String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
+        String resolvedLanguage = SystemPromptBuilder.resolveLanguage(language);
         for (AgentConfigurator.DeepAgentSpec roleSpec : getAgents().values()) {
             if (roleSpec.getLanguage() == null) {
                 roleSpec.setLanguage(resolvedLanguage);
@@ -486,7 +486,7 @@ public class TeamAgentSpec {
     }
 
     public String resolveLanguage(String defaultLanguage) {
-        return HarnessPromptsPackage.resolveLanguage(
+        return SystemPromptBuilder.resolveLanguage(
                 language == null || language.isBlank() ? defaultLanguage : language);
     }
 

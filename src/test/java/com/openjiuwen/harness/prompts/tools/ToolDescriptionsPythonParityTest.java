@@ -31,32 +31,32 @@ class ToolDescriptionsPythonParityTest {
     @Test
     void knownToolCn() {
         assertEquals(new BashMetadataProvider().getDescription("cn"),
-                HarnessPromptToolsPackage.getToolDescription("bash", "cn"));
+                ToolMetadataRegistry.getToolDescription("bash", "cn"));
         assertEquals(new PowerShellMetadataProvider().getDescription("cn"),
-                HarnessPromptToolsPackage.getToolDescription("powershell", "cn"));
+                ToolMetadataRegistry.getToolDescription("powershell", "cn"));
     }
 
     @Test
     void knownToolEn() {
         assertEquals(new BashMetadataProvider().getDescription("en"),
-                HarnessPromptToolsPackage.getToolDescription("bash", "en"));
+                ToolMetadataRegistry.getToolDescription("bash", "en"));
         assertEquals(new PowerShellMetadataProvider().getDescription("en"),
-                HarnessPromptToolsPackage.getToolDescription("powershell", "en"));
+                ToolMetadataRegistry.getToolDescription("powershell", "en"));
     }
 
     @Test
     void unknownToolRaises() {
         assertThrows(
                 NoSuchElementException.class,
-                () -> HarnessPromptToolsPackage.getToolDescription("nonexistent", "cn")
+                () -> ToolMetadataRegistry.getToolDescription("nonexistent", "cn")
         );
     }
 
     @Test
     void allRegisteredTools() {
         for (String name : registeredToolNames()) {
-            assertTrue(HarnessPromptToolsPackage.getToolDescription(name, "cn").strip().length() > 0);
-            assertTrue(HarnessPromptToolsPackage.getToolDescription(name, "en").strip().length() > 0);
+            assertTrue(ToolMetadataRegistry.getToolDescription(name, "cn").strip().length() > 0);
+            assertTrue(ToolMetadataRegistry.getToolDescription(name, "en").strip().length() > 0);
         }
     }
 
@@ -87,7 +87,7 @@ class ToolDescriptionsPythonParityTest {
     }
 
     private static void assertCardDescription(String toolName, String expectedDescription) {
-        ToolCard card = HarnessPromptToolsPackage.buildToolCard(toolName, toolName, "en", "test-agent");
+        ToolCard card = ToolMetadataRegistry.buildToolCard(toolName, toolName, "en", "test-agent");
 
         assertEquals(expectedDescription, card.getDescription());
     }
